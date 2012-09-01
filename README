@@ -1,0 +1,8 @@
+linux-live
+==========
+
+Run the build script to create your live kit in /tmp/live_data_1234
+You will be asked for name of your live kit before the procedure starts
+
+Author: Tomas M. <http://www.linux-live.org>
+See DOC/GNU_GPL and DOC/LICENSE for license information
