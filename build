@@ -13,3 +13,9 @@ cd $CHANGEDIR
 # only root can continue, because only root can read all files from your system
 allow_only_root
 
+# find necessary tools (mksquashfs, namely)
+
+# build initramfs image
+
+# create compressed bundles
+

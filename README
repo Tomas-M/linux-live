@@ -4,9 +4,12 @@ Linux Live Kit
 Use this set of scripts to turn your existing preinstalled Linux
 distribution into a Live Kit (formely known as Live CD).
 
-First of all, edit the file ./.config
+* First of all, read files in ./DOC directory
 
-Then run the build script to create your Live Kit
+* Before you start building your Kit, edit the file ./.config
+
+* When done editing, run the ./build script to create your Live Kit
+
 
 Author: Tomas M. <http://www.linux-live.org>
 See DOC/GNU_GPL and DOC/LICENSE for license information

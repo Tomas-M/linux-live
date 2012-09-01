@@ -1,14 +1,99 @@
 #!/bin/bash
 
-# Functions library :: for Linux Kit scripts 7
+# Functions library :: for Linux Live Kit scripts
 # Author: Tomas M. <http://www.linux-live.org>
 #
 
+# =================================================================
+# debug and output functions
+# =================================================================
+
+# global variable
+DEBUG_IS_ENABLED=$(cat /proc/cmdline 2>/dev/null | grep debug)
+
+debug_log()
+{
+   if [ "$DEBUG_IS_ENABLED" ]; then
+      echo "- debug: $*" >&2
+      log "- debug: $*"
+   fi
+}
+
+# header
+# $1 = text to show
+#
+header()
+{
+   echo "[0;1m""$@""[0;0m"
+}
+
+
+# echogreen will echo $@ in green color
+# $1 = text
+#
+echogreen()
+{
+   echo -ne "[0;32m""$@""[0;39m"
+}
+
+# log - store given text in /var/log/livedbg
+log()
+{
+   echo "$@" 2>/dev/null >>/var/log/livedbg
+}
+
+# show information about the debug shell
+show_debug_banner()
+{
+   echo
+   echo "====="
+   echo ": Debugging started. Here is the root shell for you."
+   echo ": Type your desired commands or hit Ctrl+D to continue booting."
+   echo
+}
+
+# debug_shell
+# executed when debug boot parameter is present
+#
+debug_shell()
+{
+   if [ "$DEBUG_IS_ENABLED" ]; then
+      show_debug_banner
+      bash < /dev/console
+      echo
+   fi
+}
+
+fatal()
+{
+   echolog
+   header "Fatal error occured - $1"
+   echolog "Something went wrong and we can't continue. This should never happen."
+   echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
+   echolog
+   bash < /dev/console
+}
+
+
+# test if the script is started by root user. If not, exit
+#
 allow_only_root()
 {
-  # test if the script is started by root user. If not, exit
   if [ "0$UID" -ne 0 ]; then
      echo "Only root can run $(basename $0)"; exit 1
   fi
+}
+
+# Create bundle
+# call mksquashfs with apropriate arguments
+# $1 = directory which will be compressed to squashfs bundle
+# $2 = output file
+# $3..$9 = optional arguments like -keep-as-directory or -b 123456789
+#
+create_bundle()
+{
+   debug_log "create_module" "$*"
+   rm -f "$2" # overwrite, never append to existing file
+   mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
 }
 
