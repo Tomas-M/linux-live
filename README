@@ -1,8 +1,12 @@
-linux-live
-==========
+Linux Live Kit
+==============
 
-Run the build script to create your live kit in /tmp/live_data_1234
-You will be asked for name of your live kit before the procedure starts
+Use this set of scripts to turn your existing preinstalled Linux
+distribution into a Live Kit (formely known as Live CD).
+
+First of all, edit the file ./.config
+
+Then run the build script to create your Live Kit
 
 Author: Tomas M. <http://www.linux-live.org>
 See DOC/GNU_GPL and DOC/LICENSE for license information

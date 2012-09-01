@@ -1,0 +1,90 @@
+#!/bin/bash
+# Linux Live Kit version 7
+
+export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
+
+CHANGEDIR=$(dirname $(readlink -f $0))
+echo "Changing current directory to $CHANGEDIR"
+cd $CHANGEDIR
+
+. liblinuxlive || exit 1 # this actually includes a file from ./tools/
+. ./.config || exit 1
+
+# only root can continue, because only root can read all files from your system
+allow_only_root
+
+# live CD name
+echo -ne "Name of your live distro [hit enter for $LIVECDNAME]: "
+read NEWLIVECDNAME
+if [ "$NEWLIVECDNAME" != "" ]; then LIVECDNAME=$NEWLIVECDNAME; fi
+LIVECDNAME=$(echo $LIVECDNAME | tr -d ' ')
+
+. ./install
+if [ "$ROOT" -a "$ROOT" != "/" ]; then 
+   . ./install $ROOT
+fi
+
+# search for kernel
+VMLINUZ=$ROOT/boot/vmlinuz
+if [ -L "$VMLINUZ" ]; then VMLINUZ=$(readlink -f $VMLINUZ); fi
+echo -ne "Enter path for the kernel you'd like to use [hit enter for $VMLINUZ]: "
+read NEWKERNEL
+if [ "$NEWKERNEL" != "" ]; then VMLINUZ="$NEWKERNEL"; fi
+if [ "$(ls $VMLINUZ 2>>$DEBUG)" = "" ]; then echo "cannot find $VMLINUZ"; exit 1; fi
+
+header "Creating LiveCD from your Linux"
+echo "some debug information can be found in $DEBUG"
+
+mkdir -p $CDDATA/$LIVECDNAME/{base,modules,optional,rootcopy,tools}
+
+echo "copying cd-root to $CDDATA, using kernel from $VMLINUZ"
+cp -R cd-root/boot $CDDATA
+for i in isolinux syslinux; do
+   cat cd-root/boot/$i/$i.cfg | sed -r "s/LABEL linux/LABEL $LIVECDNAME/" | sed -r "s/Run linux/Run $LIVECDNAME/" > $CDDATA/boot/$i/$i.cfg
+done
+mv $CDDATA/boot/dos/linux.bat $CDDATA/boot/dos/${LIVECDNAME:0:8}.bat
+cat cd-root/boot/dos/readme.txt | sed -r "s/LINUX.BAT/"${LIVECDNAME:0:8}.bat"/" > $CDDATA/boot/dos/readme.txt
+
+mkdir -p $CDDATA/$LIVECDNAME
+cp -R cd-root/linux/* $CDDATA/$LIVECDNAME
+cp tools/* $CDDATA/$LIVECDNAME/tools
+cp -R DOC/LICENSE $CDDATA/$LIVECDNAME
+cp $VMLINUZ $CDDATA/boot/vmlinuz
+
+echo "creating initrd image..."
+echo "Using kernel modules from $ROOT/$LMK"
+cd initrd
+./initrd_create $LIVECDNAME
+if [ "$?" -ne 0 ]; then exit; fi
+cd ..
+
+cp initrd/initrd.gz $CDDATA/boot/initrd.gz
+rm initrd/initrd.gz
+
+echo "creating compressed images..."
+
+for dir in $MKMOD; do
+    if [ -d $ROOT/$dir ]; then
+      echo "base/$dir.lzm ..."
+      echo -ne > exclude.txt
+      for i in $EXCLUDE; do
+         part=$(echo "x/$i" | tr -s / | sed -r "s:x/[^/]+/::")
+         if [ -e "$ROOT/$dir/$part" ]; then echo "$ROOT/$dir/$part" >> exclude.txt; fi
+      done
+      cat exclude.txt
+      create_module $ROOT/$dir $CDDATA/$LIVECDNAME/base/$dir.lzm -keep-as-directory -ef exclude.txt
+      if [ $? -ne 0 ]; then exit; fi
+      rm exclude.txt
+      echo
+    fi
+done
+
+cd $CDDATA/$LIVECDNAME
+echo "--------done----------"
+echo
+echo "* run $CDDATA/$LIVECDNAME/make_iso.bat to create ISO image"
+echo "* or copy content of $CDDATA to your USB device"
+echo "and run ./boot/bootinst.sh (from the device!) to setup boot sector"
+echo
+echo "Now press Enter..."
+read junk

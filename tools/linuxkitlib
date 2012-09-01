@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# Functions library :: for Linux Kit scripts 7
+# Author: Tomas M. <http://www.linux-live.org>
+#
+
+allow_only_root()
+{
+  # test if the script is started by root user. If not, exit
+  if [ "0$UID" -ne 0 ]; then
+     echo "Only root can run $(basename $0)"; exit 1
+  fi
+}
+
