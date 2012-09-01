@@ -12,4 +12,3 @@ allow_only_root()
   fi
 }
 
-# test
