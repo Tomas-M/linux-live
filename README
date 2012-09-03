@@ -6,6 +6,10 @@ distribution into a Live Kit (formely known as Live CD).
 
 * Before you start building your Kit, edit the file ./.config
 
+* You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
+  and reorganize isolinux.cfg to fit your needs (when editing the file,
+  keep all paths in /boot/, it will be rellocated during LiveKit creation)
+
 * When done editing, run the ./build script to create your Live Kit
 
 
