@@ -51,15 +51,15 @@ copy_including_deps /dev/zram0
 copy_including_deps /dev/console /dev/null /dev/fb0 /dev/zero
 copy_including_deps /dev/ram /dev/systty /dev/fuse
 copy_including_deps /dev/tty /dev/tty?
-copy_including_deps /bin/bash /bin/mount
+copy_including_deps /bin/bash /bin/mount /bin/mkdir
 copy_including_deps /bin/ln /bin/cat /bin/ls /bin/free
 copy_including_deps /sbin/blkid /sbin/swapon /sbin/mkswap /sbin/modprobe
 copy_including_deps /bin/grep /bin/egrep /bin/cut /bin/tr
 copy_including_deps /sbin/lsmod
 copy_including_deps /sbin/fdisk
 
-#copy_including_deps /usr/bin/vi
-#copy_including_deps /usr/bin/strace
+copy_including_deps /usr/bin/vi
+copy_including_deps /usr/bin/strace
 
 copy_including_deps /$LMK/kernel/fs
 copy_including_deps /$LMK/kernel/drivers/staging/zram
