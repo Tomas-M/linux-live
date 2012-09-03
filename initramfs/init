@@ -1,0 +1,23 @@
+#!/bin/bash
+# Initial script for Linux Live Kit
+# Author: Tomas M <http://www.linux-live.org/>
+
+export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
+
+mount -n -t proc proc /proc
+mount -n -t sysfs sysfs /sys
+mount -n -o remount,rw rootfs /
+ln -sf /proc/mounts /etc/mtab # this allows us to use umount -a
+
+# Don't print kernel messages to konsole any longer
+echo "0" >/proc/sys/kernel/printk
+
+# Activate zram (auto-compression of RAM)
+modprobe zram
+echo $(($(grep MemTotal /proc/meminfo | tr -s " " | cut -d " " -f 2)*2*1024)) > /sys/block/zram0/disksize
+mkswap /dev/zram0
+swapon /dev/zram0
+
+echo
+echo "Here is a shell for you:"
+/bin/bash
