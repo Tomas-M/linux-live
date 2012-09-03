@@ -41,7 +41,7 @@ mount -t aufs -o xino=$MEMORYDIR/xino,br=$MEMORYDIR none $UNIONDIR
 echo
 echo
 echo
-echo
+echo "          If you see this message, then the test passed OK."
 echo "          Thank you for testing. That's all for now :)"
 echo "          It's now safe to turn off your computer ..."
 echo
