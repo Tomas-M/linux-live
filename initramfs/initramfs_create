@@ -1,1 +1,78 @@
 #!/bin/bash
+
+. ../.config
+
+# Automatically determine the architecture we're building on:
+if [ -z "$MYARCH" ]; then
+  case "$( uname -m )" in
+    i?86) export MYARCH=i486 ;;
+    arm*) export MYARCH=arm ;;
+    # Unless $MYARCH is already set, use uname -m for all other archs:
+       *) export MYARCH=$( uname -m ) ;;
+  esac
+fi
+
+INITRAMFS=/tmp/livekit-initramfs-$MYARCH-$$
+
+# copy file to initramfs tree, including
+# all library dependencies (as shown by ldd)
+# $1 = file to copy (full path)
+copy_including_deps()
+{
+   # if source doesn't exist or target exists, do nothing
+   if [ ! -e "$1" -o -e "$INITRAMFS"/"$1" ]; then
+      return
+   fi
+
+   cp -R --parents "$1" "$INITRAMFS"
+   if [ -L "$1" ]; then
+      DIR="$(dirname "$1")"
+      LNK="$(readlink "$1")"
+      copy_including_deps "$(cd "$DIR"; realpath "$LNK")"
+   fi
+
+   ldd "$1" 2>/dev/null | sed -r "s/.*=>|[(].*//g" | sed -r "s/^\\s+|\\s+\$//" \
+     | while read LIB; do
+        copy_including_deps "$LIB"
+     done
+
+   shift
+   if [ "$1" != "" ]; then
+       copy_including_deps "$@"
+   fi
+}
+
+rm -Rf $INITRAMFS
+mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sbin,sys,tmp,usr,var/log}
+
+modprobe zram
+copy_including_deps /dev/zram0
+
+copy_including_deps /dev/console /dev/null /dev/fb0 /dev/zero
+copy_including_deps /dev/ram /dev/systty /dev/fuse
+copy_including_deps /dev/tty /dev/tty?
+copy_including_deps /bin/bash /bin/mount
+copy_including_deps /bin/ln /bin/cat /bin/ls /bin/free
+copy_including_deps /sbin/blkid /sbin/swapon /sbin/mkswap /sbin/modprobe
+copy_including_deps /bin/grep /bin/egrep /bin/cut /bin/tr
+copy_including_deps /sbin/lsmod
+copy_including_deps /sbin/fdisk
+
+#copy_including_deps /usr/bin/vi
+#copy_including_deps /usr/bin/strace
+
+copy_including_deps /$LMK/kernel/fs
+copy_including_deps /$LMK/kernel/drivers/staging/zram
+copy_including_deps /$LMK/modules.*
+
+depmod -b $INITRAMFS
+
+echo "root::0:0::/root:/bin/bash" >$INITRAMFS/etc/passwd
+touch $INITRAMFS/etc/{m,fs}tab
+
+cp init $INITRAMFS/
+chmod a+x $INITRAMFS/init
+
+cd $INITRAMFS
+find . -print | cpio -o -H newc 2>/dev/null | gzip -f --best >$INITRAMFS.img
+echo $INITRAMFS.img

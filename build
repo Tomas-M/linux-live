@@ -20,13 +20,26 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
 fi
 
 # build initramfs image
+cd initramfs
+INITRAMFS=$(./initramfs_create "$LIVEKITNAME")
+cd ..
 
+# create live kit filesystem
+rm -Rf "$LIVEKITDATA"
+BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
+mkdir -p "$BOOT"
+cp bootfiles/isolinux.bin $BOOT
+cp bootfiles/vesamenu.c32 $BOOT
+mv "$INITRAMFS" $BOOT/initfs.img
+cat bootfiles/isolinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/isolinux.cfg
+cp /boot/vmlinuz $BOOT/
 
 # create compressed bundles
+# ...
 
-
-
-
-
-
-
+# create ISO for CD image (so I can test it)
+cd "$LIVEKITDATA"
+mkisofs -o "/tmp/iso.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+-no-emul-boot -boot-info-table -boot-load-size 4 \
+-b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
+>/dev/null 2>/dev/null
