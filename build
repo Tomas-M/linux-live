@@ -13,9 +13,20 @@ cd $CHANGEDIR
 # only root can continue, because only root can read all files from your system
 allow_only_root
 
-# find necessary tools (mksquashfs, namely)
+# check for mksquashfs with xz compression
+if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
+   echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
+   exit 1
+fi
 
 # build initramfs image
 
+
 # create compressed bundles
+
+
+
+
+
+
 
