@@ -28,7 +28,7 @@ copy_including_deps()
    if [ -L "$1" ]; then
       DIR="$(dirname "$1")"
       LNK="$(readlink "$1")"
-      copy_including_deps "$(cd "$DIR"; realpath "$LNK")"
+      copy_including_deps "$(cd "$DIR"; realpath -s "$LNK")"
    fi
 
    ldd "$1" 2>/dev/null | sed -r "s/.*=>|[(].*//g" | sed -r "s/^\\s+|\\s+\$//" \
