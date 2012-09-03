@@ -61,7 +61,8 @@ copy_including_deps /sbin/fdisk
 copy_including_deps /usr/bin/vi
 copy_including_deps /usr/bin/strace
 
-copy_including_deps /$LMK/kernel/fs
+# TODO: add all comon filesystems which are NOT compiled in kernel already
+copy_including_deps /$LMK/kernel/fs/squashfs
 copy_including_deps /$LMK/kernel/drivers/staging/zram
 copy_including_deps /$LMK/modules.*
 
