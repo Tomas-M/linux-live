@@ -30,6 +30,7 @@ BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
 cp bootfiles/isolinux.bin $BOOT
 cp bootfiles/vesamenu.c32 $BOOT
+cp bootfiles/bootlogo.png $BOOT
 mv "$INITRAMFS" $BOOT/initfs.img
 cat bootfiles/isolinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/isolinux.cfg
 cp /boot/vmlinuz $BOOT/
