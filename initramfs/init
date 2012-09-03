@@ -15,6 +15,7 @@ echo "0" >/proc/sys/kernel/printk
 # Activate zram (auto-compression of RAM)
 # Compressed RAM consumes 1/2 or even 1/4 of original size
 # Setup static size of 500MB
+echo "Setting dynamic RAM compression using ZRAM"
 modprobe zram
 echo $((512*1024*1024)) > /sys/block/zram0/disksize
 mkswap /dev/zram0
@@ -32,8 +33,19 @@ mount -t aufs -o xino=$MEMORYDIR/xino,br=$MEMORYDIR none $UNIONDIR
 
 # find LiveKit data
 
-# add to union
 
-header "You shouldn't be here"
-echo "If you reached this far, something wrong happened. Here is a shell for you:"
+# add data to union
+
+
+# testing message
+echo
+echo
+echo
+echo
+echo "          Thank you for testing. That's all for now :)"
+echo "          It's now safe to turn off your computer ..."
+echo
+echo
+echo
+echo
 /bin/bash
