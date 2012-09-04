@@ -4,6 +4,8 @@
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
+. /linuxkitlib
+
 mount -n -t proc proc /proc
 mount -n -t sysfs sysfs /sys
 mount -n -o remount,rw rootfs /

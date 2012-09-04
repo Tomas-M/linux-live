@@ -63,6 +63,7 @@ touch $INITRAMFS/etc/{m,fs}tab
 
 cp init $INITRAMFS/
 chmod a+x $INITRAMFS/init
+cp ../tools/linuxkitlib $INITRAMFS/
 
 cd $INITRAMFS
 find . -print | cpio -o -H newc 2>/dev/null | gzip -f --best >$INITRAMFS.img
