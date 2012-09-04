@@ -30,11 +30,11 @@ if %OS% == Windows_NT goto setupNT
 goto setup95
 
 :setupNT
-\boot\syslinux.exe -maf -d /boot/syslinux %DISK%:
+\boot\syslinux.exe -maf -d /boot/ %DISK%:
 goto setupDone
 
 :setup95
-\boot\syslinux.com -maf -d /boot/syslinux %DISK%:
+\boot\syslinux.com -maf -d /boot/ %DISK%:
 
 :setupDone
 echo Installation finished.
