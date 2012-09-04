@@ -28,11 +28,15 @@ cd ..
 rm -Rf "$LIVEKITDATA"
 BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
+mv "$INITRAMFS" $BOOT/initrfs.img
 cp bootfiles/isolinux.bin $BOOT
 cp bootfiles/vesamenu.c32 $BOOT
 cp bootfiles/bootlogo.png $BOOT
-mv "$INITRAMFS" $BOOT/initrfs.img
+cp bootfiles/syslinux.exe $BOOT
+cp bootfiles/syslinux64.exe $BOOT
+cp bootfiles/syslinux.com $BOOT
 cat bootfiles/isolinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/isolinux.cfg
+cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp /boot/vmlinuz $BOOT/
 
 # create compressed bundles
