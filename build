@@ -41,7 +41,7 @@ cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:
 cp /boot/vmlinuz $BOOT/
 
 # create compressed bundles
-# ...
+# ... TODO!
 
 # create ISO for CD image
 echo "Creating ISO file for CD boot..."
