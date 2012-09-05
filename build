@@ -53,3 +53,8 @@ mkisofs -o "$TARGET/$LIVEKITNAME-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" 
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
+
+tar -c ./* > "$TARGET/$LIVEKITNAME-$(uname -m).tar"
+
+cd ..
+rm -Rf "$LIVEKITDATA"
