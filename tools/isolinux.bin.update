@@ -12,14 +12,14 @@ DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
 # download, unpack, and patch syslinux
 wget -c "$DL"
 tar -xf $PKGTGZ
-#rm $PKGTGZ
+rm $PKGTGZ
 
 cd $PKG
 
 sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/iso9660/iso9660.c
 sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/lib/loadconfig.c
 
-make installer
+make -i
 cp core/isolinux.bin ../../bootfiles/isolinux.bin
 
 echo
