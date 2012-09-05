@@ -44,8 +44,12 @@ cp /boot/vmlinuz $BOOT/
 
 # create ISO for CD image (so I can test it)
 cd "$LIVEKITDATA"
-mkisofs -o "/mnt/z/slax-prealpha-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+TARGET=/mnt/z
+if [ ! -d $TARGET ]; then
+   TARGET=/tmp
+fi
+
+mkisofs -o "$TARGET/$LIVEKITNAME-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
-sync
