@@ -10,7 +10,15 @@ distribution into a Live Kit (formely known as Live CD).
   and reorganize isolinux.cfg to fit your needs (when editing the file,
   keep all paths in /boot/, it will be rellocated during LiveKit creation)
 
-* When done editing, run the ./build script to create your Live Kit
+* If you plan to boot your Live Kit from CD, you need to recompile
+  syslinux.bin to include your target path. There is a script prepared
+  for you which will handle all of that. Simply go to directory ./tools/
+  and run isolinux.bin.update ... it will update your isolinux.bin
+  automatically by downloading isolinux sources, patching them using
+  your actual LIVEKITNAME and recompiling. It will copy the new isolinux.bin
+  binary to bootfiles for you as well.
+
+* When done, run the ./build script to create your Live Kit
 
 
 Author: Tomas M. <http://www.linux-live.org>
