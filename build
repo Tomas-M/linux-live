@@ -20,6 +20,7 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
 fi
 
 # build initramfs image
+echo "Building intramfs image using your current system binaries..."
 cd initramfs
 INITRAMFS=$(./initramfs_create "$LIVEKITNAME")
 cd ..
@@ -42,7 +43,8 @@ cp /boot/vmlinuz $BOOT/
 # create compressed bundles
 # ...
 
-# create ISO for CD image (so I can test it)
+# create ISO for CD image
+echo "Creating ISO file for CD boot..."
 cd "$LIVEKITDATA"
 TARGET=/mnt/z
 if [ ! -d $TARGET ]; then
@@ -54,7 +56,9 @@ mkisofs -o "$TARGET/$LIVEKITNAME-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" 
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
 
+echo "Creating TAR for USB boot..."
 tar -c ./* > "$TARGET/$LIVEKITNAME-$(uname -m).tar"
 
 cd ..
 rm -Rf "$LIVEKITDATA"
+echo "finished. Find your result in $TARGET"
