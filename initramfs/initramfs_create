@@ -2,17 +2,7 @@
 
 . ../.config
 
-# Automatically determine the architecture we're building on:
-if [ -z "$MYARCH" ]; then
-  case "$( uname -m )" in
-    i?86) export MYARCH=i486 ;;
-    arm*) export MYARCH=arm ;;
-    # Unless $MYARCH is already set, use uname -m for all other archs:
-       *) export MYARCH=$( uname -m ) ;;
-  esac
-fi
-
-INITRAMFS=/tmp/livekit-initramfs-$MYARCH-$$
+INITRAMFS=/tmp/$LIVEKITNAME-initramfs-$$
 
 # copy file to initramfs tree, including
 # all library dependencies (as shown by ldd)
