@@ -20,6 +20,8 @@ distribution into a Live Kit (formely known as Live CD).
   recompiling.
 
 * When done, run the ./build script to create your Live Kit
+  - it will create ISO and TAR files for you in /tmp
+  - make sure you have enough free space in /tmp to handle it
 
 
 Author: Tomas M. <http://www.linux-live.org>
