@@ -113,10 +113,11 @@ init_proc()
 # make sure some devices are there
 init_devs()
 {
-   if [ ! -e /dev/console ]; then mknod dev/console c 5 1; fi
-   if [ ! -e /dev/null ]; then mknod dev/null c 1 3; fi
-   if [ ! -e /dev/zram0 ]; then mknod dev/zram0 b 252 0; fi
-   
+   echo /sbin/mdev > /proc/sys/kernel/hotplug
+   mdev -s
+   modprobe zram
+   modprobe loop
+   modprobe squashfs
 }
 
 # Activate zram (auto-compression of RAM)
@@ -127,7 +128,6 @@ init_zram()
 {
    debug_log "init_zram"
    echo "Setting dynamic RAM compression using ZRAM"
-   modprobe zram
    echo 536870912 > /sys/block/zram0/disksize # 512MB
    mkswap /dev/zram0
    swapon /dev/zram0 -p 32767

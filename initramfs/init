@@ -24,6 +24,12 @@ DATA="$(find_data $LIVEKITNAME)"
 # add data to union
 union_append_bundles "$DATA"
 
+
+mkdir /m
+mount /dev/sr0 /m
+modprobe squashfs
+mkdir /s
+mount -o loop -t squashfs /m/mylinux/core.sb /s
 # possibly switch root
 
 # testing message

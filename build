@@ -41,6 +41,9 @@ cp /boot/vmlinuz $BOOT/
 
 # create compressed bundles
 # ... TODO!
+if [ -d sb ]; then
+   cp sb/* $LIVEKITDATA/$LIVEKITNAME/
+fi
 
 # create ISO for CD image
 echo "Creating ISO file for CD boot..."
