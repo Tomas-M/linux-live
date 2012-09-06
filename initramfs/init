@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Initial script for Linux Live Kit
 # Author: Tomas M <http://www.linux-live.org/>
 
@@ -28,4 +28,4 @@ union_append_bundles "$DATA"
 
 # testing message
 echo "If you see this message, then something went terribly wrong. Sorry!"
-/bin/bash
+/bin/sh

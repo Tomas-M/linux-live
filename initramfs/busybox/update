@@ -1,0 +1,4 @@
+#!/bin/bash
+# we're using precompiled busybox i486 binary, which runs on 64bit systems as well!
+wget -O ./busybox http://busybox.net/downloads/binaries/latest/busybox-i486
+chmod a+x ./busybox

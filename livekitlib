@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Functions library :: for Linux Live Kit scripts
 # Author: Tomas M. <http://www.linux-live.org>
@@ -116,6 +116,7 @@ init_devs()
    if [ ! -e /dev/console ]; then mknod dev/console c 5 1; fi
    if [ ! -e /dev/null ]; then mknod dev/null c 1 3; fi
    if [ ! -e /dev/zram0 ]; then mknod dev/zram0 b 252 0; fi
+   
 }
 
 # Activate zram (auto-compression of RAM)
