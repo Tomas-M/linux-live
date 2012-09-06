@@ -10,7 +10,6 @@
 
 # global variable
 DEBUG_IS_ENABLED=$(cat /proc/cmdline 2>/dev/null | grep debug)
-LIVEKITNAME=mylinux
 
 debug_log()
 {
