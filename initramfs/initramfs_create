@@ -71,4 +71,4 @@ find . -print | cpio -o -H newc 2>/dev/null | gzip -f --best >$INITRAMFS.img
 echo $INITRAMFS.img
 
 cd ..
-rm -Rf $INITRAMFS
+#rm -Rf $INITRAMFS
