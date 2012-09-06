@@ -17,7 +17,7 @@ How to create bundle:
     # mksquashfs /usr /usr.sb --keep-as-directory -comp xz -bs 512k
 
     or use function in livekitlib:
-    # . toos/livekitlib; make_bundle bundle_rootfs wholefs.sb
+    # . livekitlib; make_bundle bundle_rootfs wholefs.sb
 
 
 Special files in bundle filesystem structure:

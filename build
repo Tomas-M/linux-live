@@ -8,7 +8,7 @@ echo "Changing current directory to $CHANGEDIR"
 cd $CHANGEDIR
 
 . ./.config || exit 1
-. ./tools/livekitlib || exit 1
+. ./livekitlib || exit 1
 
 # only root can continue, because only root can read all files from your system
 allow_only_root

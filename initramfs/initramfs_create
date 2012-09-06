@@ -63,7 +63,7 @@ touch $INITRAMFS/etc/{m,fs}tab
 
 cp init $INITRAMFS/
 chmod a+x $INITRAMFS/init
-cp ../tools/livekitlib $INITRAMFS/
+cp ../livekitlib $INITRAMFS/
 cp ../.config $INITRAMFS/
 
 cd $INITRAMFS
