@@ -97,3 +97,92 @@ create_bundle()
    mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
 }
 
+
+# mount virtual filesystems like proc etc
+#
+init_proc()
+{
+   debug_log "vfs_mount_init"
+   mount -n -t proc proc /proc
+   echo "0" >/proc/sys/kernel/printk
+   mount -n -t sysfs sysfs /sys
+   mount -n -o remount,rw rootfs /
+   ln -sf /proc/mounts /etc/mtab
+}
+
+# make sure some devices are there
+init_devs()
+{
+   if [ ! -e /dev/console ]; then mknod dev/console c 5 1; fi
+   if [ ! -e /dev/null ]; then mknod dev/null c 1 3; fi
+   if [ ! -e /dev/zram0 ]; then mknod dev/zram0 b 252 0; fi
+}
+
+# Activate zram (auto-compression of RAM)
+# Compressed RAM consumes 1/2 or even 1/4 of original size
+# Setup static size of 500MB
+#
+init_zram()
+{
+   debug_log "init_zram"
+   echo "Setting dynamic RAM compression using ZRAM"
+   modprobe zram
+   echo 536870912 > /sys/block/zram0/disksize # 512MB
+   mkswap /dev/zram0
+   swapon /dev/zram0 -p 32767
+   echo 100 > /proc/sys/vm/swappiness
+}
+
+# load the AUFS kernel module if needed
+#
+init_aufs()
+{
+   debug_log "init_aufs"
+   # TODO maybe check here if aufs support is working at all
+   # and procude useful error message if user has no aufs
+   modprobe aufs 2>/dev/null
+}
+
+# Setup empty union
+# $1 = memory directory (tmpfs will be mounted there)
+# $2 = union directory where to mount the union
+#
+init_union()
+{
+   debug_log "init_union"
+   mkdir -p "$1"
+   mkdir -p "$2"
+   mount -t ramfs ramfs "$1"
+   mount -t aufs -o xino=$1/xino,br=$1 none "$2"
+}
+
+# Find LIVEKIT data by mounting all devices
+# If found, retain mounted disk
+find_data()
+{
+   debug_log "find_data"
+
+   local DEVICE FS MNT
+   MNT=/mnt
+
+   blkid -o device | while read DEVICE; do
+      FS=$(blkid -s TYPE -o value $DEVICE)
+      # TODO: if fs = ntfs then mount ntfs-3g, if fs=dos then mount vfat
+      mount -o ro "$DEVICE" $MNT -t "$FS" 2>/dev/null
+      if [ -d "$MNT/$LIVEKITNAME" ]; then
+         echo $MNT
+         return
+      fi
+      umount $MNT 2>/dev/null
+   done
+}
+
+mount_device()
+{
+   echo "A"
+}
+
+union_append_bundles()
+{
+   echo "B"
+}
