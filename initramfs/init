@@ -4,6 +4,7 @@
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
+. /.config
 . /linuxkitlib
 
 mount -n -t proc proc /proc
