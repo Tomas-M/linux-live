@@ -1,4 +1,14 @@
 #!/bin/bash
-# we're using precompiled busybox i486 binary, which runs on 64bit systems as well!
-wget -O ./busybox http://busybox.net/downloads/binaries/latest/busybox-i486
+
+# Automatically determine the architecture we're building on:
+if [ -z "$MYARCH" ]; then
+  case "$( uname -m )" in
+    i?86) export MYARCH=i486 ;;
+    arm*) export MYARCH=arm ;;
+    # Unless $MYARCH is already set, use uname -m for all other archs:
+       *) export MYARCH=$( uname -m ) ;;
+  esac
+fi
+
+wget -O ./busybox http://busybox.net/downloads/binaries/latest/busybox-$MYARCH
 chmod a+x ./busybox

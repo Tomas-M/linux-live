@@ -9,7 +9,7 @@
 # =================================================================
 
 # global variable
-DEBUG_IS_ENABLED=$(cat /proc/cmdline 2>/dev/null | grep debug)
+DEBUG_IS_ENABLED="$(cat /proc/cmdline 2>/dev/null | grep debug)"
 
 debug_log()
 {
@@ -59,7 +59,7 @@ debug_shell()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
       show_debug_banner
-      bash < /dev/console
+      sh < /dev/console
       echo
    fi
 }
@@ -71,7 +71,7 @@ fatal()
    echolog "Something went wrong and we can't continue. This should never happen."
    echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
    echolog
-   bash < /dev/console
+   sh < /dev/console
 }
 
 
@@ -115,9 +115,9 @@ init_devs()
 {
    echo /sbin/mdev > /proc/sys/kernel/hotplug
    mdev -s
-   modprobe zram
-   modprobe loop
-   modprobe squashfs
+   modprobe zram 2>/dev/null
+   modprobe loop 2>/dev/null
+   modprobe squashfs 2>/dev/null
 }
 
 # Activate zram (auto-compression of RAM)
@@ -157,33 +157,98 @@ init_union()
    mount -t aufs -o xino=$1/xino,br=$1 none "$2"
 }
 
+# Make sure to mount FAT12/16/32 using vfat
+# in order to support long filenames
+# $1 = device
+#
+device_bestfs()
+{
+   debug_log "device_bestfs"
+   local PEEK
+
+   PEEK="$(dd if="$1" bs=1k count=1 2>/dev/null | strings)"
+   if [ "$(echo "$PEEK" | egrep -i "FAT[13][26]")" != "" ]; then
+      echo "-t vfat"
+   # TODO: this will work only with fuse
+   #   else if [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
+   #      echo "-t ntfs-3g"
+   fi
+}
+
 # Find LIVEKIT data by mounting all devices
 # If found, retain mounted disk
+# $1 = data directory to mount
+#
 find_data()
 {
    debug_log "find_data"
 
    local DEVICE FS MNT
-   MNT=/mnt
 
-   blkid -o device | while read DEVICE; do
-      FS=$(blkid -s TYPE -o value $DEVICE)
-      # TODO: if fs = ntfs then mount ntfs-3g, if fs=dos then mount vfat
-      mount -o ro "$DEVICE" $MNT -t "$FS" 2>/dev/null
-      if [ -d "$MNT/$LIVEKITNAME" ]; then
-         echo $MNT
+   mkdir -p "$1"
+   blkid | sort | cut -d: -f 1 | while read DEVICE; do
+      FS="$(device_bestfs "$DEVICE")"
+      mount -r "$DEVICE" "$1" $FS
+      if [ -d "$1/$LIVEKITNAME" ]; then
+         echo "$1/$LIVEKITNAME"
          return
       fi
-      umount $MNT 2>/dev/null
+      umount "$1" 2>/dev/null
    done
 }
 
-mount_device()
-{
-   echo "A"
-}
-
+# Mount squashfs filesystem bundles
+# and add them to union
+# $1 = directory where to search for bundles
+# $2 = directory where to mount bundles
+# $3 = directory where union is mounted
+#
 union_append_bundles()
 {
-   echo "B"
+   ls -1 "$1" | grep '.sb$' | sort | while read BUNDLE; do
+      mkdir -p "$2/$BUNDLE"
+      mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
+      mount -o remount,add:1:"$2/$BUNDLE" none "$3"
+   done
+}
+
+# Create empty fstab properly
+# $1 = root directory
+#
+fstab_create()
+{
+   local FSTAB
+   FSTAB="$1/etc/fstab"
+   echo aufs / aufs defaults 0 0 > $FSTAB
+   echo proc /proc proc defaults 0 0 >> $FSTAB
+   echo sysfs /sys sysfs defaults 0 0 >> $FSTAB
+   echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
+   echo tmpfs /dev/shm tmpfs defaults 0 0 >> $FSTAB
+}
+
+
+# Change root and execute init
+# $1 = where to change root
+#
+change_root()
+{
+   cd "$1"
+
+   # make sure important devices are in union
+   if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
+   if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
+
+   # find chroot and init
+   if [ -x bin/chroot ]; then  CHROOT=bin/chroot; fi
+   if [ -x sbin/chroot ]; then  CHROOT=sbin/chroot; fi
+   if [ -x usr/bin/chroot ]; then  CHROOT=usr/bin/chroot; fi
+   if [ -x usr/sbin/chroot ]; then CHROOT=usr/sbin/chroot; fi
+   if [ "$CHROOT" = "" ]; then fatal "Can't find executable chroot command"; fi
+
+   if [ -x bin/init ]; then INIT=bin/init; fi
+   if [ -x sbin/init ]; then INIT=sbin/init; fi
+   if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
+
+   mount -n -o remount,ro aufs .
+   exec $CHROOT . $INIT <dev/console >dev/console 2>&1
 }

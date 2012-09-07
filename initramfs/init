@@ -4,11 +4,15 @@
 
 MEMORYDIR=/memory
 UNIONDIR=/union
+DATADIR=/mnt/data
+BUNDLESDIR=/mnt/bundles
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
 . /.config
 . /livekitlib
+
+header "Starting $LIVEKITNAME ..."
 
 init_proc
 init_devs
@@ -17,21 +21,18 @@ init_zram
 init_union $MEMORYDIR $UNIONDIR
 
 # find data dir with filesystem bundles
-DATA="$(find_data $LIVEKITNAME)"
+DATA="$(find_data $LIVEKITNAME $DATADIR)"
 
 # copy to RAM if needed
 
 # add data to union
-union_append_bundles "$DATA"
+union_append_bundles "$DATA" "$BUNDLESDIR" "$UNIONDIR"
 
+# create empty fstab
+fstab_create "$UNIONDIR"
 
-mkdir /m
-mount /dev/sr0 /m
-modprobe squashfs
-mkdir /s
-mount -o loop -t squashfs /m/mylinux/core.sb /s
-# possibly switch root
+header "Live Kit phase ends, starting $LIVEKITNAME"
+change_root "$UNIONDIR"
 
-# testing message
-echo "If you see this message, then something went terribly wrong. Sorry!"
+header "!!ERROR!!"
 /bin/sh
