@@ -153,8 +153,7 @@ init_union()
    debug_log "init_union"
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t ramfs ramfs "$1"
-   mount -t aufs -o xino=$1/xino,br=$1 none "$2"
+   mount -t aufs -o xino="$1/.xino",br="$1" none "$2"
 }
 
 # Make sure to mount FAT12/16/32 using vfat
@@ -249,6 +248,9 @@ change_root()
    if [ -x sbin/init ]; then INIT=sbin/init; fi
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
+   mkdir -p mnt/memory
    mount -n -o remount,ro aufs .
+   pivot_root . mnt/memory
    exec $CHROOT . $INIT <dev/console >dev/console 2>&1
+#   exec switch_root -c /dev/console . $INIT
 }

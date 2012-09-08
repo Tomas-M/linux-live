@@ -48,6 +48,7 @@ busybox/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
       ln -s ../bin/busybox $INITRAMFS/sbin/$TOOL
    done
 done
+rm $INITRAMFS/{s,}bin/init
 
 mknod $INITRAMFS/dev/console c 5 1
 mknod $INITRAMFS/dev/null c 1 3
@@ -75,12 +76,12 @@ touch $INITRAMFS/etc/{m,fs}tab
 
 cp init $INITRAMFS/
 chmod a+x $INITRAMFS/init
-cp ../livekitlib $INITRAMFS/
-cp ../.config $INITRAMFS/
+cp ../livekitlib $INITRAMFS/lib/
+cp ../.config $INITRAMFS/lib/
 
 cd $INITRAMFS
 find . -print | cpio -o -H newc 2>/dev/null | gzip -f --best >$INITRAMFS.img
 echo $INITRAMFS.img
 
 cd ..
-rm -Rf $INITRAMFS
+#rm -Rf $INITRAMFS

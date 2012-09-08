@@ -2,15 +2,30 @@
 # Initial script for Linux Live Kit
 # Author: Tomas M <http://www.linux-live.org/>
 
-MEMORYDIR=/memory
-UNIONDIR=/union
-DATADIR=/mnt/data
-BUNDLESDIR=/mnt/bundles
+# This is needed to enable pivot_root
+# We simply switch initramfs to mounted ramfs
+if [ ! -r /lib/root_switched ]; then
+   echo "switch root from initramfs to ramfs"
+   SWITCH=/m
+   mkdir -p $SWITCH
+   mount -t ramfs ramfs $SWITCH
+   cp -a /* $SWITCH 2>/dev/null
+   cd $SWITCH
+   touch $SWITCH/lib/root_switched
+   exec switch_root -c /dev/console . $0
+fi
+
+MOUNTDIR=/mnt
+CHANGES=$MOUNTDIR/changes
+MEMORY=$MOUNTDIR/memory
+UNION=$MOUNTDIR/union
+DATAMNT=$MOUNTDIR/data
+BUNDLES=$MOUNTDIR/bundles
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
-. /.config
-. /livekitlib
+. /lib/.config
+. /lib/livekitlib
 
 header "Starting $LIVEKITNAME ..."
 
@@ -18,21 +33,22 @@ init_proc
 init_devs
 init_aufs
 init_zram
-init_union $MEMORYDIR $UNIONDIR
+
+init_union "$CHANGES" "$UNION"
 
 # find data dir with filesystem bundles
-DATA="$(find_data $LIVEKITNAME $DATADIR)"
+DATA="$(find_data $DATAMNT)"
 
 # copy to RAM if needed
 
 # add data to union
-union_append_bundles "$DATA" "$BUNDLESDIR" "$UNIONDIR"
+union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 
 # create empty fstab
-fstab_create "$UNIONDIR"
+fstab_create "$UNION"
 
 header "Live Kit phase ends, starting $LIVEKITNAME"
-change_root "$UNIONDIR"
+change_root "$UNION"
 
 header "!!ERROR!!"
 /bin/sh
