@@ -23,7 +23,6 @@ if [ "$1" = "--start" ]; then
    pivot_root . memory/union
    echo "$2" > /lib/command
    chroot /memory/union /sbin/telinit u
-   exit
 fi
 
 if [ "$1" = "--init" ]; then
@@ -45,9 +44,3 @@ if [ "$1" = "--init" ]; then
    $(cat /lib/command 2>/dev/null)
    reboot
 fi
-
-
-# if we are here, we were called by something else
-# than shutdown procedures, so execute the real init
-
-exec /sbin/init.old
