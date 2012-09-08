@@ -62,6 +62,7 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 #done
 
 copy_including_deps /usr/bin/strace
+copy_including_deps /usr/bin/lsof
 
 # TODO: add all comon filesystems which are NOT compiled in kernel already
 copy_including_deps /$LMK/kernel/fs/squashfs
@@ -74,8 +75,12 @@ depmod -b $INITRAMFS
 echo "root::0:0::/root:/bin/bash" >$INITRAMFS/etc/passwd
 touch $INITRAMFS/etc/{m,fs}tab
 
-cp init $INITRAMFS/
+cp init $INITRAMFS
 chmod a+x $INITRAMFS/init
+cp cleanup $INITRAMFS/lib
+chmod a+x $INITRAMFS/lib/cleanup
+ln -s ../init $INITRAMFS/bin/init
+ln -s ../init $INITRAMFS/sbin/init
 cp ../livekitlib $INITRAMFS/lib/
 cp ../.config $INITRAMFS/lib/
 
@@ -84,4 +89,4 @@ find . -print | cpio -o -H newc 2>/dev/null | gzip -f --best >$INITRAMFS.img
 echo $INITRAMFS.img
 
 cd ..
-#rm -Rf $INITRAMFS
+rm -Rf $INITRAMFS

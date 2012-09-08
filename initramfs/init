@@ -2,34 +2,22 @@
 # Initial script for Linux Live Kit
 # Author: Tomas M <http://www.linux-live.org/>
 
-# This is needed to enable pivot_root
-# We simply switch initramfs to mounted ramfs
-if [ ! -r /lib/root_switched ]; then
-   echo "switch root from initramfs to ramfs"
-   SWITCH=/m
-   mkdir -p $SWITCH
-   mount -t ramfs ramfs $SWITCH
-   cp -a /* $SWITCH 2>/dev/null
-   cd $SWITCH
-   touch $SWITCH/lib/root_switched
-   exec switch_root -c /dev/console . $0
-fi
-
-MOUNTDIR=/mnt
-CHANGES=$MOUNTDIR/changes
-MEMORY=$MOUNTDIR/memory
-UNION=$MOUNTDIR/union
-DATAMNT=$MOUNTDIR/data
-BUNDLES=$MOUNTDIR/bundles
-
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
 . /lib/.config
 . /lib/livekitlib
 
+transfer_initramfs
+
+MEMORY=/memory
+CHANGES=$MEMORY/changes
+UNION=$MEMORY/union
+DATAMNT=$MEMORY/data
+BUNDLES=$MEMORY/bundles
+
 header "Starting $LIVEKITNAME ..."
 
-init_proc
+init_proc_sysfs
 init_devs
 init_aufs
 init_zram
@@ -50,5 +38,5 @@ fstab_create "$UNION"
 header "Live Kit phase ends, starting $LIVEKITNAME"
 change_root "$UNION"
 
-header "!!ERROR!!"
+header "!!ERROR occured, you shouldn't be here.!!"
 /bin/sh

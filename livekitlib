@@ -98,9 +98,27 @@ create_bundle()
 }
 
 
+# Move entire initramfs tree to ramfs mount.
+# It's a bit tricky but is necessray to enable pivot_root
+# even for initramfs boot image
+#
+transfer_initramfs()
+{
+   if [ ! -r /lib/initramfs_escaped ]; then
+      echo "switch root from initramfs to ramfs"
+      SWITCH=/m # one letter directory
+      mkdir -p $SWITCH
+      mount -t ramfs ramfs $SWITCH
+      cp -a /??* $SWITCH 2>/dev/null # only copy two-and-more-letter directories
+      cd $SWITCH
+      echo "This file indicates that we successfully escaped initramfs" > $SWITCH/lib/initramfs_escaped
+      exec switch_root -c /dev/console . $0
+   fi
+}
+
 # mount virtual filesystems like proc etc
 #
-init_proc()
+init_proc_sysfs()
 {
    debug_log "vfs_mount_init"
    mount -n -t proc proc /proc
@@ -231,6 +249,8 @@ fstab_create()
 #
 change_root()
 {
+   umount /proc
+   umount /sys
    cd "$1"
 
    # make sure important devices are in union
@@ -248,9 +268,8 @@ change_root()
    if [ -x sbin/init ]; then INIT=sbin/init; fi
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
-   mkdir -p mnt/memory
+   mkdir -p mnt/live
    mount -n -o remount,ro aufs .
-   pivot_root . mnt/memory
-   exec $CHROOT . $INIT <dev/console >dev/console 2>&1
-#   exec switch_root -c /dev/console . $INIT
+   pivot_root . mnt/live
+   exec $CHROOT . $INIT < dev/console > dev/console 2>&1
 }
