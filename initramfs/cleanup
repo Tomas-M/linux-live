@@ -1,0 +1,53 @@
+#!/bin/sh
+# This script must be executed with parameter "--start" at the end of distro shutdown
+# What it does is it executes as init (process 1) and unmounts all filesystems
+# including union and the USB device (if any), so it can be cleanly removed
+#
+# Simply add the following as the last command executed by init on your distro
+# instead of the actual poweroff or shutdown command:
+#
+#       /mnt/live/lib/cleanup --start poweroff
+#    or
+#       /mnt/live/lib/cleanup --start shutdown
+#
+#    on Slackware, add this to rc.0:
+#       /mnt/live/lib/cleanup --start /sbin/$command
+#
+
+if [ "$1" = "--start" ]; then
+   # this is our first call. We will setup everything so the actual init actually
+   # reloads, but calls this script again instead of itself
+
+   cd /mnt/live
+   cp "$0" sbin/init
+   pivot_root . memory/union
+   echo "$2" > /lib/command
+   chroot /memory/union /sbin/telinit u
+   exit
+fi
+
+if [ "$1" = "--init" ]; then
+   # now we're called from init to replace the process nr 1.
+   # Here we kill everything and unmount everything
+   mount -t proc proc /proc >/dev/console 2>&1
+   umount /memory/union/sys/fs/cgroup >/dev/console 2>&1
+   umount /memory/union/dev/pts >/dev/console 2>&1
+   umount /memory/union/dev >/dev/console 2>&1
+   umount /memory/union/run >/dev/console 2>&1
+   umount /memory/union/sys >/dev/console 2>&1
+   umount /memory/union/proc >/dev/console 2>&1
+   umount /memory/union >/dev/console 2>&1
+   umount /memory/bundles/* >/dev/console 2>&1
+   umount /memory/data >/dev/console 2>&1
+   mount -n -o remount,ro /memory/data >/dev/console 2>&1
+
+   cat /proc/mounts >/dev/console 2>&1
+   $(cat /lib/command 2>/dev/null)
+   reboot
+fi
+
+
+# if we are here, we were called by something else
+# than shutdown procedures, so execute the real init
+
+exec /sbin/init.old
