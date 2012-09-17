@@ -222,7 +222,7 @@ find_data()
 #
 union_append_bundles()
 {
-   ls -1 "$1" | grep '.sb$' | sort | while read BUNDLE; do
+   ls -1 "$1" | grep '.'$BEXT'$' | sort | while read BUNDLE; do
       mkdir -p "$2/$BUNDLE"
       mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
       mount -o remount,add:1:"$2/$BUNDLE" none "$3"
