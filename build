@@ -20,7 +20,7 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
 fi
 
 # build initramfs image
-echo "Building intramfs image using your current system binaries..."
+echo "Building intramfs image..."
 cd initramfs
 INITRAMFS=$(./initramfs_create "$LIVEKITNAME")
 cd ..
