@@ -25,7 +25,7 @@ cd initramfs
 INITRAMFS=$(./initramfs_create "$LIVEKITNAME")
 cd ..
 
-# create live kit filesystem
+# create live kit filesystem (cpio archive)
 rm -Rf "$LIVEKITDATA"
 BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
@@ -40,7 +40,10 @@ cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:
 cp /boot/vmlinuz $BOOT/
 
 # create compressed bundles
-# ... TODO!
+for i in $MKMOD; do
+   mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k
+done
+
 if [ -d sb ]; then
    cp sb/* $LIVEKITDATA/$LIVEKITNAME/
 fi
