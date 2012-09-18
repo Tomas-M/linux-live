@@ -25,7 +25,7 @@ init_zram
 init_union "$CHANGES" "$UNION"
 
 # find data dir with filesystem bundles
-DATA="$(find_data $DATAMNT)"
+DATA="$(find_data 60 $DATAMNT)"
 
 # copy to RAM if needed
 

@@ -193,10 +193,10 @@ device_bestfs()
 }
 
 # Find LIVEKIT data by mounting all devices
-# If found, retain mounted disk
-# $1 = data directory to mount
+# If found, keep mounted, else unmount
+# $1 = data directory target (mount here)
 #
-find_data()
+find_data_try()
 {
    debug_log "find_data"
 
@@ -211,6 +211,25 @@ find_data()
          return
       fi
       umount "$1" 2>/dev/null
+   done
+}
+
+# Retry finding LIVEKIT data several times,
+# until timeouted or until data is found
+# $1 = timeout
+# $2 = data directory target (mount here)
+#
+find_data()
+{
+   local DATA
+
+   for timeout in $(seq 1 $1); do
+      DATA="$(find_data_try "$2")"
+      if [ "$DATA" != "" ]; then
+         echo "$DATA"
+         return
+      fi
+      sleep 1
    done
 }
 

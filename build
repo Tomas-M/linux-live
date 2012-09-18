@@ -39,14 +39,15 @@ cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/sysl
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp /boot/vmlinuz $BOOT/
 
-# create compressed bundles
-for i in $MKMOD; do
-   mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k
-done
-
 if [ -d sb ]; then
    cp sb/* $LIVEKITDATA/$LIVEKITNAME/
+else
+   # create compressed bundles
+   for i in $MKMOD; do
+      mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k
+   done
 fi
+
 
 # create ISO for CD image
 echo "Creating ISO file for CD boot..."
