@@ -42,6 +42,12 @@ log()
    echo "$@" 2>/dev/null >>/var/log/livedbg
 }
 
+echolog()
+{
+   echo "$@"
+   log "$@"
+}
+
 # show information about the debug shell
 show_debug_banner()
 {
@@ -198,12 +204,12 @@ device_bestfs()
 #
 find_data_try()
 {
-   debug_log "find_data"
+   debug_log "find_data_try"
 
    local DEVICE FS MNT
 
    mkdir -p "$1"
-   blkid | sort | cut -d: -f 1 | while read DEVICE; do
+   blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FS="$(device_bestfs "$DEVICE")"
       mount -r "$DEVICE" "$1" $FS
       if [ -d "$1/$LIVEKITNAME" ]; then
@@ -221,16 +227,22 @@ find_data_try()
 #
 find_data()
 {
+   debug_log "find_data"
+
    local DATA
 
+   echo -n "Looking for $LIVEKITNAME data .." >&2
    for timeout in $(seq 1 $1); do
+      echo -n "." >&2
       DATA="$(find_data_try "$2")"
       if [ "$DATA" != "" ]; then
          echo "$DATA"
+         echo "" >&2
          return
       fi
       sleep 1
    done
+   echo "" >&2
 }
 
 # Mount squashfs filesystem bundles
