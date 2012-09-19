@@ -228,8 +228,9 @@ find_data_try()
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FS="$(device_bestfs "$DEVICE")"
-      mount -r "$DEVICE" "$1" $FS
+      mount -r "$DEVICE" "$1" $FS 2>/dev/null
       if [ -d "$1/$LIVEKITNAME" ]; then
+         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
          echo "$1/$LIVEKITNAME"
          return
       fi
