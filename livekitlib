@@ -8,9 +8,6 @@
 # debug and output functions
 # =================================================================
 
-# global variable
-DEBUG_IS_ENABLED="$(cat /proc/cmdline 2>/dev/null | grep debug)"
-
 debug_log()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
@@ -28,12 +25,11 @@ header()
 }
 
 
-# echogreen will echo $@ in green color
-# $1 = text
+# echo green star
 #
-echogreen()
+echo_green_star()
 {
-   echo -ne "[0;32m""$@""[0;39m"
+   echo -ne "[0;32m""* ""[0;39m"
 }
 
 # log - store given text in /var/log/livedbg
@@ -151,11 +147,12 @@ init_devs()
 init_zram()
 {
    debug_log "init_zram"
+   echo_green_star
    echo "Setting dynamic RAM compression using ZRAM"
    echo 536870912 > /sys/block/zram0/disksize # 512MB
-   mkswap /dev/zram0
-   swapon /dev/zram0 -p 32767
    echo 100 > /proc/sys/vm/swappiness
+   mkswap /dev/zram0 >/dev/null
+   swapon /dev/zram0 -p 32767
 }
 
 # load the AUFS kernel module if needed
@@ -175,9 +172,29 @@ init_aufs()
 init_union()
 {
    debug_log "init_union"
+
+   echo_green_star
+   echo "Setting up union using AUFS 3"
    mkdir -p "$1"
    mkdir -p "$2"
    mount -t aufs -o xino="$1/.xino",br="$1" none "$2"
+}
+
+# Return device mounted for given directory
+# $1 = directory
+#
+mounted_device()
+{
+   local MNT TARGET
+   MNT="$1"
+   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
+      if [ "$TARGET" != "" ]; then
+         echo "$TARGET"
+         return
+      fi
+      MNT="$(dirname $MNT)"
+   done
 }
 
 # Make sure to mount FAT12/16/32 using vfat
@@ -231,18 +248,25 @@ find_data()
 
    local DATA
 
+   echo_green_star >&2
    echo -n "Looking for $LIVEKITNAME data .." >&2
    for timeout in $(seq 1 $1); do
       echo -n "." >&2
       DATA="$(find_data_try "$2")"
       if [ "$DATA" != "" ]; then
-         echo "$DATA"
          echo "" >&2
+         echo "- found in $(mounted_device "$DATA")" >&2
+         echo "$DATA"
          return
       fi
       sleep 1
    done
    echo "" >&2
+
+   if [ "$DATA" = "" ]; then
+      fatal "$LIVEKITNAME data not found"
+   fi
+
 }
 
 # Mount squashfs filesystem bundles
@@ -253,7 +277,11 @@ find_data()
 #
 union_append_bundles()
 {
+   debug_log "union_append_bundles"
+   echo_green_star
+   echo "Adding bundles to union"
    ls -1 "$1" | grep '.'$BEXT'$' | sort | while read BUNDLE; do
+      echo "- $BUNDLE"
       mkdir -p "$2/$BUNDLE"
       mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
       mount -o remount,add:1:"$2/$BUNDLE" none "$3"
