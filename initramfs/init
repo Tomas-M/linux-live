@@ -15,7 +15,7 @@ UNION=$MEMORY/union
 DATAMNT=$MEMORY/data
 BUNDLES=$MEMORY/bundles
 
-header "Starting $LIVEKITNAME ..."
+header "Live Kit init <http://www.linux-live.org/>"
 
 init_proc_sysfs
 init_devs
@@ -35,7 +35,7 @@ union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 # create empty fstab
 fstab_create "$UNION"
 
-header "Live Kit phase ends, starting $LIVEKITNAME"
+header "Live Kit done, starting $LIVEKITNAME"
 change_root "$UNION"
 
 header "!!ERROR occured, you shouldn't be here.!!"
