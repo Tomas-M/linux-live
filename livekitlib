@@ -150,9 +150,9 @@ init_zram()
    echo_green_star
    echo "Setting dynamic RAM compression using ZRAM"
    echo 536870912 > /sys/block/zram0/disksize # 512MB
-   echo 100 > /proc/sys/vm/swappiness
    mkswap /dev/zram0 >/dev/null
    swapon /dev/zram0 -p 32767
+   echo 100 > /proc/sys/vm/swappiness
 }
 
 # load the AUFS kernel module if needed
