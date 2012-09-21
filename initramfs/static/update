@@ -23,4 +23,4 @@ if [ -z "$MYARCH" ]; then
 fi
 
 ln -f busybox-$MYARCH ./busybox
-ln -f mount.ntfs-3g-$MYARCH ./ntfs-3g
+ln -f mount.ntfs-3g-$MYARCH ./mount.ntfs-3g
