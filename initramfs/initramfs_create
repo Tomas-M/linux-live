@@ -35,11 +35,10 @@ copy_including_deps()
 rm -Rf $INITRAMFS
 mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sbin,sys,tmp,usr,var/log}
 
-if [ ! -e busybox/busybox ]; then
-   cd busybox
-   ./update
-   cd ..
-fi
+rm busybox/busybox
+cd busybox
+./update
+cd ..
 
 cp busybox/busybox $INITRAMFS/bin
 busybox/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
