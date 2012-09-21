@@ -10,7 +10,7 @@
 
 debug_start()
 {
-   if grep /proc/cmdline debug; then
+   if grep -1 debug /proc/cmdline; then
       DEBUG_IS_ENABLED=1
    else
       DEBUG_IS_ENABLED=
