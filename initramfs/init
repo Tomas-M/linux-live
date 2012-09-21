@@ -22,6 +22,8 @@ init_devs
 init_aufs
 init_zram
 
+debug_start
+
 init_union "$CHANGES" "$UNION"
 
 # find data dir with filesystem bundles

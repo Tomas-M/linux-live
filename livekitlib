@@ -8,6 +8,15 @@
 # debug and output functions
 # =================================================================
 
+debug_start()
+{
+   if grep /proc/cmdline debug; then
+      DEBUG_IS_ENABLED=1
+   else
+      DEBUG_IS_ENABLED=
+   fi
+}
+
 debug_log()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
