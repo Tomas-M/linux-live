@@ -218,9 +218,8 @@ device_bestfs()
    PEEK="$(dd if="$1" bs=1k count=1 2>/dev/null | strings)"
    if [ "$(echo "$PEEK" | egrep -i "FAT[13][26]")" != "" ]; then
       echo "-t vfat"
-   # TODO: this will work only with fuse
-   #   else if [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
-   #      echo "-t ntfs-3g"
+   else if [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
+      echo "-t ntfs-3g"
    fi
 }
 
@@ -265,7 +264,7 @@ find_data()
       DATA="$(find_data_try "$2")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
-         echo "- found in $(mounted_device "$DATA")" >&2
+         echo "* found in $(mounted_device "$DATA")" >&2
          echo "$DATA"
          return
       fi
@@ -291,7 +290,7 @@ union_append_bundles()
    echo_green_star
    echo "Adding bundles to union"
    ls -1 "$1" | grep '.'$BEXT'$' | sort | while read BUNDLE; do
-      echo "- $BUNDLE"
+      echo "* $BUNDLE"
       mkdir -p "$2/$BUNDLE"
       mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
       mount -o remount,add:1:"$2/$BUNDLE" none "$3"

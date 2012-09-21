@@ -35,13 +35,14 @@ copy_including_deps()
 rm -Rf $INITRAMFS
 mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sbin,sys,tmp,usr,var/log}
 
-rm busybox/busybox
-cd busybox
+cd static
 ./update
 cd ..
 
-cp busybox/busybox $INITRAMFS/bin
-busybox/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
+cp static/{busybox,mount.ntfs-3g} $INITRAMFS/bin
+chmod a+x $INITRAMFS/bin/{busybox,mount.ntfs-3g}
+
+$INITRAMFS/bin/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
    for TOOL in $LINE; do
       ln -s busybox $INITRAMFS/bin/$TOOL
       ln -s ../bin/busybox $INITRAMFS/sbin/$TOOL
