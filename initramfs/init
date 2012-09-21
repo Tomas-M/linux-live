@@ -23,6 +23,7 @@ init_aufs
 init_zram
 
 debug_start
+debug_shell
 
 init_union "$CHANGES" "$UNION"
 
@@ -31,6 +32,8 @@ DATA="$(find_data 60 "$DATAMNT")"
 
 # copy to RAM if needed
 
+debug_shell
+
 # add data to union
 union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 
@@ -38,6 +41,8 @@ union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 fstab_create "$UNION"
 
 header "Live Kit done, starting $LIVEKITNAME"
+
+debug_shell
 change_root "$UNION"
 
 header "!!ERROR occured, you shouldn't be here.!!"

@@ -70,7 +70,7 @@ debug_shell()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
       show_debug_banner
-      sh < /dev/console
+      setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
       echo
    fi
 }
@@ -82,7 +82,7 @@ fatal()
    echolog "Something went wrong and we can't continue. This should never happen."
    echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
    echolog
-   sh < /dev/console
+   setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
 }
 
 
