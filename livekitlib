@@ -218,7 +218,7 @@ device_bestfs()
    PEEK="$(dd if="$1" bs=1k count=1 2>/dev/null | strings)"
    if [ "$(echo "$PEEK" | egrep -i "FAT[13][26]")" != "" ]; then
       echo "-t vfat"
-   else if [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
+   elif [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
       echo "-t ntfs-3g"
    fi
 }
