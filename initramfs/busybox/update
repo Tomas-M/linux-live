@@ -10,5 +10,5 @@ if [ -z "$MYARCH" ]; then
   esac
 fi
 
-wget -O ./busybox http://busybox.net/downloads/binaries/latest/busybox-$MYARCH
+ln busybox-$MYARCH ./busybox
 chmod a+x ./busybox
