@@ -213,14 +213,15 @@ mounted_device()
 device_bestfs()
 {
    debug_log "device_bestfs"
-   local PEEK
+   local FS
 
-   PEEK="$(dd if="$1" bs=1k count=1 2>/dev/null | strings)"
-   if [ "$(echo "$PEEK" | egrep -i "FAT[13][26]")" != "" ]; then
-      echo "-t vfat"
-   elif [ "$(echo "$PEEK" | egrep -i 'NTFS')" != "" ]; then
-      echo "-t ntfs-3g"
+   FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
+   if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
+      FS="vfat"
+   elif [ "$FS" = "ntfs" ]; then
+      FS="ntfs-3g"
    fi
+   echo "-t $FS"
 }
 
 # Find LIVEKIT data by mounting all devices
