@@ -65,6 +65,7 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 copy_including_deps /$LMK/kernel/fs/squashfs
 copy_including_deps /$LMK/kernel/drivers/staging/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
+copy_including_deps /$LMK/kernel/fs/fuse
 copy_including_deps /$LMK/modules.*
 
 depmod -b $INITRAMFS
