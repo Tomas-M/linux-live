@@ -18,12 +18,13 @@ BUNDLES=$MEMORY/bundles
 header "Live Kit init <http://www.linux-live.org/>"
 
 init_proc_sysfs
-init_devs
-init_aufs
-init_zram
 
 debug_start
 debug_shell
+
+init_devs
+init_aufs
+init_zram
 
 init_union "$CHANGES" "$UNION"
 
