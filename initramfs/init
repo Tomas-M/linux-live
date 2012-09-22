@@ -32,6 +32,7 @@ init_union "$CHANGES" "$UNION"
 DATA="$(find_data 60 "$DATAMNT")"
 
 # copy to RAM if needed
+DATA="$(copy_to_ram "$DATA")"
 
 debug_shell
 

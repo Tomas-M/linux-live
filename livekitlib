@@ -195,12 +195,14 @@ init_union()
 #
 mounted_device()
 {
+   debug_log "mounted_device"
+
    local MNT TARGET
    MNT="$1"
    while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
       TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
       if [ "$TARGET" != "" ]; then
-         echo "$TARGET"
+         echo "$TARGET:$MNT"
          return
       fi
       MNT="$(dirname $MNT)"
@@ -266,7 +268,7 @@ find_data()
       DATA="$(find_data_try "$2")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
-         echo "* found in $(mounted_device "$DATA")" >&2
+         echo "* Found in $(mounted_device "$DATA" | cut -d : -f 1)" >&2
          echo "$DATA"
          return
       fi
@@ -278,6 +280,26 @@ find_data()
       fatal "$LIVEKITNAME data not found"
    fi
 
+}
+
+# Copy data to RAM if requested
+# $1 = live data directory
+#
+copy_to_ram()
+{
+   local DM RAM
+
+   if grep -vq toram /proc/cmdline; then
+      echo "$1"
+      return
+   fi
+
+   DM="$(mounted_device "$1" | cut -d : -f 2-)"
+   RAM="$DM.ram"
+   echo "* Copying $LIVEKITNAME data to RAM..." >&2
+   cp -a $DM $RAM
+   echo "$RAM/$LIVEKITNAME"
+   umount -n $DM
 }
 
 # Mount squashfs filesystem bundles
@@ -321,6 +343,8 @@ change_root()
 {
    umount /proc
    umount /sys
+   rm -Rf /lib/modules # this will no longer be needed at all
+
    cd "$1"
 
    # make sure important devices are in union
