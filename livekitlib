@@ -297,9 +297,9 @@ copy_to_ram()
    DM="$(mounted_device "$1" | cut -d : -f 2-)"
    RAM="$DM.ram"
    echo "* Copying $LIVEKITNAME data to RAM..." >&2
-   cp -a $DM $RAM
+   cp -a "$DM" "$RAM"
    echo "$RAM/$LIVEKITNAME"
-   umount -n $DM
+   umount "$DM"
 }
 
 # Mount squashfs filesystem bundles
