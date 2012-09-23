@@ -75,6 +75,6 @@ if [ "$1" = "--init" ]; then
 
    cat /proc/mounts >/dev/console 2>&1
    $(cat /lib/command 2>/dev/null)
-   reboot
+   reboot -f
 fi
 
