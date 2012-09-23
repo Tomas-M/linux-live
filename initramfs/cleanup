@@ -36,8 +36,11 @@ fi
 
 
 if [ "$1" = "--start" ]; then
-   # this is our first call. We will setup everything so the actual init actually
-   # reloads, but calls this script again instead of itself
+   # This is the part which is to be called from shutdown script.
+   # We will assume init is running as process 1 and re-executes itself after 'telinit u'
+   # So we're going to force init to stop and start this script instead as PID 1
+   # If your init works differently, you may need to slightly modify few lines below
+   # - without this, init would be blocking union and it couldn't be unmounted later.
    cd /mnt/live
    cp "$0" sbin/init
    pivot_root . memory/union
@@ -48,26 +51,28 @@ fi
 
 if [ "$1" = "--init" ]; then
    # now we're called from init to replace the process nr 1.
+   # We know that init binary reexecutes itself with --init parameter
    # All other processes are already killed
-   # so our goal is just to unmount everything
+   # so our goal now is just to unmount everything and reboot/shutdown
 
-   # First, mount proc again since it will be beeded
+   # First, mount proc again since it will be needed and it was already unmounted
    mount -t proc proc /proc >/dev/console 2>&1
 
-   # next, unmount everything
+   # next, unmount everything from union, backwards
    tac /proc/mounts | grep union | cut -d " " -f 2 | while read LINE; do
-      umount $LINE
-      umount -l $LINE 2>/dev/null
+      umount $LINE >/dev/console 2>&1
+      umount -l $LINE
    done
 
+   # and free up memory mounts, backwards
    tac /proc/mounts | grep memory | cut -d " " -f 2 | while read LINE; do
-      umount $LINE
-      umount -l $LINE 2>/dev/null
+      umount $LINE >/dev/console 2>&1
+      umount -l $LINE
    done
 
    # make sure the data directory is at least remounted read-only,
    # if the previous unmount failed due to some busy err
-   mount -o remount,ro /memory/data 2>/dev/null
+   mount -o remount,ro /memory/data >/dev/console 2>/dev/null
 
    # if debug is requested, start commandline prompt here
    if grep -q debug /proc/cmdline; then
