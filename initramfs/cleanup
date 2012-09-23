@@ -19,6 +19,7 @@ if [ "$1" = "--start" ]; then
    # reloads, but calls this script again instead of itself
 
    cd /mnt/live
+   rm sbin/init
    cp "$0" sbin/init
    pivot_root . memory/union
    echo "$2" > /lib/command
@@ -27,8 +28,13 @@ fi
 
 if [ "$1" = "--init" ]; then
    # now we're called from init to replace the process nr 1.
-   # Here we kill everything and unmount everything
+   # All other processes are already killed
+   # so our goal is just to unmount everything
+
+   # First, mount proc again since it will be beeded
    mount -t proc proc /proc >/dev/console 2>&1
+
+   # next, unmount everything
    umount /memory/union/sys/fs/cgroup >/dev/console 2>&1
    umount /memory/union/dev/pts >/dev/console 2>&1
    umount /memory/union/dev >/dev/console 2>&1
@@ -37,8 +43,14 @@ if [ "$1" = "--init" ]; then
    umount /memory/union/proc >/dev/console 2>&1
    umount /memory/union >/dev/console 2>&1
    umount /memory/bundles/* >/dev/console 2>&1
-   umount /memory/data >/dev/console 2>&1
+   umount /memory/data* >/dev/console 2>&1
    mount -n -o remount,ro /memory/data >/dev/console 2>&1
+
+   # if debug is requested, start commandline prompt here
+   if grep -vq debug /proc/cmdline; then
+      echo Starting shell for debug >/dev/console
+      /bin/sh < /dev/console >/dev/console 2>&1
+   fi
 
    cat /proc/mounts >/dev/console 2>&1
    $(cat /lib/command 2>/dev/null)
