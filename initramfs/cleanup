@@ -29,9 +29,9 @@ if [ "$1" = "--killall5" ]; then
       fi
    done
 
-   kill -SIGTERM $LIST 2>/dev/null # SIGTERM
-   sleep 2 # give processes some time to end
-   kill -SIGKILL $LIST 2>/dev/null # SIGKILL
+   kill -15 $LIST 2>/dev/null # SIGTERM
+   sleep 2 # give processes some time to end properly
+   kill -9 $LIST 2>/dev/null # SIGKILL
 fi
 
 if [ "$1" = "--start" ]; then
@@ -66,11 +66,12 @@ if [ "$1" = "--init" ]; then
 
    # if debug is requested, start commandline prompt here
    if grep -vq debug /proc/cmdline; then
-      echo Starting shell for debug >/dev/console
-      /bin/sh < /dev/console >/dev/console 2>&1
+      echo "Starting shell for debug" >/dev/console
+      setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
 
    cat /proc/mounts >/dev/console 2>&1
    $(cat /lib/command 2>/dev/null)
    reboot
 fi
+
