@@ -34,6 +34,7 @@ if [ "$1" = "--killall5" ]; then
    kill -9 $LIST 2>/dev/null # SIGKILL
 fi
 
+
 if [ "$1" = "--start" ]; then
    # this is our first call. We will setup everything so the actual init actually
    # reloads, but calls this script again instead of itself
@@ -43,6 +44,7 @@ if [ "$1" = "--start" ]; then
    echo "$2 -f" > /lib/command
    chroot /memory/union /sbin/telinit u
 fi
+
 
 if [ "$1" = "--init" ]; then
    # now we're called from init to replace the process nr 1.
@@ -77,4 +79,3 @@ if [ "$1" = "--init" ]; then
    $(cat /lib/command 2>/dev/null)
    reboot -f
 fi
-
