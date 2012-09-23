@@ -1,4 +1,7 @@
 #!/bin/bash
+# Create initramfs image
+# Author: Tomas M <http://www.linux-live.org/>
+#
 
 . ../.config
 

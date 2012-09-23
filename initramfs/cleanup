@@ -13,13 +13,31 @@
 #    on Slackware, add this to rc.0:
 #       /mnt/live/lib/cleanup --start /sbin/$command
 #
+# It may be needed to call this script with --kill from your shutdown scripts
+# instead of calling regular killall5, to prevent fuse filesystems from being killed
+#
+# Author: Tomas M <http://www.linux-live.org/>
+#
+
+if [ "$1" = "--killall5" ]; then
+   # kill all unneeded processes, which have smaller ID then the ID of
+   # current shell's parent process. We can't use killall5, as it would kill some
+   # processes which may be currently needed, for example fuse filesystems (ntfs-3g).
+   for pid in $(/mnt/live/bin/ps | grep -v "PID" | grep -E -v "\[.*\]" | grep -E -v "mount|posixovl|fuse" | sed -r "s/^ +//" | cut -d " " -f 1); do
+      if [ $pid -lt $PPID ]; then
+         LIST="$LIST $pid"
+      fi
+   done
+
+   kill -SIGTERM $LIST 2>/dev/null # SIGTERM
+   sleep 2 # give processes some time to end
+   kill -SIGKILL $LIST 2>/dev/null # SIGKILL
+fi
 
 if [ "$1" = "--start" ]; then
    # this is our first call. We will setup everything so the actual init actually
    # reloads, but calls this script again instead of itself
-
    cd /mnt/live
-   rm sbin/init
    cp "$0" sbin/init
    pivot_root . memory/union
    echo "$2" > /lib/command
