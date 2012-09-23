@@ -40,7 +40,7 @@ if [ "$1" = "--start" ]; then
    cd /mnt/live
    cp "$0" sbin/init
    pivot_root . memory/union
-   echo "$2" > /lib/command
+   echo "$2 -f" > /lib/command
    chroot /memory/union /sbin/telinit u
 fi
 
