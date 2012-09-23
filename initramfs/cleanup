@@ -53,16 +53,19 @@ if [ "$1" = "--init" ]; then
    mount -t proc proc /proc >/dev/console 2>&1
 
    # next, unmount everything
-   umount /memory/union/sys/fs/cgroup >/dev/console 2>&1
-   umount /memory/union/dev/pts >/dev/console 2>&1
-   umount /memory/union/dev >/dev/console 2>&1
-   umount /memory/union/run >/dev/console 2>&1
-   umount /memory/union/sys >/dev/console 2>&1
-   umount /memory/union/proc >/dev/console 2>&1
-   umount /memory/union >/dev/console 2>&1
-   umount /memory/bundles/* >/dev/console 2>&1
-   umount /memory/data* >/dev/console 2>&1
-   mount -n -o remount,ro /memory/data >/dev/console 2>&1
+   tac /proc/mounts | grep union | cut -d " " -f 2 | while read LINE; do
+      umount $LINE
+      umount -l $LINE 2>/dev/null
+   done
+
+   tac /proc/mounts | grep memory | cut -d " " -f 2 | while read LINE; do
+      umount $LINE
+      umount -l $LINE 2>/dev/null
+   done
+
+   # make sure the data directory is at least remounted read-only,
+   # if the previous unmount failed due to some busy err
+   mount -o remount,ro /memory/data 2>/dev/null
 
    # if debug is requested, start commandline prompt here
    if grep -vq debug /proc/cmdline; then
