@@ -297,7 +297,8 @@ copy_to_ram()
    DM="$(mounted_device "$1" | cut -d : -f 2-)"
    RAM="$DM.ram"
    echo "* Copying $LIVEKITNAME data to RAM..." >&2
-   cp -a "$DM" "$RAM"
+   mkdir  -p "$RAM"
+   cp -a "$DM/$LIVEKITNAME" "$RAM"
    echo "$RAM/$LIVEKITNAME"
    umount "$DM"
 }
