@@ -68,7 +68,7 @@ if [ "$1" = "--init" ]; then
    mount -o remount,ro /memory/data 2>/dev/null
 
    # if debug is requested, start commandline prompt here
-   if grep -vq debug /proc/cmdline; then
+   if grep -q debug /proc/cmdline; then
       echo "Starting shell for debug" >/dev/console
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
