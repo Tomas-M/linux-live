@@ -6,14 +6,14 @@
 # Simply add the following as the last command executed by init on your distro
 # instead of the actual poweroff or shutdown command:
 #
-#       /mnt/live/lib/cleanup --start poweroff
+#       exec /mnt/live/lib/cleanup --start poweroff
 #    or
-#       /mnt/live/lib/cleanup --start shutdown
+#       exec /mnt/live/lib/cleanup --start shutdown
 #
 #    on Slackware, add this to rc.0:
-#       /mnt/live/lib/cleanup --start /sbin/$command
+#       exec /mnt/live/lib/cleanup --start /sbin/$command
 #
-# It may be needed to call this script with --kill from your shutdown scripts
+# It may be needed to call this script also with --killall5 from your shutdown scripts
 # instead of calling regular killall5, to prevent fuse filesystems from being killed
 #
 # Author: Tomas M <http://www.linux-live.org/>
