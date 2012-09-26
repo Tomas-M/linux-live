@@ -5,7 +5,8 @@ The Live distro created by Linux Live Kit can be installed
 on the following filesystems:
 
 * iso9660 (CD) ..... using isolinux
-* FAT32 (vfat) ..... using syslinux
+* FAT32 (vfat) ..... using syslinux or extlinux
+* ntfs ............. using syslinux or extlinux
 * ext2/3/4,btrfs ... using extlinux
 * any other fs ..... using lilo
 
