@@ -42,8 +42,8 @@ cd static
 ./update
 cd ..
 
-cp static/{busybox,mount.ntfs-3g} $INITRAMFS/bin
-chmod a+x $INITRAMFS/bin/{busybox,mount.ntfs-3g}
+cp static/{busybox,mount.*} $INITRAMFS/bin
+chmod a+x $INITRAMFS/bin/{busybox,mount.*}
 
 $INITRAMFS/bin/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
    for TOOL in $LINE; do
