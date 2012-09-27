@@ -176,7 +176,7 @@ init_aufs()
 }
 
 # Setup empty union
-# $1 = memory directory (tmpfs will be mounted there)
+# $1 = changes directory (ramfs or persistent changes)
 # $2 = union directory where to mount the union
 #
 init_union()
@@ -187,7 +187,7 @@ init_union()
    echo "Setting up union using AUFS 3"
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t aufs -o xino="$1/.xino",br="$1" none "$2"
+   mount -t aufs -o xino="/.xino",br="$1" none "$2"
 }
 
 # Return device mounted for given directory
@@ -282,24 +282,83 @@ find_data()
 
 }
 
+# Activate persistent changes
+# $1 = data directory
+# $2 = target changes directory
+#
+persistent_changes()
+{
+   local CHANGES T1 T2
+
+   CHANGES="$1/$(basename "$2")"
+   T1="$CHANGES/.empty"
+   T2="$T1"2
+
+   # Setup the directory anyway, it will be used in all cases
+   mkdir -p "$2"
+
+   # If persistent changes are not requested, end here
+   if grep -vq perch /proc/cmdline; then
+      return
+   fi
+
+   # check if changes directory exists and is writable
+   touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
+
+   # if not, simply return back
+   if [ $? -ne 0 ]; then
+      echo "* Persistent changes not writable or not used" >&2
+      return
+   fi
+
+   echo "* Testing persistent changes for posix compatibility" >&2
+   touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
+   chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
+   chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
+   rm "$T1" "$T2" 2>/dev/null
+
+   if [ $? -ne 0 ]; then
+      echo_green_star
+      echo "Activating posixovl for persistent changes" >&2
+      rm "$T1" "$T2" 2>/dev/null
+      mount.posixovl -F "$CHANGES" -- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
+   else
+      echo_green_star
+      echo "Activating native persistent changes" >&2
+   fi
+
+   mount --bind "$CHANGES" "$2"
+}
+
 # Copy data to RAM if requested
 # $1 = live data directory
+# $2 = changes directory
 #
 copy_to_ram()
 {
-   local DM RAM
+   local DM RAM CHANGES
 
    if grep -vq toram /proc/cmdline; then
       echo "$1"
       return
    fi
 
+   CHANGES="$(basename $2)"
    DM="$(mounted_device "$1" | cut -d : -f 2-)"
    RAM="$DM.ram"
+
    echo "* Copying $LIVEKITNAME data to RAM..." >&2
    mkdir  -p "$RAM"
    cp -a "$DM/$LIVEKITNAME" "$RAM"
    echo "$RAM/$LIVEKITNAME"
+
+   if grep -q perch /proc/cmdline; then
+      umount "$2"
+      umount "$DM/$LIVEKITNAME/$CHANGES"
+      umount "$DM/$LIVEKITNAME/$CHANGES" 2>/dev/null
+      mount --bind "$RAM/$LIVEKITNAME/$CHANGES" "$2"
+   fi
+
    umount "$DM"
 }
 
