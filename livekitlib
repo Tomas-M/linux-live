@@ -227,6 +227,22 @@ device_bestfs()
    echo "-t $FS"
 }
 
+# Filesystem options for mount
+# $1 = filesystem or '-t filesystem'
+#
+fs_options()
+{
+   if [ "$1" = "-t" ]; then
+      shift
+   fi
+   if [ "$1" = "vfat" ]; then
+      echo "-o check=s,shortname=mixed,iocharset=utf8"
+   fi
+   if [ "$1" = "ntfs-3g" ]; then
+      echo "-- -s -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other"
+   fi
+}
+
 # Find LIVEKIT data by mounting all devices
 # If found, keep mounted, else unmount
 # $1 = data directory target (mount here)
@@ -235,12 +251,13 @@ find_data_try()
 {
    debug_log "find_data_try"
 
-   local DEVICE FS MNT
+   local DEVICE FS MNT OPTIONS
 
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FS="$(device_bestfs "$DEVICE")"
-      mount -r "$DEVICE" "$1" $FS 2>/dev/null
+      OPTIONS="$(fs_options $FS)"
+      mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
       if [ -d "$1/$LIVEKITNAME" ]; then
          mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
          echo "$1/$LIVEKITNAME"
@@ -321,7 +338,7 @@ persistent_changes()
       echo_green_star
       echo "Activating posixovl for persistent changes" >&2
       rm "$T1" "$T2" 2>/dev/null
-      mount.posixovl -F "$CHANGES" -- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
+      mount.posixovl -F "$CHANGES" -- -s -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
    else
       echo_green_star
       echo "Activating native persistent changes" >&2
