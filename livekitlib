@@ -239,7 +239,7 @@ fs_options()
       echo "-o check=s,shortname=mixed,iocharset=utf8"
    fi
    if [ "$1" = "ntfs-3g" ]; then
-      echo "-- -s -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other"
+      echo "-- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other"
    fi
 }
 
@@ -338,7 +338,7 @@ persistent_changes()
       echo_green_star
       echo "Activating posixovl for persistent changes" >&2
       rm "$T1" "$T2" 2>/dev/null
-      mount.posixovl -F "$CHANGES" -- -s -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
+      mount.posixovl -F "$CHANGES" -- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
    else
       echo_green_star
       echo "Activating native persistent changes" >&2
