@@ -109,7 +109,7 @@ create_bundle()
 }
 
 
-# Move entire initramfs tree to ramfs mount.
+# Move entire initramfs tree to tmpfs mount.
 # It's a bit tricky but is necessray to enable pivot_root
 # even for initramfs boot image
 #
@@ -119,7 +119,7 @@ transfer_initramfs()
       echo "switch root from initramfs to ramfs"
       SWITCH=/m # one letter directory
       mkdir -p $SWITCH
-      mount -t ramfs ramfs $SWITCH
+      mount -t tmpfs -o size="100%" tmpfs $SWITCH
       cp -a /??* $SWITCH 2>/dev/null # only copy two-and-more-letter directories
       cd $SWITCH
       echo "This file indicates that we successfully escaped initramfs" > $SWITCH/lib/initramfs_escaped
@@ -187,7 +187,7 @@ init_union()
    echo "Setting up union using AUFS 3"
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t aufs -o xino="/.xino",br="$1" none "$2"
+   mount -t aufs -o xino="/.xino",br="$1" aufs "$2"
 }
 
 # Return device mounted for given directory
@@ -370,8 +370,8 @@ copy_to_ram()
    echo "$RAM/$LIVEKITNAME"
 
    if grep -q perch /proc/cmdline; then
-      umount "$2"
-      umount "$DM/$LIVEKITNAME/$CHANGES"
+      umount "$2" 2>/dev/null
+      umount "$DM/$LIVEKITNAME/$CHANGES" 2>/dev/null
       umount "$DM/$LIVEKITNAME/$CHANGES" 2>/dev/null
       mount --bind "$RAM/$LIVEKITNAME/$CHANGES" "$2"
    fi
@@ -394,7 +394,7 @@ union_append_bundles()
       echo "* $BUNDLE"
       mkdir -p "$2/$BUNDLE"
       mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
-      mount -o remount,add:1:"$2/$BUNDLE" none "$3"
+      mount -o remount,add:1:"$2/$BUNDLE" aufs "$3"
    done
 }
 
