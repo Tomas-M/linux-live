@@ -339,16 +339,16 @@ persistent_changes()
       echo "Activating dynamic sized storage for persistent changes" >&2
       rm "$T1" "$T2" 2>/dev/null
       mount.dynsizefs "$CHANGES/changes.idx" "$CHANGES/changes.dat" "$2"
-      if [ "$(device_bestfs "$2/dynsize.fs")" = "" ]; then
-         mke2fs -b 4096 -F "$2/dynsize.fs" >/dev/null
+      if [ "$(device_bestfs "$2/dynsize.fs" | tr -d " ")" = "-t" ]; then
+         mke2fs -F "$2/dynsize.fs" >/dev/null
       fi
       mount -o loop "$2/dynsize.fs" "$2"
+      rmdir "$2/lost+found"
    else
       echo_green_star
       echo "Activating native persistent changes" >&2
       mount --bind "$CHANGES" "$2"
    fi
-
 }
 
 # Copy data to RAM if requested

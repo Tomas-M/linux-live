@@ -70,6 +70,12 @@ if [ "$1" = "--init" ]; then
       umount -l $LINE
    done
 
+   # then free up loop mounts, backwards
+   tac /proc/mounts | grep loop | cut -d " " -f 2 | while read LINE; do
+      umount $LINE >/dev/console 2>&1
+      umount -l $LINE
+   done
+
    # and free up memory mounts, backwards
    tac /proc/mounts | grep memory | cut -d " " -f 2 | while read LINE; do
       umount $LINE >/dev/console 2>&1
