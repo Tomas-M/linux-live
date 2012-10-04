@@ -58,6 +58,12 @@ if [ "$1" = "--init" ]; then
    # First, mount proc again since it will be needed and it was already unmounted
    mount -t proc proc /proc >/dev/console 2>&1
 
+   # if debug is requested, start commandline prompt here
+   if grep -q debug /proc/cmdline; then
+      echo "Starting shell for debug" >/dev/console
+      setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
+   fi
+
    # next, unmount everything from union, backwards
    tac /proc/mounts | grep union | cut -d " " -f 2 | while read LINE; do
       umount $LINE >/dev/console 2>&1
@@ -74,7 +80,7 @@ if [ "$1" = "--init" ]; then
    # if the previous unmount failed due to some busy err
    mount -o remount,ro /memory/data >/dev/console 2>/dev/null
 
-   # if debug is requested, start commandline prompt here
+   # and finally, last chance to run some commands by hand
    if grep -q debug /proc/cmdline; then
       echo "Starting shell for debug" >/dev/console
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'

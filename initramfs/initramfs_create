@@ -42,7 +42,7 @@ cd static
 ./update
 cd ..
 
-cp static/{busybox,mount.*} $INITRAMFS/bin
+cp static/{busybox,mount.dynsizefs,mount.ntfs-3g} $INITRAMFS/bin
 chmod a+x $INITRAMFS/bin/{busybox,mount.*}
 
 $INITRAMFS/bin/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do

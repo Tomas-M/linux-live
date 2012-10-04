@@ -24,4 +24,4 @@ fi
 
 ln -f busybox-$MYARCH ./busybox
 ln -f mount.ntfs-3g-$MYARCH ./mount.ntfs-3g
-ln -f mount.posixovl-$MYARCH ./mount.posixovl
+ln -f mount.dynsizefs-$MYARCH ./mount.dynsizefs
