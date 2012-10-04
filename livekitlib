@@ -336,15 +336,19 @@ persistent_changes()
 
    if [ $? -ne 0 ]; then
       echo_green_star
-      echo "Activating posixovl for persistent changes" >&2
+      echo "Activating dynamic sized storage for persistent changes" >&2
       rm "$T1" "$T2" 2>/dev/null
-      mount.posixovl -F "$CHANGES" -- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other
+      mount.dynsizefs "$CHANGES/changes.idx" "$CHANGES/changes.dat" "$2"
+      if [ "$(device_bestfs "$2/dynsize.fs")" = "" ]; then
+         mke2fs -b 4096 -F "$2/dynsize.fs" >/dev/null
+      fi
+      mount -o loop "$2/dynsize.fs" "$2"
    else
       echo_green_star
       echo "Activating native persistent changes" >&2
+      mount --bind "$CHANGES" "$2"
    fi
 
-   mount --bind "$CHANGES" "$2"
 }
 
 # Copy data to RAM if requested
