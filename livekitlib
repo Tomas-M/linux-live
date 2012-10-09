@@ -324,29 +324,29 @@ persistent_changes()
 
    # if not, simply return back
    if [ $? -ne 0 ]; then
-      echo "* Persistent changes not writable or not used" >&2
+      echo "* Persistent changes not writable or not used"
       return
    fi
 
-   echo "* Testing persistent changes for posix compatibility" >&2
+   echo_green_star
+   echo "Testing persistent changes for posix compatibility"
    touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
    chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
    chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
    rm "$T1" "$T2" 2>/dev/null
 
    if [ $? -ne 0 ]; then
-      echo_green_star
-      echo "Activating dynamic sized storage for persistent changes" >&2
+      echo "* Activating dynamic sized storage for persistent changes"
       rm "$T1" "$T2" 2>/dev/null
-      mount.dynsizefs "$CHANGES/changes.idx" "$CHANGES/changes.dat" "$2"
+      
+      mount.dynsizefs "$CHANGES/changes.idx" "$CHANGES/changes.dat" 4096 "$2"
       if [ "$(device_bestfs "$2/dynsize.fs" | tr -d " ")" = "-t" ]; then
          mke2fs -F "$2/dynsize.fs" >/dev/null
       fi
       mount -o loop "$2/dynsize.fs" "$2"
       rmdir "$2/lost+found"
    else
-      echo_green_star
-      echo "Activating native persistent changes" >&2
+      echo "* Activating native persistent changes"
       mount --bind "$CHANGES" "$2"
    fi
 }

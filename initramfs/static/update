@@ -11,6 +11,7 @@
 # - make
 # - find static binaries in /usr/src/buildroot-sources/output/target/bin/ etc
 #
+# - all sources can be found at http://ftp.slax.org/Slax-7.0-development/sources/Slax-7.0-sources
 
 # Automatically determine the architecture we're building on:
 if [ -z "$MYARCH" ]; then
