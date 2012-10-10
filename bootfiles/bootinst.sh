@@ -1,6 +1,6 @@
 #!/bin/sh
 # Setup booting from disk (USB or harddrive)
-# Requires: extlinux, fdisk, df, tail, tr, cut, cat, sed
+# Requires: extlinux, fdisk, df, tail, tr, cut, dd, sed
 set -e
 
 # change working directory to dir from which we are started
@@ -17,7 +17,7 @@ extlinux --install $BOOT
 
 if [ "$DEV" != "$PART" ]; then
    # Setup MBR on the first block
-   cat "$BOOT/mbr.bin" > "$DEV"
+   dd bs=440 count=1 conv=notrunc if="$BOOT/mbr.bin" of="$DEV"
 
    # Toggle a bootable flag
    PART="$(echo "$PART" | sed -r "s:.*[^0-9]::")"
