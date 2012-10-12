@@ -41,7 +41,7 @@ if [ -d sb ]; then
 else
    # create compressed bundles
    for i in $MKMOD; do
-      mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k
+      mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k -keep-as-directory
    done
 fi
 
