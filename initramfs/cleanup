@@ -64,6 +64,10 @@ if [ "$1" = "--init" ]; then
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
 
+   # make sure to detach loop devices which can be detached at this moment,
+   # else they would block unmounting later.
+   losetup | cut -d : -f 1 | xargs -n 1 losetup -d
+
    # next, unmount everything from union, backwards
    tac /proc/mounts | grep union | cut -d " " -f 2 | while read LINE; do
       umount $LINE >/dev/console 2>&1
