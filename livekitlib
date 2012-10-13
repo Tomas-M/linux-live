@@ -429,7 +429,7 @@ change_root()
 
    cd "$1"
 
-   # make sure important files devices are in union
+   # make sure important device files and directories are in union
    mkdir -p boot dev proc sys tmp mnt run
    if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
    if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
