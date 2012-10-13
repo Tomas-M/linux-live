@@ -98,7 +98,6 @@ if [ "$1" = "--init" ]; then
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
 
-   cat /proc/mounts >/dev/console 2>&1
    $(cat /lib/command 2>/dev/null)
    reboot -f
 fi
