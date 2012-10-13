@@ -55,8 +55,9 @@ if [ "$1" = "--init" ]; then
    # All other processes are already killed
    # so our goal now is just to unmount everything and reboot/shutdown
 
-   # First, mount proc again since it will be needed and it was already unmounted
+   # First, mount proc and sys again since it will be needed and it was already unmounted
    mount -t proc proc /proc >/dev/console 2>&1
+   mount -t sysfs sysfs /sys >/dev/console 2>&1
 
    # if debug is requested, start commandline prompt here
    if grep -q debug /proc/cmdline; then
@@ -64,8 +65,9 @@ if [ "$1" = "--init" ]; then
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
 
-   # make sure to detach loop devices which can be detached at this moment,
-   # else they would block unmounting later.
+   # Update devs so we are aware of all active /dev/loop* files.
+   # Detach loop devices which are no longer used
+   mdev -s
    losetup | cut -d : -f 1 | xargs -n 1 losetup -d
 
    # next, unmount everything from union, backwards
