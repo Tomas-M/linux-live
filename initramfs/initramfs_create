@@ -66,6 +66,7 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 
 # TODO: add all comon filesystems which are NOT compiled in kernel already
 copy_including_deps /$LMK/kernel/fs/squashfs
+copy_including_deps /$LMK/kernel/drivers/staging/zsmalloc # needed by zram
 copy_including_deps /$LMK/kernel/drivers/staging/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
 copy_including_deps /$LMK/kernel/fs/fuse
