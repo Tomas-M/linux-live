@@ -85,6 +85,14 @@ fatal()
    setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
 }
 
+# get value of commandline parameter $1
+# $1 = parameter to search for
+#
+cmdline_value()
+{
+   cat /proc/cmdline | egrep -o "(^|[[:space:]])$1=[^[:space:]]+" | tr -d " " | cut -d "=" -f 2- | tail -n 1
+}
+
 
 # test if the script is started by root user. If not, exit
 #
@@ -131,7 +139,7 @@ transfer_initramfs()
 #
 init_proc_sysfs()
 {
-   debug_log "vfs_mount_init"
+   debug_log "init_proc_sysfs" "$*"
    mount -n -t proc proc /proc
    echo "0" >/proc/sys/kernel/printk
    mount -n -t sysfs sysfs /sys
@@ -142,6 +150,7 @@ init_proc_sysfs()
 # make sure some devices are there
 init_devs()
 {
+   debug_log "init_devs" "$*"
    echo /sbin/mdev > /proc/sys/kernel/hotplug
    mdev -s
    modprobe zram 2>/dev/null
@@ -156,7 +165,7 @@ init_devs()
 #
 init_zram()
 {
-   debug_log "init_zram"
+   debug_log "init_zram" "$*"
    echo_green_star
    echo "Setting dynamic RAM compression using ZRAM"
    echo 536870912 > /sys/block/zram0/disksize # 512MB
@@ -169,7 +178,7 @@ init_zram()
 #
 init_aufs()
 {
-   debug_log "init_aufs"
+   debug_log "init_aufs" "$*"
    # TODO maybe check here if aufs support is working at all
    # and procude useful error message if user has no aufs
    modprobe aufs 2>/dev/null
@@ -181,7 +190,7 @@ init_aufs()
 #
 init_union()
 {
-   debug_log "init_union"
+   debug_log "init_union" "$*"
 
    echo_green_star
    echo "Setting up union using AUFS 3"
@@ -195,7 +204,7 @@ init_union()
 #
 mounted_device()
 {
-   debug_log "mounted_device"
+   debug_log "mounted_device" "$*"
 
    local MNT TARGET
    MNT="$1"
@@ -215,7 +224,7 @@ mounted_device()
 #
 device_bestfs()
 {
-   debug_log "device_bestfs"
+   debug_log "device_bestfs" "$*"
    local FS
 
    FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
@@ -232,6 +241,8 @@ device_bestfs()
 #
 fs_options()
 {
+   debug_log "fs_options" "$*"
+
    if [ "$1" = "-t" ]; then
       shift
    fi
@@ -243,13 +254,15 @@ fs_options()
    fi
 }
 
+
 # Find LIVEKIT data by mounting all devices
 # If found, keep mounted, else unmount
 # $1 = data directory target (mount here)
+# $2 = data directory which contains compressed bundles
 #
 find_data_try()
 {
-   debug_log "find_data_try"
+   debug_log "find_data_try" "$*"
 
    local DEVICE FS MNT OPTIONS
 
@@ -258,10 +271,10 @@ find_data_try()
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
-      if [ "$(find "$1/$LIVEKITNAME" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+      if [ "$(find "$1/$2" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
          # we found at least one bundle/module here
          mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
-         echo "$1/$LIVEKITNAME"
+         echo "$1/$2" | tr -s "/"
          return
       fi
       umount "$1" 2>/dev/null
@@ -275,18 +288,21 @@ find_data_try()
 #
 find_data()
 {
-   debug_log "find_data"
+   debug_log "find_data" "$*"
 
-   local DATA
+   local DATA FROM
+
+   FROM="$(cmdline_value from)"
+   if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
-   echo -n "Looking for $LIVEKITNAME data .." >&2
+   echo -n "Looking for $LIVEKITNAME data in /$FROM/ .." | tr -s "/" >&2
    for timeout in $(seq 1 $1); do
       echo -n "." >&2
-      DATA="$(find_data_try "$2")"
+      DATA="$(find_data_try "$2" "$FROM")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
-         echo "* Found in $(mounted_device "$DATA" | cut -d : -f 1)" >&2
+         echo "* Found on $(mounted_device "$DATA" | cut -d : -f 1)" >&2
          echo "$DATA"
          return
       fi
@@ -306,6 +322,8 @@ find_data()
 #
 persistent_changes()
 {
+   debug_log "persistent_changes" "$*"
+
    local CHANGES T1 T2
 
    CHANGES="$1/$(basename "$2")"
@@ -358,6 +376,8 @@ persistent_changes()
 #
 copy_to_ram()
 {
+   debug_log "copy_to_ram" "$*"
+
    local DM RAM CHANGES
 
    if grep -vq toram /proc/cmdline; then
@@ -392,7 +412,7 @@ copy_to_ram()
 #
 union_append_bundles()
 {
-   debug_log "union_append_bundles"
+   debug_log "union_append_bundles" "$*"
    echo_green_star
    echo "Adding bundles to union"
    ls -1 "$1" | grep '.'$BEXT'$' | sort | while read BUNDLE; do
@@ -408,6 +428,8 @@ union_append_bundles()
 #
 fstab_create()
 {
+   debug_log "fstab_create" "$*"
+
    local FSTAB
    FSTAB="$1/etc/fstab"
    echo aufs / aufs defaults 0 0 > $FSTAB
@@ -423,6 +445,8 @@ fstab_create()
 #
 change_root()
 {
+   debug_log "change_root" "$*"
+
    umount /proc
    umount /sys
    rm -Rf /lib/modules # this will no longer be needed at all
