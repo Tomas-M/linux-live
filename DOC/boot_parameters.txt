@@ -2,3 +2,4 @@ You can pass the following boot parameters:
 
 debug ... start shell prompt several times during live kit startup
 
+from=...  load data from given directory (search all drives for it)
