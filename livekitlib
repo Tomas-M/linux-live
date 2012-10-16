@@ -258,7 +258,7 @@ find_data_try()
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
-      if [ "$(find "$1/$LIVEKITNAME" -maxdepth 1 -name "*.$BEXT")" != "" ]; then
+      if [ "$(find "$1/$LIVEKITNAME" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
          # we found at least one bundle/module here
          mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
          echo "$1/$LIVEKITNAME"
