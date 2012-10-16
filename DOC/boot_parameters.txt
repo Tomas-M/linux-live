@@ -1,0 +1,4 @@
+You can pass the following boot parameters:
+
+debug ... start shell prompt several times during live kit startup
+
