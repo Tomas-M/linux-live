@@ -249,9 +249,6 @@ fs_options()
    if [ "$1" = "vfat" ]; then
       echo "-o check=s,shortname=mixed,iocharset=utf8"
    fi
-   if [ "$1" = "ntfs-3g" ]; then
-      echo "-- -o attr_timeout=300,entry_timeout=300,negative_timeout=300,kernel_cache,allow_other"
-   fi
 }
 
 
