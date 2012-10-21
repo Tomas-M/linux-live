@@ -45,6 +45,11 @@ else
    done
 fi
 
+# copy rootcopy folder
+if [ -d rootcopy ]; then
+   cp -a rootcopy $LIVEKITDATA/$LIVEKITNAME/
+fi
+
 
 # create ISO for CD image
 echo "Creating ISO file for CD boot..."
