@@ -367,6 +367,18 @@ persistent_changes()
    fi
 }
 
+# Copy content of rootcopy directory to union
+# $1 = data directory
+# $2 = union directory
+copy_rootcopy_content()
+{
+   if [ "$(find "$1/rootcopy/" -maxdepth 1 2>/dev/null)" != "" ]; then
+      echo_green_star
+      echo "Copying content of rootcopy directory..."
+      cp -a "$1/rootcopy/*" "$2"
+   fi
+}
+
 # Copy data to RAM if requested
 # $1 = live data directory
 # $2 = changes directory

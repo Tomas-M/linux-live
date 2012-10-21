@@ -40,6 +40,9 @@ init_union "$CHANGES" "$UNION"
 # add data to union
 union_append_bundles "$DATA" "$BUNDLES" "$UNION"
                                                                                                                                                       debug_shell
+# rootcopy
+copy_rootcopy_content "$DATA" "$UNION"
+
 # create empty fstab
 fstab_create "$UNION"
                                                                                                                                                       debug_shell
