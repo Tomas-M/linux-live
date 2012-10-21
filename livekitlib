@@ -377,7 +377,7 @@ copy_rootcopy_content()
    if [ "$(ls -1 "$1/rootcopy/" 2>/dev/null)" != "" ]; then
       echo_green_star
       echo "Copying content of rootcopy directory..."
-      cp -a "$1/rootcopy/*" "$2"
+      cp -a "$1"/rootcopy/* "$2"
    fi
 }
 
