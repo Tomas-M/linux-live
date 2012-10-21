@@ -372,7 +372,9 @@ persistent_changes()
 # $2 = union directory
 copy_rootcopy_content()
 {
-   if [ "$(find "$1/rootcopy/" -maxdepth 1 2>/dev/null)" != "" ]; then
+   debug_log "copy_rootcopy_content" "$*"
+
+   if [ "$(ls -1 "$1/rootcopy/" 2>/dev/null)" != "" ]; then
       echo_green_star
       echo "Copying content of rootcopy directory..."
       cp -a "$1/rootcopy/*" "$2"
