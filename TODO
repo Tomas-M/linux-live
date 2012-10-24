@@ -1,4 +1,4 @@
 * copy DOC/* to Live Kit created
 * describe meaning of special files in bundles
-* bootinst.sh for linux (using extlinux preferably)
-  - maybe find a way to boot from ANY filesystem using extlinux if that is possible (loop ext2)
+
+* bootinst.sh - if extlinux is not found, echo error msg.

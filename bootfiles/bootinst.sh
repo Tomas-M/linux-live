@@ -13,7 +13,7 @@ PART="$(df . | tail -n 1 | tr -s " " | cut -d " " -f 1)"
 DEV="$(echo "$PART" | sed -r "s:[0-9]+\$::" | sed -r "s:([0-9])[a-z]+\$:\\1:i")"   #"
 
 # install syslinux bootloader
-extlinux --install $BOOT
+./extlinux --install $BOOT
 
 if [ "$DEV" != "$PART" ]; then
    # Setup MBR on the first block
