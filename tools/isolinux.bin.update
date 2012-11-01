@@ -3,7 +3,7 @@
 # This script will update the file ../bootfiles/isolinux.bin to match
 # your LiveKit name used in ../.config
 
-PKG=syslinux-4.05
+PKG=syslinux-4.06
 PKGTGZ=$PKG.tar.gz
 DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
 
