@@ -66,7 +66,7 @@ mkisofs -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$L
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
 
-cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" > readme.txt
+cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$//" > readme.txt
 echo "Creating ZIP for USB boot..."
 zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
