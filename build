@@ -68,7 +68,7 @@ mkisofs -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$L
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$//" > readme.txt
 echo "Creating ZIP for USB boot..."
-rm "$TARGET/$LIVEKITNAME-$ARCH.zip"
+rm -f "$TARGET/$LIVEKITNAME-$ARCH.zip"
 zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
 cd ..
