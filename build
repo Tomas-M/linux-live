@@ -5,6 +5,7 @@ export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
 CHANGEDIR=$(dirname $(readlink -f $0))
 echo "Changing current directory to $CHANGEDIR"
+CWD="$(pwd)"
 cd $CHANGEDIR
 
 . ./.config || exit 1
@@ -50,7 +51,6 @@ if [ -d rootcopy ]; then
    cp -a rootcopy $LIVEKITDATA/$LIVEKITNAME/
 fi
 
-
 # create ISO for CD image
 echo "Creating ISO file for CD boot..."
 cd "$LIVEKITDATA"
@@ -59,13 +59,16 @@ if [ ! -d $TARGET ]; then
    TARGET=/tmp
 fi
 
-mkisofs -o "$TARGET/$LIVEKITNAME-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+ARCH=$(uname -m)
+
+mkisofs -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
 
+cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" > readme.txt
 echo "Creating ZIP for USB boot..."
-zip -0 -r "$TARGET/$LIVEKITNAME-$(uname -m).zip" *
+zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
 cd ..
 rm -Rf "$LIVEKITDATA"
