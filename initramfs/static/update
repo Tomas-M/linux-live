@@ -26,3 +26,4 @@ fi
 ln -f busybox-$MYARCH ./busybox
 ln -f mount.ntfs-3g-$MYARCH ./mount.ntfs-3g
 ln -f mount.dynfilefs-$MYARCH ./mount.dynfilefs
+ln -f eject-$MYARCH ./eject

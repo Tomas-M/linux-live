@@ -78,19 +78,32 @@ if [ "$1" = "--init" ]; then
 
    # then free up loop mounts, backwards
    tac /proc/mounts | grep loop | cut -d " " -f 2 | while read LINE; do
-      umount $LINE >/dev/console 2>&1
+      umount $LINE >/dev/console 2>&1 || \
       umount -l $LINE
    done
 
-   # and free up memory mounts, backwards
+   # remember from which device we are started, do it now before we lose it
+   DEVICE="$(cat /proc/mounts | grep /memory/data | grep /dev/ | cut -d " " -f 1)"
+
+   # free up memory mounts, backwards
    tac /proc/mounts | grep memory | cut -d " " -f 2 | while read LINE; do
       umount $LINE >/dev/console 2>&1
-      umount -l $LINE
+      if [ $? -ne 0 ]; then
+         mount -o remount,ro $LINE >/dev/console 2>&1
+         umount -l $LINE
+      fi
    done
 
-   # make sure the data directory is at least remounted read-only,
-   # if the previous unmount failed due to some busy err
-   mount -o remount,ro /memory/data >/dev/console 2>/dev/null
+   # eject cdrom device if we were running from it
+   for i in $(cat /proc/sys/dev/cdrom/info | grep name); do
+      if [ "$DEVICE" = "/dev/$i" ]; then
+         echo "Attemptiong to eject /dev/$i..." >/dev/console
+         eject /dev/$i
+         echo "CD/DVD tray will close in 6 seconds..." >/dev/console
+         sleep 6
+         eject -t /dev/$i
+      fi
+   done
 
    # and finally, last chance to run some commands by hand
    if grep -q debug /proc/cmdline; then
@@ -98,6 +111,7 @@ if [ "$1" = "--init" ]; then
       setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
    fi
 
+   cat /lib/command >/dev/console
    $(cat /lib/command 2>/dev/null)
    reboot -f
 fi
