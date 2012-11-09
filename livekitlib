@@ -196,7 +196,7 @@ init_union()
    echo "Setting up union using AUFS 3"
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t aufs -o xino="/.xino",br="$1" aufs "$2"
+   mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
 }
 
 # Return device mounted for given directory

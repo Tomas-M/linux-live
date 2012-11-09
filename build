@@ -34,7 +34,7 @@ mv "$INITRAMFS" $BOOT/initrfs.img
 cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp /boot/vmlinuz $BOOT/
+cp $VMLINUZ $BOOT/
 
 if [ -d sb ]; then
    cp sb/* $LIVEKITDATA/$LIVEKITNAME/

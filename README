@@ -7,6 +7,8 @@ distribution into a Live Kit (formely known as Live CD).
 * Before you start building your Kit, edit the file ./.config
   Most importantly change the LIVEKITNAME variable.
 
+* Make sure your kernel is in /boot/vmlinuz
+
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
   and reorganize isolinux.cfg to fit your needs (when editing the file,
   keep all paths in /boot/, it will be rellocated during LiveKit creation)
@@ -17,7 +19,7 @@ distribution into a Live Kit (formely known as Live CD).
   of that. Simply go to directory ./tools/ and run isolinux.bin.update ...
   it will update ./bootfiles/isolinux.bin automatically by downloading
   isolinux sources, patching them using your actual LIVEKITNAME and
-  recompiling.
+  recompiling. This step is not needed if you plan to boot from USB only.
 
 * When done, run the ./build script to create your Live Kit
   - it will create ISO and TAR files for you in /tmp
