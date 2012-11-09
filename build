@@ -64,8 +64,8 @@ mkisofs -o "$TARGET/$LIVEKITNAME-$(uname -m).iso" -v -J -R -D -A "$LIVEKITNAME" 
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
 
-echo "Creating TAR for USB boot..."
-tar -c ./* > "$TARGET/$LIVEKITNAME-$(uname -m).tar"
+echo "Creating ZIP for USB boot..."
+zip -0 -r "$TARGET/$LIVEKITNAME-$(uname -m).zip" *
 
 cd ..
 rm -Rf "$LIVEKITDATA"
