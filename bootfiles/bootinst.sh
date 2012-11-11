@@ -1,7 +1,6 @@
 #!/bin/sh
 # Setup booting from disk (USB or harddrive)
-# Requires: extlinux, fdisk, df, tail, tr, cut, dd, sed
-set -e
+# Requires: fdisk, df, tail, tr, cut, dd, sed
 
 # change working directory to dir from which we are started
 CWD="$(pwd)"
@@ -13,11 +12,19 @@ PART="$(df . | tail -n 1 | tr -s " " | cut -d " " -f 1)"
 DEV="$(echo "$PART" | sed -r "s:[0-9]+\$::" | sed -r "s:([0-9])[a-z]+\$:\\1:i")"   #"
 
 # install syslinux bootloader
-./extlinux --install $BOOT
+./extlinux.exe --install $BOOT
+
+if [ $? -ne 0 ]; then
+   echo "Error installing boot loader."
+   echo "Read the errors above and press enter to exit..."
+   read junk
+   exit 1
+fi
+
 
 if [ "$DEV" != "$PART" ]; then
    # Setup MBR on the first block
-   dd bs=440 count=1 conv=notrunc if="$BOOT/mbr.bin" of="$DEV"
+   dd bs=440 count=1 conv=notrunc if="$BOOT/mbr.bin" of="$DEV" 2>/dev/null
 
    # Toggle a bootable flag
    PART="$(echo "$PART" | sed -r "s:.*[^0-9]::")"
