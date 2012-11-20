@@ -18,7 +18,6 @@ Steps to make it bootable from your USB device:
 
 3) While you're in the boot directory, locate file bootinst.bat
    Run it by doubleclicking it. It will setup your USB to boot.
-   If you're running Linux, use bootinst.sh instead.
 
 -- That's it. Your USB device is now ready to boot mylinux.
--- You can safely delete this readme.txt file, it's not needed.
+-- You can safely delete this file (mylinux.txt), it's not needed.
