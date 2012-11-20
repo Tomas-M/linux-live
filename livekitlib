@@ -209,12 +209,30 @@ mounted_device()
    local MNT TARGET
    MNT="$1"
    while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
-      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1 | head -n 1)"
+      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
       if [ "$TARGET" != "" ]; then
-         echo "$TARGET:$MNT"
+         echo "$TARGET"
          return
       fi
-      MNT="$(dirname $MNT)"
+      MNT="$(dirname "$MNT")"
+   done
+}
+
+# Return mounted dir for given directory
+# $1 = directory
+#
+mounted_dir()
+{
+   debug_log "mounted_dir" "$*"
+
+   local MNT
+   MNT="$1"
+   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+      if mountpoint -q "$MNT" 2>/dev/null; then
+         echo "$MNT"
+         return
+      fi
+      MNT="$(dirname "$MNT")"
    done
 }
 
@@ -313,7 +331,7 @@ find_data()
       DATA="$(find_data_try "$2" "$FROM")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
-         echo "* Found on $(mounted_device "$2" | cut -d : -f 1)" >&2
+         echo "* Found on $(mounted_device "$2")" >&2
          echo "$DATA"
          return
       fi
@@ -403,30 +421,27 @@ copy_to_ram()
 {
    debug_log "copy_to_ram" "$*"
 
-   local DM RAM CHANGES
+   local MDIR MDEV RAM CHANGES
 
    if grep -vq toram /proc/cmdline; then
       echo "$1"
       return
    fi
 
-   CHANGES="$(basename $2)"
-   DM="$(mounted_device "$1" | cut -d : -f 2-)"
-   RAM="$DM.ram"
-
    echo "* Copying $LIVEKITNAME data to RAM..." >&2
+   RAM="$(dirname "$2")"/toram
    mkdir  -p "$RAM"
-   cp -a "$DM/$LIVEKITNAME" "$RAM"
-   echo "$RAM/$LIVEKITNAME"
+   cp -a "$1"/* "$RAM"
+   echo "$RAM"
 
-   if grep -q perch /proc/cmdline; then
-      umount "$2" 2>/dev/null
-      umount "$DM/$LIVEKITNAME/$CHANGES" 2>/dev/null
-      umount "$DM/$LIVEKITNAME/$CHANGES" 2>/dev/null
-      mount --bind "$RAM/$LIVEKITNAME/$CHANGES" "$2"
+   MDIR="$(mounted_dir "$1")"
+   MDEV="$(mounted_device "$1")"
+   umount "$MDIR" 2>/dev/null
+
+   if [ -f "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
+      MDEV="$(mounted_device "$MDEV")"
+      umount "$MDEV" 2>/dev/null
    fi
-
-   umount "$DM"
 }
 
 # Mount squashfs filesystem bundles
