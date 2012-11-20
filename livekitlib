@@ -436,9 +436,10 @@ copy_to_ram()
 
    MDIR="$(mounted_dir "$1")"
    MDEV="$(mounted_device "$1")"
+   MDEV="$(losetup $MDEV 2>/dev/null | cut -d " " -f 3)"
    umount "$MDIR" 2>/dev/null
 
-   if [ -f "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
+   if [ "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
       MDEV="$(mounted_device "$MDEV")"
       umount "$MDEV" 2>/dev/null
    fi
