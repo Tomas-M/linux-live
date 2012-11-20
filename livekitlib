@@ -209,7 +209,7 @@ mounted_device()
    local MNT TARGET
    MNT="$1"
    while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
-      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
+      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1 | head -n 1)"
       if [ "$TARGET" != "" ]; then
          echo "$TARGET:$MNT"
          return
@@ -261,19 +261,33 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS MNT OPTIONS
+   local DEVICE FS FROM OPTIONS
 
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
+      FROM="$2"
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
-      if [ "$(find "$1/$2" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+
+      # if the FROM parameter is actual file, mount it again as loop (eg. iso)
+      if [ -f "$1/$FROM" ]; then
+         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
+         mkdir -p "$1/../iso"
+         mount -o loop,ro "$1/$FROM" "$1/../iso" 2>/dev/null
+         FROM="../iso/$LIVEKITNAME"
+      fi
+
+      # search for bundles in the mounted directory
+      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
          # we found at least one bundle/module here
          mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
-         echo "$1/$2" | tr -s "/"
+         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/../:/:g"
          return
       fi
+
+      # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
+      umount "$1" 2>/dev/null
       umount "$1" 2>/dev/null
    done
 }
@@ -293,13 +307,13 @@ find_data()
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
-   echo -n "Looking for $LIVEKITNAME data in /$FROM/ .." | tr -s "/" >&2
+   echo -n "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
    for timeout in $(seq 1 $1); do
       echo -n "." >&2
       DATA="$(find_data_try "$2" "$FROM")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
-         echo "* Found on $(mounted_device "$DATA" | cut -d : -f 1)" >&2
+         echo "* Found on $(mounted_device "$2" | cut -d : -f 1)" >&2
          echo "$DATA"
          return
       fi
