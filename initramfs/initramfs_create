@@ -36,22 +36,24 @@ copy_including_deps()
 }
 
 rm -Rf $INITRAMFS
-mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sbin,sys,tmp,usr,var/log}
+mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sys,tmp,usr,var/log}
+ln -s bin $INITRAMFS/sbin
 
 cd static
 ./update
 cd ..
 
-cp static/{busybox,mount.dynfilefs,mount.ntfs-3g} $INITRAMFS/bin
-chmod a+x $INITRAMFS/bin/{busybox,mount.*}
+cp static/{busybox,mount.dynfilefs,mount.ntfs-3g,eject} $INITRAMFS/bin
+chmod a+x $INITRAMFS/bin/{busybox,mount.*,eject}
 
 $INITRAMFS/bin/busybox | grep , | grep -v Copyright | tr "," " " | while read LINE; do
    for TOOL in $LINE; do
-      ln -s busybox $INITRAMFS/bin/$TOOL
-      ln -s ../bin/busybox $INITRAMFS/sbin/$TOOL
+      if [ ! -e $INITRAMFS/bin/$TOOL ]; then
+         ln -s busybox $INITRAMFS/bin/$TOOL
+      fi
    done
 done
-rm $INITRAMFS/{s,}bin/init
+rm -f $INITRAMFS/{s,}bin/init
 
 mknod $INITRAMFS/dev/console c 5 1
 mknod $INITRAMFS/dev/null c 1 3
@@ -86,7 +88,6 @@ chmod a+x $INITRAMFS/init
 cp cleanup $INITRAMFS/lib
 chmod a+x $INITRAMFS/lib/cleanup
 ln -s ../init $INITRAMFS/bin/init
-ln -s ../init $INITRAMFS/sbin/init
 cp ../livekitlib $INITRAMFS/lib/
 cp ../.config $INITRAMFS/lib/
 
