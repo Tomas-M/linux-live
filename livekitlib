@@ -497,6 +497,9 @@ change_root()
    # make sure important device files and directories are in union
    mkdir -p boot dev proc sys tmp mnt run
    if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
+   if [ ! -e dev/tty ]; then mknod dev/tty c 5 0; fi
+   if [ ! -e dev/tty0 ]; then mknod dev/tty0 c 4 0; fi
+   if [ ! -e dev/tty1 ]; then mknod dev/tty1 c 4 1; fi
    if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
    if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
 
