@@ -454,13 +454,17 @@ copy_to_ram()
 union_append_bundles()
 {
    debug_log "union_append_bundles" "$*"
+
+   local BUN
+
    echo_green_star
    echo "Adding bundles to union"
-   ls -1 "$1" | grep '.'$BEXT'$' | sort -n | while read BUNDLE; do
+   ( ls -1 "$1" ; find modules/ 2>/dev/null ) | grep '.'$BEXT'$' | sort -n | while read BUNDLE; do
       echo "* $BUNDLE"
-      mkdir -p "$2/$BUNDLE"
-      mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUNDLE"
-      mount -o remount,add:1:"$2/$BUNDLE" aufs "$3"
+      BUN="$(basename "$BUNDLE")"
+      mkdir -p "$2/$BUN"
+      mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUN"
+      mount -o remount,add:1:"$2/$BUN" aufs "$3"
    done
 }
 
