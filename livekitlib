@@ -459,7 +459,7 @@ union_append_bundles()
 
    echo_green_star
    echo "Adding bundles to union"
-   ( ls -1 "$1" ; find "$1/modules/" 2>/dev/null ) | grep '[.]'$BEXT'$' | sort -n | while read BUNDLE; do
+   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sort -n ) | grep '[.]'$BEXT'$' | while read BUNDLE; do
       echo "* $BUNDLE"
       BUN="$(basename "$BUNDLE")"
       mkdir -p "$2/$BUN"
