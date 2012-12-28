@@ -392,7 +392,7 @@ persistent_changes()
          mke2fs -F "$2/loop.fs" >/dev/null
       fi
       mount -o loop,sync "$2/loop.fs" "$2"
-      rmdir "$2/lost+found"
+      rmdir "$2/lost+found" 2>/dev/null
    else
       echo "* Activating native persistent changes"
       mount --bind "$CHANGES" "$2"

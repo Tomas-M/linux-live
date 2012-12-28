@@ -31,6 +31,7 @@ rm -Rf "$LIVEKITDATA"
 BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
 mkdir -p "$BOOT"/../changes
+mkdir -p "$BOOT"/../modules
 mv "$INITRAMFS" $BOOT/initrfs.img
 cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
