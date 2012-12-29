@@ -345,30 +345,38 @@ init_network_dev()
 download_data_pxe()
 {
    debug_log "download_data_pxe" "$*"
-   local CMD CLIENT SERVER GW MASK ETH
+   local CMD CLIENT SERVER GW MASK PORT ETH
 
    mkdir -p "$1/$LIVEKITNAME"
 
-   cmdline_value ip | tr ":" " " | while read CLIENT SERVER GW MASK; do
+   cmdline_value ip | tr ":" " " | while read CLIENT SERVER GW MASK PORT; do
 
       echo_green_star >&2
-      echo -n "Looking for $LIVEKITNAME data at $SERVER .." >&2
+      echo "Downloading files from $SERVER ..." >&2
 
       ETH=$(init_network_dev)
-      ifconfig $ETH "$CLIENT" netmask "$MASK"
-      route add default gw "$GW"
+      if [ "$PORT" = "" ]; then PORT="7529"; fi
 
-      tftp -g -r FILELIST -l "$1/FILELIST" $SERVER
+      # set IP address as given by boot paramter
+      if [ "$CLIENT" != "" ]; then
+         ifconfig $ETH "$CLIENT" netmask "$MASK"
+         route add default gw "$GW"
+      else
+         # if client ip is unknown, try to get a DHCP lease
+         udhcpc -i $ETH -f -q
+      fi
 
-      echo "* Found" >&2
+      # well known IP address of Google public DNS service
+      echo nameserver 8.8.8.8 >> /etc/resolv.conf
 
-      cat "$1/FILELIST" | while read FILE; do
-         echo "Downloading $FILE" >&2
-         tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
+      wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
+
+      cat "$1/PXEFILELIST" | while read FILE; do
+         wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
       done
+
    done
 
-   ifconfig $ETH down
    echo "$1/$LIVEKITNAME"
 }
 
