@@ -358,7 +358,7 @@ download_data_pxe()
       if [ "$PORT" = "" ]; then PORT="7529"; fi
 
       # set IP address as given by boot paramter
-      if [ "$CLIENT" != "" ]; then
+      if [ "$CLIENT" != "dhcp" ]; then
          ifconfig $ETH "$CLIENT" netmask "$MASK"
          route add default gw "$GW"
       else
