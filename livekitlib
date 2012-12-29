@@ -140,6 +140,7 @@ transfer_initramfs()
 init_proc_sysfs()
 {
    debug_log "init_proc_sysfs" "$*"
+   mkdir -p /proc /sys /etc $MEMORY
    mount -n -t proc proc /proc
    echo "0" >/proc/sys/kernel/printk
    mount -n -t sysfs sysfs /sys
