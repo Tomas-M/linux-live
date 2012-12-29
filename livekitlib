@@ -311,6 +311,67 @@ find_data_try()
    done
 }
 
+# Modprobe network kernel modules until a working driver is found.
+# These drivers are (or used to be) probed in Slackware's initrd.
+# I don't have personal experiences with most of these drivers
+# so I'll be happy if you report any particular one to be not working
+# (eg. causing hangups) in order to remove it from this list.
+#
+init_network_dev()
+{
+   debug_log "init_network_dev" "$*"
+   local MODULE ETH
+
+   for MODULE in 3c59x acenic de4x5 e1000 e1000e e100 epic100 hp100 \
+   ne2k-pci pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin \
+   tg3 dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip depca 3c501 3c503 \
+   3c505 3c507 3c509 3c515 ac3200 at1700 cosa cs89x0 de600 de620 e2100 \
+   eepro eexpress eth16i ewrk3 forcedeth hostess_sv11 hp-plus hp ni52 \
+   ni65 sb1000 sealevel smc-ultra sis900 smc9194 wd; do
+      modprobe $MODULE 2>/dev/null
+      ETH=$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " ")
+      if [ "$ETH" != "" ]; then
+         echo $ETH
+         return 0
+      fi
+      rmmod $MODULE 2>/dev/null
+   done
+}
+
+
+# Download data from tftp
+# $1 = target (store downloaded files there)
+#
+download_data_pxe()
+{
+   debug_log "download_data_pxe" "$*"
+   local CMD CLIENT SERVER GW MASK ETH
+
+   mkdir -p "$1/$LIVEKITNAME"
+
+   cmdline_value ip | tr ":" " " | while read CLIENT SERVER GW MASK; do
+
+      echo_green_star >&2
+      echo -n "Looking for $LIVEKITNAME data at $SERVER .." >&2
+
+      ETH=$(init_network_dev)
+      ifconfig $ETH "$CLIENT" netmask "$MASK"
+      route add default gw "$GW"
+
+      tftp -g -r FILELIST -l "$1/FILELIST" $SERVER
+
+      echo "* Found" >&2
+
+      cat "$1/FILELIST" | while read FILE; do
+         echo "Downloading $FILE" >&2
+         tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
+      done
+   done
+
+   ifconfig $ETH down
+   echo "$1/$LIVEKITNAME"
+}
+
 # Retry finding LIVEKIT data several times,
 # until timeouted or until data is found
 # $1 = timeout
@@ -321,6 +382,11 @@ find_data()
    debug_log "find_data" "$*"
 
    local DATA FROM
+
+   if [ "$(cmdline_value ip)" != "" ]; then
+      download_data_pxe "$2"
+      return
+   fi
 
    FROM="$(cmdline_value from)"
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
