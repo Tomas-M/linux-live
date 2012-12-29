@@ -495,7 +495,6 @@ change_root()
 
    umount /proc
    umount /sys
-   rm -Rf /lib/modules # this will no longer be needed at all
 
    cd "$1"
 
