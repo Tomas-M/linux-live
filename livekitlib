@@ -313,9 +313,9 @@ find_data_try()
 
 # Modprobe network kernel modules until a working driver is found.
 # These drivers are (or used to be) probed in Slackware's initrd.
-# I don't have personal experiences with most of these drivers
-# so I'll be happy if you report any particular one to be not working
-# (eg. causing hangups) in order to remove it from this list.
+# The function returns the first device found, yet it doesn't have
+# to be a working one, eg. if the computer has two network interfaces
+# and ethernet cable is plugged only to one of them.
 #
 init_network_dev()
 {
@@ -329,13 +329,18 @@ init_network_dev()
    eepro eexpress eth16i ewrk3 forcedeth hostess_sv11 hp-plus hp ni52 \
    ni65 sb1000 sealevel smc-ultra sis900 smc9194 wd; do
       modprobe $MODULE 2>/dev/null
-      ETH=$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " ")
+      ETH="$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1)"
       if [ "$ETH" != "" ]; then
          echo $ETH
          return 0
       fi
       rmmod $MODULE 2>/dev/null
    done
+
+   # If we are here, none of the above specified modules worked.
+   # As a last chance, try to modprobe everything.
+   find /lib/modules/ | xargs -n 1 modprobe
+   cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
 }
 
 
@@ -349,8 +354,7 @@ download_data_pxe()
 
    mkdir -p "$1/$LIVEKITNAME"
 
-   cmdline_value ip | tr ":" " " | while read CLIENT SERVER GW MASK PORT; do
-
+   cmdline_value ip | while IFS=":" read CLIENT SERVER GW MASK PORT; do
       echo_green_star >&2
       echo "Downloading files from $SERVER ..." >&2
 
@@ -358,7 +362,7 @@ download_data_pxe()
       if [ "$PORT" = "" ]; then PORT="7529"; fi
 
       # set IP address as given by boot paramter
-      if [ "$CLIENT" != "dhcp" ]; then
+      if [ "$CLIENT" != "" -a "$MASK" != "" ]; then
          ifconfig $ETH "$CLIENT" netmask "$MASK"
          route add default gw "$GW"
       else
@@ -374,7 +378,6 @@ download_data_pxe()
       cat "$1/PXEFILELIST" | while read FILE; do
          wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
       done
-
    done
 
    echo "$1/$LIVEKITNAME"
