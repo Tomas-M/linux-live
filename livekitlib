@@ -384,7 +384,7 @@ find_data_try()
       if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
          # we found at least one bundle/module here
          mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
-         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/../:/:g"
+         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
          return
       fi
 
