@@ -271,46 +271,6 @@ fs_options()
 }
 
 
-# Find LIVEKIT data by mounting all devices
-# If found, keep mounted, else unmount
-# $1 = data directory target (mount here)
-# $2 = data directory which contains compressed bundles
-#
-find_data_try()
-{
-   debug_log "find_data_try" "$*"
-
-   local DEVICE FS FROM OPTIONS
-
-   mkdir -p "$1"
-   blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
-      FROM="$2"
-      FS="$(device_bestfs "$DEVICE")"
-      OPTIONS="$(fs_options $FS)"
-      mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
-
-      # if the FROM parameter is actual file, mount it again as loop (eg. iso)
-      if [ -f "$1/$FROM" ]; then
-         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
-         mkdir -p "$1/../iso"
-         mount -o loop,ro "$1/$FROM" "$1/../iso" 2>/dev/null
-         FROM="../iso/$LIVEKITNAME"
-      fi
-
-      # search for bundles in the mounted directory
-      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
-         # we found at least one bundle/module here
-         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
-         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/../:/:g"
-         return
-      fi
-
-      # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
-      umount "$1" 2>/dev/null
-      umount "$1" 2>/dev/null
-   done
-}
-
 # Modprobe network kernel modules until a working driver is found.
 # These drivers are (or used to be) probed in Slackware's initrd.
 # The function returns the first device found, yet it doesn't have
@@ -350,7 +310,7 @@ init_network_dev()
 download_data_pxe()
 {
    debug_log "download_data_pxe" "$*"
-   local CMD CLIENT SERVER GW MASK PORT ETH
+   local CMD CLIENT SERVER GW MASK PORT ETH PROTOCOL
 
    mkdir -p "$1/$LIVEKITNAME"
 
@@ -373,14 +333,65 @@ download_data_pxe()
       # well known IP address of Google public DNS service
       echo nameserver 8.8.8.8 >> /etc/resolv.conf
 
+      PROTOCOL=http
       wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
+      if [ $? -ne 0 ]; then
+         echo "Error downloading from http://$SERVER:$PORT, trying TFTP" >&2
+         PROTOCOL=tftp
+         tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
+      fi
 
       cat "$1/PXEFILELIST" | while read FILE; do
-         wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
+         if [ "$PROTOCOL" = "http" ]; then
+            wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
+         else
+            echo "* $FILE ..." >&2
+            tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
+         fi
       done
    done
 
    echo "$1/$LIVEKITNAME"
+}
+
+# Find LIVEKIT data by mounting all devices
+# If found, keep mounted, else unmount
+# $1 = data directory target (mount here)
+# $2 = data directory which contains compressed bundles
+#
+find_data_try()
+{
+   debug_log "find_data_try" "$*"
+
+   local DEVICE FS FROM OPTIONS
+
+   mkdir -p "$1"
+   blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
+      FROM="$2"
+      FS="$(device_bestfs "$DEVICE")"
+      OPTIONS="$(fs_options $FS)"
+      mount -r "$DEVICE" "$1" $FS $OPTIONS 2>/dev/null
+
+      # if the FROM parameter is actual file, mount it again as loop (eg. iso)
+      if [ -f "$1/$FROM" ]; then
+         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
+         mkdir -p "$1/../iso"
+         mount -o loop,ro "$1/$FROM" "$1/../iso" 2>/dev/null
+         FROM="../iso/$LIVEKITNAME"
+      fi
+
+      # search for bundles in the mounted directory
+      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+         # we found at least one bundle/module here
+         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
+         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/../:/:g"
+         return
+      fi
+
+      # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
+      umount "$1" 2>/dev/null
+      umount "$1" 2>/dev/null
+   done
 }
 
 # Retry finding LIVEKIT data several times,
