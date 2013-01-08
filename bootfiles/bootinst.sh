@@ -37,7 +37,9 @@ if [ "$DEV" != "$PART" ]; then
    (
       fdisk -l "$DEV" | fgrep "*" | fgrep "$DEV" | cut -d " " -f 1 \
         | sed -r "s:.*[^0-9]::" | xargs -I '{}' echo -ne "a\n{}\n"
-      echo -ne "a\n$PART\nw\n"
+      echo a
+      echo $PART
+      echo w
    ) | fdisk $DEV >/dev/null 2>&1
 fi
 
