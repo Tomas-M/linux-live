@@ -534,6 +534,13 @@ copy_to_ram()
    fi
 }
 
+# sort modules by number even if they are in subdirectory
+#
+sortmod()
+{
+   cat - | sed -r "s,(.*/(.*)),\\2:\\1," | sort -n | cut -d : -f 2-
+}
+
 # Mount squashfs filesystem bundles
 # and add them to union
 # $1 = directory where to search for bundles
@@ -548,7 +555,7 @@ union_append_bundles()
 
    echo_green_star
    echo "Adding bundles to union"
-   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sort -n ) | grep '[.]'$BEXT'$' | while read BUNDLE; do
+   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod) | grep '[.]'$BEXT'$' | while read BUNDLE; do
       echo "* $BUNDLE"
       BUN="$(basename "$BUNDLE")"
       mkdir -p "$2/$BUN"
