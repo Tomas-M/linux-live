@@ -24,8 +24,8 @@ Special files in bundle filesystem structure:
 
 
     /run/requires
-    /run/onmount.sh
-    /run/onumount.sh
-    /run/startcmd.sh
+    /run/activate.sh
+    /run/deactivate.sh
+    /run/startcmd.sh ?
 
 
