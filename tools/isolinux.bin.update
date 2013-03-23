@@ -2,6 +2,9 @@
 
 # This script will update the file ../bootfiles/isolinux.bin to match
 # your LiveKit name used in ../.config
+# Requires: wget, tar, gzip, make, gcc, nasm, perl, glibc-devel, libuuid-devel (e2fsprogs)
+
+set -e
 
 PKG=syslinux-4.06
 PKGTGZ=$PKG.tar.gz
@@ -10,20 +13,23 @@ DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
 . ../.config
 
 # download, unpack, and patch syslinux
-wget -c "$DL"
-tar -xf $PKGTGZ
-rm $PKGTGZ
+if [ ! -d $PKG ]; then
+	rm -rf $PKG
+	wget -c "$DL"
+	tar -xf $PKGTGZ
+fi
 
 cd $PKG
 
 sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/iso9660/iso9660.c
 sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/lib/loadconfig.c
 
-make -i
-cp core/isolinux.bin ../../bootfiles/isolinux.bin
+make
+cp -p core/isolinux.bin ../../bootfiles/isolinux.bin
 
 echo
 echo "Copying isolinux.bin to $(realpath ../../bootfiles/isolinux.bin)"
 
 cd ..
 rm -Rf $PKG
+rm $PKGTGZ
