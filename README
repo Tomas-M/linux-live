@@ -3,6 +3,8 @@ Linux Live Kit
 
 Use this set of scripts to turn your existing preinstalled Linux
 distribution into a Live Kit (formely known as Live CD).
+Make sure to extract and use it on a posix-compatible filesystem,
+since it creates some (sym)links and such.
 
 * Before you start building your Kit, edit the file ./.config
   Most importantly change the LIVEKITNAME variable.
