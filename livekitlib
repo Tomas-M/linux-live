@@ -181,7 +181,7 @@ init_aufs()
 {
    debug_log "init_aufs" "$*"
    # TODO maybe check here if aufs support is working at all
-   # and procude useful error message if user has no aufs
+   # and produce useful error message if user has no aufs
    modprobe aufs 2>/dev/null
 }
 
