@@ -23,6 +23,10 @@ since it creates some (sym)links and such.
   isolinux sources, patching them using your actual LIVEKITNAME and
   recompiling. This step is not needed if you plan to boot from USB only.
 
+* If you have tmpfs mounted on /tmp, make sure you have enough RAM
+  since LiveKit will store lots of data there. If you are low on RAM,
+  make sure /tmp is a regular on-disk directory.
+
 * When done, run the ./build script to create your Live Kit
   - it will create ISO and TAR files for you in /tmp
   - make sure you have enough free space in /tmp to handle it
