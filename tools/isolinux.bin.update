@@ -15,7 +15,7 @@ DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
 # download, unpack, and patch syslinux
 if [ ! -d $PKG ]; then
 	rm -rf $PKG
-	wget -c "$DL"
+	wget --no-check-certificate -c "$DL"
 	tar -xf $PKGTGZ
 fi
 
