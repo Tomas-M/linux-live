@@ -34,4 +34,4 @@ echo "Copying isolinux.bin to $(realpath ../../bootfiles/isolinux.bin)"
 
 cd ..
 rm -Rf $PKG
-rm $PKGTGZ
+rm -f $PKGTGZ
