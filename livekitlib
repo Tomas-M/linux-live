@@ -113,7 +113,7 @@ create_bundle()
 {
    debug_log "create_module" "$*"
    rm -f "$2" # overwrite, never append to existing file
-   mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
+   mksquashfs "$1" "$2" -comp "${COMP:-xz}" -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
 }
 
 
@@ -131,7 +131,7 @@ transfer_initramfs()
       cp -a /??* $SWITCH 2>/dev/null # only copy two-and-more-letter directories
       cd $SWITCH
       echo "This file indicates that we successfully escaped initramfs" > $SWITCH/lib/initramfs_escaped
-      exec switch_root -c /dev/console . $0
+      exec busybox switch_root -c /dev/console . $0
    fi
 }
 
@@ -247,7 +247,7 @@ device_bestfs()
    local FS
 
    FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
-   if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
+   if [ "$FS" = "msdos" -o "$FS" = "fat" ]; then
       FS="vfat"
    elif [ "$FS" = "ntfs" ]; then
       FS="ntfs-3g"
