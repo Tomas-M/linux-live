@@ -2,9 +2,14 @@
 
 # This script will update the file ../bootfiles/isolinux.bin to match
 # your LiveKit name used in ../.config
+#
 # Requires: wget, tar, gzip, make, gcc, nasm, perl, glibc-devel, libuuid-devel (e2fsprogs)
+#
+# On minimal debian, you can get deps like this:
+# apt-get install make binutils gcc nasm uuid-dev
 
 set -e
+
 
 PKG=syslinux-4.06
 PKGTGZ=$PKG.tar.gz
