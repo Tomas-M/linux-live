@@ -17,6 +17,7 @@ allow_only_root
 # check for mksquashfs with xz compression
 if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    echo "mksquashfs not found or doesn't support -comp xz, aborting, no changes made"
+   echo "you may consider installing squashfs-tools package"
    exit 1
 fi
 

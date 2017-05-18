@@ -16,6 +16,10 @@ since it creates some (sym)links and such.
   and reorganize isolinux.cfg to fit your needs (when editing the file,
   keep all paths in /boot/, it will be rellocated during LiveKit creation)
 
+* Linux Live Kit comes with precompiled static binaries in ./initramfs
+  directory. Those may be outdated but will work. You may replace them
+  by your own statically linked binaries, if you know how to compile them.
+
 * If you plan to boot your Live Kit from CD, you need to recompile
   syslinux.bin else it won't be able to boot your Live Kit from directory
   LIVEKITNAME. There is a script prepared for you which will handle all
