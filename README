@@ -40,5 +40,10 @@ since it creates some (sym)links and such.
   - it will create ISO and TAR files for you in /tmp
   - make sure you have enough free space in /tmp to handle it
 
+* You will need the following packages to be installed:
+  - squashfs-tools
+  - genisoimage or mkisofs
+  - zip
+
 
 Author: Tomas M. <http://www.linux-live.org>
