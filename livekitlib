@@ -155,7 +155,7 @@ modprobe_everything()
    debug_log "modprobe_everything" "$*"
 
    echo_green_star >&2
-   echo -n "Probing for hardware" >&2
+   echo "Probing for hardware" >&2
 
    find /lib/modules/ | while read MODULE; do
       modprobe $MODULE 2>/dev/null
