@@ -21,6 +21,15 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    exit 1
 fi
 
+MKISOFS=$(which mkisofs)
+if [ "$MKISOFS" = "" ]; then
+   MKISOFS=$(which genisoimage)
+fi
+if [ "$MKISOFS" = "" ]; then
+   echo "Cannot found mkisofs or genisoimage, stop"
+   exit 3
+fi
+
 # build initramfs image
 echo "Building intramfs image..."
 cd initramfs
@@ -63,7 +72,7 @@ fi
 
 ARCH=$(uname -m)
 
-mkisofs -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+$MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 >/dev/null 2>/dev/null
