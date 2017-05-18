@@ -6,6 +6,11 @@ distribution into a Live Kit (formely known as Live CD).
 Make sure to extract and use it on a posix-compatible filesystem,
 since it creates some (sym)links and such.
 
+* Store Linux Live kit in a directory which is not going to be included
+  in your live distro, else it would be copied to it. Best place
+  to store these scripts is in /tmp, but remember that your distro may
+  erase /tmp on reboot, so you may lose changes if you reboot your system.
+
 * Before you start building your Kit, edit the file ./.config
   Most importantly change the LIVEKITNAME variable.
 
