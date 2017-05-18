@@ -148,6 +148,21 @@ init_proc_sysfs()
    ln -sf /proc/mounts /etc/mtab
 }
 
+
+# modprobe all modules found in initial ramdisk
+modprobe_everything()
+{
+   debug_log "modprobe_everything" "$*"
+
+   echo_green_star >&2
+   echo -n "Probing for hardware" >&2
+
+   find /lib/modules/ | while read MODULE; do
+      modprobe $MODULE 2>/dev/null
+   done
+}
+
+
 # make sure some devices are there
 init_devs()
 {
@@ -632,14 +647,14 @@ change_root()
    if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
 
    # find chroot and init
-   if [ -x bin/chroot ]; then  CHROOT=bin/chroot; fi
-   if [ -x sbin/chroot ]; then  CHROOT=sbin/chroot; fi
-   if [ -x usr/bin/chroot ]; then  CHROOT=usr/bin/chroot; fi
-   if [ -x usr/sbin/chroot ]; then CHROOT=usr/sbin/chroot; fi
+   if [ -x bin/chroot -o -L bin/chroot ]; then  CHROOT=bin/chroot; fi
+   if [ -x sbin/chroot -o -L sbin/chroot ]; then  CHROOT=sbin/chroot; fi
+   if [ -x usr/bin/chroot -o -L usr/bin/chroot ]; then  CHROOT=usr/bin/chroot; fi
+   if [ -x usr/sbin/chroot -o -L usr/sbin/chroot ]; then CHROOT=usr/sbin/chroot; fi
    if [ "$CHROOT" = "" ]; then fatal "Can't find executable chroot command"; fi
 
-   if [ -x bin/init ]; then INIT=bin/init; fi
-   if [ -x sbin/init ]; then INIT=sbin/init; fi
+   if [ -x bin/init -o -L bin/init ]; then INIT=bin/init; fi
+   if [ -x sbin/init -o -L sbin/init  ]; then INIT=sbin/init; fi
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
    mkdir -p mnt/live

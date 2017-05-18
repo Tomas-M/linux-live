@@ -21,9 +21,11 @@ init_proc_sysfs
 
 debug_start
                                                                                                                                                        debug_shell
+# load some modules manually first, then modprobe everything we have
 init_devs
 init_aufs
 init_zram
+modprobe_everything
 
 # find data dir with filesystem bundles
 DATA="$(find_data 60 "$DATAMNT")"
