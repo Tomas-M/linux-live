@@ -95,6 +95,9 @@ copy_including_deps /$LMK/kernel/drivers/scsi/scsi_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/sg.*
 copy_including_deps /$LMK/kernel/drivers/ata
 
+# copy all custom-built modules
+copy_including_deps /$LMK/updates
+
 copy_including_deps /$LMK/modules.*
 
 
