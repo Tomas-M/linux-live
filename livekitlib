@@ -443,6 +443,7 @@ find_data()
    echo -n "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
    for timeout in $(seq 1 $1); do
       echo -n "." >&2
+      refresh_devs
       DATA="$(find_data_try "$2" "$FROM")"
       if [ "$DATA" != "" ]; then
          echo "" >&2
