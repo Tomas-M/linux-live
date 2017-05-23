@@ -29,6 +29,12 @@ copy_including_deps()
         copy_including_deps "$LIB"
      done
 
+   for MOD in $(find "$1" -type f | grep .ko); do
+      for DEP in $(cat /$LMK/modules.dep | fgrep /$(basename $MOD):); do
+         copy_including_deps "/$LMK/$DEP"
+      done
+   done
+
    shift
    if [ "$1" != "" ]; then
        copy_including_deps "$@"
@@ -66,17 +72,13 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 #copy_including_deps /usr/bin/strace
 #copy_including_deps /usr/bin/lsof
 
-# TODO: add all common filesystems which are NOT compiled in kernel already
-copy_including_deps /$LMK/kernel/fs/aufs
-copy_including_deps /$LMK/kernel/fs/squashfs
+copy_including_deps /$LMK/kernel/fs # all filesystems
 copy_including_deps /$LMK/kernel/drivers/staging/zsmalloc # needed by zram
-copy_including_deps /$LMK/kernel/drivers/staging/zram
+copy_including_deps /$LMK/kernel/drivers/block/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
-copy_including_deps /$LMK/kernel/fs/fuse
-copy_including_deps /$LMK/kernel/fs/isofs
-copy_including_deps /$LMK/modules.*
 
 # usb drivers
+copy_including_deps /$LMK/kernel/drivers/usb/storage/usb-storage.*
 copy_including_deps /$LMK/kernel/drivers/usb/host
 copy_including_deps /$LMK/kernel/drivers/usb/common
 copy_including_deps /$LMK/kernel/drivers/usb/core
@@ -92,6 +94,9 @@ copy_including_deps /$LMK/kernel/drivers/scsi/sd_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/scsi_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/sg.*
 copy_including_deps /$LMK/kernel/drivers/ata
+
+copy_including_deps /$LMK/modules.*
+
 
 find $INITRAMFS -name "*.ko.gz" -exec gunzip {} \;
 
@@ -119,3 +124,4 @@ echo $INITRAMFS.img
 
 cd ..
 rm -Rf $INITRAMFS
+#mv $INITRAMFS.img /tmp/initrfs.img

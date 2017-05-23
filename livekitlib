@@ -157,9 +157,7 @@ modprobe_everything()
    echo_green_star >&2
    echo "Probing for hardware" >&2
 
-   find /lib/modules/ | while read MODULE; do
-      modprobe $MODULE 2>/dev/null
-   done
+   find /lib/modules/ | fgrep .ko | xargs -n 1 modprobe 2>/dev/null
 }
 
 
@@ -316,7 +314,7 @@ init_network_dev()
 
    # If we are here, none of the above specified modules worked.
    # As a last chance, try to modprobe everything.
-   find /lib/modules/ | xargs -n 1 modprobe
+   modprobe_everything
    cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
 }
 
