@@ -158,6 +158,17 @@ modprobe_everything()
    echo "Probing for hardware" >&2
 
    find /lib/modules/ | fgrep .ko | xargs -n 1 modprobe 2>/dev/null
+   refresh_devs
+}
+
+
+refresh_devs()
+{
+   debug_log "refresh_devs" "$*"
+   if [ -r /proc/sys/kernel/hotplug ]; then
+      echo /sbin/mdev > /proc/sys/kernel/hotplug
+   fi
+   mdev -s
 }
 
 
@@ -165,12 +176,11 @@ modprobe_everything()
 init_devs()
 {
    debug_log "init_devs" "$*"
-   echo /sbin/mdev > /proc/sys/kernel/hotplug
-   mdev -s
    modprobe zram 2>/dev/null
    modprobe loop 2>/dev/null
    modprobe squashfs 2>/dev/null
    modprobe fuse 2>/dev/null
+   refresh_devs
 }
 
 # Activate zram (auto-compression of RAM)
@@ -198,6 +208,7 @@ init_aufs()
    # TODO maybe check here if aufs support is working at all
    # and produce useful error message if user has no aufs
    modprobe aufs 2>/dev/null
+   refresh_devs
 }
 
 # Setup empty union
