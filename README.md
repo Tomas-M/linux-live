@@ -1,9 +1,9 @@
-Linux Live Kit Improved.
+## Linux Live Kit Improved.
 This set of scripts will help you to 
 build your own Live Kit distro. This project is based on 
 the original Linux Live Kit. <http://linux-live.org>
 
-Some information you want to know:
+## Some information you want to know:
 + Store Linux Live Kit in a directory which is not going to be included
   in your live distro, else it would be copied to it. 
   The best practice is to make a directory such 
