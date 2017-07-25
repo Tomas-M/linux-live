@@ -3,28 +3,39 @@ This set of scripts will help you to
 build your own Live Kit distro. This project is based on 
 the original Linux Live Kit. <http://linux-live.org>
 
-Here's what you need to do:
-Please note: 
-Make sure to extract and use it on a POSIX-compatible filesystem,
-since it creates some (sym)links and such.
+NOTE: 
+  Make sure to extract and use it on a POSIX-compatible filesystem,
+  since it creates some (sym)links and such.
 
-Here's you what you need to watch out before building:
+Some information you want to know:
+
+Make sure to extract and use it on a POSIX-compatible filesystem,
+since it will create symlinks and such.
 + Store Linux Live Kit in a directory which is not going to be included
   in your live distro, else it would be copied to it. Best practice is to
   make a directory such as /tmp/a and put all the files there.
-
+  NOTE:
+    Make sure to extract and use it on a POSIX-compatible filesystem,
+    since it will create symlinks and such.
+    
 + Before you start building your Kit, edit the ./.config file
   Most importantly change the LIVEKITNAME variable.
 
-+ Make sure your kernel is in /boot/vmlinuz or change the path in ./.config
-  Your kernel must support squashfs and aufs. 
-  Debian Jessie's kernel has both supported out-of-the-box.
++ Make sure you are pointing to the right kernel. If in doubt, change the path in ./.config
+  Your kernel must support squashfs and aufs, or else you will get an error 
+  both while building, and when you actually boot the Live Kit.
+  
+  PROTIP:
+    Debian Jessie's kernel has both supported out-of-the-box.
+    You might consider using Debian Jessie as a base, but it's not required.
 
-+ You may also wish to replace boot background in ./bootfiles/bootlogo.png, 
-  and reorganize syslinux.cfg to fit your needs. 
-Please note: 
-  When editing the .cfg file, make sure to keep all paths pointing to /boot/, since 
-  it will be replaced to /LIVEKITNAME/boot/ during the build session.
++ You may also wish to replace boot background in ./bootfiles/bootlogo.png
+  and edit and/or tweak syslinux.cfg to fit your needs. 
+  
+  NOTE:
+    When editing the configuration file, make sure to keep all paths 
+    pointing to /boot/, since it will be replaced to /LIVEKITNAME/boot/ 
+    during the build session.
 
 + Linux Live Kit comes with precompiled static binaries in ./initramfs
   directory. Those may be outdated but will work. You may replace them
@@ -41,9 +52,9 @@ Please note:
 + If you have tmpfs mounted on /tmp, make sure you have enough (or maybe even 
   a lot of) RAM, since Live Kit will store lots of data to the target. 
   If you don't have enough (or even went out of) RAM, make sure 
-  /tmp is a regular on-disk directory.
+  that /tmp is a regular on-disk directory.
 
-+ When done, run the ./build script to create your Live Kit
++ When you're ready run the ./build script to create your Live Kit
   - it will create ISO and ZIP files for you in /tmp
   - make sure you have enough free space in /tmp to handle it
 
