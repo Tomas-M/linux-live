@@ -1,11 +1,12 @@
 # Linux Live Kit Improved.
-## This set of scripts will help you to 
-## build your own Live Kit distro. This project is based on 
-## the original Linux Live Kit. <http://linux-live.org>
+This set of scripts will help you to 
+build your own Live Kit distro. This project is based on 
+the original Linux Live Kit. <http://linux-live.org>
 
 ### Here's what you need to do:
-### NOTE: Make sure to extract and use it on a POSIX-compatible filesystem,
-      since it creates some (sym)links and such.
+Please note: 
+Make sure to extract and use it on a POSIX-compatible filesystem,
+since it creates some (sym)links and such.
 
 ### Here's you what you need to watch out before building:
 + Store Linux Live Kit in a directory which is not going to be included
@@ -21,7 +22,7 @@
 
 + You may also wish to replace boot background in ./bootfiles/bootlogo.png, 
   and reorganize syslinux.cfg to fit your needs. 
-### NOTE: 
+Please note: 
   When editing the .cfg file, make sure to keep all paths pointing to /boot/, since 
   it will be replaced to /LIVEKITNAME/boot/ during the build session.
 
