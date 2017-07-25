@@ -115,7 +115,7 @@ echo_livekit_msg "build: Copying kernel..."
 cp $VMLINUZ $BOOT/
 
 # Copy files from include_bund/, but 
-# do not skip bundule creation
+# do not skip bundle creation
 #
 if [ -n "$(ls -A include_bund/ | grep ".$BEXT")" ]; then
     echo_livekit_msg "build: Copying bundles from include_bund/ ..."
