@@ -77,7 +77,7 @@ echo " Live Kit information:"
 echo "  > Kernel version: $KERNEL"
 echo "  > Architecture: $ARCH"
 echo "  > Live Kit name: $LIVEKITNAME"
-echo "  > Bundule extension: '.$BEXT'"
+echo "  > Bundle extension: '.$BEXT'"
 
 read -p "Press Enter to continue or press Ctrl-C to cancel... " junk
 
@@ -97,7 +97,7 @@ echo_livekit_msg "build: Preparing boot files..."
 BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
 mkdir -p "$BOOT"/../changes
-mkdir -p "$BOOT"/../bundules
+mkdir -p "$BOOT"/../bundles
 mv "$INITRAMFS" $BOOT/initramfs.img
 cp bootfiles/* $BOOT
 
@@ -121,7 +121,7 @@ if [ -n "$(ls -A include_bund/ | grep ".$BEXT")" ]; then
     echo_livekit_msg "build: Copying bundles from include_bund/ ..."
     ls -A include_bund/ | grep ".$BEXT" | \
     while read BUND; do
-        cp $BUND "$LIVEKITDATA"/"$LIVEKITNAME"/bundules/
+        cp $BUND "$LIVEKITDATA"/"$LIVEKITNAME"/bundles/
     done
 fi
 
