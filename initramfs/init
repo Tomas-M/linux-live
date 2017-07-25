@@ -1,6 +1,6 @@
 #!/bin/sh
-# Initial script for Linux Live Kit
-# Author: Tomas M <http://www.linux-live.org/>
+# Initial script for Linux Live Kit / Linux Live Kit Improved
+# Modifier: "JohnDaH4x0r"
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -15,12 +15,19 @@ UNION=$MEMORY/union
 DATAMNT=$MEMORY/data
 BUNDLES=$MEMORY/bundles
 
-header "Live Kit init <http://www.linux-live.org/>"
+clear
+
+echo_bold "Live Kit Improved v1.0 - INIT"
 
 init_proc_sysfs
 
+# initialise debugging
 debug_start
-                                                                                                                                                       debug_shell
+dbg_shell_start
+
+# 1st round debug shell (do not touch!)
+debug_shell
+
 # load some modules manually first, then modprobe everything we have
 init_devs
 init_aufs
@@ -29,27 +36,42 @@ modprobe_everything
 
 # find data dir with filesystem bundles
 DATA="$(find_data 60 "$DATAMNT")"
-                                                                                                                                                      debug_shell
+
+# 2nd round debug shell (do not touch!)
+debug_shell
+
 # setup persistent changes, if possible
 persistent_changes "$DATA" "$CHANGES"
-                                                                                                                                                      debug_shell
+
+# 3rd round debugg shell
+debug_shell
+
 # copy to RAM if needed
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
-                                                                                                                                                      debug_shell
+ 
 # init aufs union
 init_union "$CHANGES" "$UNION"
-                                                                                                                                                      debug_shell
+
+# 4th debug shell round
+debug_shell
+
 # add data to union
 union_append_bundles "$DATA" "$BUNDLES" "$UNION"
-                                                                                                                                                      debug_shell
+
+# 5th debug shell round
+debug_shell
 # rootcopy
 copy_rootcopy_content "$DATA" "$UNION"
 
 # create empty fstab
 fstab_create "$UNION"
-                                                                                                                                                      debug_shell
-header "Live Kit done, starting $LIVEKITNAME"
+
+# 6th debug shell round
+debug_shell
+
+clear
+echo_bold "Live Kit Improved v1.0 - INIT-DONE"
 change_root "$UNION"
 
-header "!!ERROR occured, you shouldn't be here.!!"
-/bin/sh
+# If everything fails, panic immidiately
+fatal "Unknown error!"

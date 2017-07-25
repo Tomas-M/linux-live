@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# This script will update the file ../bootfiles/isolinux.bin to match
+# your LiveKit name used in ../.config
+#
+# Requires: wget, tar, gzip, make, gcc, nasm, perl, glibc-devel, libuuid-devel (e2fsprogs)
+#
+# On minimal debian, you can get deps like this:
+# apt-get install make binutils gcc nasm uuid-dev
+
+set -e
+
+
+PKG=syslinux-4.06
+PKGTGZ=$PKG.tar.gz
+DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
+
+. ../.config
+
+# download, unpack, and patch syslinux
+if [ ! -d $PKG ]; then
+	rm -rf $PKG
+	wget --no-check-certificate -c "$DL"
+	tar -xf $PKGTGZ
+fi
+
+cd $PKG
+
+sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/iso9660/iso9660.c
+sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/lib/loadconfig.c
+
+make \
+	${CC:+CC="$CC"}
+echo
+echo "Copying isolinux.bin to $(readlink -f '../../bootfiles/isolinux.bin')"
+cp -p core/isolinux.bin ../../bootfiles/isolinux.bin
+
+echo "Cleaning up..."
+
+cd ..
+rm -Rf $PKG
+rm -f $PKGTGZ
+
+echo "Done!"

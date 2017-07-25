@@ -1,65 +1,122 @@
 #!/bin/sh
 
 # Functions library :: for Linux Live Kit scripts
-# Author: Tomas M. <http://www.linux-live.org>
-#
+# Original author: Tomas M. <http://www.linux-live.org>
+# Modified by: 'JohnDaH4x0r' <terencedoesmc12 AT gmail DOT com>
 
-# =================================================================
-# debug and output functions
-# =================================================================
+# related to build script
+# get_exclude: Generate exclude arguments for 'mksquashfs'
+# $1: the exclude list ("$EXCLUDE", if you use .config)
 
+get_exclude()
+{
+    EXCLUDE_LIST="$1"
+    PARENT_DIR="$(echo "$2" | tr -s "/")"
+
+    if [ -z "$PARENT_DIR" ]; then
+        return 1
+    elif [ "$PARENT_DIR" = "/" ]; then
+        return 1
+    fi
+
+    echo "$EXCLUDE_LIST" | tr " " "\n" | grep "$PARENT_DIR" | \
+    cut -d ":" -f 2 | while read KEY; do
+        echo -n "-e $KEY "
+    done
+}
+
+# Output functions
+BLUE="\x1b[1;34m"
+YELLOW="\x1b[1;33m"
+ORANGE="\x1b[0;33m"
+GREEN="\x1b[1;32m"
+BOLD="\x1b[0;1m"
+RED="\x1b[1;31m"
+NC="\x1b[0m"
+
+# echo-related
 debug_start()
 {
-   if grep -q debug /proc/cmdline; then
-      DEBUG_IS_ENABLED=1
-   else
-      DEBUG_IS_ENABLED=
-   fi
+    if grep -q debug /proc/cmdline; then
+        DEBUG_IS_ENABLED=1
+    else
+        DEBUG_IS_ENABLED=
+    fi
 }
 
+dbg_shell_start()
+    if grep -q 'dbg_shell' /proc/cmdline; then
+        DBG_SHELL=1
+    else
+        DBG_SHELL=
+    fi
+}
+    
 debug_log()
 {
-   if [ "$DEBUG_IS_ENABLED" ]; then
-      echo "- debug: $*" >&2
-      log "- debug: $*"
-   fi
+    if [ "$DBG_SHELL" ]; then
+        echo -e "[ ${GREEN}"'debug'"${NC} ]: $@" >&2
+        log "debug_log: $*"
+    fi
 }
 
-# header
+# echo fatal tag
+# $1 = text to show
+echo_fatal()
+{
+    echo -e "[${RED}"' fatal '"${NC}] $@" >&2
+}
+
+# echo bold
 # $1 = text to show
 #
-header()
+echo_bold()
 {
-   echo "[0;1m""$@""[0;0m"
+    echo -e "$BOLD""$@""$NC"
 }
 
-
-# echo green star
-#
-echo_green_star()
+# echo livekit tag
+echo_livekit()
 {
-   echo -ne "[0;32m""* ""[0;39m"
+    echo -ne "[${BLUE}"'livekit'"${NC}] "
+}
+
+echo_livekit_msg()
+{
+    echo -e "[${BLUE}"'livekit'"${NC}] $@"
+}
+
+# echo error
+echo_err()
+{
+    echo -e "[${RED}"' error '"${NC}] $@" >&2
+}
+
+# echo warn
+echo_warn()
+{
+    echo -e "[${YELLOW}"' warn! '"${NC}] $@" >&2
 }
 
 # log - store given text in /var/log/livedbg
 log()
 {
-   echo "$@" 2>/dev/null >>/var/log/livedbg
+    echo "$@" 2>/dev/null >>/var/log/livekit-log
 }
 
 echolog()
 {
-   echo "$@"
-   log "$@"
+    echo "$@"
+    log "echolog: $@"
 }
 
 # show information about the debug shell
 show_debug_banner()
 {
-   echo
-   echo "====="
-   echo ": Debugging started. Here is the root shell for you."
-   echo ": Type your desired commands or hit Ctrl+D to continue booting."
+   echo_livekit >&2
+   echo "Debugging shell started." >&2
+   echo "The root shell is prepared for you!" >&2
+   echo "Type your desired commands or press Ctrl-D to continue booting." >&2
    echo
 }
 
@@ -68,29 +125,21 @@ show_debug_banner()
 #
 debug_shell()
 {
-   if [ "$DEBUG_IS_ENABLED" ]; then
-      show_debug_banner
-      setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
-      echo
-   fi
+    if [ "$DEBUG_IS_ENABLED" ]; then
+        show_debug_banner
+        setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
+        echo
+    fi
 }
 
 fatal()
 {
-   echolog
-   header "Fatal error occured - $1"
-   echolog "Something went wrong and we can't continue. This should never happen."
-   echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
-   echolog
-   setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
-}
-
-# get value of commandline parameter $1
-# $1 = parameter to search for
-#
-cmdline_value()
-{
-   cat /proc/cmdline | egrep -o "(^|[[:space:]])$1=[^[:space:]]+" | tr -d " " | cut -d "=" -f 2- | tail -n 1
+    log "FatalError: $@"
+    echo_fatal "$@"
+    echo -e "${RED}"'Please reboot this system now!'"${NC}"
+    echo -e "${BOLD}"'Live Kig Log: /var/log/livekit-log'"${NC}"
+    echo -e "${BOLD}"'To get more information, please consult Live Kit Log for more info.'"${NC}"
+    setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
 }
 
 
@@ -98,22 +147,44 @@ cmdline_value()
 #
 allow_only_root()
 {
-  if [ "0$UID" -ne 0 ]; then
-     echo "Only root can run $(basename $0)"; exit 1
-  fi
+    if [ "0$UID" -ne 0 ]; then
+        echo_err "Only root can run `basename $0`"; exit 1
+    fi
 }
 
-# Create bundle
+# Make bundule
 # call mksquashfs with apropriate arguments
 # $1 = directory which will be compressed to squashfs bundle
 # $2 = output file
 # $3..$9 = optional arguments like -keep-as-directory or -b 123456789
 #
-create_bundle()
+mkbund()
 {
-   debug_log "create_module" "$*"
-   rm -f "$2" # overwrite, never append to existing file
-   mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
+    debug_log "mkbund" "$*"
+
+    if [ -e "$2" ]; then
+        echo_warn "mkbund: `basename $2`: File already exists!"
+        echo_warn "mkbund: `basemane $2`: Deleting file..."
+        rm -f "$2"
+    else
+        echo_livekit_msg "mkbund: `basename $2`: Making new bundle..."
+    fi
+
+    echo_livekit_msg "mkbund: SquashFS compression: 1024k - XZ" >&2
+    echo_livekit_msg "mkbund: `basename $2`: Compressing bundle..." >&2
+    mksquashfs "$1" "$2" -comp xz -b 1024k $3 $4 $5 $6 $7 $8 $9 >/dev/null || \
+    (echo_err "mkbund: Failed to make bundle!" && exit 1)
+}
+
+# Now, for the Live Kit system-related stuff
+
+# get value of kernel cmdline parameter $1
+# $1 = parameter to search for
+#
+cmdline_value()
+{
+   cat /proc/cmdline | egrep -o "(^|[[:space:]])$1=[^[:space:]]+" | \
+   tr -d " " | cut -d "=" -f 2- | tail -n 1
 }
 
 
@@ -124,7 +195,8 @@ create_bundle()
 transfer_initramfs()
 {
    if [ ! -r /lib/initramfs_escaped ]; then
-      echo "switch root from initramfs to ramfs"
+      echo_livekit
+      echo "Switching from initramfs to tmpfs..."
       SWITCH=/m # one letter directory
       mkdir -p $SWITCH
       mount -t tmpfs -o size="100%" tmpfs $SWITCH
@@ -154,10 +226,9 @@ modprobe_everything()
 {
    debug_log "modprobe_everything" "$*"
 
-   echo_green_star >&2
-   echo "Probing for hardware" >&2
+   echo_livekit_msg "Probing for hardware..." >&2
 
-   find /lib/modules/ | fgrep .ko | xargs -n 1 modprobe 2>/dev/null
+   find /lib/modules/ | fgrep '.ko' | xargs -n 1 modprobe 2>/dev/null
    refresh_devs
 }
 
@@ -170,7 +241,6 @@ refresh_devs()
    fi
    mdev -s
 }
-
 
 # make sure some devices are there
 init_devs()
@@ -190,8 +260,7 @@ init_devs()
 init_zram()
 {
    debug_log "init_zram" "$*"
-   echo_green_star
-   echo "Setting dynamic RAM compression using ZRAM if available"
+   echo_livekit_msg "Setting up ZRAM as swap if available..."
    if [ -r /sys/block/zram0/disksize ]; then
       echo 536870912 > /sys/block/zram0/disksize # 512MB
       mkswap /dev/zram0 >/dev/null
@@ -204,11 +273,18 @@ init_zram()
 #
 init_aufs()
 {
-   debug_log "init_aufs" "$*"
-   # TODO maybe check here if aufs support is working at all
-   # and produce useful error message if user has no aufs
-   modprobe aufs 2>/dev/null
-   refresh_devs
+    debug_log "init_aufs" "$*"
+    # TODO maybe check here if aufs support is working at all
+    # and produce useful error message if user has no aufs
+    modprobe aufs 2>/dev/null
+
+    # if aufs module failed to load, panic immidiately
+    if [ $? -ne 0 ]; then
+        fatal "Failed to load AUFS module!"
+    fi
+    
+    # finally, refresh all devices
+    refresh_devs
 }
 
 # Setup empty union
@@ -219,8 +295,7 @@ init_union()
 {
    debug_log "init_union" "$*"
 
-   echo_green_star
-   echo "Setting up union using AUFS 3"
+   echo_livekit_msg "Initialising AUFS union..."
    mkdir -p "$1"
    mkdir -p "$2"
    mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
@@ -272,8 +347,8 @@ device_bestfs()
    debug_log "device_bestfs" "$*"
    local FS
 
-   FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
-   if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
+   FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z] | cut -d ' ' -f 1)"
+   if [ "$FS" = "msdos" -o "$FS" = "fat" ]; then
       FS="vfat"
    elif [ "$FS" = "ntfs" ]; then
       FS="ntfs-3g"
@@ -306,6 +381,7 @@ fs_options()
 init_network_dev()
 {
    debug_log "init_network_dev" "$*"
+   echo_livekit_msg "Preparing networking device(s)..." >&2
    local MODULE ETH
 
    for MODULE in 3c59x acenic de4x5 e1000 e1000e e100 epic100 hp100 \
@@ -325,6 +401,7 @@ init_network_dev()
 
    # If we are here, none of the above specified modules worked.
    # As a last chance, try to modprobe everything.
+   echo_warn "No networking kernel module found!"
    modprobe_everything
    cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
 }
@@ -341,8 +418,7 @@ download_data_pxe()
    mkdir -p "$1/$LIVEKITNAME"
 
    cmdline_value ip | while IFS=":" read CLIENT SERVER GW MASK PORT; do
-      echo_green_star >&2
-      echo "Downloading files from $SERVER ..." >&2
+      echo_livekit_msg "Downloading files from $SERVER ..." >&2
 
       ETH=$(init_network_dev)
       if [ "$PORT" = "" ]; then PORT="7529"; fi
@@ -362,7 +438,7 @@ download_data_pxe()
       PROTOCOL=http
       wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
       if [ $? -ne 0 ]; then
-         echo "Error downloading from http://$SERVER:$PORT, trying TFTP" >&2
+         echo_warn "Failed to download from http://$SERVER:$PORT, trying TFTP..."
          PROTOCOL=tftp
          tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
       fi
@@ -371,7 +447,7 @@ download_data_pxe()
          if [ "$PROTOCOL" = "http" ]; then
             wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
          else
-            echo "* $FILE ..." >&2
+            echo_livekit_msg "PXE: ${FILE}..." >&2
             tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
          fi
       done
@@ -427,30 +503,29 @@ find_data_try()
 #
 find_data()
 {
-   debug_log "find_data" "$*"
+    debug_log "find_data" "$*"
 
-   local DATA FROM
+    local DATA FROM
 
-   if [ "$(cmdline_value ip)" != "" ]; then
-      download_data_pxe "$2"
-      return
-   fi
+    if [ "$(cmdline_value ip)" != "" ]; then
+        download_data_pxe "$2"
+        return
+    fi
 
-   FROM="$(cmdline_value from)"
-   if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
-
-   echo_green_star >&2
-   echo -n "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
-   for timeout in $(seq 1 $1); do
+    FROM="$(cmdline_value from)"
+    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
+    echo_livekit >&2
+    echo "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
+    for timeout in $(seq 1 $1); do
       echo -n "." >&2
       refresh_devs
       DATA="$(find_data_try "$2" "$FROM")"
-      if [ "$DATA" != "" ]; then
-         echo "" >&2
-         echo "* Found on $(mounted_device "$2")" >&2
-         echo "$DATA"
-         return
-      fi
+    if [ "$DATA" != "" ]; then
+        echo
+        echo_livekit_msg "$LIVEKITNAME data found on $(mounted_device "$2")" >&2
+        echo "$DATA"
+        return
+    fi
       sleep 1
    done
    echo "" >&2
@@ -467,52 +542,51 @@ find_data()
 #
 persistent_changes()
 {
-   debug_log "persistent_changes" "$*"
+    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2
+    local CHANGES T1 T2
 
-   CHANGES="$1/$(basename "$2")"
-   T1="$CHANGES/.empty"
-   T2="$T1"2
+    CHANGES="$1/$(basename "$2")"
+    T1="$CHANGES/.perch-test.dat"
+    T2="${T1}-clone.dat"
 
-   # Setup the directory anyway, it will be used in all cases
-   mkdir -p "$2"
+    # Setup the directory anyway, it will be used in all cases
+    mkdir -p "$2"
 
-   # If persistent changes are not requested, end here
-   if grep -vq perch /proc/cmdline; then
-      return
-   fi
+    # If persistent changes are not requested, end here
+    if grep -vq perch /proc/cmdline; then
+        return
+    fi
 
-   # check if changes directory exists and is writable
-   touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
+    # check if changes directory exists and is writable
+    touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
 
-   # if not, simply return back
-   if [ $? -ne 0 ]; then
-      echo "* Persistent changes not writable or not used"
-      return
-   fi
+    # if not, simply return back
+    if [ $? -ne 0 ]; then
+        echo_warn "Persistent changes not writable or not used."
+        return
+    fi
+    echo_livekit_msg "Testing persistent changes for POSIX compatibility..." >&2
+    touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
+    chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
+    chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
+    rm "$T1" "$T2" 2>/dev/null
 
-   echo_green_star
-   echo "Testing persistent changes for posix compatibility"
-   touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
-   chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
-   chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
-   rm "$T1" "$T2" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo_warn "File system is not POSIX-compatible!" >&2
+        echo_livekit_msg "Activating DynFileFS persistent changes..." >&2
+        rm "$T1" "$T2" 2>/dev/null
 
-   if [ $? -ne 0 ]; then
-      echo "* Activating dynamic sized storage for persistent changes"
-      rm "$T1" "$T2" 2>/dev/null
-
-      mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
-      if [ "$(device_bestfs "$2/loop.fs" | tr -d " ")" = "-t" ]; then
-         mke2fs -F "$2/loop.fs" >/dev/null
-      fi
-      mount -o loop,sync "$2/loop.fs" "$2"
-      rmdir "$2/lost+found" 2>/dev/null
-   else
-      echo "* Activating native persistent changes"
-      mount --bind "$CHANGES" "$2"
-   fi
+        mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
+        if [ "$(device_bestfs "$2/loop.fs" | tr -d " ")" = "-t" ]; then
+            mke2fs -F "$2/loop.fs" >/dev/null
+        fi
+        mount -o loop,sync "$2/loop.fs" "$2"
+        rmdir "$2/lost+found" 2>/dev/null
+    else
+        echo_livekit_msg "Activating native persistent changes..." >&2
+        mount --bind "$CHANGES" "$2"
+    fi
 }
 
 # Copy content of rootcopy directory to union
@@ -520,13 +594,13 @@ persistent_changes()
 # $2 = union directory
 copy_rootcopy_content()
 {
-   debug_log "copy_rootcopy_content" "$*"
+    debug_log "copy_rootcopy_content" "$*"
 
-   if [ "$(ls -1 "$1/rootcopy/" 2>/dev/null)" != "" ]; then
-      echo_green_star
-      echo "Copying content of rootcopy directory..."
-      cp -a "$1"/rootcopy/* "$2"
-   fi
+    if [ "$(ls -1 "$1/rootcopy/" 2>/dev/null)" != "" ]; then
+        echo_livekit
+        echo "Copying content of rootcopy directory..."
+        cp -a "$1"/rootcopy/* "$2"
+    fi
 }
 
 # Copy data to RAM if requested
@@ -535,63 +609,63 @@ copy_rootcopy_content()
 #
 copy_to_ram()
 {
-   debug_log "copy_to_ram" "$*"
+    debug_log "copy_to_ram" "$*"
 
-   local MDIR MDEV RAM CHANGES
+    local MDIR MDEV RAM CHANGES
 
-   if grep -vq toram /proc/cmdline; then
-      echo "$1"
-      return
-   fi
+    if grep -vq 'copy2ram' /proc/cmdline; then
+        echo "$1"
+        return
+    fi
 
-   echo "* Copying $LIVEKITNAME data to RAM..." >&2
-   RAM="$(dirname "$2")"/toram
-   mkdir  -p "$RAM"
-   cp -a "$1"/* "$RAM"
-   echo "$RAM"
+    echo_livekit_msg "Copying $LIVEKITNAME data to RAM..." >&2
+    RAM="$(dirname "$2")"/copy_to_ram
+    mkdir  -p "$RAM"
+    cp -a "$1"/* "$RAM"
+    echo "$RAM"
 
-   MDIR="$(mounted_dir "$1")"
-   MDEV="$(mounted_device "$1")"
-   MDEV="$(losetup $MDEV 2>/dev/null | cut -d " " -f 3)"
-   umount "$MDIR" 2>/dev/null
+    MDIR="$(mounted_dir "$1")"
+    MDEV="$(mounted_device "$1")"
+    MDEV="$(losetup $MDEV 2>/dev/null | cut -d " " -f 3)"
+    umount "$MDIR" 2>/dev/null
 
-   if [ "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
-      MDEV="$(mounted_device "$MDEV")"
-      umount "$MDEV" 2>/dev/null
-   fi
+    if [ "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
+        MDEV="$(mounted_device "$MDEV")"
+        umount "$MDEV" 2>/dev/null
+    fi
 }
 
 # load filter
 #
 filter_load()
 {
-   local FILTER
-   FILTER=$(cmdline_value load)
-   if [ "$FILTER" = "" ]; then
-      cat -
-   else
-      cat - | egrep "$FILTER"
-   fi
+    local FILTER
+    FILTER=$(cmdline_value load)
+    if [ "$FILTER" = "" ]; then
+        cat -
+    else
+        cat - | egrep "$FILTER"
+    fi
 }
 
 # noload filter
 #
 filter_noload()
 {
-   local FILTER
-   FILTER=$(cmdline_value noload)
-   if [ "$FILTER" = "" ]; then
-      cat -
-   else
-      cat - | egrep -v "$FILTER"
-   fi
+    local FILTER
+    FILTER=$(cmdline_value noload)
+    if [ "$FILTER" = "" ]; then
+        cat -
+    else
+        cat - | egrep -v "$FILTER"
+    fi
 }
 
 # sort modules by number even if they are in subdirectory
 #
 sortmod()
 {
-   cat - | sed -r "s,(.*/(.*)),\\2:\\1," | sort -n | cut -d : -f 2-
+    cat - | sed -r "s,(.*/(.*)),\\2:\\1," | sort -n | cut -d : -f 2-
 }
 
 # Mount squashfs filesystem bundles
@@ -602,19 +676,27 @@ sortmod()
 #
 union_append_bundles()
 {
-   debug_log "union_append_bundles" "$*"
+    debug_log "union_append_bundles" "$*"
 
-   local BUN
+    local BUN
 
-   echo_green_star
-   echo "Adding bundles to union"
-   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod | filter_load) | grep '[.]'$BEXT'$' | filter_noload | while read BUNDLE; do
-      echo "* $BUNDLE"
-      BUN="$(basename "$BUNDLE")"
-      mkdir -p "$2/$BUN"
-      mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUN"
-      mount -o remount,add:1:"$2/$BUN" aufs "$3"
-   done
+    echo_livekit >&2
+    echo "Appending bundles to union..." >&2
+
+    # Just tell me why! Why be compact?!?
+    ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | \
+    sortmod | filter_load) | grep '[.]'$BEXT'$' |\
+    filter_noload | \
+    while read BUNDLE; do
+        echo_livekit_msg "Appending: $BUNDLE" >&2
+
+        BUN="$(basename "$BUNDLE")"
+        mkdir -p "$2/$BUN"
+
+        # It now depends on your kernel!
+        mount -o loop -t squashfs "$1/$BUNDLE" "$2/$BUN"
+        mount -o remount,add:1:"$2/$BUN" aufs "$3"
+    done
 }
 
 # Create empty fstab properly
@@ -622,15 +704,15 @@ union_append_bundles()
 #
 fstab_create()
 {
-   debug_log "fstab_create" "$*"
+    debug_log "fstab_create" "$*"
 
-   local FSTAB
-   FSTAB="$1/etc/fstab"
-   echo aufs / aufs defaults 0 0 > $FSTAB
-   echo proc /proc proc defaults 0 0 >> $FSTAB
-   echo sysfs /sys sysfs defaults 0 0 >> $FSTAB
-   echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
-   echo tmpfs /dev/shm tmpfs defaults 0 0 >> $FSTAB
+    local FSTAB
+    FSTAB="$1/etc/fstab"
+    echo aufs / aufs defaults 0 0 > $FSTAB
+    echo proc /proc proc defaults 0 0 >> $FSTAB
+    echo sysfs /sys sysfs defaults 0 0 >> $FSTAB
+    echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
+    echo tmpfs /dev/shm tmpfs defaults 0 0 >> $FSTAB
 }
 
 
@@ -639,36 +721,36 @@ fstab_create()
 #
 change_root()
 {
-   debug_log "change_root" "$*"
+    debug_log "change_root" "$*"
+    echo_livekit_msg "Changing root..." >&2
+    umount /proc
+    umount /sys
 
-   umount /proc
-   umount /sys
+    cd "$1"
 
-   cd "$1"
+    # make sure important device files and directories are in union
+    mkdir -p boot dev proc sys tmp mnt run
+    chmod 1777 tmp
+    if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
+    if [ ! -e dev/tty ]; then mknod dev/tty c 5 0; fi
+    if [ ! -e dev/tty0 ]; then mknod dev/tty0 c 4 0; fi
+    if [ ! -e dev/tty1 ]; then mknod dev/tty1 c 4 1; fi
+    if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
+    if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
 
-   # make sure important device files and directories are in union
-   mkdir -p boot dev proc sys tmp mnt run
-   chmod 1777 tmp
-   if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
-   if [ ! -e dev/tty ]; then mknod dev/tty c 5 0; fi
-   if [ ! -e dev/tty0 ]; then mknod dev/tty0 c 4 0; fi
-   if [ ! -e dev/tty1 ]; then mknod dev/tty1 c 4 1; fi
-   if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
-   if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
+    # find chroot and init
+    if [ -x bin/chroot -o -L bin/chroot ]; then  CHROOT=bin/chroot; fi
+    if [ -x sbin/chroot -o -L sbin/chroot ]; then  CHROOT=sbin/chroot; fi
+    if [ -x usr/bin/chroot -o -L usr/bin/chroot ]; then  CHROOT=usr/bin/chroot; fi
+    if [ -x usr/sbin/chroot -o -L usr/sbin/chroot ]; then CHROOT=usr/sbin/chroot; fi
+    if [ "$CHROOT" = "" ]; then fatal "chroot: Executable not found!"; fi
 
-   # find chroot and init
-   if [ -x bin/chroot -o -L bin/chroot ]; then  CHROOT=bin/chroot; fi
-   if [ -x sbin/chroot -o -L sbin/chroot ]; then  CHROOT=sbin/chroot; fi
-   if [ -x usr/bin/chroot -o -L usr/bin/chroot ]; then  CHROOT=usr/bin/chroot; fi
-   if [ -x usr/sbin/chroot -o -L usr/sbin/chroot ]; then CHROOT=usr/sbin/chroot; fi
-   if [ "$CHROOT" = "" ]; then fatal "Can't find executable chroot command"; fi
+    if [ -x bin/init -o -L bin/init ]; then INIT=bin/init; fi
+    if [ -x sbin/init -o -L sbin/init  ]; then INIT=sbin/init; fi
+    if [ "$INIT" = "" ]; then fatal "init: Executable not found!"; fi
 
-   if [ -x bin/init -o -L bin/init ]; then INIT=bin/init; fi
-   if [ -x sbin/init -o -L sbin/init  ]; then INIT=sbin/init; fi
-   if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
-
-   mkdir -p mnt/live
-   mount -n -o remount,ro aufs .
-   pivot_root . mnt/live
-   exec $CHROOT . $INIT < dev/console > dev/console 2>&1
+    mkdir -p mnt/live
+    mount -n -o remount,ro aufs .
+    pivot_root . mnt/live
+    exec $CHROOT . $INIT < dev/console > dev/console 2>&1
 }

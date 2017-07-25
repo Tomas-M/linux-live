@@ -1,5 +1,17 @@
-You can pass the following boot parameters:
+Boot parameters
+=====================================================
+These are used by the bootloader, the kernel and 
+the Live Kit system itself.
 
-debug ... start shell prompt several times during live kit startup
+You can pass these boot parameters to the bootloader:
 
-from=...  load data from given directory (search all drives for it)
+Live Kit parameters:
+ >  debug    - Start the Live Kit in debugging mode.
+ >  from={n} - Load data from {n}. (will search all devices for the data)
+ >  copy2ram - Boot the Live Kit system just as normal, but also copy data to RAM.
+ >  perch    - Activate persistent changes.
+
+Kernel parameters:
+ >  noapic   - Disable APIC (if you want, or maybe if your kernel screams about it!)
+ >  acpi=off - Disable ACPI (if you might be still using a legacy system :P)
+ >  init={n} - Execute command {n} instead of the init script itself.

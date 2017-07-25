@@ -1,31 +1,24 @@
-Bundle
-------
+Bundles
+======================================
 
 A bundle is compressed squashfs filesystem, consisting of up-to-the-root
-directory structure. Old name for bundle is 'module'. Bundle format
-brings some new enhancements over the old modules.
+directory structure. The older, but still functional predecessor of the bundle 
+is called a 'module'. The bundle is an improved version of the 'module'.
 
-File extension for bundles may vary. Currently Slax uses .sb extension,
-where 'sb' means 'slax bundle'.
+FROM THE MODIFIER/NEW AUTHOR:
+ >  The defaults is 512k, but I opted with 1024k, since 
+ >  my system can handle that load, and I will get a smaller bundule size,
+ >  which is a !!HUGE!! advantage!
+ >  And, note: this message is also from the future (2k17!), which means
+ >  that software has also evolved as the years has passed...
+ >  'mksquashfs' will go nuts if you supply it with '-bs' instead of '-b'...
 
-
-How to create bundle:
-
-    # mksquashfs bundle_rootfs wholefs.sb -comp xz -bs 512k
+How to make a bundle:
+    # mksquashfs bundle_rootfs wholefs.{bext} -comp xz -b 1024k
 
     or
-    # mksquashfs /usr /usr.sb --keep-as-directory -comp xz -bs 512k
+    # mksquashfs /usr /usr.{bext} --keep-as-directory -comp xz -b 1024k
 
     or use function in livekitlib:
-    # . livekitlib; make_bundle bundle_rootfs wholefs.sb
-
-
-Special files in bundle filesystem structure:
-
-
-    /run/requires
-    /run/activate.sh
-    /run/deactivate.sh
-    /run/startcmd.sh ?
-
+    # . livekitlib; mkbund bundle_rootfs wholefs.{bext}
 

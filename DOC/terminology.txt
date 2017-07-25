@@ -1,18 +1,24 @@
-Live Kit
---------
+Linux Live Kit Improved
+=========================================================
 
-* also known as Linux Live Kit. Formely known as Linux Live CD. Nowadays,
-people mostly use USB flash drives, cameras, and other devices to run
-such 'Live' linuxes, thus Live CD is no longer ideal name for it.
++ This toolkit is based on 
+  the original Linux Live Kit. (http://linux-live.org/)
 
-Meaning of Kit is like a tool, toolkit, or such. Which (I believe) corresponds
-with the usage of such Live Linux distribution much better.
+Extracted from the original terminology.txt:
+> also known as Linux Live Kit. Formely known as Linux Live CD. Nowadays,
+>  people mostly use USB flash drives, cameras, and other devices to run
+>  such 'Live' linuxes, thus Live CD is no longer ideal name for it.
+
+> Meaning of Kit is like a tool, toolkit, or such. Which (I believe) corresponds
+> with the usage of such Live Linux distribution much better.
 
 
 Bundles
--------
+=========================================================
 
-* compressed squashfs images with some specialities
-Read ./bundle.txt for more.
++ a bundle is a compressed SquashFS archive/image 
+  used to expand the system. It makes the system pretty much modular.
+
+Read ./bundle.txt to learn more about bundles.
 
 
