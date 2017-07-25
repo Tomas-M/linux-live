@@ -3,17 +3,12 @@ This set of scripts will help you to
 build your own Live Kit distro. This project is based on 
 the original Linux Live Kit. <http://linux-live.org>
 
-NOTE: 
-  Make sure to extract and use it on a POSIX-compatible filesystem,
-  since it creates some (sym)links and such.
-
 Some information you want to know:
-
-Make sure to extract and use it on a POSIX-compatible filesystem,
-since it will create symlinks and such.
 + Store Linux Live Kit in a directory which is not going to be included
-  in your live distro, else it would be copied to it. Best practice is to
-  make a directory such as /tmp/a and put all the files there.
+  in your live distro, else it would be copied to it. 
+  The best practice is to make a directory such 
+  as for example: '/tmp/a', and put all the files there.
+
   NOTE:
     Make sure to extract and use it on a POSIX-compatible filesystem,
     since it will create symlinks and such.
@@ -54,11 +49,14 @@ since it will create symlinks and such.
   If you don't have enough (or even went out of) RAM, make sure 
   that /tmp is a regular on-disk directory.
 
-+ When you're ready run the ./build script to create your Live Kit
-  - it will create ISO and ZIP files for you in /tmp
-  - make sure you have enough free space in /tmp to handle it
-
-+ You will need the following packages to be installed:
++ You will need to have the following packages installed:
   - squashfs-tools
-  - genisoimage or mkisofs
+  - genisoimage and/or mkisofs
   - zip
+
+When you're ready run the ./build script to create your Live Kit.
+  The script will:
+  - Build both ISO and ZIP files for you in /tmp
+  - Do all the hard work for you.
+  - Will automatically check for errors. 
+  - Will warn you if you don't have the correct packages. 
