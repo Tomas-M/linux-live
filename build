@@ -6,22 +6,23 @@
 
 # Environment path
 export PATH="${PATH}:.:./tools:../tools"
-
-CHANGEDIR="$(dirname $0)"
-echo "Changing current directory to $CHANGEDIR"
-CWD="$(pwd)"
-cd "$CHANGEDIR"
-
 source ./.config || exit 1
 source ./livekitlib || exit 1
 
 # only root can continue, because only root can read all files from your system
 allow_only_root
 
+# Change directory to build environment
+CHANGEDIR="$(dirname $0)"
+echo "Changing current directory to $CHANGEDIR"
+CWD="$(pwd)"
+cd "$CHANGEDIR"
+
+
 # It's building time!
 clear
 
-echo_livekit_msg "build: Linux Live Kit version 2.0 Improved"
+echo_sign "BUILD SCRIPT"
 echo_livekit_msg "build: Doing a self-check..."
 
 # Start with 0 errors
@@ -40,9 +41,11 @@ MKISOFS="$(which mkisofs 2>/dev/null || \
 which genisoimage 2>/dev/null)"
 if [ -z "$MKISOFS" ]; then
     echo_err "build: 'mkisofs' / 'genisoimage': not-avail"
-    (( ERRS+=1 ))
+    
+    # Hahaha! 'false'?!?!?
+    MKISOFS="false"
 else
-    echo_livekit_msg "build: '`basename $MKISOFS`': avail"
+    echo_livekit_msg "build: '$(basename $MKISOFS)': avail"
 fi
 
 # Check if we have 'zip'
@@ -114,7 +117,7 @@ cat bootfiles/BootInstall.sh | sed -r "s:MyLinux:$LIVEKITNAME:" > $BOOT/BootInst
 echo_livekit_msg "build: Copying kernel..."
 cp $VMLINUZ $BOOT/
 
-# Copy files from include_bund/, but 
+# Copy files from include_bund/, but
 # do not skip bundle creation
 #
 if [ -n "$(ls -A include_bund/ | grep ".$BEXT")" ]; then
@@ -165,9 +168,14 @@ echo_livekit_msg "build: Creating ISO file for CD boot..."
 -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c \
-"$LIVEKITNAME"/boot/isolinux.boot . &>/dev/null && \
-echo_livekit_msg "build: Output file: $OUT_FILE.iso" || \
-echo_err "build: $OUT_FILE.iso: Failed to generate ISO file!"
+"$LIVEKITNAME"/boot/isolinux.boot . &>/dev/null
+if [ $? -ne 0 ]; then
+    echo_warn "build: Failed to generate ISO image!"
+    SCAN=
+else
+    echo_livekit_msg "build: ISO image: $OUT_FILE.iso"
+    SCAN=1
+fi
 
 # Substitute 'mylinux' with $LIVEKITNAME
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | \
@@ -188,7 +196,13 @@ echo_livekit_msg "build: Process ID: $PID - Your results is in $TARGET"
 
 # Generate checksum(s)
 echo_livekit_msg "build: Generating MD5 checksums: Please wait..."
-MD5_ISO="$(md5sum $TARGET/$OUT_FILE.iso 2>/dev/null | cut -d ' ' -f 1)"
+
+if [ "$SCAN" ]; then
+    MD5_ISO="$(md5sum $TARGET/$OUT_FILE.iso 2>/dev/null | cut -d ' ' -f 1)"
+else
+    MD5_ISO="< FAILED TO GENERATE ISO IMAGE! >"
+fi
+
 MD5_ZIP="$(md5sum $TARGET/$OUT_FILE.zip 2>/dev/null | cut -d ' ' -f 1)"
 
 cat >"$SUM_FILE" <<EOF

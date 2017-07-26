@@ -17,7 +17,7 @@ BUNDLES=$MEMORY/bundles
 
 clear
 
-echo_bold "Live Kit Improved v1.0 - INIT"
+echo_sign "INIT START"
 
 init_proc_sysfs
 
@@ -70,7 +70,7 @@ fstab_create "$UNION"
 debug_shell
 
 clear
-echo_bold "Live Kit Improved v1.0 - INIT-DONE"
+echo_sign "INIT END"
 change_root "$UNION"
 
 # If everything fails, panic immidiately
