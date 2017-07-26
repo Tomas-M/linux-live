@@ -106,7 +106,7 @@ cp bootfiles/* $BOOT
 
 # do substitution
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | \
-sed -r "s:MyLinux:$LIVEKITNAME" > $BOOT/syslinux.cfg
+sed -r "s:MyLinux:$LIVEKITNAME:" > $BOOT/syslinux.cfg
 
 echo_livekit_msg "build: BootInstall.*: Replacing 'MyLinux' with '$LIVEKITNAME'..."
 cat bootfiles/BootInstall.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | \
