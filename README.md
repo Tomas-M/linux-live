@@ -4,9 +4,9 @@ build your own Live Kit distro. This project is based on
 the original Linux Live Kit. <http://linux-live.org>
 
 
-## You will need to have the following packages installed:
+## You will need to have the following installed:
   * squashfs-tools
-  * genisoimage and/or mkisofs
+  * genisoimage and/or mkisofs (optional)
   * zip
 
 ## Before you build:
@@ -35,7 +35,7 @@ the original Linux Live Kit. <http://linux-live.org>
 
 
   * Debian Jessie's kernel supports both AUFS and SquashFS out-of-the-box.
-    I'll recommned using Debian Jessie as the base OS, but the choice is yours.
+    It's recommended to use Debian Jessie as the base OS, but the choice is yours.
 
 - It's recommended to replace boot background in
   bootfiles/bootpic.png and edit syslinux.cfg to fit your needs.
@@ -64,7 +64,7 @@ the original Linux Live Kit. <http://linux-live.org>
   that /tmp is a regular on-disk directory.
 
 - If you want to include your own bundules, then the 'include\_bund/' directory
-  might come in handy! Just make sure that the file extension matches
+  might come in handy! Just make sure that the file extension will match
   with your chosen .BEXT extension.
 
 When you're ready, run the ./build script to build your Live Kit Distro.
