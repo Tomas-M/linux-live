@@ -15,11 +15,11 @@ the original Linux Live Kit. <http://linux-live.org>
     in your live distro, else it would be copied to it.
     The best practice is to make a directory such
     as for example: '/tmp/a', and put all the files there.
-### NOTE:
-   * Make sure to extract and use it on a POSIX-compatible
-     filesystem (for ex: EXT4), since it will create symlinks 
-     and such that might not be compatible in for example: FAT 
-     and such other filesystems.
+   ### NOTE:
+     * Make sure to extract and use it on a POSIX-compatible
+       filesystem (for ex: EXT4), since it will create symlinks 
+       and such that might not be compatible in for example: FAT 
+       and such other filesystems.
 
 2.  Before you start building your Live Kit, please consider
     editing the ./.config file, and tweak it to suit your needs.
@@ -29,20 +29,20 @@ the original Linux Live Kit. <http://linux-live.org>
     change the path in ./.config. Your kernel must support both 
     SquashFS and AUFS, or else you will get an error both while 
     building, and when you actually boot your Live Kit.
-### PROTIP:
-   * On most Linux distros, the kernel is in /vmlinuz, a
-     symlink to /boot/vmlinuz-* or even /boot/vmlinux-*
+   ### PROTIP:
+     * On most Linux distros, the kernel is in /vmlinuz, a
+       symlink to /boot/vmlinuz-* or even /boot/vmlinux-*
 
 
-   * Debian Jessie's kernel supports both AUFS and SquashFS out-of-the-box.
-     It's recommended to use Debian Jessie as the base OS, but the choice is yours.
+     * Debian Jessie's kernel supports both AUFS and SquashFS out-of-the-box.
+       It's recommended to use Debian Jessie as the base OS, but the choice is yours.
 
 4.  It's recommended to replace boot background in
     bootfiles/bootpic.png and edit syslinux.cfg to fit your needs.
-### NOTE:
-   * When editing the configuration file, make sure to keep all paths
-     pointing to /boot/, since it will be replaced to /LIVEKITNAME/boot/
-     during the build session.
+   ### NOTE:
+     * When editing the configuration file, make sure to keep all paths
+       pointing to /boot/, since it will be replaced to /LIVEKITNAME/boot/
+       during the build session.
 
 5.  Linux Live Kit comes with precompiled static binaries in ./initramfs
     directory. Those may be outdated but will work. You may replace them
