@@ -1,6 +1,6 @@
 #!/bin/sh
 # Initial script for Linux Live Kit / Linux Live Kit Improved
-# Modifier: "JohnDaH4x0r"
+# Modified by: "JohnDaH4x0r" <terencedoesmc12 AT gmail.com>
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
