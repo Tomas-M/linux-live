@@ -42,7 +42,9 @@ copy_including_deps()
 }
 
 rm -Rf $INITRAMFS
-mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sys,tmp,usr,var/log}
+
+# NEW: lib64 might be unnecessary to include.
+mkdir -p $INITRAMFS/{bin,dev,etc,lib,mnt,proc,root,run,sys,tmp,usr,var/log}
 ln -s bin $INITRAMFS/sbin
 
 cd static
