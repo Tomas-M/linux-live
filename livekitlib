@@ -202,8 +202,8 @@ cmdline_value()
 transfer_initramfs()
 {
    if [ ! -r /lib/initramfs_escaped ]; then
-      echo_livekit
-      echo "Switching from initramfs to tmpfs..."
+      echo_livekit >&2
+      echo "Switching root from initramfs to tmpfs..." >&2
       SWITCH=/m # one letter directory
       mkdir -p $SWITCH
       mount -t tmpfs -o size="100%" tmpfs $SWITCH
@@ -505,7 +505,7 @@ find_data_try()
         umount "$1" 2>/dev/null
         umount "$1" 2>/dev/null
     done
-    }
+}
 
 # Retry finding LIVEKIT data several times,
 # until timeouted or until data is found
@@ -531,8 +531,8 @@ find_data()
       echo -n "." >&2
       refresh_devs
       DATA="$(find_data_try "$2" "$FROM")"
+    echo "" >&2
     if [ "$DATA" != "" ]; then
-        echo
         echo_livekit_msg "$LIVEKITNAME data found on $(mounted_device "$2")" >&2
         echo "$DATA"
         return
@@ -565,7 +565,7 @@ persistent_changes()
     mkdir -p "$2"
 
     # If persistent changes are not requested, end here
-    if grep -vq perch /proc/cmdline; then
+    if grep -vq 'perch' /proc/cmdline; then
         return
     fi
 
