@@ -2,76 +2,92 @@
 # Initial script for Linux Live Kit / Linux Live Kit Improved
 # Modified by: "JohnDaH4x0r" <terencedoesmc12 AT gmail.com>
 
+# Modify and export/declare new PATH
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Source Live Kit library script
 . /lib/.config
 . /lib/livekitlib
 
+# Declare start of 'init' state
+clear
+echo_sign "INIT START"
+
+# Run switch_root: initramfs -> tmpfs
 transfer_initramfs
 
+# Directory variables pointing to /memory
 MEMORY=/memory
 CHANGES=$MEMORY/changes
 UNION=$MEMORY/union
 DATAMNT=$MEMORY/data
 BUNDLES=$MEMORY/bundles
 
-clear
-
-echo_sign "INIT START"
-
+# Initliaise /proc, /sys and such
 init_proc_sysfs
 
-# initialise debugging
+# Initialise debugging if requested
 debug_start
 dbg_shell_start
 
-# 1st round debug shell (do not touch!)
+# 1st debug shell interval
 debug_shell
 
-# load some modules manually first, then modprobe everything we have
+# Initialise important kernel modules
 init_devs
 init_aufs
 init_zram
+
+# Then, modprobe everything
 modprobe_everything
 
-# find data dir with filesystem bundles
-DATA="$(find_data 60 "$DATAMNT")"
+# Find data dir with filesystem bundles
+# NEW: 
+# Only 15 seconds before timeout, to minimize the
+# pain of waiting a "whole" minute.
+#
+DATA="$(find_data 15 "$DATAMNT")"
 
-# 2nd round debug shell (do not touch!)
+# 2nd debug shell interval
 debug_shell
 
-# setup persistent changes, if possible
+# Setup persistent changes
 persistent_changes "$DATA" "$CHANGES"
 
-# 3rd round debugg shell
+# 3rd debug shell interval
 debug_shell
 
-# copy to RAM if needed
+# Copy data to RAM if requested by user
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
  
-# init aufs union
+# Setup an empty union
 init_union "$CHANGES" "$UNION"
 
-# 4th debug shell round
+# 4th debug shell interval
 debug_shell
 
-# add data to union
+# Append bundles to union
 union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 
-# 5th debug shell round
+# 5th debug shell interval
 debug_shell
-# rootcopy
+
+# Copy contents of 'rootcopy/'
 copy_rootcopy_content "$DATA" "$UNION"
 
-# create empty fstab
+# Generate a basic 'fstab' with the core filesystems
 fstab_create "$UNION"
 
-# 6th debug shell round
+# 6th and final debug shell interval
 debug_shell
 
+# Declare the end of first 'init' state
 clear
 echo_sign "INIT END"
+
+# Change root to main OS and let the 'init' in the
+# main OS do the rest...
 change_root "$UNION"
 
-# If everything fails, panic immidiately
+# < ======== NOTHING SHOULD GO OVER THIS LINE! ======== >
 fatal "Unknown error!"
