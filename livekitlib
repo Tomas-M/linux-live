@@ -37,7 +37,7 @@ NC="[0m"
 # debug related
 debug_start()
 {
-    if grep -q debug /proc/cmdline; then
+    if grep -q 'debug' /proc/cmdline; then
         DEBUG_IS_ENABLED=1
     else
         DEBUG_IS_ENABLED=
@@ -170,15 +170,15 @@ mkbund()
     debug_log "mkbund" "$*"
 
     if [ -e "$2" ]; then
-        echo_warn "mkbund: `basename $2`: File already exists!"
-        echo_warn "mkbund: `basemane $2`: Deleting file..."
+        echo_warn "mkbund: $(basename $2): File already exists!"
+        echo_warn "mkbund: $(basename $2): Deleting file..."
         rm -f "$2"
     else
-        echo_livekit_msg "mkbund: `basename $2`: Making new bundle..."
+        echo_livekit_msg "mkbund: $(basename $2): Making new bundle..."
     fi
 
     echo_livekit_msg "mkbund: SquashFS compression: 1024k - XZ" >&2
-    echo_livekit_msg "mkbund: `basename $2`: Compressing bundle..." >&2
+    echo_livekit_msg "mkbund: $(basename $2): Compressing bundle..." >&2
     mksquashfs "$1" "$2" -comp xz -b 1024k $3 $4 $5 $6 $7 $8 $9 >/dev/null || \
     (echo_err "mkbund: Failed to make bundle!" && exit 1)
 }
@@ -201,16 +201,16 @@ cmdline_value()
 #
 transfer_initramfs()
 {
-   if [ ! -r /lib/initramfs_escaped ]; then
+   if [ ! -r /lib/esc_initramfs.sgn ]; then
       echo_livekit >&2
       echo "Switching root from initramfs to tmpfs..." >&2
       SWITCH=/m # one letter directory
       mkdir -p $SWITCH
-      mount -t tmpfs -o size="100%" tmpfs $SWITCH
-      cp -a /??* $SWITCH 2>/dev/null # only copy two-and-more-letter directories
+      mount -t tmpfs -o size="100%" tmpfs "$SWITCH"
+      cp -a /??* "$SWITCH" 2>/dev/null # only copy two-and-more-letter directories
       cd $SWITCH
-      echo "This file indicates that we successfully escaped initramfs" > $SWITCH/lib/initramfs_escaped
-      exec switch_root -c /dev/console . $0
+      echo "This file indicates that we successfully escaped initramfs" >"$SWITCH"/lib/esc_initramfs.sgn
+      exec switch_root -c /dev/console . "$0"
    fi
 }
 
@@ -219,7 +219,7 @@ transfer_initramfs()
 init_proc_sysfs()
 {
    debug_log "init_proc_sysfs" "$*"
-   mkdir -p /proc /sys /etc $MEMORY
+   mkdir -p /proc /sys /etc "$MEMORY"
    mount -n -t proc proc /proc
    echo "0" >/proc/sys/kernel/printk
    mount -n -t sysfs sysfs /sys
@@ -266,14 +266,14 @@ init_devs()
 #
 init_zram()
 {
-   debug_log "init_zram" "$*"
-   echo_livekit_msg "Setting up ZRAM as swap if available..."
-   if [ -r /sys/block/zram0/disksize ]; then
+    debug_log "init_zram" "$*"
+    echo_livekit_msg "Setting up ZRAM as swap if available..."
+    if [ -r /sys/block/zram0/disksize ]; then
       echo 536870912 > /sys/block/zram0/disksize # 512MB
-      mkswap /dev/zram0 >/dev/null
-      swapon /dev/zram0 -p 32767
-      echo 100 > /proc/sys/vm/swappiness
-   fi
+        mkswap /dev/zram0 >/dev/null
+        swapon /dev/zram0 -p 32767
+        echo 100 > /proc/sys/vm/swappiness
+    fi
 }
 
 # load the AUFS kernel module if needed
@@ -281,11 +281,12 @@ init_zram()
 init_aufs()
 {
     debug_log "init_aufs" "$*"
-    # TODO maybe check here if aufs support is working at all
-    # and produce useful error message if user has no aufs
+
+    # Prepare for error messages
+    echo >>/var/log/livkekit-log
+
     modprobe aufs 2>/var/log/livekit-log
 
-    # TODO ACCOMPLISHED:
     # If aufs module failed to load, panic immidiately
     if [ $? -ne 0 ]; then
         fatal "Failed to load AUFS module!"
@@ -306,7 +307,16 @@ init_union()
    echo_livekit_msg "Initialising AUFS union..."
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+
+   # Prepare for error messages
+   echo >>/var/log/livekit-log
+
+   mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2" >/var/log/livekit-log 2>&1
+
+   # If failed to init union, panic
+   if [ $? -ne 0 ]; then
+       fatal "Failed to initialise AUFS union!"
+   fi
 }
 
 # Return device mounted for given directory
@@ -314,18 +324,18 @@ init_union()
 #
 mounted_device()
 {
-   debug_log "mounted_device" "$*"
+    debug_log "mounted_device" "$*"
 
-   local MNT TARGET
-   MNT="$1"
-   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
-      TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
-      if [ "$TARGET" != "" ]; then
-         echo "$TARGET"
-         return
-      fi
-      MNT="$(dirname "$MNT")"
-   done
+    local MNT TARGET
+    MNT="$1"
+    while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+        TARGET="$(grep -F " $MNT " /proc/mounts | cut -d " " -f 1)"
+        if [ "$TARGET" != "" ]; then
+            echo "$TARGET"
+            return
+        fi
+        MNT="$(dirname "$MNT")"
+    done
 }
 
 # Return mounted dir for given directory
@@ -333,17 +343,17 @@ mounted_device()
 #
 mounted_dir()
 {
-   debug_log "mounted_dir" "$*"
+    debug_log "mounted_dir" "$*"
 
-   local MNT
-   MNT="$1"
-   while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
-      if mountpoint -q "$MNT" 2>/dev/null; then
-         echo "$MNT"
-         return
-      fi
-      MNT="$(dirname "$MNT")"
-   done
+    local MNT
+    MNT="$1"
+    while [ "$MNT" != "/" -a "$MNT" != "." -a "$MNT" != "" ]; do
+        if mountpoint -q "$MNT" 2>/dev/null; then
+            echo "$MNT"
+            return
+        fi
+        MNT="$(dirname "$MNT")"
+    done
 }
 
 # Make sure to mount FAT12/16/32 using vfat
@@ -372,14 +382,14 @@ device_bestfs()
 #
 fs_options()
 {
-   debug_log "fs_options" "$*"
+    debug_log "fs_options" "$*"
 
-   if [ "$1" = "-t" ]; then
-      shift
-   fi
-   if [ "$1" = "vfat" ]; then
-      echo "-o check=s,shortname=mixed,iocharset=utf8"
-   fi
+    if [ "$1" = "-t" ]; then
+        shift
+    fi
+    if [ "$1" = "vfat" ]; then
+        echo "-o check=s,shortname=mixed,iocharset=utf8"
+    fi
 }
 
 
@@ -391,30 +401,30 @@ fs_options()
 #
 init_network_dev()
 {
-   debug_log "init_network_dev" "$*"
-   echo_livekit_msg "Preparing networking device(s)..." >&2
-   local MODULE ETH
+    debug_log "init_network_dev" "$*"
+    echo_livekit_msg "Preparing networking device(s)..." >&2
+    local MODULE ETH
 
-   for MODULE in 3c59x acenic de4x5 e1000 e1000e e100 epic100 hp100 \
-   ne2k-pci pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin \
-   tg3 dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip depca 3c501 3c503 \
-   3c505 3c507 3c509 3c515 ac3200 at1700 cosa cs89x0 de600 de620 e2100 \
-   eepro eexpress eth16i ewrk3 forcedeth hostess_sv11 hp-plus hp ni52 \
-   ni65 sb1000 sealevel smc-ultra sis900 smc9194 wd; do
-      modprobe $MODULE 2>/dev/null
-      ETH="$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1)"
-      if [ "$ETH" != "" ]; then
-         echo $ETH
-         return 0
-      fi
-      rmmod $MODULE 2>/dev/null
-   done
+    for MODULE in 3c59x acenic de4x5 e1000 e1000e e100 epic100 hp100 \
+    ne2k-pci pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin \
+    tg3 dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip depca 3c501 3c503 \
+    3c505 3c507 3c509 3c515 ac3200 at1700 cosa cs89x0 de600 de620 e2100 \
+    eepro eexpress eth16i ewrk3 forcedeth hostess_sv11 hp-plus hp ni52 \
+    ni65 sb1000 sealevel smc-ultra sis900 smc9194 wd; do
+        modprobe $MODULE 2>/dev/null
+        ETH="$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1)"
+        if [ "$ETH" != "" ]; then
+            echo "$ETH"
+            return 0
+        fi
+        rmmod $MODULE 2>/dev/null
+    done
 
    # If we are here, none of the above specified modules worked.
    # As a last chance, try to modprobe everything.
    echo_warn "No networking kernel module found!"
    modprobe_everything
-   cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
+   cat /proc/net/dev | grep ':' | grep -v 'lo:' | cut -d : -f 1 | tr -d " " | head -n 1
 }
 
 
@@ -423,48 +433,52 @@ init_network_dev()
 #
 download_data_pxe()
 {
-   debug_log "download_data_pxe" "$*"
-   local CMD CLIENT SERVER GW MASK PORT ETH PROTOCOL
+    debug_log "download_data_pxe" "$*"
+    local CMD CLIENT SERVER GW MASK PORT ETH PROTOCOL
 
-   mkdir -p "$1/$LIVEKITNAME"
+    mkdir -p "$1/$LIVEKITNAME"
 
-   cmdline_value ip | while IFS=":" read CLIENT SERVER GW MASK PORT; do
-      echo_livekit_msg "Downloading files from $SERVER ..." >&2
+    cmdline_value ip | while IFS=":" read CLIENT SERVER GW MASK PORT; do
+        echo_livekit_msg "Downloading files from ${SERVER}..." >&2
 
-      ETH=$(init_network_dev)
-      if [ "$PORT" = "" ]; then PORT="7529"; fi
+        ETH=$(init_network_dev)
+        if [ "$PORT" = "" ]; then 
+            PORT="7529" 
+        fi
 
-      # set IP address as given by boot paramter
-      if [ "$CLIENT" != "" -a "$MASK" != "" ]; then
-         ifconfig $ETH "$CLIENT" netmask "$MASK"
-         route add default gw "$GW"
-      else
-         # if client ip is unknown, try to get a DHCP lease
-         udhcpc -i $ETH -f -q
-      fi
+        # set IP address as given by boot paramter
+        if [ -n "$CLIENT" ] && [ -n "$MASK" ]; then
+            ifconfig $ETH "$CLIENT" netmask "$MASK"
+            route add default gw "$GW"
+        else
+            # if client ip is unknown, try to get a DHCP lease
+            udhcpc -i $ETH -f -q
+        fi
 
-      # well known IP address of Google public DNS service
-      echo nameserver 8.8.8.8 >> /etc/resolv.conf
+        # well known IP address of Google public DNS service
+        echo nameserver 8.8.8.8 >> /etc/resolv.conf
 
-      PROTOCOL=http
-      wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
-      if [ $? -ne 0 ]; then
-         echo_warn "Failed to download from http://$SERVER:$PORT, trying TFTP..."
-         PROTOCOL=tftp
-         tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
-      fi
+        PROTOCOL=http
+        wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
+        if [ $? -ne 0 ]; then
+            echo_warn "Failed to download from http://${SERVER}:${PORT}!" >&2
+            echo_livekit_msg 'Downloading with TFTP protocol...' >&2
+            PROTOCOL=tftp
+            tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
+        fi
 
-      cat "$1/PXEFILELIST" | while read FILE; do
-         if [ "$PROTOCOL" = "http" ]; then
-            wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
-         else
-            echo_livekit_msg "PXE: ${FILE}..." >&2
-            tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
-         fi
-      done
-   done
+        cat "$1/PXEFILELIST" | while read FILE; do
+            if [ "$PROTOCOL" = "http" ]; then
+                echo_livekit_msg "PXE-HTTP: Downloading ${FILE}..." >&2
+                wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
+            elif [ "$PROTOCOL" = "tftp" ]; then
+                echo_livekit_msg "PXE-TFTP: Downloading ${FILE}..." >&2
+                tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
+            fi
+        done
+    done
 
-   echo "$1/$LIVEKITNAME"
+    echo "$1/$LIVEKITNAME"
 }
 
 # Find LIVEKIT data by mounting all devices
@@ -528,22 +542,25 @@ find_data()
     echo_livekit >&2
     echo "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
     for timeout in $(seq 1 $1); do
-      echo -n "." >&2
-      refresh_devs
-      DATA="$(find_data_try "$2" "$FROM")"
+        echo -n "." >&2
+        refresh_devs
+        DATA="$(find_data_try "$2" "$FROM")"
+        
+        # This "was" a bug!
+        echo "" >&2
+        
+        if [ "$DATA" != "" ]; then
+            echo_livekit_msg "$LIVEKITNAME data found on $(mounted_device "$2")" >&2
+            echo "$DATA"
+            return
+        fi
+        sleep 1
+    done
     echo "" >&2
-    if [ "$DATA" != "" ]; then
-        echo_livekit_msg "$LIVEKITNAME data found on $(mounted_device "$2")" >&2
-        echo "$DATA"
-        return
-    fi
-      sleep 1
-   done
-   echo "" >&2
 
-   if [ "$DATA" = "" ]; then
-      fatal "$LIVEKITNAME data not found"
-   fi
+    if [ "$DATA" = "" ]; then
+        fatal "$LIVEKITNAME data not found"
+    fi
 
 }
 
