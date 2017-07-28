@@ -60,15 +60,11 @@ fi
 if [ $WARN_DISK -eq 0 ]; then
     # APT-like danger prompt
     CONFIRM_TEXT="Yes, do as I say!"
-    clear
-    echo " ===================> DANGER! <======================" >&2
-    echo "  Current device: $DEV" >&2
-    echo "  Current partition: $PART" >&2
-    echo " ====================================================" >&2
-    echo "  You are about to do something "
-    echo "  dangerous to your system!" >&2
-    echo " ====================================================" >&2
-    echo "  Type in to continue: 'Yes, do as I say!'"
+    
+    echo "> Current partition: $PART" >&2
+    echo "> You are about to do something " >&2
+    echo "> dangerous to your system!" >&2
+    echo "> Type in to continue: 'Yes, do as I say!'"
 
     read -p " ?] " CONFIRM
 
