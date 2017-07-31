@@ -1,11 +1,11 @@
 #!/bin/bash
-# Create initramfs image
-# Author: Tomas M <http://www.linux-live.org/>
-#
+# Generate initramfs image
+# Original author: Tomas M <http://www.linux-live.org/>
+# Modified by: 'JohnDaH4x0r' [terencedoesmc12 AT gmail DOT com]
 
-. ../.config
+source ../.config
 
-INITRAMFS=/tmp/$LIVEKITNAME-initramfs-$$
+INITRAMFS=/tmp/$LIVEKITNAME-initramfs-$PID
 
 # copy file to initramfs tree, including
 # all library dependencies (as shown by ldd)
@@ -42,7 +42,9 @@ copy_including_deps()
 }
 
 rm -Rf $INITRAMFS
-mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sys,tmp,usr,var/log}
+
+# NEW: lib64 might be unnecessary to include.
+mkdir -p $INITRAMFS/{bin,dev,etc,lib,mnt,proc,root,run,sys,tmp,usr,var/log}
 ln -s bin $INITRAMFS/sbin
 
 cd static

@@ -1,55 +1,93 @@
 #!/bin/sh
-# Initial script for Linux Live Kit
-# Author: Tomas M <http://www.linux-live.org/>
+# Initial script for Linux Live Kit / Linux Live Kit Improved
+# Modified by: "JohnDaH4x0r" <terencedoesmc12 AT gmail.com>
 
+# Modify and export/declare new PATH
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
+# Source Live Kit library script
 . /lib/.config
 . /lib/livekitlib
 
+# Declare start of 'init' state
+clear
+echo_sign "INIT START"
+
+# Run switch_root: initramfs -> tmpfs
 transfer_initramfs
 
+# Directory variables pointing to /memory
 MEMORY=/memory
 CHANGES=$MEMORY/changes
 UNION=$MEMORY/union
 DATAMNT=$MEMORY/data
 BUNDLES=$MEMORY/bundles
 
-header "Live Kit init <http://www.linux-live.org/>"
-
+# Initliaise /proc, /sys and such
 init_proc_sysfs
 
+# Initialise debugging if requested
 debug_start
-                                                                                                                                                       debug_shell
-# load some modules manually first, then modprobe everything we have
+dbg_shell_start
+
+# 1st debug shell interval
+debug_shell
+
+# Initialise important kernel modules
 init_devs
 init_aufs
 init_zram
+
+# Then, modprobe everything
 modprobe_everything
 
-# find data dir with filesystem bundles
-DATA="$(find_data 60 "$DATAMNT")"
-                                                                                                                                                      debug_shell
-# setup persistent changes, if possible
+# Find data dir with filesystem bundles
+# NEW: 
+# Only 15 seconds before timeout, to minimize the
+# pain of waiting a "whole" minute.
+#
+DATA="$(find_data 15 "$DATAMNT")"
+
+# 2nd debug shell interval
+debug_shell
+
+# Setup persistent changes
 persistent_changes "$DATA" "$CHANGES"
-                                                                                                                                                      debug_shell
-# copy to RAM if needed
+
+# 3rd debug shell interval
+debug_shell
+
+# Copy data to RAM if requested by user
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
-                                                                                                                                                      debug_shell
-# init aufs union
+ 
+# Setup an empty union
 init_union "$CHANGES" "$UNION"
-                                                                                                                                                      debug_shell
-# add data to union
+
+# 4th debug shell interval
+debug_shell
+
+# Append bundles to union
 union_append_bundles "$DATA" "$BUNDLES" "$UNION"
-                                                                                                                                                      debug_shell
-# rootcopy
+
+# 5th debug shell interval
+debug_shell
+
+# Copy contents of 'rootcopy/'
 copy_rootcopy_content "$DATA" "$UNION"
 
-# create empty fstab
+# Generate a basic 'fstab' with the core filesystems
 fstab_create "$UNION"
-                                                                                                                                                      debug_shell
-header "Live Kit done, starting $LIVEKITNAME"
+
+# 6th and final debug shell interval
+debug_shell
+
+# Declare the end of first 'init' state
+clear
+echo_sign "INIT END"
+
+# Change root to main OS and let the 'init' in the
+# main OS do the rest...
 change_root "$UNION"
 
-header "!!ERROR occured, you shouldn't be here.!!"
-/bin/sh
+# < ======== NOTHING SHOULD GO OVER THIS LINE! ======== >
+fatal "Unknown error!"

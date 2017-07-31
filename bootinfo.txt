@@ -4,6 +4,7 @@
 #
 # Lines containing # are ignored
 #
+
 Thank you for using mylinux!
 Steps to make it bootable from your USB device:
 

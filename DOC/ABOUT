@@ -1,0 +1,84 @@
+About Linux Live Kit Improved
+===========================================================
+Linux Live Kit Improved, as the name suggests, is an 
+improved fork of the original Linux Live Kit.
+Website (the original version): http://linux-live.org/
+===========================================================
+This text file combines all documents into one.
+===========================================================
+
+1] Boot parameters
+===========================================================
+
+These are used by the kernel and the Live Kit 
+system itself.
+
+You can pass these boot parameters to the bootloader:
+
+Live Kit parameters:
+ >  debug      - Start the Live Kit in verbose mode.
+ >  dbg_shell  - Start the debug shell several times while starting up.
+ >  from={n}   - Load data from {n}. (will search all devices for the data)
+ >  copy2ram   - Boot the Live Kit system just as normal, but also copy data to RAM.
+ >  perch      - Activate persistent changes.
+
+Kernel parameters:
+ >  noapic     - Disable APIC (if you want, or maybe if your kernel screams about it!)
+ >  acpi=off   - Disable ACPI (if you might be still using a legacy system :P)
+ >  init={n}   - Execute command {n} instead of the init script itself.
+
+2] Bundles
+===========================================================
+
+A bundle is compressed squashfs filesystem, consisting of 
+up-to-the-root directory structure. The older, but still 
+functional predecessor of the bundle is called a 'module'. 
+The bundle is an improved version of the 'module'.
+
+NOTE:
+  The defaults is 512k, but I opted with 1024k, since 
+  my system can handle that load, and I will get a smaller 
+  bundule size, which is a !!HUGE!! advantage!
+  And, note: this message is also from the future (2k17!), which means
+  that software has also evolved as the years has passed...
+  'mksquashfs' will go nuts if you supply it with '-bs' instead of '-b'...
+
+How to make a bundle:
+    # mksquashfs bundle_rootfs wholefs.{bext} -comp xz -b 1024k
+
+    or
+    # mksquashfs /usr /usr.{bext} --keep-as-directory -comp xz -b 1024k
+
+    or use function in livekitlib:
+    # source ./livekitlib; mkbund bundle_rootfs wholefs.{bext}
+
+3] Supported filesystems
+===========================================================
+
+The Live distro created by Linux Live Kit can be installed
+on the following filesystems:
+
++ ISO9660 (CD)      -  using ISOLinux
++ FAT32   (vfat)    -  using SysLinux or EXTLinux
++ NTFS              -  using SysLinux or EXTLinux
++ EXT2/3/4, BTRFS   -  using EXTLinux
++ any other FS      -  using LILO
+
+Most users will install on FAT32 for 
+compatibility with any other operating systems.
+
+4] Terminology
+=========================================================
+
++ This toolkit is based on 
+  the original Linux Live Kit. (http://linux-live.org/)
+
+Extracted from the original terminology.txt:
+> also known as Linux Live Kit. Formely known as Linux Live CD. Nowadays,
+>  people mostly use USB flash drives, cameras, and other devices to run
+>  such 'Live' linuxes, thus Live CD is no longer ideal name for it.
+
+> Meaning of Kit is like a tool, toolkit, or such. Which (I believe) corresponds
+> with the usage of such Live Linux distribution much better.
+
+

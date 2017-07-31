@@ -31,12 +31,14 @@ sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/lib/loadconfig.c
 
 make \
 	${CC:+CC="$CC"}
-
+echo
+echo "Copying isolinux.bin to $(readlink -f '../../bootfiles/isolinux.bin')"
 cp -p core/isolinux.bin ../../bootfiles/isolinux.bin
 
-echo
-echo "Copying isolinux.bin to $(realpath ../../bootfiles/isolinux.bin)"
+echo "Cleaning up..."
 
 cd ..
 rm -Rf $PKG
 rm -f $PKGTGZ
+
+echo "Done!"
