@@ -73,3 +73,7 @@ When you're ready, run the ./build script to build your Live Kit Distro.
   + Do all the hard work for you.
   + Will automatically check for errors.
   + Will warn you if you don't have the correct packages.
+
+NOTE:
+WHEN YOU DOWNLOAD THIS KIT, MAKE SURE THAT ./build AND ./livekitlib IS
+EXECUTABLE!
