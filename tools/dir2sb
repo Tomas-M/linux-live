@@ -1,0 +1,19 @@
+#!/bin/bash
+
+if [ "$2" = "" ]; then
+   echo "Usage: $0 [source directory] [target file.sb]"
+   exit 1
+fi
+
+
+if [ ! -d "$1" ]; then
+   echo "Not a directory: $1"
+   exit 2
+fi
+
+if [ -e "$2" ]; then
+   echo "Target exists: $2"
+   exit 3
+fi
+
+mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9
