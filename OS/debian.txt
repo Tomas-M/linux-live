@@ -1,0 +1,27 @@
+
+apt-get install mc squashfs-tools genisoimage zip
+apt-get remove libicu* libperl* libxml2 mime-support perl \
+    perl-modules-5.24 sgml-base shared-mime-info xdg-user-dirs xml-core
+
+rm -f /var/lib/apt/lists/deb.*
+rm -f /var/log/*
+rm -f /var/log/*/*
+rm -f /var/log/*/*/*
+rm -f /var/cache/apt/archives/*.deb
+rm -f /var/cache/apt/*.bin
+rm -f /var/cache/debconf/*-old
+rm -Rf /usr/share/doc/*
+
+rm -Rf /usr/share/locale/??
+rm -Rf /usr/share/locale/??_*
+rm -Rf /usr/share/locale/??@*
+rm -Rf /usr/share/locale/???
+rm -Rf /usr/share/i18n/locales/*_*
+rm -Rf /usr/share/man/??
+rm -Rf /usr/share/man/*_*
+
+# now run build script
+
+apt-get install aufs-dkms
+
+# and re-setup initrd to include aufs
