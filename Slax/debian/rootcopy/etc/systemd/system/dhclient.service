@@ -2,12 +2,14 @@
 Description=DHCP Client
 Documentation=man:dhclient(8)
 Wants=network.target
-Before=network.target
+After=network-pre.target systemd-sysctl.service systemd-modules-load.service
+Before=network.target shutdown.target network-online.target
 
 [Service]
 Type=forking
-PIDFile=/var/run/dhclient.pid
-ExecStart=/sbin/dhclient
+ExecStart=-/bin/sh -c 'udevadm settle && /sbin/dhclient -nw'
+PIDFile=/run/dhclient.pid
 
 [Install]
 WantedBy=multi-user.target
+WantedBy=network-online.target
