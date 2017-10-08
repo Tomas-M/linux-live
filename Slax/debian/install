@@ -1,5 +1,6 @@
 #!/bin/bash
 
+apt-get dist-upgrade
 apt-get install mc squashfs-tools genisoimage zip
 apt-get remove libicu* libperl* libxml2 mime-support perl \
     perl-modules-5.24 sgml-base shared-mime-info xdg-user-dirs xml-core
