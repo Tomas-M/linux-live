@@ -83,5 +83,5 @@ rm -f "$TARGET/$LIVEKITNAME-$ARCH.zip"
 zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
 cd ..
-rm -Rf "$LIVEKITDATA"
-echo "finished. Find your result in $TARGET"
+#rm -Rf "$LIVEKITDATA"
+echo "finished. Find your results in $TARGET"

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+. ./install
+. ./cleanup
+. ./copy
+
+# now run build script
+cd ../../
+./build
+
+apt-get update
+apt-get install aufs-dkms
+
+# and re-setup initrd to include aufs
+./initramfs/initramfs_create
+
