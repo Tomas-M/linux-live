@@ -1,3 +1,5 @@
 #!/bin/bash
 
 (cd rootcopy && cp --parents -afr * /)
+
+cp ../../tools/dir2sb /usr/bin

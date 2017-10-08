@@ -16,4 +16,4 @@ if [ -e "$2" ]; then
    exit 3
 fi
 
-mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9
+mksquashfs "$1" "$2" -comp xz -b 512K -keep-as-directory

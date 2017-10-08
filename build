@@ -68,25 +68,21 @@ if [ -d rootcopy ]; then
    cp -a rootcopy $LIVEKITDATA/$LIVEKITNAME/
 fi
 
-# create ISO for CD image
-echo "Creating ISO file for CD boot..."
 cd "$LIVEKITDATA"
-TARGET=/mnt/z
-if [ ! -d $TARGET ]; then
-   TARGET=/tmp
-fi
-
 ARCH=$(uname -m)
-
-$MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
--no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
->/dev/null 2>/dev/null
+TARGET=/tmp
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$//" > readme.txt
-echo "Creating ZIP for USB boot..."
-rm -f "$TARGET/$LIVEKITNAME-$ARCH.zip"
-zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
-echo "finished. Find your results in $TARGET"
+echo cd ../../ '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+-no-emul-boot -boot-info-table -boot-load-size 4 \
+-b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
+> "$LIVEKITNAME"/boot/make_iso
+
+echo zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
+> "$LIVEKITNAME"/boot/make_zip
+
+echo "-----------------------------"
+echo "Finished. Find your result in $LIVEKITDATA"
+echo "You may need to use make_iso or make_zip from $LIVEKITDATA/$LIVEKITNAME/boot/"
 cd $CWD

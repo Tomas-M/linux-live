@@ -5,12 +5,13 @@
 # Lines containing # are ignored
 #
 Thank you for using mylinux!
-Steps to make it bootable from your USB device:
+If you are reading this from a CD, it is already bootable.
+Steps to make it bootable from your USB device are following:
 
-1) Extract the contents of ZIP archive to your USB drive.
+1) Copy the entire /mylinux/ directory to your USB drive.
    If you are using Windows, you will get for example E:\mylinux\
-   You probably already did this, just make sure you extracted
-   the archive to your USB drive and not to your local harddisk.
+   You probably already did this - just make sure you are on your
+   USB drive now and not on your local harddisk.
 
 2) Now navigate to directory /mylinux/boot/ on your USB drive.
    In Windows, it will be E:\mylinux\boot\ for example.
