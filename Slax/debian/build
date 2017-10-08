@@ -5,12 +5,15 @@
 . ./copy
 
 # now run build script
+SKIPINITRFS=true
 cd ../../
-./build
+. ./build
 
+# re-setup initrd to include aufs
 apt-get update
 apt-get install aufs-dkms
 
-# and re-setup initrd to include aufs
-./initramfs/initramfs_create
+cd initramfs
+. ./initramfs_create
 
+cp -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img

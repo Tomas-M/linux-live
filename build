@@ -31,10 +31,12 @@ if [ "$MKISOFS" = "" ]; then
 fi
 
 # build initramfs image
-echo "Building intramfs image..."
-cd initramfs
-INITRAMFS=$(./initramfs_create "$LIVEKITNAME")
-cd ..
+if [ "$SKIPINITRFS" = "" ]; then
+   echo "Building intramfs image..."
+   cd initramfs
+   INITRAMFS=$(./initramfs_create)
+   cd ..
+fi
 
 # create live kit filesystem (cpio archive)
 rm -Rf "$LIVEKITDATA"
@@ -42,7 +44,11 @@ BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
 mkdir -p "$BOOT"/../changes
 mkdir -p "$BOOT"/../modules
-mv "$INITRAMFS" $BOOT/initrfs.img
+
+if [ "$INITRAMFS" != "" ]; then
+   mv "$INITRAMFS" $BOOT/initrfs.img
+fi
+
 cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
@@ -82,6 +88,5 @@ echo "Creating ZIP for USB boot..."
 rm -f "$TARGET/$LIVEKITNAME-$ARCH.zip"
 zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" *
 
-cd ..
-#rm -Rf "$LIVEKITDATA"
 echo "finished. Find your results in $TARGET"
+cd $CWD
