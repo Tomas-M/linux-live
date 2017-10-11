@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CWD=$(pwd)
+THIS=$(dirname $(readlink -f $0))
 
 . ./install
 . ./cleanup
@@ -19,4 +19,4 @@ cd initramfs
 . ./initramfs_create
 
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
-cp -f $CWD/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
+cp -vf $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
