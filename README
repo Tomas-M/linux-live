@@ -13,10 +13,10 @@ Note:
   make a directory such as /a and put these scripts there.
   Be warned, if you put it to /tmp, some distros may erase it on reboot.
 
-* Before you start building your Kit, edit the file ./.config
+* Before you start building your Kit, edit the file ./config
   Most importantly change the LIVEKITNAME variable.
 
-* Make sure your kernel is in /boot/vmlinuz or change the path in ./.config
+* Make sure your kernel is in /boot/vmlinuz or change the path in ./config
   Your kernel must support squashfs and aufs. Debian Jessie's kernel does.
 
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png

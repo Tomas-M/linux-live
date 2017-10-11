@@ -4,7 +4,7 @@
 
 export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 
-. /lib/.config
+. /lib/config
 . /lib/livekitlib
 
 transfer_initramfs

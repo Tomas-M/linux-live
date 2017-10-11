@@ -8,7 +8,7 @@ echo "Changing current directory to $CHANGEDIR"
 CWD="$(pwd)"
 cd $CHANGEDIR
 
-. ./.config || exit 1
+. ./config || exit 1
 . ./livekitlib || exit 1
 
 # only root can continue, because only root can read all files from your system
@@ -79,7 +79,7 @@ echo cd ../../ '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A 
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
 > "$LIVEKITNAME"/boot/make_iso
 
-echo zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
+echo cd ../../ '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
 > "$LIVEKITNAME"/boot/make_zip
 
 echo "-----------------------------"

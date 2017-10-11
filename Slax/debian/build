@@ -18,5 +18,5 @@ apt-get install aufs-dkms
 cd initramfs
 . ./initramfs_create
 
-cp -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
+mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
 cp -f $CWD/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/

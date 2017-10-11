@@ -3,7 +3,7 @@
 # Author: Tomas M <http://www.linux-live.org/>
 #
 
-. ../.config
+. ../config
 
 INITRAMFS=/tmp/$LIVEKITNAME-initramfs-$$
 
@@ -119,7 +119,7 @@ cp cleanup $INITRAMFS/lib
 chmod a+x $INITRAMFS/lib/cleanup
 ln -s ../init $INITRAMFS/bin/init
 cp ../livekitlib $INITRAMFS/lib/
-cp ../.config $INITRAMFS/lib/
+cp ../config $INITRAMFS/lib/
 
 cd $INITRAMFS
 find . -print | cpio -o -H newc 2>/dev/null | xz -f --extreme --check=crc32 >$INITRAMFS.img
