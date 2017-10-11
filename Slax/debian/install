@@ -1,5 +1,6 @@
 #!/bin/bash
 
+apt-get update
 apt-get dist-upgrade
 # if kernel was upgraded, you may need to reboot
 apt-get install mc squashfs-tools genisoimage zip psmisc net-tools
