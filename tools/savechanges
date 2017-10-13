@@ -19,11 +19,10 @@ cd $CHANGES || exit
 mkdir -p $TMP
 mount -t tmpfs tmpfs $TMP
 
-find \( -type d -printf "%p/\n" , -type f -print \) \
-  | sed -r "s/[.]\\///" | egrep -v "$EXCLUDE" \
+find \( -type d -printf "%p/\n" , -not -type d -print \) \
+  | sed -r "s/^[.]\\///" | egrep -v "$EXCLUDE" \
   | while read FILE; do
-echo $FILE
-    cp -v --parents -afr $FILE $TMP
+    cp -v --parents -afr "$FILE" "$TMP"
 done
 
 cd $CWD
