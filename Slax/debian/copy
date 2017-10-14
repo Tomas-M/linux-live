@@ -3,3 +3,5 @@
 (cd rootcopy && cp --parents -afr * /)
 
 cp ../../tools/dir2sb /usr/bin
+cp ../../tools/slaxctl /usr/bin
+cp ../../tools/savechanges /usr/bin

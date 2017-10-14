@@ -2,7 +2,7 @@
 
 TMP=/tmp/changes$$
 CHANGES=/mnt/live/memory/changes
-EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^etc/fstab|^etc/ld[.]so[.]cache|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
+EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
 
 if [ "$1" = "" ]; then
    echo "Usage: $0 [ target_file.sb ]"
@@ -22,7 +22,7 @@ mount -t tmpfs tmpfs $TMP
 find \( -type d -printf "%p/\n" , -not -type d -print \) \
   | sed -r "s/^[.]\\///" | egrep -v "$EXCLUDE" \
   | while read FILE; do
-    cp -v --parents -afr "$FILE" "$TMP"
+    cp --parents -afr "$FILE" "$TMP"
 done
 
 cd $CWD
