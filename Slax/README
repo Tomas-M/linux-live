@@ -1,2 +1,8 @@
 Each directory contains scripts for easier building of minimal OS installation,
 also known as SLAX - Small Live Auxiliary linuX
+
+WARNING:
+
+You should not run this on your system since it auto-installs some packages
+and removes lots of files from your filesystem.
+Use only on freshly installed OS. You have been warned.

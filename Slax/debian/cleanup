@@ -1,6 +1,15 @@
 #!/bin/bash
 
+rm -f /var/backups/*
+rm -f /var/cache/ldconfig/*
+rm -f /var/lib/apt/extended_states
+rm -f /var/lib/systemd/random-seed
 rm -f /var/lib/apt/lists/deb.*
+rm -Rf /root/.local/share/mc
+rm -Rf /root/.cache
+rm -f /root/.wget-hsts
+
+rm -f /var/lib/dpkg/*-old
 rm -f /var/log/*
 rm -f /var/log/*/*
 rm -f /var/log/*/*/*
