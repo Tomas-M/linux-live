@@ -15,8 +15,8 @@ XTerm*allowSendEvents: True
 XTerm*sessionMgt: false
 XTerm*rightScrollBar: true
 XTerm*eightBitInput:  false
-XTerm*faceName:fixed:size=9
-XTerm*boldFont:fixed:size=9
+XTerm*faceName:fixed:size=11
+XTerm*boldFont:fixed:size=11
 
 Xft.antialias:  true
 Xft.hinting:    true
