@@ -20,9 +20,9 @@ alias l='ls $LS_OPTIONS -lA'
 apt-get()
 {
    if [ -e /var/cache/apt/pkgcache.bin ]; then
-      /usr/bin/apt-get "$@"
+      /usr/bin/apt-get --no-install-recommends "$@"
    else
       /usr/bin/apt-get update
-      /usr/bin/apt-get "$@"
+      /usr/bin/apt-get --no-install-recommends "$@"
    fi
 }
