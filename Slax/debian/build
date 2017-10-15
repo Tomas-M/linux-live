@@ -13,7 +13,7 @@ cd ../../
 
 # setup initrd now, to include aufs
 apt-get update
-apt-get install aufs-dkms
+apt-get install aufs-dkms --yes
 
 cd initramfs
 . ./initramfs_create

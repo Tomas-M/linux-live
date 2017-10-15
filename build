@@ -61,7 +61,7 @@ for i in $MKMOD; do
       COREFS="$COREFS /$i"
    fi
 done
-mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/core.$BEXT -comp xz -b 512k -keep-as-directory
+mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/core.$BEXT -comp xz -b 512k -keep-as-directory || exit
 
 cd "$LIVEKITDATA"
 ARCH=$(uname -m)
