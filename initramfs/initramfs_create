@@ -72,7 +72,18 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 #copy_including_deps /usr/bin/strace
 #copy_including_deps /usr/bin/lsof
 
-copy_including_deps /$LMK/kernel/fs # all filesystems
+copy_including_deps /$LMK/kernel/fs/aufs
+copy_including_deps /$LMK/kernel/fs/ext2
+copy_including_deps /$LMK/kernel/fs/ext3
+copy_including_deps /$LMK/kernel/fs/ext4
+copy_including_deps /$LMK/kernel/fs/fat
+copy_including_deps /$LMK/kernel/fs/nls
+copy_including_deps /$LMK/kernel/fs/fuse
+copy_including_deps /$LMK/kernel/fs/isofs
+copy_including_deps /$LMK/kernel/fs/ntfs
+copy_including_deps /$LMK/kernel/fs/reiserfs
+copy_including_deps /$LMK/kernel/fs/squashfs
+
 copy_including_deps /$LMK/kernel/drivers/staging/zsmalloc # needed by zram
 copy_including_deps /$LMK/kernel/drivers/block/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
@@ -127,4 +138,3 @@ echo $INITRAMFS.img
 
 cd ..
 rm -Rf $INITRAMFS
-#mv $INITRAMFS.img /tmp/initrfs.img
