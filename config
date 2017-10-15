@@ -23,7 +23,7 @@ VMLINUZ=/vmlinuz
 # Live Kit with a different kernel than the one you are actually running
 KERNEL=$(uname -r)
 
-# List of directories which will be modularized
+# List of directories for root filesystem
 # No subdirectories are allowed, no slashes,
 # so You can't use /var/tmp here for example
 # Exclude directories like proc sys tmp

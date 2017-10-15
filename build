@@ -54,19 +54,14 @@ cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/sysl
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp $VMLINUZ $BOOT/
 
-if [ -d sb ]; then
-   cp sb/* $LIVEKITDATA/$LIVEKITNAME/
-else
-   # create compressed bundles
-   for i in $MKMOD; do
-      mksquashfs /$i $LIVEKITDATA/$LIVEKITNAME/$i.$BEXT -comp xz -b 512k -keep-as-directory
-   done
-fi
-
-# copy rootcopy folder
-if [ -d rootcopy ]; then
-   cp -a rootcopy $LIVEKITDATA/$LIVEKITNAME/
-fi
+# create compressed core.sb
+COREFS=""
+for i in $MKMOD; do
+   if [ -d /$i ]; then
+      COREFS="$COREFS /$i"
+   fi
+done
+mksquashfs $COREFS $LIVEKITDATA/$LIVEKITNAME/core.$BEXT -comp xz -b 512k -keep-as-directory
 
 cd "$LIVEKITDATA"
 ARCH=$(uname -m)
