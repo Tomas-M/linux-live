@@ -1,0 +1,4 @@
+[begin] ( Menu             )
+   [exec] (xterm) { xterm -ls }
+   [exit] (Exit)
+[end]
