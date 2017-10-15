@@ -2,6 +2,8 @@
 
 THIS=$(dirname $(readlink -f $0))
 
+sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+
 . ./install
 . ./cleanup
 . ./copy
