@@ -26,3 +26,13 @@ apt-get()
       /usr/bin/apt-get --no-install-recommends "$@"
    fi
 }
+
+apt()
+{
+   if [ -e /var/cache/apt/pkgcache.bin ]; then
+      /usr/bin/apt --no-install-recommends "$@"
+   else
+      /usr/bin/apt update
+      /usr/bin/apt --no-install-recommends "$@"
+   fi
+}
