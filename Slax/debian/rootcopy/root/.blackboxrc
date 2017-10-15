@@ -3,4 +3,4 @@ session.screen0.strftimeFormat:	%H:%M
 session.edgeSnapThreshold:	10
 session.menuFile:	/etc/X11/blackbox/blackbox-menu
 session.styleFile:	/usr/share/blackbox/styles/Slax
-session.changeWorkspaceWithMouseWheel:	True
+session.changeWorkspaceWithMouseWheel:	False
