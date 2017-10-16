@@ -1,5 +1,8 @@
 #!/bin/bash
 
+systemctl disable apt-daily.timer
+systemctl disable apt-daily-upgrade.timer
+
 rm -f /var/backups/*
 rm -f /var/cache/ldconfig/*
 rm -f /var/lib/apt/extended_states
