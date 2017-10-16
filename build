@@ -69,15 +69,18 @@ TARGET=/tmp
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$//" > readme.txt
 
-echo cd ../../ '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
+echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
 -b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> "$LIVEKITNAME"/boot/make_iso
+> $TARGET/gen_"$LIVEKITNAME"_iso.sh
+chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
 
-echo cd ../../ '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
-> "$LIVEKITNAME"/boot/make_zip
+echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
+> $TARGET/gen_"$LIVEKITNAME"_zip.sh
+chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
 
 echo "-----------------------------"
 echo "Finished. Find your result in $LIVEKITDATA"
-echo "You may need to use make_iso or make_zip from $LIVEKITDATA/$LIVEKITNAME/boot/"
+echo "To build ISO, run: $TARGET/gen_iso.sh"
+echo "To build ZIP, run: $TARGET/gen_zip.sh"
 cd $CWD
