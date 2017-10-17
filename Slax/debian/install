@@ -3,6 +3,6 @@
 apt-get update
 apt-get dist-upgrade --yes
 # if kernel was upgraded, you may need to reboot
-apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools alsa-utils
+apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools alsa-utils man
 apt-get remove --yes libicu* libperl* libxml2 mime-support perl perl-modules-5.24 sgml-base shared-mime-info xdg-user-dirs xml-core
 ln -sf bash /bin/sh
