@@ -1,4 +1,5 @@
 [begin] ( Menu             )
-   [exec] (xterm) { xterm -ls }
+   [exec] (Terminal) { xterm -ls }
+   [exec] (Web browser) { chromium-guest }
    [exit] (Exit)
 [end]
