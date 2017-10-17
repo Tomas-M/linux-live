@@ -1,7 +1,6 @@
 #!/bin/bash
 
-systemctl disable apt-daily.timer
-systemctl disable apt-daily-upgrade.timer
+rm -Rf /etc/systemd/system/timers.target.wants
 
 rm -f /var/backups/*
 rm -f /var/cache/ldconfig/*
