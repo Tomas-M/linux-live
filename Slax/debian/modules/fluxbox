@@ -1,0 +1,28 @@
+#!/bin/bash
+
+NAME=fluxbox
+VERSION=1.3.5
+
+REBUILD=/tmp/$NAME-rebuild-$$
+CWD=$(dirname $(readlink -f $0))
+
+apt-get update
+apt-get build-dep $NAME
+
+mkdir -p $REBUILD
+cd $REBUILD
+
+apt-get source $NAME
+
+cd $NAME-$VERSION
+
+cat $CWD/patches/fluxbox-border-resize.diff > debian/patches/fluxbox-border-resize.diff
+echo fluxbox-border-resize.diff >> debian/patches/series
+
+dpkg-buildpackage -us -uc
+
+rm -Rf debian/$NAME/DEBIAN
+rm -Rf debian/$NAME/usr/share/doc
+rm -Rf debian/$NAME/usr/share/images
+
+savechanges /03-fluxbox.sb debian/$NAME
