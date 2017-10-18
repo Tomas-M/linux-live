@@ -1,12 +1,16 @@
 #!/bin/bash
 
 TMP=/tmp/changes$$
-CHANGES=/mnt/live/memory/changes
 EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
+CHANGES=/mnt/live/memory/changes
 
 if [ "$1" = "" ]; then
-   echo "Usage: $0 [ target_file.sb ]"
+   echo "Usage: $0 [ target_file.sb ] [ optional_changes_directory ]"
    exit 1
+fi
+
+if [ ! "$2" = "" ]; then
+   CHANGES="$2"
 fi
 
 # exclude the safe_file itself of course
