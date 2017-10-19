@@ -1,0 +1,3 @@
+xrdb -merge ~/.Xresources
+startfluxbox
+

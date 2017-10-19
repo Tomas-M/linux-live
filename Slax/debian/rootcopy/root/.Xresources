@@ -17,6 +17,10 @@ XTerm*rightScrollBar: true
 XTerm*eightBitInput:  false
 XTerm*faceName:fixed:size=11
 XTerm*boldFont:fixed:size=11
+xterm*activeIcon: true
+xterm*iconPixmap: /usr/share/icons/locolor/16x16/apps/xterm.xbm
+
+
 
 Xft.antialias:  true
 Xft.hinting:    true
