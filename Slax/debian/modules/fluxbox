@@ -8,7 +8,7 @@ VERSION=1.3.5
 # first install stock version
 
 apt-get update
-apt-get install --no-install-recommends --yes $NAME
+apt-get install --no-install-recommends --yes $NAME feh
 . ../cleanup
 savechanges /$NAME-stock.sb
 
@@ -41,4 +41,4 @@ rm -Rf debian/$NAME/usr/share/images
 
 cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
-savechanges /fluxbox.sb /squashfs-root
+savechanges /03-fluxbox.sb /squashfs-root
