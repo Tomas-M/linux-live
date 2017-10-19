@@ -47,7 +47,7 @@ session.screen0.clickRaises:	true
 session.screen0.colPlacementDirection:	TopToBottom
 session.screen0.focusNewWindows:	true
 session.screen0.maxDisableResize:	false
-session.screen0.fullMaximization:	true
+session.screen0.fullMaximization:	false
 session.screen0.windowMenu:	/root/.fluxbox/windowmenu
 session.screen0.defaultDeco:	NORMAL
 session.screen0.focusSameHead:	false
