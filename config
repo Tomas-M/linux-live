@@ -32,6 +32,7 @@ MKMOD="bin etc home lib lib64 opt root sbin srv usr var"
 # If you require network support in initrd, for example to boot over
 # PXE or to load data using 'from' boot parameter from a http server,
 # you will need network modules included in your initrd.
+# This is disabled by default since most people won't need it.
 # To enable, set to true
 NETWORK=false
 
