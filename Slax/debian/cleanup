@@ -1,5 +1,7 @@
 #!/bin/bash
 
+rm -f /etc/fstab
+rm -f /etc/mtab
 rm -Rf /etc/systemd/system/timers.target.wants
 
 rm -f /var/backups/*

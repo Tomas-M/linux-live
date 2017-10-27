@@ -29,8 +29,11 @@ KERNEL=$(uname -r)
 # Exclude directories like proc sys tmp
 MKMOD="bin etc home lib lib64 opt root sbin srv usr var"
 
-# List of files and directories you'd like to exclude from your Live Kit
-EXCLUDE="/etc/fstab /etc/mtab"
+# If you require network support in initrd, for example to boot over
+# PXE or to load data using 'from' boot parameter from a http server,
+# you will need network modules included in your initrd.
+# To enable, set to true
+NETWORK=false
 
 # Temporary directory to store livekit filesystem
 LIVEKITDATA=/tmp/$LIVEKITNAME-data-$$
