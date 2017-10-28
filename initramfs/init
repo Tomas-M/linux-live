@@ -25,10 +25,13 @@ debug_start
 init_devs
 init_aufs
 init_zram
-modprobe_everything
+
+# modprobe all devices excluding network drivers
+modprobe_everything -v /drivers/net/
 
 # find data dir with filesystem bundles
 DATA="$(find_data 60 "$DATAMNT")"
+check_data_found "$DATA"
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
 persistent_changes "$DATA" "$CHANGES"

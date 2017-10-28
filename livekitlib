@@ -53,6 +53,7 @@ echolog()
    log "$@"
 }
 
+
 # show information about the debug shell
 show_debug_banner()
 {
@@ -62,6 +63,7 @@ show_debug_banner()
    echo ": Type your desired commands or hit Ctrl+D to continue booting."
    echo
 }
+
 
 # debug_shell
 # executed when debug boot parameter is present
@@ -85,6 +87,7 @@ fatal()
    setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
 }
 
+
 # get value of commandline parameter $1
 # $1 = parameter to search for
 #
@@ -102,6 +105,7 @@ allow_only_root()
      echo "Only root can run $(basename $0)"; exit 1
   fi
 }
+
 
 # Create bundle
 # call mksquashfs with apropriate arguments
@@ -135,6 +139,7 @@ transfer_initramfs()
    fi
 }
 
+
 # mount virtual filesystems like proc etc
 #
 init_proc_sysfs()
@@ -150,6 +155,9 @@ init_proc_sysfs()
 
 
 # modprobe all modules found in initial ramdisk
+# $1 = -e for match, -v for negative match
+# $2 = regex pattern
+#
 modprobe_everything()
 {
    debug_log "modprobe_everything" "$*"
@@ -157,7 +165,7 @@ modprobe_everything()
    echo_green_star >&2
    echo "Probing for hardware" >&2
 
-   find /lib/modules/ | fgrep .ko | xargs -n 1 modprobe 2>/dev/null
+   find /lib/modules/ | fgrep .ko | egrep $1 $2 | xargs -n 1 modprobe 2>/dev/null
    refresh_devs
 }
 
@@ -183,6 +191,7 @@ init_devs()
    refresh_devs
 }
 
+
 # Activate zram (auto-compression of RAM)
 # Compressed RAM consumes 1/2 or even 1/4 of original size
 # Setup static size of 500MB
@@ -200,6 +209,7 @@ init_zram()
    fi
 }
 
+
 # load the AUFS kernel module if needed
 #
 init_aufs()
@@ -210,6 +220,7 @@ init_aufs()
    modprobe aufs 2>/dev/null
    refresh_devs
 }
+
 
 # Setup empty union
 # $1 = changes directory (ramfs or persistent changes)
@@ -225,6 +236,7 @@ init_union()
    mkdir -p "$2"
    mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
 }
+
 
 # Return device mounted for given directory
 # $1 = directory
@@ -245,6 +257,7 @@ mounted_device()
    done
 }
 
+
 # Return mounted dir for given directory
 # $1 = directory
 #
@@ -262,6 +275,7 @@ mounted_dir()
       MNT="$(dirname "$MNT")"
    done
 }
+
 
 # Make sure to mount FAT12/16/32 using vfat
 # in order to support long filenames
@@ -281,6 +295,7 @@ device_bestfs()
    echo "-t $FS"
 }
 
+
 # Filesystem options for mount
 # $1 = filesystem or '-t filesystem'
 #
@@ -297,6 +312,15 @@ fs_options()
 }
 
 
+# echo first network device known at the moment of calling, eg. eth0
+#
+network_device()
+{
+   debug_log "network_device" "$*"
+   cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
+}
+
+
 # Modprobe network kernel modules until a working driver is found.
 # These drivers are (or used to be) probed in Slackware's initrd.
 # The function returns the first device found, yet it doesn't have
@@ -308,14 +332,11 @@ init_network_dev()
    debug_log "init_network_dev" "$*"
    local MODULE ETH
 
-   for MODULE in 3c59x acenic de4x5 e1000 e1000e e100 epic100 hp100 \
-   ne2k-pci pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin \
-   tg3 dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip depca 3c501 3c503 \
-   3c505 3c507 3c509 3c515 ac3200 at1700 cosa cs89x0 de600 de620 e2100 \
-   eepro eexpress eth16i ewrk3 forcedeth hostess_sv11 hp-plus hp ni52 \
-   ni65 sb1000 sealevel smc-ultra sis900 smc9194 wd; do
+   for MODULE in 3c59x acenic e1000 e1000e e100 epic100 hp100 ne2k-pci \
+   pcnet32 8139too 8139cp tulip via-rhine r8169 atl1e yellowfin tg3 \
+   dl2k ns83820 atl1 b44 bnx2 skge sky2 tulip forcedeth sb1000 sis900; do
       modprobe $MODULE 2>/dev/null
-      ETH="$(cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1)"
+      ETH="$(network_device)"
       if [ "$ETH" != "" ]; then
          echo $ETH
          return 0
@@ -324,9 +345,63 @@ init_network_dev()
    done
 
    # If we are here, none of the above specified modules worked.
-   # As a last chance, try to modprobe everything.
-   modprobe_everything
-   cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
+   # As a last chance, try to modprobe everything else
+   modprobe_everything -e /drivers/net/
+   echo $(network_device)
+}
+
+
+# Initialize network IP address
+# either static from ip=bootparameter, or from DHCP
+#
+init_network_ip()
+{
+   debug_log "init_network_ip" "$*"
+   local IP ETH SCRIPT CLIENT SERVER GW MASK
+
+   SCRIPT=/tmp/dhcpscript
+   ETH=$(init_network_dev)
+   IP=$(cmdline_value ip)
+
+   echo "* Setting up network" >&2
+
+   if [ "$IP" != "" ]; then
+      # set IP address as given by boot paramter
+      echo "$IP" | while IFS=":" read CLIENT SERVER GW MASK; do
+         ifconfig $ETH "$CLIENT" netmask "$MASK"
+         route add default gw "$GW"
+         echo nameserver "$GW" >> /etc/resolv.conf
+         echo nameserver "$SERVER" >> /etc/resolv.conf
+      done
+   else
+      # if client ip is unknown, try to get a DHCP lease
+      ifconfig $ETH up
+      echo -e '#!/bin/sh\nif [ "$1" != "bound" ]; then exit; fi\nifconfig $interface $ip netmask $subnet\nroute add default gw $router\necho nameserver $dns >>/etc/resolv.conf' >$SCRIPT
+      chmod a+x $SCRIPT
+      udhcpc -i $ETH -n -s $SCRIPT -q >/dev/null
+   fi
+}
+
+
+# Mount data from http using httpfs
+# $1 = from URL
+# $2 = target
+mount_data_http()
+{
+   debug_log "mount_data_http" "$*"
+
+   echo_green_star >&2
+   echo "Load data from $1" >&2
+
+   init_network_ip
+
+   if [ "$(network_device)" != "" ]; then
+      echo "* Mounting remote file..." >&2
+      mkdir -p "$2"
+      mount.httpfs2 -r 9999 -t 5 -C /tmp/httpfs.cache -S 100000000 -c /dev/null "$1" "$2" >/dev/null 2>/dev/null
+      mount -o loop "$2"/* "$2" # self mount
+      echo "$2/$LIVEKITNAME"
+   fi
 }
 
 
@@ -336,28 +411,20 @@ init_network_dev()
 download_data_pxe()
 {
    debug_log "download_data_pxe" "$*"
-   local CMD CLIENT SERVER GW MASK PORT ETH PROTOCOL
+   local IP CMD CLIENT SERVER GW MASK PORT PROTOCOL
 
    mkdir -p "$1/$LIVEKITNAME"
+   IP="$(cmdline_value ip)"
 
-   cmdline_value ip | while IFS=":" read CLIENT SERVER GW MASK PORT; do
+   echo "$IP" | while IFS=":" read CLIENT SERVER GW MASK PORT; do
       echo_green_star >&2
-      echo "Downloading files from $SERVER ..." >&2
+      echo "Contacting PXE server $SERVER" >&2
 
-      ETH=$(init_network_dev)
       if [ "$PORT" = "" ]; then PORT="7529"; fi
 
-      # set IP address as given by boot paramter
-      if [ "$CLIENT" != "" -a "$MASK" != "" ]; then
-         ifconfig $ETH "$CLIENT" netmask "$MASK"
-         route add default gw "$GW"
-      else
-         # if client ip is unknown, try to get a DHCP lease
-         udhcpc -i $ETH -f -q
-      fi
+      init_network_ip
 
-      # well known IP address of Google public DNS service
-      echo nameserver 8.8.8.8 >> /etc/resolv.conf
+      echo "* Downloading PXE file list"
 
       PROTOCOL=http
       wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
@@ -366,6 +433,8 @@ download_data_pxe()
          PROTOCOL=tftp
          tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
       fi
+
+      echo "* Downloading files from the list"
 
       cat "$1/PXEFILELIST" | while read FILE; do
          if [ "$PROTOCOL" = "http" ]; then
@@ -379,6 +448,7 @@ download_data_pxe()
 
    echo "$1/$LIVEKITNAME"
 }
+
 
 # Find LIVEKIT data by mounting all devices
 # If found, keep mounted, else unmount
@@ -420,6 +490,7 @@ find_data_try()
    done
 }
 
+
 # Retry finding LIVEKIT data several times,
 # until timeouted or until data is found
 # $1 = timeout
@@ -431,12 +502,20 @@ find_data()
 
    local DATA FROM
 
+   FROM="$(cmdline_value from)"
+
+   # boot parameter specified as from=http://server.com/file.iso
+   if [ "$(echo $FROM | grep 'http://')" != "" ]; then
+      mount_data_http "$FROM" "$2"
+      return
+   fi
+
+   # if we got IP address as boot parameter, it means we booted over PXE
    if [ "$(cmdline_value ip)" != "" ]; then
       download_data_pxe "$2"
       return
    fi
 
-   FROM="$(cmdline_value from)"
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
@@ -454,12 +533,19 @@ find_data()
       sleep 1
    done
    echo "" >&2
-
-   if [ "$DATA" = "" ]; then
-      fatal "$LIVEKITNAME data not found"
-   fi
-
 }
+
+
+# Check if data is found and exists
+# $1 = data directory
+#
+check_data_found()
+{
+   if [ "$1" = "" -o ! -d "$1" ]; then
+      fatal "Could not locate $LIVEKITNAME data";
+   fi
+}
+
 
 # Activate persistent changes
 # $1 = data directory
@@ -515,6 +601,7 @@ persistent_changes()
    fi
 }
 
+
 # Copy content of rootcopy directory to union
 # $1 = data directory
 # $2 = union directory
@@ -528,6 +615,7 @@ copy_rootcopy_content()
       cp -a "$1"/rootcopy/* "$2"
    fi
 }
+
 
 # Copy data to RAM if requested
 # $1 = live data directory
@@ -561,6 +649,7 @@ copy_to_ram()
    fi
 }
 
+
 # load filter
 #
 filter_load()
@@ -573,6 +662,7 @@ filter_load()
       cat - | egrep "$FILTER"
    fi
 }
+
 
 # noload filter
 #
@@ -593,6 +683,7 @@ sortmod()
 {
    cat - | sed -r "s,(.*/(.*)),\\2:\\1," | sort -n | cut -d : -f 2-
 }
+
 
 # Mount squashfs filesystem bundles
 # and add them to union
@@ -617,6 +708,7 @@ union_append_bundles()
    done
 }
 
+
 # Create empty fstab properly
 # $1 = root directory
 #
@@ -640,6 +732,14 @@ fstab_create()
 change_root()
 {
    debug_log "change_root" "$*"
+
+   # if we are booting over httpfs, we need to copyup these files so they are
+   # accessible on union without any further lookup down, else httpfs locks
+   if [ "$(network_device)" != "" ]; then
+      touch "$1/etc/resolv.conf"
+      touch "$1/etc/hosts"
+      touch "$1/etc/gai.conf"
+   fi
 
    umount /proc
    umount /sys
