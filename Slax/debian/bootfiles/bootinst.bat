@@ -53,12 +53,12 @@ if %OS% == Windows_NT goto setupNT
 goto setup95
 
 :setupNT
-\linux\boot\syslinux.exe -maf -d /linux/boot/ %DISK%:
+\slax\boot\syslinux.exe -maf -d /slax/boot/ %DISK%:
 if %ERRORLEVEL% == 0 goto setupDone
 goto errorFound
 
 :setup95
-\linux\boot\syslinux.com -maf -d /linux/boot/ %DISK%:
+\slax\boot\syslinux.com -maf -d /slax/boot/ %DISK%:
 if %ERRORLEVEL% == 0 goto setupDone
 goto errorFound
 
@@ -75,7 +75,7 @@ goto pauseit
 :refuseDisk
 color 4F
 echo.
-echo Directory %DISK%:\linux\boot\ seems to be on the same physical disk as your Windows.
+echo Directory %DISK%:\slax\boot\ seems to be on the same physical disk as your Windows.
 echo Installing bootloader would harm your Windows and thus is disabled.
 echo Please use different drive and try again.
 goto pauseit
