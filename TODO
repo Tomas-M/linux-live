@@ -1,3 +1,0 @@
-* copy DOC/* to Live Kit created
-* describe meaning of special files in bundles
-* PXE should include all possible .ko dependencies else some of the ethernet modules won't work, like b44.ko

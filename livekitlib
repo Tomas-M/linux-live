@@ -389,16 +389,22 @@ init_network_ip()
 mount_data_http()
 {
    debug_log "mount_data_http" "$*"
+   local CACHE
 
    echo_green_star >&2
    echo "Load data from $1" >&2
+
+   CACHE=$(cmdline_value cache | sed -r "s/[^0-9]//g" | sed -r "s/^0+//g")
+   if [ "$CACHE" != "" ]; then
+      CACHE="-S "$(($CACHE*1024*1024))
+   fi
 
    init_network_ip
 
    if [ "$(network_device)" != "" ]; then
       echo "* Mounting remote file..." >&2
       mkdir -p "$2"
-      mount.httpfs2 -r 9999 -t 5 -C /tmp/httpfs.cache -S 100000000 -c /dev/null "$1" "$2" >/dev/null 2>/dev/null
+      mount.httpfs2 -r 9999 -t 5 -C /tmp/httpfs.cache $CACHE -c /dev/null "$1" "$2" >/dev/null 2>/dev/null
       mount -o loop "$2"/* "$2" # self mount
       echo "$2/$LIVEKITNAME"
    fi
