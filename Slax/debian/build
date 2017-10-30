@@ -3,6 +3,7 @@
 THIS=$(dirname $(readlink -f $0))
 
 sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
 
 . ./install
 . ./cleanup
