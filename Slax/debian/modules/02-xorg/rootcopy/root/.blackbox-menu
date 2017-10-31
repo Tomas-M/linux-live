@@ -1,5 +1,5 @@
 [begin] ( Menu             )
-   [exec] (Terminal) { xterm }
+   [exec] (Terminal) { xterm -ls }
    [exec] (Web browser) { chromium }
    [exit] (Exit)
 [end]
