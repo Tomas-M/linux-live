@@ -2,6 +2,7 @@
 
 rm -f /etc/fstab
 rm -f /etc/mtab
+rm -f /etc/apt/sources.list~
 rm -Rf /etc/systemd/system/timers.target.wants
 
 rm -f /var/backups/*
