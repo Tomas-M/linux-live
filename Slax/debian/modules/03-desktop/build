@@ -9,7 +9,7 @@ VERSION=1.3.5
 
 apt-get update
 apt-get install --no-install-recommends --yes $NAME feh
-. ./cleanup
+. ../../cleanup
 savechanges /$NAME-stock.sb
 
 cd /
@@ -49,7 +49,7 @@ tar -xf xlunch.tar.gz
 cd xlunch-master
 make
 cp xlunch /squashfs-root/usr/bin
-echo -e "#!/bin/bash\nxlunch --voidclickterminate --rootwindowbackground --iconpadding 30 --textpadding 15 --paddingswap --leastmargin 20" >/squashfs-root/usr/bin/fbmenu
-chmod ugo+x /squashfs-root/usr/bin/fbmenu
+
+(cd rootcopy && cp --parents -afr * /)
 
 savechanges /03-desktop.sb /squashfs-root

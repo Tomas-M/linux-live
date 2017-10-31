@@ -6,7 +6,7 @@ apt-get install --yes --no-install-recommends xserver-xorg xinit xterm blackbox 
 ln -sf /etc/X11/cursors/Breeze_Snow.theme /etc/alternatives/x-cursor-theme
 
 
-cp cleanup /tmp
+cp ../../cleanup /tmp
 # install x11 server utils, apt-get would add cpp dependency, bullshit!
 cd /tmp
 apt-get download x11-xserver-utils
@@ -15,5 +15,7 @@ cd /tmp/x11utils
 cp -aR * /
 
 . /tmp/cleanup
+
+(cd rootcopy && cp --parents -afr * /)
 
 savechanges /02-xorg.sb

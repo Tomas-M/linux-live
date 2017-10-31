@@ -2,8 +2,12 @@
 apt-get update
 apt-get install --yes --no-install-recommends chromium
 
-. ./cleanup
+. ../../cleanup
 
 rm -Rf /usr/share/icons/gnome/256x256
+
+mv /usr/bin/chromium /usr/bin/chromium-bin
+
+(cd rootcopy && cp --parents -afr * /)
 
 savechanges /04-chromium.sb

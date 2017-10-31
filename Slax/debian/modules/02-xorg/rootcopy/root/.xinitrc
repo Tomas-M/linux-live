@@ -8,4 +8,3 @@ else
       xterm
    fi
 fi
-
