@@ -10,6 +10,8 @@ VERSION=1.3.5
 apt-get update
 apt-get install --no-install-recommends --yes $NAME feh
 . ../../cleanup
+
+(cd rootcopy && cp --parents -afr * /)
 savechanges /$NAME-stock.sb
 
 cd /
@@ -49,7 +51,5 @@ tar -xf xlunch.tar.gz
 cd xlunch-master
 make
 cp xlunch /squashfs-root/usr/bin
-
-(cd rootcopy && cp --parents -afr * /)
 
 savechanges /03-desktop.sb /squashfs-root
