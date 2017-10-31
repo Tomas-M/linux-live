@@ -58,7 +58,7 @@ Mod4 8 :Tab 8
 Mod4 9 :Tab 9
 
 # open a terminal
-Mod1 F1 :Exec x-terminal-emulator
+Mod1 F1 :Exec xterm
 
 # open a dialog to run programs
 Mod1 F2 :Exec fbrun

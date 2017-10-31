@@ -27,9 +27,18 @@
      };
  
      // x, y, width and height define a space within which we're drawing a triangle
---- a/src/ToolFactory.cc
-+++ b/src/ToolFactory.cc
-@@ -110,6 +142,9 @@ ToolbarItem *ToolFactory::create(const s
+--- a/src/ToolFactory.cc	2013-02-13 05:04:05.000000000 -0500
++++ b/src/ToolFactory.cc	2017-10-31 12:11:20.000000000 -0400
+@@ -101,6 +101,8 @@
+             cmd_str += " (workspace=[current])";
+         }
+ 
++        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbmenu";
++
+         FbTk::RefCount<FbTk::Command<void> > cmd(FbTk::CommandParser<void>::instance().parse(cmd_str));
+         if (cmd == 0) // we need a command
+             return 0;
+@@ -110,6 +112,9 @@
          if (name.find("prev") != std::string::npos)
              arrow_type = FbTk::FbDrawable::LEFT;
  
