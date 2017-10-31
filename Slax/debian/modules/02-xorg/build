@@ -2,9 +2,13 @@
 apt-get update
 apt-get install --yes --no-install-recommends xserver-xorg xinit xterm blackbox libxcursor1 breeze-cursor-theme
 
-# default cursor is white, force it
-ln -sf /etc/X11/cursors/Breeze_Snow.theme /etc/alternatives/x-cursor-theme
+# use only white cursors. There were some troubles if the other cursors
+# was left behind, installing gtk apps reverted the cursor from white to gray,
+# so we're going to nuke it to leave only Snow cursors active.
+rm -Rf /usr/share/icons/breeze_cursors
+mv /usr/share/icons/Breeze_Snow /usr/share/icons/breeze_cursors
 
+(cd rootcopy && cp --parents -afr * /)
 
 cp ../../cleanup /tmp
 # install x11 server utils, apt-get would add cpp dependency, bullshit!
@@ -15,7 +19,5 @@ cd /tmp/x11utils
 cp -aR * /
 
 . /tmp/cleanup
-
-(cd rootcopy && cp --parents -afr * /)
 
 savechanges /02-xorg.sb
