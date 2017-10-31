@@ -1,0 +1,3 @@
+#!/bin/bash
+
+xlunch --background /usr/share/wallpapers/wp.jpg --voidclickterminate --iconpadding 30 --textpadding 15 --paddingswap --leastmargin 20

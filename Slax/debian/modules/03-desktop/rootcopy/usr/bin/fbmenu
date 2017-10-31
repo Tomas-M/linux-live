@@ -1,4 +1,0 @@
-#!/bin/bash
-# menu launcher for fluxbox, just call any app you want to be started as menu
-
-xlunch --voidclickterminate --rootwindowbackground --iconpadding 30 --textpadding 15 --paddingswap --leastmargin 20

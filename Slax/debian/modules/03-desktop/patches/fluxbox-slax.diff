@@ -33,7 +33,7 @@
              cmd_str += " (workspace=[current])";
          }
  
-+        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbmenu";
++        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbappselect";
 +
          FbTk::RefCount<FbTk::Command<void> > cmd(FbTk::CommandParser<void>::instance().parse(cmd_str));
          if (cmd == 0) // we need a command

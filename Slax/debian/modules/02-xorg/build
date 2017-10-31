@@ -1,6 +1,6 @@
 
 apt-get update
-apt-get install --yes --no-install-recommends xserver-xorg xinit xterm blackbox libxcursor1 breeze-cursor-theme
+apt-get install --yes --no-install-recommends xserver-xorg xinit xterm blackbox libxcursor1 breeze-cursor-theme compton
 
 # use only white cursors. There were some troubles if the other cursors
 # was left behind, installing gtk apps reverted the cursor from white to gray,
