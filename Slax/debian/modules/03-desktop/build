@@ -45,7 +45,7 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz --no-check-certificate https://github.com/Tomas-M/xlunch/archive/master.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/master.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
 cd xlunch-master
