@@ -35,3 +35,9 @@ rm -Rf /usr/share/locale/???
 rm -Rf /usr/share/i18n/locales/*_*
 rm -Rf /usr/share/man/??
 rm -Rf /usr/share/man/*_*
+
+# Unzip gzipped man pages, so LZMA can compress 2times better.
+# First we gunzip symlinks, which will be overwritten by the content of targets
+# this doesn't matter as mksquashfs will handle duplicate files correctly
+find /usr/share/man -type l -name "*.gz" | xargs gunzip -f
+find /usr/share/man -name "*.gz" | xargs gunzip
