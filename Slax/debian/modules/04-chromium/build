@@ -6,8 +6,9 @@ apt-get install --yes --no-install-recommends chromium
 
 rm -Rf /usr/share/icons/gnome/256x256
 
-mv /usr/bin/chromium /usr/bin/chromium-bin
+mv /usr/bin/chromium /usr/bin/chromium-launcher
 
 (cd rootcopy && cp --parents -afr * /)
+chown -R guest.users /home/guest
 
 savechanges /04-chromium.sb
