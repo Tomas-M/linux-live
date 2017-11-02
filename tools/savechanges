@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TMP=/tmp/changes$$
-EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
+EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^root/.Xauthority|^root/.xsession-errors|^etc/mtab|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
 CHANGES=/mnt/live/memory/changes
 
 if [ "$1" = "" ]; then
@@ -13,7 +13,7 @@ if [ ! "$2" = "" ]; then
    CHANGES="$2"
 fi
 
-# exclude the safe_file itself of course
+# exclude the save_file itself of course
 EXCLUDE="$EXCLUDE|^""$(readlink -f "$1" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
 
 CWD=$(pwd)

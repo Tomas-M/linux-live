@@ -1,7 +1,7 @@
 #!/bin/bash
 
 if [ "$2" = "" ]; then
-   echo "Usage: $0 [source_directory] [target_file.sb]"
+   echo "Usage: $0 [source_directory] [target_file.sb] [ -d ]"
    exit 1
 fi
 
@@ -16,4 +16,10 @@ if [ -e "$2" ]; then
    exit 3
 fi
 
-mksquashfs "$1" "$2" -comp xz -b 512K -keep-as-directory
+if [ "$3" = "-d" ]; then
+   KEEP="-keep-as-directory"
+else
+   KEEP=""
+fi
+
+mksquashfs "$1" "$2" -comp xz -b 512K $KEEP
