@@ -11,7 +11,7 @@ xmodmap "/root/.Xmodmap"
 xrdb -merge ~/.Xresources
 
 # set background color
-fbsetroot -solid '#000000'
+xsetroot -solid '#000000' -cursor_name watch
 
 # Applications you want to run with fluxbox.
 # MAKE SURE THAT APPS THAT KEEP RUNNING HAVE AN ''&'' AT THE END.
