@@ -159,7 +159,7 @@ deactivate()
 
    # remove the .sb file, but keep it if deactivate was issued on full sb real path
    if [ "$(realpath "$1")" != "$(realpath "$LOOPFILE")" ]; then
-      rm -f "$LOOPFILE"
+      rm -f "$LOOPFILE" 2>/dev/null
    fi
 
    echo "Slax Bundle deactivated: $SB"
