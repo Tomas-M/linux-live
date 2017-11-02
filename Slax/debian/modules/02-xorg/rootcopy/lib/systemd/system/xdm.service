@@ -1,0 +1,6 @@
+[Unit]
+Description=X-Window
+After=systemd-user-sessions.service
+
+[Service]
+ExecStart=/bin/su --login -c /usr/bin/startx
