@@ -36,6 +36,10 @@ rm -Rf /usr/share/i18n/locales/*_*
 rm -Rf /usr/share/man/??
 rm -Rf /usr/share/man/*_*
 
+rm -f /root/.fehbg
+rm -f /root/.fluxbox/lastwallpaper
+
+
 # Unzip gzipped man pages, so LZMA can compress 2times better.
 # First we gunzip symlinks, which will be overwritten by the content of targets
 # this doesn't matter as mksquashfs will handle duplicate files correctly
