@@ -21,4 +21,4 @@ Steps to make it bootable from your USB device are following:
    Run it by doubleclicking it. It will setup your USB to boot.
 
 -- That's it. Your USB device is now ready to boot mylinux.
--- You can safely delete this file (mylinux.txt), it's not needed.
+-- You can safely delete this file (readme.txt), it's not needed.
