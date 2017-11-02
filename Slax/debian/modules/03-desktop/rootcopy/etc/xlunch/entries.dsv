@@ -1,2 +1,2 @@
-Terminal;/usr/share/icons/hicolor/48x48/apps/terminal.png;xterm
+Terminal;/usr/share/icons/hicolor/48x48/apps/terminal.png;xterm -title Terminal
 Chromium;/usr/share/icons/hicolor/48x48/apps/chromium.png;chromium
