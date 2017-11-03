@@ -11,7 +11,7 @@
   "browser": {
     "check_default_browser": false,
     "has_seen_welcome_page": true,
-    "show_home_button": true,
+    "show_home_button": false,
     "window_placement": {
       "bottom": 10,
       "left": 10,
@@ -19,6 +19,11 @@
       "right": 10,
       "top": 10
     }
+  },
+  "extensions": {
+     "theme": {
+        "use_system": true
+     }
   },
   "ntp": {
     "most_visited_blacklist": {
