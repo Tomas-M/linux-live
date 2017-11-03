@@ -5,6 +5,6 @@
    [separator]
    [workspaces] (Workspaces)
    [exec] (Reboot computer) { reboot }
-   [exit] (Exit to textmode)
+   [exit] (Exit to Textmode)
 
 [end]

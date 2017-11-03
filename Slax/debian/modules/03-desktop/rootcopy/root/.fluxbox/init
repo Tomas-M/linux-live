@@ -50,7 +50,7 @@ session.screen0.workspaces:	4
 session.screen0.allowRemoteActions:	false
 session.screen0.focusModel:	ClickFocus
 session.screen0.windowMenu:	/root/.fluxbox/windowmenu
-session.screen0.workspaceNames:	Workspace 1, Workspace 2, Workspace 3, Workspace 4,
+session.screen0.workspaceNames:	Workspace 1             Ctrl+F1,Workspace 2             Ctrl+F2,Workspace 3             Ctrl+F3,Workspace 4             Ctrl+F4,
 session.screen0.edgeSnapThreshold:	10
 session.screen0.showwindowposition:	false
 session.screen0.defaultDeco:	NORMAL
