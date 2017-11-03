@@ -45,3 +45,5 @@ rm -f /root/.fluxbox/lastwallpaper
 # this doesn't matter as mksquashfs will handle duplicate files correctly
 find /usr/share/man -type l -name "*.gz" | xargs gunzip -f
 find /usr/share/man -name "*.gz" | xargs gunzip
+
+rm -Rf /usr/share/icons/elementaryXubuntu-dark
