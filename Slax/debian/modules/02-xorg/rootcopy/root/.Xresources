@@ -5,7 +5,7 @@
 ! command to /etc/xfce4/xinitrc (top) and be happy.
 
 XTerm*foreground: white
-XTerm*background: black
+XTerm*background: rgb:22/22/22
 XTerm*cursorColor: rgb:00/ff/00
 XTerm*borderColor: black
 XTerm*scrollColor: black
