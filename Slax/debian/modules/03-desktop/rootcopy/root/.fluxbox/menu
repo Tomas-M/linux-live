@@ -1,3 +1,10 @@
-[begin] (fluxbox)
-[include] (/etc/X11/fluxbox/fluxbox-menu)
+[begin] (Desktop menu)
+
+   [exec] (Terminal) { xterm -ls }
+   [exec] (Web browser) { chromium }
+   [separator]
+   [workspaces] (Workspaces)
+   [exec] (Reboot computer) { reboot }
+   [exit] (Exit to textmode)
+
 [end]
