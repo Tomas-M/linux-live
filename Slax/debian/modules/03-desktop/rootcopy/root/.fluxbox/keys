@@ -8,8 +8,8 @@ OnDesktop Mouse3 :RootMenu
 #OnDesktop Mouse5 :NextWorkspace
 
 # scroll on the toolbar to change current window
-OnToolbar Mouse4 :PrevWindow {static groups} (iconhidden=no)
-OnToolbar Mouse5 :NextWindow {static groups} (iconhidden=no)
+#OnToolbar Mouse4 :PrevWindow {static groups} (iconhidden=no)
+#OnToolbar Mouse5 :NextWindow {static groups} (iconhidden=no)
 
 # alt + left/right click to move/resize a window
 OnWindow Mod1 Mouse1 :MacroCmd {Raise} {Focus} {StartMoving}
