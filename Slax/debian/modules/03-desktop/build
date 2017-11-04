@@ -54,4 +54,4 @@ cd xlunch-master
 make
 cp xlunch /squashfs-root/usr/bin
 
-savechanges /03-desktop.sb /squashfs-root
+dir2sb /squashfs-root /03-desktop.sb
