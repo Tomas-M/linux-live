@@ -36,8 +36,8 @@ rm -Rf /usr/share/i18n/locales/*_*
 rm -Rf /usr/share/man/??
 rm -Rf /usr/share/man/*_*
 
-rm -f /root/.fehbg
-rm -f /root/.fluxbox/lastwallpaper
+rm -Rf /usr/share/icons/elementaryXubuntu-dark
+
 
 # Unzip gzipped files (man pages), so LZMA can compress 2times better.
 # First we fix symlinks, then uncompress files
@@ -58,4 +58,14 @@ uncompress_files()
 uncompress_files /etc/alternatives
 uncompress_files /usr/share/man
 
-rm -Rf /usr/share/icons/elementaryXubuntu-dark
+
+# remove broken links
+# $1 = search directory
+remove_broken_links()
+{
+   find "$1" -type l -exec test ! -e {} \; -print | xargs rm -vf
+}
+
+remove_broken_links /etc/alternatives
+remove_broken_links /usr/share/man
+
