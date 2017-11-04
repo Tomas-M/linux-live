@@ -1,2 +1,4 @@
 Terminal;/usr/share/icons/hicolor/48x48/apps/terminal.png;xterm -title Terminal
 Chromium;/usr/share/icons/hicolor/48x48/apps/chromium.png;chromium
+Text editor;/usr/share/icons/hicolor/48x48/apps/editor.png;leafpad
+Calculator;/usr/share/icons/hicolor/48x48/apps/calculator.png;qcalculate
