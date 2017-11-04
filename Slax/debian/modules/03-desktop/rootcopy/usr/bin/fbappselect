@@ -1,4 +1,3 @@
 #!/bin/bash
 
-exec xlunch --input /etc/xlunch/entries.dsv --background /usr/share/wallpapers/wp.jpg --voidclickterminate --iconpadding 30 --textpadding 10 --paddingswap --leastmargin 10 --hidemissing --iconsize 128
-
+exec xlunch --input /etc/xlunch/entries.dsv --background /usr/share/wallpapers/wp.jpg --voidclickterminate --iconpadding 30 --textpadding 10 --paddingswap --leastmargin 10 --hidemissing --iconsize 128 --font DejaVuSans/11
