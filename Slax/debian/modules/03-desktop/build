@@ -8,7 +8,7 @@ VERSION=1.3.5
 # first install stock version
 
 apt-get update
-apt-get install --no-install-recommends --yes $NAME feh compton murrine-themes
+apt-get install --no-install-recommends --yes $NAME feh compton volumeicon-alsa murrine-themes
 . ../../cleanup
 
 (cd rootcopy && cp --parents -afr * /)
