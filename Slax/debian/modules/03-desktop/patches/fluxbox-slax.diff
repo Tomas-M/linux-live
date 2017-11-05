@@ -5,8 +5,8 @@
      m_button_grab_y = y - frame().y() - frame().window().borderWidth();
  
 +    // If mouse clicked on the border, start window resize instead of move
-+    if (m_button_grab_x <= 0 || m_button_grab_x >= frame().window().width()
-+        || m_button_grab_y >= frame().window().height() ) {
++    if (m_button_grab_x <= 0 || m_button_grab_x >= (int)frame().window().width()
++        || m_button_grab_y >= (int)frame().window().height() ) {
 +        ReferenceCorner dir = getResizeDirection(m_button_grab_x,m_button_grab_y,EDGEORCORNERRESIZE,frame().window().borderWidth(),frame().window().borderWidth());
 +        startResizing(m_button_grab_x, m_button_grab_y, dir);
 +        return;
