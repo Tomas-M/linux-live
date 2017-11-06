@@ -1,4 +1,13 @@
 #!/bin/bash
 
-exec xlunch --input /etc/xlunch/entries.dsv --background /usr/share/wallpapers/wp.jpg --voidclickterminate --iconpadding 30 --textpadding 10 --paddingswap --leastmargin 10 --hidemissing --iconsize 128 --font DejaVuSans/11 --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png
+exec xlunch --input /etc/xlunch/entries.dsv --background /usr/share/wallpapers/wp.jpg --voidclickterminate --iconpadding 30 --textpadding 10 --paddingswap --leastmargin 10 --hidemissing --iconsize 128 --font DejaVuSans/11 --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png --outputonly | while read LINE; do
+   cmd="$(echo $LINE | sed -r "s/\\s.*//")"
+   whi="$(which $cmd | head -n 1)"
+   Xdep=$(ldd $whi | grep libX11)
 
+   if [ "$Xdep" = "" ]; then
+      xterm -e bash -c "echo '$LINE'; $LINE; echo; read -n 1 -s -r -p 'Command finished. Press any key to close window...'"
+   else
+      $LINE
+   fi
+done
