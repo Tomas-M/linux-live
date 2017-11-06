@@ -27,6 +27,7 @@ rm -f /var/lib/dhcp/dhclient.leases
 rm -f /root/.bash_history
 rm -f /root/.wget-hsts
 rm -Rf /usr/share/doc/*
+rm -Rf /usr/share/info/*
 rm -f /usr/share/images/fluxbox/debian-squared.jpg
 rm -Rf /usr/share/fluxbox/nls/??*
 
