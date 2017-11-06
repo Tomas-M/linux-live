@@ -1,0 +1,22 @@
+#!/bin/bash
+
+exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
+            --background /usr/share/wallpapers/wp.jpg --font DejaVuSans/11 \
+            --voidclickterminate --iconpadding 30 --textpadding 10 \
+            --paddingswap --leastmargin 10 --hidemissing --iconsize 128 \
+            --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
+            --outputonly | while read LINE; do
+
+   if [ "$LINE" = "logout" ]; then
+      killall Xorg
+   fi
+
+   if [ "$LINE" = "restart" ]; then
+      reboot
+   fi
+
+   if [ "$LINE" = "shutdown" ]; then
+      poweroff
+   fi
+
+done

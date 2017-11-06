@@ -2,9 +2,10 @@
 
    [exec] (Terminal) { xterm -ls }
    [exec] (Web browser) { chromium }
+   [exec] (Text editor) { leafpad }
+   [exec] (Calculator) { qalculate }
    [separator]
    [workspaces] (Workspaces)
-   [exec] (Reboot computer) { reboot }
-   [exit] (Exit to Textmode)
+   [exec] (Exit) { fblogout }
 
 [end]
