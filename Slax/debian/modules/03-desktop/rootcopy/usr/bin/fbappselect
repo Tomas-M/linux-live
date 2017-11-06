@@ -5,7 +5,7 @@ exec xlunch --input /etc/xlunch/entries.dsv --background /usr/share/wallpapers/w
    whi="$(which $cmd | head -n 1)"
    Xdep=$(ldd $whi | grep libX11)
 
-   if [ "$Xdep" = "" ]; then
+   if [ "$Xdep" = "" -a "$cmd" != "chromium" ]; then
       xterm -e bash -c "echo '$LINE'; $LINE; echo; read -n 1 -s -r -p 'Command finished. Press any key to close window...'"
    else
       $LINE
