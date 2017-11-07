@@ -8,14 +8,10 @@
 export EDITOR=mcedit
 export LS_OPTIONS='--color=auto'
 eval "`dircolors`"
-alias ls='ls $LS_OPTIONS'
-alias ll='ls $LS_OPTIONS -l'
-alias l='ls $LS_OPTIONS -lA'
 
-# Some more alias to avoid making mistakes:
-# alias rm='rm -i'
-# alias cp='cp -i'
-# alias mv='mv -i'
+ls() { /bin/ls $LS_OPTIONS "$@"; }
+ll() { /bin/ls $LS_OPTIONS -l "$@"; }
+l() { /bin/ls $LS_OPTIONS -lA "$@"; }
 
 apt-get()
 {
@@ -36,3 +32,9 @@ apt()
       /usr/bin/apt --no-install-recommends "$@"
    fi
 }
+
+export -f ls
+export -f ll
+export -f l
+export -f apt-get
+export -f apt
