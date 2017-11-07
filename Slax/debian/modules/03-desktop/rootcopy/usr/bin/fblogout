@@ -7,6 +7,14 @@ exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
             --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
             --outputonly | while read LINE; do
 
+   SND=/usr/share/sounds/shutdown.wav
+
+   if [ "$LINE" != "" -a -r $SND ]; then
+      cat $SND > /dev/null # precache
+      aplay $SND &
+      sleep 2
+   fi
+
    if [ "$LINE" = "logout" ]; then
       killall Xorg
    fi
