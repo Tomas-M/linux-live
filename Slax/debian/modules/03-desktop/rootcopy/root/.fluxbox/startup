@@ -20,7 +20,7 @@ if [ -r $SND ]; then
    SLEEPID=$!
    cat $SND > /dev/null # preload whole file
    aplay $SND &
-   waitpid $SLEEPID
+   wait $SLEEPID
 fi
 
 # Applications you want to run with fluxbox.
