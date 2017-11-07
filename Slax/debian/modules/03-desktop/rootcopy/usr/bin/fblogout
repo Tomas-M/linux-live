@@ -10,9 +10,8 @@ exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
    SND=/usr/share/sounds/shutdown.wav
 
    if [ "$LINE" != "" -a -r $SND ]; then
-      cat $SND > /dev/null # precache
       aplay $SND &
-      sleep 2
+      sleep 1
    fi
 
    if [ "$LINE" = "logout" ]; then

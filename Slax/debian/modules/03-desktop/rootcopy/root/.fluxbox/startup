@@ -16,11 +16,7 @@ xsetroot -solid '#000000' -cursor_name watch
 # this is a bit tricky
 SND=/usr/share/sounds/startup.wav
 if [ -r $SND ]; then
-   sleep 1 &
-   SLEEPID=$!
-   cat $SND > /dev/null # preload whole file
    aplay $SND &
-   wait $SLEEPID
 fi
 
 # Applications you want to run with fluxbox.
