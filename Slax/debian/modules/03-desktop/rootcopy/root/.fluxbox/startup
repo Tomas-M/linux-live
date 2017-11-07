@@ -13,12 +13,17 @@ xrdb -merge ~/.Xresources
 # set background color
 xsetroot -solid '#000000' -cursor_name watch
 
+# preload compton and fluxbox to cache
+(compton --help; fluxbox --help) >/dev/null 2>/dev/null
+
 # Keep black screen for first two seconds while the sound plays.
 # This slows startup by 2 seconds, but it is nice effect.
 SND=/usr/share/sounds/startup.wav
 if [ -r $SND ]; then
+   cat $SND > /dev/null # preload
    aplay $SND &
-   sleep 2 
+   sleep 2 &
+   SOUNDPID=$!
 fi
 
 # Applications you want to run with fluxbox.
@@ -44,12 +49,7 @@ fi
 # Once the file exist, fluxbox-toolbar is already started
 
 SIGNALFILE=~/.fehbg
-
-# preload to cache
-(compton --help; fluxbox --help) >/dev/null 2>/dev/null
-
 rm -f $SIGNALFILE
-
 (
    while [ ! -e $SIGNALFILE ]; do
       sleep 0.05
@@ -57,9 +57,11 @@ rm -f $SIGNALFILE
    compton --sw-opti -e 0.9 --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped'
 ) &
 
-
 # volume icon in system tray
 volumeicon &
+
+# wait for the sound
+wait $SOUNDPID
 
 # And last but not least we start fluxbox.
 # Because it is the last app you have to run it with ''exec'' before it.
