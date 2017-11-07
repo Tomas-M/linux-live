@@ -9,6 +9,8 @@ exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
 
    SND=/usr/share/sounds/shutdown.wav
 
+   feh --bg-scale /usr/share/icons/locolor/16x16/apps/black.png
+
    if [ "$LINE" != "" -a -r $SND ]; then
       aplay $SND &
       sleep 1

@@ -13,10 +13,12 @@ xrdb -merge ~/.Xresources
 # set background color
 xsetroot -solid '#000000' -cursor_name watch
 
-# this is a bit tricky
+# Keep black screen for first two seconds while the sound plays.
+# This slows startup by 2 seconds, but it is nice effect.
 SND=/usr/share/sounds/startup.wav
 if [ -r $SND ]; then
    aplay $SND &
+   sleep 2 
 fi
 
 # Applications you want to run with fluxbox.
