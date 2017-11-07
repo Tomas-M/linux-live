@@ -1,3 +1,0 @@
-#!/bin/bash
-xhost +
-su -c chromium guest
