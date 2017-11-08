@@ -4,10 +4,11 @@ Documentation=man:dhclient(8)
 Wants=network.target
 After=network-pre.target systemd-sysctl.service systemd-modules-load.service
 Before=network.target shutdown.target network-online.target
+ConditionPathExists=/mnt/live/net.up.flag
 
 [Service]
 Type=forking
-ExecStart=-/bin/sh -c 'udevadm settle && cat /proc/cmdline | egrep -qvi " ip=| from=http" && dhclient -nw'
+ExecStart=-/bin/sh -c 'udevadm settle && dhclient -nw'
 PIDFile=/run/dhclient.pid
 
 [Install]
