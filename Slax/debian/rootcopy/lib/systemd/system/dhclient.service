@@ -7,7 +7,7 @@ Before=network.target shutdown.target network-online.target
 
 [Service]
 Type=forking
-ExecStart=-/bin/sh -c 'udevadm settle && /sbin/dhclient -nw'
+ExecStart=-/bin/sh -c 'udevadm settle && cat /proc/cmdline | egrep -qvi " ip=| from=http" && dhclient -nw'
 PIDFile=/run/dhclient.pid
 
 [Install]
