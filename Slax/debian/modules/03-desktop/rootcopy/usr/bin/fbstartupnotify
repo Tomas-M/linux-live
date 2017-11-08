@@ -1,0 +1,19 @@
+#!/bin/bash
+
+CURSORSDIR=/usr/share/icons/breeze_cursors/cursors/
+SIZE=20
+
+# Set cursor to wait. As soon as new window is detected, change cursor back
+xsetroot -xcf $CURSORSDIR/left_ptr_watch $SIZE
+export WINDOWS="$(wmctrl -l)"
+xsetroot -cursor_name left_ptr_watch
+
+(
+   until diff -u <(echo "$WINDOWS") <(wmctrl -l) | egrep -q "^[+]"; do
+      sleep 0.1
+   done
+   set_cursor_normal
+   xsetroot -xcf $CURSORSDIR/left_ptr $SIZE
+) &
+
+exit 0
