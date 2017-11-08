@@ -4,7 +4,7 @@ Documentation=man:dhclient(8)
 Wants=network.target
 After=network-pre.target systemd-sysctl.service systemd-modules-load.service
 Before=network.target shutdown.target network-online.target
-ConditionPathExists=/mnt/live/net.up.flag
+ConditionPathExists=!/mnt/live/net.up.flag
 
 [Service]
 Type=forking
