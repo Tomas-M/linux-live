@@ -1,9 +1,9 @@
 [begin] (Desktop menu)
 
-   [exec] (Terminal) { xterm -ls }
-   [exec] (Web browser) { chromium }
-   [exec] (Text editor) { leafpad }
-   [exec] (Calculator) { qalculate }
+   [exec] (Terminal) { fbstartupnotify && xterm -ls }
+   [exec] (Web browser) { fbstartupnotify && chromium }
+   [exec] (Text editor) { fbstartupnotify && leafpad }
+   [exec] (Calculator) { fbstartupnotify && qalculate }
    [separator]
    [workspaces] (Workspaces)
    [exec] (Exit) { fblogout }
