@@ -4,6 +4,7 @@ rm -f /etc/fstab
 rm -f /etc/mtab
 rm -f /etc/apt/sources.list~
 rm -Rf /etc/systemd/system/timers.target.wants
+rm -f /etc/systemd/system/multi-user.target.wants/ssh.service
 
 rm -f /var/backups/*
 rm -f /var/cache/ldconfig/*
