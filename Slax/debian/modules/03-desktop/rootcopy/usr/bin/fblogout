@@ -1,6 +1,6 @@
 #!/bin/bash
 
-exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
+exec xlunch --input /etc/xlunch/logout.dsv --noprompt --center --columns 3 --rows 1 \
             --background /usr/share/wallpapers/wp.jpg --font DejaVuSans/11 \
             --voidclickterminate --iconpadding 30 --textpadding 10 \
             --paddingswap --leastmargin 10 --hidemissing --iconsize 128 \
