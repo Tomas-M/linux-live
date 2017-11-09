@@ -57,6 +57,7 @@ session.screen0.defaultDeco:	NORMAL
 session.screen0.menuDelay:	200
 session.screen0.windowPlacement:	RowMinOverlapPlacement
 session.screen0.focusSameHead:	false
+session.screen0.workspacewarping:	false
 session.keyFile:	~/.fluxbox/keys
 session.menuFile:	~/.fluxbox/menu
 session.styleFile:	/usr/share/fluxbox/styles/Slax
