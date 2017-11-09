@@ -11,7 +11,7 @@ xmodmap "/root/.Xmodmap"
 xrdb -merge ~/.Xresources
 
 # set background color and big wait mouse cursor
-xsetroot -solid '#000000'
+xsetroot -solid '#222222'
 xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
 
 # preload compton and fluxbox to cache

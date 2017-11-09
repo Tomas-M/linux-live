@@ -10,10 +10,10 @@ exec xlunch --input /etc/xlunch/logout.dsv --noprompt \
    SND=/usr/share/sounds/shutdown.wav
 
    if [ "$LINE" != "" -a -r $SND ]; then
-      feh --bg-scale /usr/share/icons/locolor/16x16/apps/black.png
-      xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
-      aplay $SND &
-      sleep 1
+      # blank desktop with smooth effect (if compton still running)
+      xlunch --noprompt --input /dev/null --bc 222222ff &
+      # play shutdown sound
+      aplay $SND
    fi
 
    if [ "$LINE" = "logout" ]; then
