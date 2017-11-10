@@ -774,8 +774,10 @@ change_root()
    if [ -x sbin/init -o -L sbin/init  ]; then INIT=sbin/init; fi
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
-   mkdir -p mnt/live
+   mkdir -p run
+   mount -t tmpfs tmpfs run
+   mkdir -p run/initramfs
    mount -n -o remount,ro aufs .
-   pivot_root . mnt/live
+   pivot_root . run/initramfs
    exec $CHROOT . $INIT < dev/console > dev/console 2>&1
 }
