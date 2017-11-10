@@ -26,7 +26,7 @@ SND=/usr/share/sounds/startup.wav
 if [ -r $SND ]; then
    cat $SND > /dev/null # preload
    aplay $SND &
-   sleep 2 &
+   sleep 1 &
    SOUNDPID=$!
 fi
 
