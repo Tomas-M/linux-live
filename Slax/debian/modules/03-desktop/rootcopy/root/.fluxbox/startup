@@ -18,7 +18,7 @@ xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
 (compton --help; fluxbox --help) >/dev/null 2>/dev/null
 
 # preload wallpaper
-cat /usr/share/wallpapers/wp.jpg > /dev/null 2>/dev/null
+cat /usr/share/wallpapers/slax_wallpaper.jpg > /dev/null 2>/dev/null
 
 # Keep black screen for first two seconds while the sound plays.
 # This slows startup by 2 seconds, but it is nice effect.
