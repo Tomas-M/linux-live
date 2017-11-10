@@ -2,7 +2,7 @@
 
 TMP=/tmp/changes$$
 EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^root/[.]Xauthority|^root/[.]xsession-errors|^root/[.]fehbg|^root/[.]fluxbox/lastwallpaper|^etc/mtab|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
-CHANGES=/mnt/live/memory/changes
+CHANGES=/run/initramfs/memory/changes
 
 if [ "$1" = "" ]; then
    echo ""
@@ -13,7 +13,7 @@ if [ "$1" = "" ]; then
    echo "Usage:"
    echo "        $0 [ target_file.sb ] [ changes_directory ]"
    echo ""
-   echo "If changes_directory is not specified, /mnt/live/memory/changes is used."
+   echo "If changes_directory is not specified, /run/initramfs/memory/changes is used."
    echo ""
    exit 1
 fi

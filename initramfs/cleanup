@@ -6,12 +6,12 @@
 # Simply add the following as the last command executed by init on your distro
 # instead of the actual poweroff or shutdown command:
 #
-#       exec /mnt/live/lib/cleanup --start poweroff
+#       exec /run/initramfs/lib/cleanup --start poweroff
 #    or
-#       exec /mnt/live/lib/cleanup --start shutdown
+#       exec /run/initramfs/lib/cleanup --start shutdown
 #
 #    on Slackware, add this to rc.0:
-#       exec /mnt/live/lib/cleanup --start /sbin/$command
+#       exec /run/initramfs/lib/cleanup --start /sbin/$command
 #
 # It may be needed to call this script also with --killall5 from your shutdown scripts
 # instead of calling regular killall5, to prevent fuse filesystems from being killed
@@ -23,7 +23,7 @@ if [ "$1" = "--killall5" ]; then
    # kill all unneeded processes, which have smaller ID then the ID of
    # current shell's parent process. We can't use killall5, as it would kill some
    # processes which may be currently needed, for example fuse filesystems (ntfs-3g).
-   for pid in $(/mnt/live/bin/ps | grep -v "PID" | grep -E -v "\[.*\]" | grep -E -v "mount|posixovl|fuse" | sed -r "s/^ +//" | cut -d " " -f 1); do
+   for pid in $(/run/initramfs/bin/ps | grep -v "PID" | grep -E -v "\[.*\]" | grep -E -v "mount|posixovl|fuse" | sed -r "s/^ +//" | cut -d " " -f 1); do
       if [ $pid -lt $PPID ]; then
          LIST="$LIST $pid"
       fi
@@ -41,7 +41,7 @@ if [ "$1" = "--start" ]; then
    # So we're going to force init to stop and start this script instead as PID 1
    # If your init works differently, you may need to slightly modify few lines below
    # - without this, init would be blocking union and it couldn't be unmounted later.
-   cd /mnt/live
+   cd /run/initramfs
    cp "$0" sbin/init
    pivot_root . memory/union
    echo "$2 -f" > /lib/command

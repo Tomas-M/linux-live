@@ -7,7 +7,7 @@
 # list
 
 
-LIVE=/mnt/live/memory
+LIVE=/run/initramfs/memory
 
 # Print error message and exit
 # $1 = error message
