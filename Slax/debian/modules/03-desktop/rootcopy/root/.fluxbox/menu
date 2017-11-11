@@ -4,8 +4,9 @@
    [exec] (Web browser) { fbstartupnotify && chromium }
    [exec] (Text editor) { fbstartupnotify && leafpad }
    [exec] (Calculator) { fbstartupnotify && qalculate }
+   [exec] (Run) { fbappselect }
    [separator]
-   [workspaces] (Workspaces)
-   [exec] (Exit) { fblogout }
+   [workspaces] (Workspaces         ...)
+   [exec] (Exit / Logout) { fblogout }
 
 [end]
