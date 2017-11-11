@@ -7,6 +7,10 @@ exec xlunch --input /etc/xlunch/entries.dsv \
             --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
             --outputonly | while read LINE; do
 
+   if [ "$LINE" = "" ]; then
+      continue
+   fi
+
    fbstartupnotify
 
    cmd="$(echo $LINE | sed -r "s/\\s.*//")"
