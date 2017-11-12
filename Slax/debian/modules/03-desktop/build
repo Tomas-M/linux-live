@@ -53,5 +53,16 @@ tar -xf xlunch.tar.gz
 cd xlunch-master
 make
 cp xlunch /squashfs-root/usr/bin
+mkdir -p /squashfs-root/usr/share/icons/hicolor/48x48/apps/
+cp extra/ghost.png /squashfs-root/usr/share/icons/hicolor/48x48/apps/xlunch_ghost.png
+
+# add tray icon launcher
+wget -O /tmp/systrayiconlauncher.tar.gz https://github.com/Tomas-M/SystrayIconLauncher/archive/master.tar.gz
+cd /tmp
+tar -xf systrayiconlauncher.tar.gz
+cd SystrayIconLauncher-master
+apt-get install --yes libgtk2.0-dev
+make
+cp systrayicon /squashfs-root/usr/bin
 
 dir2sb /squashfs-root /03-desktop.sb
