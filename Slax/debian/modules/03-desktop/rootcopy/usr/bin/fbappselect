@@ -1,32 +1,32 @@
 #!/bin/bash
 
-exec xlunch --input /etc/xlunch/entries.dsv \
-            --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
-            --voidclickterminate --iconpadding 30 --textpadding 10 \
-            --paddingswap --leastmargin 10 --hidemissing --iconsize 128 \
-            --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
-            --outputonly | while read LINE; do
+COMMAND=$(
+  xlunch --input /etc/xlunch/entries.dsv \
+         --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
+         --voidclickterminate --iconpadding 30 --textpadding 10 \
+         --paddingswap --leastmargin 10 --hidemissing --iconsize 128 \
+         --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
+         --outputonly
+)
 
-   if [ "$LINE" = "" ]; then
-      continue
-   fi
+if [ "$COMMAND" = "" ]; then
+   continue
+fi
 
-   fbstartupnotify
+fbstartupnotify
 
-   cmd="$(echo $LINE | sed -r "s/\\s.*//")"
-   whi="$(which $cmd | head -n 1)"
-   Xdep=$(ldd $whi | grep libX11)
-   Ndep=$(ldd $whi | grep libncurses)
+cmd="$(echo $COMMAND | sed -r "s/\\s.*//")"
+whi="$(which $cmd | head -n 1)"
+Xdep=$(ldd $whi | grep libX11)
+Ndep=$(ldd $whi | grep libncurses)
 
-   WAIT='echo "--------------------------------------------------"; read -n 1 -s -r -p "Command finished. Press any key to close window..."'
-   if [ "$Ndep" != "" -o "$cmd" = "man" -o "$cmd" = "mc" ]; then
-      WAIT=""
-   fi
+WAIT='echo "--------------------------------------------------"; read -n 1 -s -r -p "Command finished. Press any key to close window..."'
+if [ "$Ndep" != "" -o "$cmd" = "man" -o "$cmd" = "mc" ]; then
+   WAIT=""
+fi
 
-   if [ "$Xdep" = "" -a "$cmd" != "chromium" ]; then
-      xterm -ls -e bash --login -c -- "echo $USER@$HOSTNAME:$PWD# '$LINE'; $LINE; $WAIT"
-   else
-      $LINE
-   fi
-
-done
+if [ "$Xdep" = "" -a "$cmd" != "chromium" ]; then
+   exec xterm -ls -e bash --login -c -- "echo $USER@$HOSTNAME:$PWD# '$COMMAND'; $COMMAND; $WAIT"
+else
+   exec $COMMAND
+fi
