@@ -32,13 +32,16 @@ umount_all()
 
 # Update devs so we are aware of all active /dev/loop* files.
 # Detach loop devices which are no longer used
+debug_log "- Detaching loops"
 mdev -s
 detach_free_loops
 
 # do it the dirty way, simply try to umount everything to get rid of most mounts
+debug_log "- Unmounting submounts of union"
 umount_all /oldroot
 
 # free aufs of /run mount, and umount aufs
+debug_log "- Unmounting union itself"
 mkdir /run2
 mount --move /oldroot/run /run2
 umount /oldroot
@@ -46,20 +49,19 @@ umount /oldroot
 # remember from which device we are started, so we can eject it later
 DEVICE="$(cat /proc/mounts | grep /memory/data | grep /dev/ | cut -d " " -f 1)"
 
+debug_log "- going through several cycles of umounts to clear everything left"
 umount_all /run2
 detach_free_loops
 umount_all /run2
 detach_free_loops
 umount_all /run2
-
-/bin/bash
 
 # eject cdrom device if we were running from it
 for i in $(cat /proc/sys/dev/cdrom/info | grep name); do
    if [ "$DEVICE" = "/dev/$i" ]; then
-      echo "Attemptiong to eject /dev/$i..." >/dev/console
+      echo "[  OK  ] Attemptiong to eject /dev/$i..."
       eject /dev/$i
-      echo "CD/DVD tray will close in 6 seconds..." >/dev/console
+      echo "[  OK  ] CD/DVD tray will close in 6 seconds..."
       sleep 6
       eject -t /dev/$i
    fi
@@ -67,6 +69,12 @@ done
 
 debug_shell
 
+debug_log $1 -f
 $1 -f
 
+debug_log reboot -f
 reboot -f
+
+echo We should never reach so far. Something is totally fucked up.
+echo Here you have a shell, to experiment with the universe.
+/bin/sh
