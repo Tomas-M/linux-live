@@ -11,7 +11,7 @@ exec xlunch --input /etc/xlunch/logout.dsv --noprompt --center --columns 3 --row
 
    if [ "$LINE" != "" -a -r $SND ]; then
       # blank desktop with smooth effect (if compton still running)
-      xlunch --noprompt --input /dev/null --bc 222222ff &
+      xlunch --noprompt --input /dev/null --bc 111111ff &
       # play shutdown sound
       aplay $SND
    fi
