@@ -64,6 +64,9 @@ rm -f $SIGNALFILE
 # volume icon in system tray
 volumeicon &
 
+# system shutdown/logout icon in system tray
+systrayicon --command fblogout --iconfile /usr/share/icons/locolor/16x16/actions/system-shutdown-symbolic.png &
+
 # wait for the sound
 wait $SOUNDPID
 
