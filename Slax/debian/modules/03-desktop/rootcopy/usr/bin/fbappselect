@@ -10,7 +10,7 @@ COMMAND=$(
 )
 
 if [ "$COMMAND" = "" ]; then
-   continue
+   exit
 fi
 
 fbstartupnotify
