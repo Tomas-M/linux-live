@@ -1,0 +1,72 @@
+#!/bin/sh
+# Shutdown script for initramfs. It's automatically started by
+# systemd (if you use it) on shutdown, no need for any tweaks.
+# Purpose of this script is to unmount everything cleanly.
+#
+# Author: Tomas M <http://www.linux-live.org/>
+#
+
+. /lib/config
+. /lib/livekitlib
+
+debug_start
+
+debug_log "Entering shutdown procedures of Linux Live Kit"
+debug_log "Called with arguments: " "$*"
+
+# if debug is enabled, run shell now
+debug_shell
+
+detach_free_loops()
+{
+   losetup | cut -d : -f 1 | xargs -r -n 1 losetup -d
+}
+
+# $1=dir
+umount_all()
+{
+   tac /proc/mounts | cut -d " " -f 2 | grep ^$1 | while read LINE; do
+      umount $LINE 2>/dev/null
+   done
+}
+
+# Update devs so we are aware of all active /dev/loop* files.
+# Detach loop devices which are no longer used
+mdev -s
+detach_free_loops
+
+# do it the dirty way, simply try to umount everything to get rid of most mounts
+umount_all /oldroot
+
+# free aufs of /run mount, and umount aufs
+mkdir /run2
+mount --move /oldroot/run /run2
+umount /oldroot
+
+# remember from which device we are started, so we can eject it later
+DEVICE="$(cat /proc/mounts | grep /memory/data | grep /dev/ | cut -d " " -f 1)"
+
+umount_all /run2
+detach_free_loops
+umount_all /run2
+detach_free_loops
+umount_all /run2
+
+/bin/bash
+
+# eject cdrom device if we were running from it
+for i in $(cat /proc/sys/dev/cdrom/info | grep name); do
+   if [ "$DEVICE" = "/dev/$i" ]; then
+      echo "Attemptiong to eject /dev/$i..." >/dev/console
+      eject /dev/$i
+      echo "CD/DVD tray will close in 6 seconds..." >/dev/console
+      sleep 6
+      eject -t /dev/$i
+   fi
+done
+
+debug_shell
+
+$1 -f
+
+reboot -f
