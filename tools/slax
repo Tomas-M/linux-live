@@ -73,16 +73,20 @@ activate()
       usage "file not found $SB"
    fi
 
-   # check if file is in aufs union - if yes, move outside
-   if [ -r "$LIVE/changes/$SB" ]; then
-      TGT="$(get_bundle_storage_dir)"
-      echo "File stored inside AUFS filesystem couldn't be activated, moving to $TGT, then activating from there"
-      mv -n "$SB" "$TGT/$BAS"
-      if [ $? -ne 0 ]; then
-         die "Error moving file to $TGT/$BAS. Not enough space or target already exists"
-      fi
-      SB="$TGT/$BAS"
+   # copy the module to storage dir so it can be activated from there
+   TGT="$(get_bundle_storage_dir)"
+
+   if [ -r $TGT/$BAS ]; then
+      die "File exists: $TGT/$BAS"
    fi
+
+   cp -n "$SB" "$TGT/$BAS"
+
+   if [ $? -ne 0 ]; then
+      die "Error copying file to $TGT/$BAS. Not enough space?"
+   fi
+
+   SB="$TGT/$BAS"
 
    # check if this particular file is already activated
    if print_branches | cut -f 2 | fgrep -q "$SB"; then
