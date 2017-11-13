@@ -2,10 +2,10 @@
  Welcome
 
  If you need to edit boot command line (for advanced users), hit [Tab].
- When finished, navigate to "Run Slax" menu row and press [Enter].
+ When finished, press [Enter].
 
 
- Persistent changes
+ Keep changes persistent
 
  Save all filesystem modifications to 'changes' directory and restore
  those changes next time you boot. Only usable while running from a
@@ -15,5 +15,5 @@
  Copy to RAM
 
  Copies all data to memory during startup so you can eject the boot device.
- Make sure to uncheck persistent changes (see above) else your boot device
- will be still in use.
+ Requires enough RAM to store all modules and to run the system.
+
