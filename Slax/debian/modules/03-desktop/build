@@ -47,10 +47,10 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/master.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v3.1.2.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
-cd xlunch-master
+cd xlunch-3.1.2
 make
 cp xlunch /squashfs-root/usr/bin
 mkdir -p /squashfs-root/usr/share/icons/hicolor/48x48/apps/
