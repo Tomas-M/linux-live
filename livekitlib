@@ -231,7 +231,7 @@ init_union()
    debug_log "init_union" "$*"
 
    echo_green_star
-   echo "Setting up union using AUFS 3"
+   echo "Setting up union using AUFS"
    mkdir -p "$1"
    mkdir -p "$2"
    mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
