@@ -8,8 +8,9 @@ xsetroot -xcf $CURSORSDIR/left_ptr_watch $SIZE
 export WINDOWS="$(wmctrl -l)"
 
 (
+   sleep 0.2
    until diff <(echo "$WINDOWS") <(wmctrl -l) | egrep -q "^[>]"; do
-      sleep 0.1
+      sleep 0.5
    done
    xsetroot -xcf $CURSORSDIR/left_ptr $SIZE
 ) &
