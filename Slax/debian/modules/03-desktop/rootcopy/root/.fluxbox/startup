@@ -63,11 +63,13 @@ rm -f $SIGNALFILE
 # We want to run systrayicon only after the volumeicon is started
 # So we have to wait until it is visible to xwinfo
 (
-   # volume icon in system tray
+   # volume icon in system tray. Can fail if no soundcard is detected
    volumeicon &
-   while ! xwininfo -name volumeicon >/dev/null 2>/dev/null; do
+   while ! xwininfo -name volumeicon >/dev/null 2>&1 && pgrep volumeicon >/dev/null 2>&1; do
       sleep 0.1
    done
+   # volume icon has launched, give it some time to init
+   sleep 1
    # system shutdown/logout icon in system tray
    systrayicon --command fblogout --iconfile /usr/share/icons/locolor/16x16/actions/system-shutdown-symbolic.png &
 ) &
