@@ -3,4 +3,4 @@ Description=X-Window
 After=systemd-user-sessions.service
 
 [Service]
-ExecStart=su --login -c /usr/bin/startx
+ExecStart=/bin/su --login -c /usr/bin/startx
