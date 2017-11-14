@@ -6,57 +6,61 @@
    [exec] (Calculator) { fbstartupnotify && qalculate }
    [exec] (Run) { fbappselect }
    [separator]
-   [workspaces] (Workspaces           ...)
-   [submenu] (Keyboard layout     ...) {}
-      [exec] (English US) { setxkbmap us }
-      [separator]
-      [exec] (Afghani) { setxkbmap af }
-      [exec] (Albanian) { setxkbmap al }
-      [exec] (Arabic [Morocco]) { setxkbmap ma }
-      [exec] (Arabic) { setxkbmap ara }
-      [exec] (Armenian) { setxkbmap am }
-      [exec] (Azerbaijani) { setxkbmap az }
-      [exec] (Belarusian) { setxkbmap by }
-      [exec] (Belgian) { setxkbmap be }
-      [exec] (Berber [Algeria]) { setxkbmap dz }
-      [exec] (Bosnian) { setxkbmap ba }
-      [exec] (Bulgarian) { setxkbmap bg }
-      [exec] (Croatian) { setxkbmap hr }
+   [workspaces] (Workspaces                ...)
+   [submenu] (Screen resolution       ...) {}
+      [include] (~/.fluxbox/menu_resolution)
+   [end]
+   [submenu] (Keyboard layout          ...) {}
       [exec] (Czech) { setxkbmap cz }
-      [exec] (Danish) { setxkbmap dk }
-      [exec] (Dutch) { setxkbmap nl }
-      [exec] (English [Australian]) { setxkbmap au }
-      [exec] (Estonian) { setxkbmap ee }
-      [exec] (Finnish) { setxkbmap fi }
-      [exec] (French [Canada]) { setxkbmap ca }
+      [exec] (English) { setxkbmap us }
       [exec] (French) { setxkbmap fr }
-      [exec] (German [Austria]) { setxkbmap at }
       [exec] (German) { setxkbmap de }
-      [exec] (German [Switzerland]) { setxkbmap ch }
-      [exec] (Greek) { setxkbmap gr }
-      [exec] (Hebrew) { setxkbmap il }
-      [exec] (Hungarian) { setxkbmap hu }
-      [exec] (Icelandic) { setxkbmap is }
-      [exec] (Indian) { setxkbmap in }
-      [exec] (Iraqi) { setxkbmap iq }
-      [exec] (Irish) { setxkbmap ie }
       [exec] (Italian) { setxkbmap it }
-      [exec] (Latvian) { setxkbmap lv }
-      [exec] (Lithuanian) { setxkbmap lt }
-      [exec] (Norwegian) { setxkbmap no }
-      [exec] (Persian) { setxkbmap ir }
       [exec] (Polish) { setxkbmap pl }
-      [exec] (Portuguese [Brazil]) { setxkbmap br }
-      [exec] (Portuguese) { setxkbmap pt }
-      [exec] (Romanian) { setxkbmap ro }
+      [exec] (Portuguese) { setxkbmap br }
       [exec] (Russian) { setxkbmap ru }
-      [exec] (Serbian) { setxkbmap rs }
       [exec] (Slovak) { setxkbmap sk }
-      [exec] (Slovenian) { setxkbmap si }
       [exec] (Spanish) { setxkbmap es }
-      [exec] (Swedish) { setxkbmap se }
       [exec] (Turkish) { setxkbmap tr }
       [exec] (Ukrainian) { setxkbmap ua }
+      [submenu] (Other                      ...) {}
+         [exec] (Afghani) { setxkbmap af }
+         [exec] (Albanian) { setxkbmap al }
+         [exec] (Arabic [Morocco]) { setxkbmap ma }
+         [exec] (Arabic) { setxkbmap ara }
+         [exec] (Armenian) { setxkbmap am }
+         [exec] (Azerbaijani) { setxkbmap az }
+         [exec] (Belarusian) { setxkbmap by }
+         [exec] (Belgian) { setxkbmap be }
+         [exec] (Berber [Algeria]) { setxkbmap dz }
+         [exec] (Bosnian) { setxkbmap ba }
+         [exec] (Bulgarian) { setxkbmap bg }
+         [exec] (Croatian) { setxkbmap hr }
+         [exec] (Danish) { setxkbmap dk }
+         [exec] (Dutch) { setxkbmap nl }
+         [exec] (English [Australian]) { setxkbmap au }
+         [exec] (Estonian) { setxkbmap ee }
+         [exec] (Finnish) { setxkbmap fi }
+         [exec] (French [Canada]) { setxkbmap ca }
+         [exec] (German [Austria]) { setxkbmap at }
+         [exec] (German [Switzerland]) { setxkbmap ch }
+         [exec] (Greek) { setxkbmap gr }
+         [exec] (Hebrew) { setxkbmap il }
+         [exec] (Hungarian) { setxkbmap hu }
+         [exec] (Icelandic) { setxkbmap is }
+         [exec] (Indian) { setxkbmap in }
+         [exec] (Iraqi) { setxkbmap iq }
+         [exec] (Irish) { setxkbmap ie }
+         [exec] (Latvian) { setxkbmap lv }
+         [exec] (Lithuanian) { setxkbmap lt }
+         [exec] (Norwegian) { setxkbmap no }
+         [exec] (Persian) { setxkbmap ir }
+         [exec] (Portuguese) { setxkbmap pt }
+         [exec] (Romanian) { setxkbmap ro }
+         [exec] (Serbian) { setxkbmap rs }
+         [exec] (Slovenian) { setxkbmap si }
+         [exec] (Swedish) { setxkbmap se }
+      [end]
    [end]
    [exec] (Exit / Logout) { fblogout }
 
