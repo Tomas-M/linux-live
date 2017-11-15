@@ -10,6 +10,9 @@ xmodmap "/root/.Xmodmap"
 # merge xresource settings
 xrdb -merge ~/.Xresources
 
+# Put some useful directories in users home dir
+xdg-user-dirs-update
+
 # set background color and big wait mouse cursor
 xsetroot -solid '#111111'
 xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
