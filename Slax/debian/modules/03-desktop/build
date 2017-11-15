@@ -12,6 +12,7 @@ apt-get install --no-install-recommends --yes $NAME feh compton volumeicon-alsa 
 . ../../cleanup
 
 xdg-user-dirs-update
+rm -Rf /root/Downloads # it will be overwritten by symlink to guest
 (cd rootcopy && cp --parents -afr * /)
 chown -R guest.users /home/guest
 
