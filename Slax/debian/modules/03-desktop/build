@@ -8,9 +8,10 @@ VERSION=1.3.5
 # first install stock version
 
 apt-get update
-apt-get install --no-install-recommends --yes $NAME feh compton volumeicon-alsa murrine-themes leafpad qalculate-gtk
+apt-get install --no-install-recommends --yes $NAME feh compton volumeicon-alsa murrine-themes leafpad qalculate-gtk scrot xdg-user-dirs
 . ../../cleanup
 
+xdg-user-dirs-update
 (cd rootcopy && cp --parents -afr * /)
 chown -R guest.users /home/guest
 
