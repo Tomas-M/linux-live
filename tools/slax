@@ -184,3 +184,8 @@ fi
 if [ "$1" = "list" ]; then
    print_branches
 fi
+
+if [ "$1" = "savechanges" ]; then
+   shift
+   savechanges "$@"
+fi
