@@ -1,10 +1,6 @@
 #!/bin/bash
 
-PICTURES=$(xdg-user-dir PICTURES)
-if [ "$PICTURES" = "" ]; then
-   PICTURES=~/Pictures
-fi
-
+PICTURES=~/Pictures
 mkdir -p $PICTURES
 cd $PICTURES
 
