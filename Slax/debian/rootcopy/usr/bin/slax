@@ -26,7 +26,7 @@ get_bundle_storage_dir()
 {
    local TGT
 
-   TGT=$LIVE/slax/linux/modules
+   TGT=$LIVE/data/slax/modules
 
    mkdir -p $TGT 2>/dev/null
    touch $TGT/.empty 2>/dev/null && rm $TGT/.empty 2>/dev/null
