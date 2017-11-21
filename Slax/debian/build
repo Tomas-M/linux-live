@@ -17,7 +17,7 @@ cd ../../
 
 # setup initrd now, to include aufs
 apt-get update
-apt-get install aufs-dkms --yes
+apt-get install aufs-dkms linux-headers-$(uname -r) --yes
 
 cd initramfs
 . ./initramfs_create
