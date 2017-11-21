@@ -13,28 +13,6 @@ ls() { /bin/ls $LS_OPTIONS "$@"; }
 ll() { /bin/ls $LS_OPTIONS -l "$@"; }
 l() { /bin/ls $LS_OPTIONS -lA "$@"; }
 
-apt-get()
-{
-   if [ -e /var/cache/apt/pkgcache.bin ]; then
-      /usr/bin/apt-get --no-install-recommends "$@"
-   else
-      /usr/bin/apt-get update
-      /usr/bin/apt-get --no-install-recommends "$@"
-   fi
-}
-
-apt()
-{
-   if [ -e /var/cache/apt/pkgcache.bin ]; then
-      /usr/bin/apt --no-install-recommends "$@"
-   else
-      /usr/bin/apt update
-      /usr/bin/apt --no-install-recommends "$@"
-   fi
-}
-
 export -f ls
 export -f ll
 export -f l
-export -f apt-get
-export -f apt
