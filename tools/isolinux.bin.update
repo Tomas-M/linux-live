@@ -3,40 +3,29 @@
 # This script will update the file ../bootfiles/isolinux.bin to match
 # your LiveKit name used in ../config
 #
-# Requires: wget, tar, gzip, make, gcc, nasm, perl, glibc-devel, libuuid-devel (e2fsprogs)
+# Requires: Debian
 #
-# On minimal debian, you can get deps like this:
-# apt-get install make binutils gcc nasm uuid-dev
 
 set -e
-
-
-PKG=syslinux-4.06
-PKGTGZ=$PKG.tar.gz
-DL="http://www.kernel.org/pub/linux/utils/boot/syslinux/$PKGTGZ"
-
-. ../config
+CWD=$(pwd)
 
 # download, unpack, and patch syslinux
-if [ ! -d $PKG ]; then
-	rm -rf $PKG
-	wget --no-check-certificate -c "$DL"
-	tar -xf $PKGTGZ
-fi
 
-cd $PKG
+apt-get build-dep syslinux
+mkdir -m 0777 /tmp/syslinux
+cd /tmp/syslinux
+apt-get source syslinux
+cd syslinux*/core/fs
 
-sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/iso9660/iso9660.c
-sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" core/fs/lib/loadconfig.c
+. $CWD/../config
 
-make \
-	${CC:+CC="$CC"}
+sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" iso9660/iso9660.c
+sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" lib/loadconfig.c
 
-cp -p core/isolinux.bin ../../bootfiles/isolinux.bin
+cd ../../
+
+make -j 8
 
 echo
-echo "Copying isolinux.bin to $(realpath ../../bootfiles/isolinux.bin)"
-
-cd ..
-rm -Rf $PKG
-rm -f $PKGTGZ
+echo "Copying isolinux.bin to $CWD"
+cp -p bios/core/isolinux.bin $CWD/isolinux.bin
