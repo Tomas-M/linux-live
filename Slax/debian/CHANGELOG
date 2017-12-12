@@ -12,6 +12,8 @@ TODO:
    consider gsettings-desktop-schemas
    add thunar or pcmanfm
    review uefi support - does it work or not? don't have uefi device here
+   maybe consider pxe server again
+   use debootstrap for slax build
 
 
 * Slax 9.3.0
