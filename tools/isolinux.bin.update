@@ -1,13 +1,21 @@
 #!/bin/bash
 
 # This script will update the file ../bootfiles/isolinux.bin to match
-# your LiveKit name used in ../config
+# your LiveKit name
 #
 # Requires: Debian
 #
 
 set -e
+
 CWD=$(pwd)
+
+echo
+echo "--------------------------------------"
+echo "Add directory to isolinux search paths"
+echo -n "(for example /slax/boot): "
+read DIR
+
 
 # download, unpack, and patch syslinux
 
@@ -15,14 +23,13 @@ apt-get build-dep syslinux
 mkdir -m 0777 /tmp/syslinux
 cd /tmp/syslinux
 apt-get source syslinux
-cd syslinux*/core/fs
+cd syslinux*/core
 
-. $CWD/../config
+for file in fs/iso9660/iso9660.c fs/lib/loadconfig.c elflink/load_env32.c; do
+   sed -i -r 's:"/",:"'$DIR'",\n\t"/",:' $file
+done
 
-sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" iso9660/iso9660.c
-sed -i -r "s:/boot/syslinux:/$LIVEKITNAME/boot:" lib/loadconfig.c
-
-cd ../../
+cd ../
 
 make -j 8
 
