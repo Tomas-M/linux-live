@@ -1,4 +1,5 @@
 TODO:
+
    make persistent changes default when booting from writable media
    (and offer "fresh start" in boot menu instead)
    add @ntfs-3g support, add ext4 support for bootable device
@@ -10,6 +11,7 @@ TODO:
    reimplement xrandr screen resolution change, use --mode somehow
    consider gsettings-desktop-schemas
    add thunar or pcmanfm
+   review uefi support - does it work or not? don't have uefi device here
 
 
 * Slax 9.3.0
