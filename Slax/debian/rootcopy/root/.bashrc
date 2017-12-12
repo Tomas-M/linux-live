@@ -13,6 +13,28 @@ ls() { /bin/ls $LS_OPTIONS "$@"; }
 ll() { /bin/ls $LS_OPTIONS -l "$@"; }
 l() { /bin/ls $LS_OPTIONS -lA "$@"; }
 
+apt-get()
+{
+   if [ -e /var/cache/apt/pkgcache.bin ]; then
+      /usr/bin/apt-get "$@"
+   else
+      /usr/bin/apt-get update
+      /usr/bin/apt-get "$@"
+   fi
+}
+
+apt()
+{
+   if [ -e /var/cache/apt/pkgcache.bin ]; then
+      /usr/bin/apt "$@"
+   else
+      /usr/bin/apt update
+      /usr/bin/apt "$@"
+   fi
+}
+
 export -f ls
 export -f ll
 export -f l
+export -f apt-get
+export -f apt
