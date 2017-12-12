@@ -1,19 +1,5 @@
-# 
 
-# deb cdrom:[Debian GNU/Linux 9.2.0 _Stretch_ - Official i386 NETINST 20171007-13:31]/ stretch main
-
-
-# Line commented out by installer because it failed to verify:
-#deb http://security.debian.org/debian-security stretch/updates main
-# Line commented out by installer because it failed to verify:
-#deb-src http://security.debian.org/debian-security stretch/updates main
-
-# stretch-updates, previously known as 'volatile'
-# A network mirror was not selected during install.  The following entries
-# are provided as examples, but you should amend them as appropriate
-# for your mirror of choice.
-#
-deb http://deb.debian.org/debian/ stretch main
-deb-src http://deb.debian.org/debian/ stretch main
-
-deb http://deb.debian.org/debian/ stretch-updates main
+deb http://deb.debian.org/debian/ stretch main contrib non-free
+deb-src http://deb.debian.org/debian/ stretch main contrib non-free
+deb http://deb.debian.org/debian/ stretch-updates main contrib non-free
+deb http://security.debian.org/debian-security stretch/updates main
