@@ -1,0 +1,13 @@
+#!/bin/bash
+
+CWD=$(dirname $(readlink -f $0))
+
+apt-get update
+apt-get install --no-install-recommends --yes leafpad qalculate-gtk wicd 
+. ../../cleanup
+
+(cd rootcopy && cp --parents -afr * /)
+chown -R guest.users /home/guest
+
+savechanges /04-apps.sb
+
