@@ -1,5 +1,4 @@
 [begin] (Desktop menu)
-
    [exec] (Terminal) { fbstartupnotify && xterm -ls }
    [exec] (Web browser) { fbstartupnotify && chromium }
    [exec] (Text editor) { fbstartupnotify && leafpad }
@@ -11,55 +10,55 @@
       [include] (~/.fluxbox/menu_resolution)
    [end]
    [submenu] (Keyboard layout          ...) {}
-      [exec] (Czech) { setxkbmap cz }
-      [exec] (English) { setxkbmap us }
-      [exec] (French) { setxkbmap fr }
-      [exec] (German) { setxkbmap de }
-      [exec] (Italian) { setxkbmap it }
-      [exec] (Polish) { setxkbmap pl }
-      [exec] (Portuguese) { setxkbmap br }
-      [exec] (Russian) { setxkbmap ru }
-      [exec] (Slovak) { setxkbmap sk }
-      [exec] (Spanish) { setxkbmap es }
-      [exec] (Turkish) { setxkbmap tr }
-      [exec] (Ukrainian) { setxkbmap ua }
+      [exec] (Czech) { fbsetkb cz } </usr/share/icons/locolor/16x16/flags/flag_czech_republic.png>
+      [exec] (English) { fbsetkb us } </usr/share/icons/locolor/16x16/flags/flag_usa.png>
+      [exec] (French) { fbsetkb fr } </usr/share/icons/locolor/16x16/flags/flag_france.png>
+      [exec] (German) { fbsetkb de } </usr/share/icons/locolor/16x16/flags/flag_germany.png>
+      [exec] (Italian) { fbsetkb it } </usr/share/icons/locolor/16x16/flags/flag_italy.png>
+      [exec] (Polish) { fbsetkb pl } </usr/share/icons/locolor/16x16/flags/flag_poland.png>
+      [exec] (Portuguese) { fbsetkb pt } </usr/share/icons/locolor/16x16/flags/flag_portugal.png>
+      [exec] (Russian) { fbsetkb ru } </usr/share/icons/locolor/16x16/flags/flag_russia.png>
+      [exec] (Slovak) { fbsetkb sk } </usr/share/icons/locolor/16x16/flags/flag_slovakia.png>
+      [exec] (Spanish) { fbsetkb es } </usr/share/icons/locolor/16x16/flags/flag_spain.png>
+      [exec] (Ukrainian) { fbsetkb ua } </usr/share/icons/locolor/16x16/flags/flag_ukraine.png>
       [submenu] (Other                      ...) {}
-         [exec] (Afghani) { setxkbmap af }
-         [exec] (Albanian) { setxkbmap al }
-         [exec] (Arabic [Morocco]) { setxkbmap ma }
-         [exec] (Arabic) { setxkbmap ara }
-         [exec] (Armenian) { setxkbmap am }
-         [exec] (Azerbaijani) { setxkbmap az }
-         [exec] (Belarusian) { setxkbmap by }
-         [exec] (Belgian) { setxkbmap be }
-         [exec] (Berber [Algeria]) { setxkbmap dz }
-         [exec] (Bosnian) { setxkbmap ba }
-         [exec] (Bulgarian) { setxkbmap bg }
-         [exec] (Croatian) { setxkbmap hr }
-         [exec] (Danish) { setxkbmap dk }
-         [exec] (Dutch) { setxkbmap nl }
-         [exec] (English [Australian]) { setxkbmap au }
-         [exec] (Estonian) { setxkbmap ee }
-         [exec] (Finnish) { setxkbmap fi }
-         [exec] (French [Canada]) { setxkbmap ca }
-         [exec] (German [Austria]) { setxkbmap at }
-         [exec] (German [Switzerland]) { setxkbmap ch }
-         [exec] (Greek) { setxkbmap gr }
-         [exec] (Hebrew) { setxkbmap il }
-         [exec] (Hungarian) { setxkbmap hu }
-         [exec] (Icelandic) { setxkbmap is }
-         [exec] (Indian) { setxkbmap in }
-         [exec] (Iraqi) { setxkbmap iq }
-         [exec] (Irish) { setxkbmap ie }
-         [exec] (Latvian) { setxkbmap lv }
-         [exec] (Lithuanian) { setxkbmap lt }
-         [exec] (Norwegian) { setxkbmap no }
-         [exec] (Persian) { setxkbmap ir }
-         [exec] (Portuguese) { setxkbmap pt }
-         [exec] (Romanian) { setxkbmap ro }
-         [exec] (Serbian) { setxkbmap rs }
-         [exec] (Slovenian) { setxkbmap si }
-         [exec] (Swedish) { setxkbmap se }
+         [exec] (Afghani) { fbsetkb af }
+         [exec] (Albanian) { fbsetkb al }
+         [exec] (Arabic [Morocco]) { fbsetkb ma }
+         [exec] (Arabic) { fbsetkb ara }
+         [exec] (Armenian) { fbsetkb am }
+         [exec] (Azerbaijani) { fbsetkb az }
+         [exec] (Belarusian) { fbsetkb by }
+         [exec] (Belgian) { fbsetkb be }
+         [exec] (Berber [Algeria]) { fbsetkb dz }
+         [exec] (Bosnian) { fbsetkb ba }
+         [exec] (Brasil) { fbsetkb br }
+         [exec] (Bulgarian) { fbsetkb bg }
+         [exec] (Croatian) { fbsetkb hr }
+         [exec] (Danish) { fbsetkb dk }
+         [exec] (Dutch) { fbsetkb nl }
+         [exec] (English [Australian]) { fbsetkb au }
+         [exec] (Estonian) { fbsetkb ee }
+         [exec] (Finnish) { fbsetkb fi }
+         [exec] (French [Canada]) { fbsetkb ca }
+         [exec] (German [Austria]) { fbsetkb at }
+         [exec] (German [Switzerland]) { fbsetkb ch }
+         [exec] (Greek) { fbsetkb gr }
+         [exec] (Hebrew) { fbsetkb il }
+         [exec] (Hungarian) { fbsetkb hu }
+         [exec] (Icelandic) { fbsetkb is }
+         [exec] (Indian) { fbsetkb in }
+         [exec] (Iraqi) { fbsetkb iq }
+         [exec] (Irish) { fbsetkb ie }
+         [exec] (Latvian) { fbsetkb lv }
+         [exec] (Lithuanian) { fbsetkb lt }
+         [exec] (Norwegian) { fbsetkb no }
+         [exec] (Persian) { fbsetkb ir }
+         [exec] (Romanian) { fbsetkb ro }
+         [exec] (Serbian) { fbsetkb rs }
+         [exec] (Slovenian) { fbsetkb si }
+         [exec] (Swedish) { fbsetkb se }
+         [exec] (Turkish) { fbsetkb tr }
       [end]
    [end]
    [exec] (Exit / Logout) { fblogout }
