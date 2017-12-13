@@ -1,5 +1,5 @@
 # click on the desktop to get menus
-OnDesktop Mouse1 :HideMenus
+OnDesktop Mouse1 :MacroCmd {WindowMenu} {HideMenus}
 OnDesktop Mouse2 :WorkspaceMenu
 OnDesktop Mouse3 :RootMenu
 
