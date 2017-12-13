@@ -20,22 +20,10 @@ cd /
 unsquashfs /$NAME-stock.sb
 
 # create user directories
-mkdir -p /squashfs-root/home/guest/Desktop
-mkdir -p /squashfs-root/home/guest/Documents
-mkdir -p /squashfs-root/home/guest/Downloads
-mkdir -p /squashfs-root/home/guest/Music
-mkdir -p /squashfs-root/home/guest/Pictures
-mkdir -p /squashfs-root/home/guest/Public
-mkdir -p /squashfs-root/home/guest/Templates
-mkdir -p /squashfs-root/home/guest/Videos
-ln -s /home/guest/Desktop /squashfs-root/root/Desktop
-ln -s /home/guest/Documents /squashfs-root/root/Documents
-ln -s /home/guest/Downloads /squashfs-root/root/Downloads
-ln -s /home/guest/Music /squashfs-root/root/Music
-ln -s /home/guest/Pictures /squashfs-root/root/Pictures
-ln -s /home/guest/Public /squashfs-root/root/Public
-ln -s /home/guest/Templates /squashfs-root/root/Templates
-ln -s /home/guest/Videos /squashfs-root/root/Videos
+for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+   mkdir -p /squashfs-root/home/guest/$dir
+   mkdir -p /squashfs-root/root/$dir
+done
 chown -R guest.users /squashfs-root/home/guest
 
 # then, we want to patch it to implement window resizing!

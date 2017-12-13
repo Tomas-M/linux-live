@@ -10,8 +10,13 @@ xmodmap "/root/.Xmodmap"
 # merge xresource settings
 xrdb -merge ~/.Xresources
 
-# Put some useful directories in users home dir
-xdg-user-dirs-update
+# Share common directories with guest user. This is necessary
+# because some apps like chromium must be running under guest
+for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+   if ! mountpoint /root/$dir; then
+      mount --bind /home/guest/$dir /root/$dir
+   fi
+done
 
 # set background color and big wait mouse cursor
 xsetroot -solid '#111111'
