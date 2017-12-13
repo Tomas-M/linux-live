@@ -32,6 +32,7 @@ rm -Rf /usr/share/doc/*
 rm -Rf /usr/share/info/*
 rm -f /usr/share/images/fluxbox/debian-squared.jpg
 rm -Rf /usr/share/fluxbox/nls/??*
+rm -Rf /usr/share/gnome/help
 
 rm -Rf /usr/share/locale/??
 rm -Rf /usr/share/locale/??_*
