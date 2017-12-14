@@ -19,7 +19,7 @@ debug_shell
 
 detach_free_loops()
 {
-   losetup | cut -d : -f 1 | xargs -r -n 1 losetup -d
+   losetup -a | cut -d : -f 1 | xargs -r -n 1 losetup -d
 }
 
 # $1=dir

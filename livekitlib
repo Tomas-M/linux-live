@@ -12,6 +12,7 @@ debug_start()
 {
    if grep -q debug /proc/cmdline; then
       DEBUG_IS_ENABLED=1
+      set -x
    else
       DEBUG_IS_ENABLED=
    fi
@@ -316,10 +317,14 @@ fs_options()
       FS=""
    fi
 
-   echo -n "$FS -o ro"
+   echo -n "$FS -o rw"
 
    if [ "$1" = "vfat" ]; then
       echo ",check=s,shortname=mixed,iocharset=utf8"
+   fi
+
+   if [ "$1" = "ntfs-3g" ]; then
+      echo ",acl"
    fi
 }
 
@@ -509,7 +514,6 @@ find_data_try()
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
       if [ -f "$1/$FROM" ]; then
-         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
          mkdir -p "$1/../iso"
          mount -o loop,ro "$1/$FROM" "$1/../iso" 2>/dev/null
          FROM="../iso/$LIVEKITNAME"
@@ -518,7 +522,6 @@ find_data_try()
       # search for bundles in the mounted directory
       if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
          # we found at least one bundle/module here
-         mount -o remount,rw "$DEVICE" "$1" 2>/dev/null
          echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
          return
       fi
@@ -594,7 +597,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2
+   local CHANGES T1 T2 EXISTS
 
    CHANGES="$1/$(basename "$2")"
    T1="$CHANGES/.empty"
@@ -624,20 +627,41 @@ persistent_changes()
    chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
    rm "$T1" "$T2" 2>/dev/null
 
-   if [ $? -ne 0 ]; then
-      echo "* Activating dynamic sized storage for persistent changes"
-      rm "$T1" "$T2" 2>/dev/null
-
-      @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
-      if [ "$(device_bestfs "$2/loop.fs" | tr -d " ")" = "-t" ]; then
-         mke2fs -F "$2/loop.fs" >/dev/null
-      fi
-      mount -o loop,sync "$2/loop.fs" "$2"
-      rmdir "$2/lost+found" 2>/dev/null
-   else
+   if [ $? -eq 0 ]; then
       echo "* Activating native persistent changes"
       mount --bind "$CHANGES" "$2"
+      return
    fi
+
+   if [ -e "$CHANGES/changes.dat" ]; then
+      echo "* Restoring persistent changes"
+      EXISTS="true"
+   else
+      echo "* Creating new persistent changes"
+      EXISTS=""
+   fi
+
+   # test sparse file support. If supported, use it in favor of fynfilefs
+   dd if=/dev/zero of="$T1" seek=200k bs=1 count=0 >/dev/null 2>/dev/null && \
+   test "$(du -k "$T1" | sed -r "s/[^0-9].*//")" -lt 200
+
+   if [ $? -eq 0 ]; then
+      if [ ! "$EXISTS" ]; then
+         dd if=/dev/zero of="$CHANGES/changes.dat" seek=2000M bs=1 count=0 >/dev/null 2>&1
+         mke2fs -F "$CHANGES/changes.dat" >/dev/null 2>&1
+      fi
+      mount -o loop "$CHANGES/changes.dat" "$2"
+   else
+      @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
+      if [ ! "$EXISTS" ]; then
+         mke2fs -F "$2/loop.fs" >/dev/null 2>&1
+      fi
+      mount -o loop,sync "$2/loop.fs" "$2"
+   fi
+
+   # if test failed at any point, we may have temp files left behind
+   rm "$T1" "$T2" 2>/dev/null
+   rmdir "$2/lost+found" 2>/dev/null
 }
 
 
