@@ -30,7 +30,7 @@ init_zram
 modprobe_everything -v /drivers/net/
 
 # find data dir with filesystem bundles
-DATA="$(find_data 60 "$DATAMNT")"
+DATA="$(find_data 45 "$DATAMNT")"
 check_data_found "$DATA"
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
