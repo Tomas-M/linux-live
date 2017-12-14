@@ -165,7 +165,7 @@ modprobe_everything()
    echo_green_star >&2
    echo "Probing for hardware" >&2
 
-   find /lib/modules/ | fgrep .ko | egrep $1 $2 | xargs -n 1 modprobe 2>/dev/null
+   find /lib/modules/ | fgrep .ko | egrep $1 $2 | sed -r "s:^.*/|[.]ko\$::g" | xargs -n 1 modprobe 2>/dev/null
    refresh_devs
 }
 
@@ -204,7 +204,7 @@ init_zram()
    if [ -r /sys/block/zram0/disksize ]; then
       echo 536870912 > /sys/block/zram0/disksize # 512MB
       mkswap /dev/zram0 >/dev/null
-      swapon /dev/zram0 -p 32767
+      swapon /dev/zram0
       echo 100 > /proc/sys/vm/swappiness
    fi
 }
@@ -286,7 +286,7 @@ device_bestfs()
    debug_log "device_bestfs" "$*"
    local FS
 
-   FS="$(blkid "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
+   FS="$(blkid -s TYPE "$1" | sed -r "s/.*TYPE=//" | tr -d '"' | tr [A-Z] [a-z])"
    if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
       FS="vfat"
    elif [ "$FS" = "ntfs" ]; then
@@ -787,7 +787,7 @@ change_root()
    cd "$1"
 
    # make sure important device files and directories are in union
-   mkdir -p boot dev proc sys tmp mnt run
+   mkdir -p boot dev proc sys tmp media mnt run
    chmod 1777 tmp
    if [ ! -e dev/console ]; then mknod dev/console c 5 1; fi
    if [ ! -e dev/tty ]; then mknod dev/tty c 5 0; fi

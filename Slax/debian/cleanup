@@ -45,7 +45,6 @@ rm -Rf /usr/share/man/*_*
 rm -Rf /usr/share/icons/elementaryXubuntu-dark
 rm -Rf /usr/share/icons/gnome/256x256
 
-
 # Unzip gzipped files (man pages), so LZMA can compress 2times better.
 # First we fix symlinks, then uncompress files
 # $1 = search directory
@@ -64,7 +63,6 @@ uncompress_files()
 
 uncompress_files /etc/alternatives
 uncompress_files /usr/share/man
-
 
 # remove broken links
 # $1 = search directory
