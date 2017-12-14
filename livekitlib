@@ -296,7 +296,7 @@ device_bestfs()
 }
 
 
-# Filesystem options for mount
+# Filesystem options for initial mount
 # $1.. = filesystem or '-t filesystem'
 # returns also the $1.. parameter back where appropriate
 #
@@ -313,13 +313,13 @@ fs_options()
    fi
 
    if [ "$1" = "ntfs-3g" ]; then
-      return
+      FS=""
    fi
 
-   echo -n "$FS"
+   echo -n "$FS -o ro"
 
    if [ "$1" = "vfat" ]; then
-      echo " -o check=s,shortname=mixed,iocharset=utf8"
+      echo ",check=s,shortname=mixed,iocharset=utf8"
    fi
 }
 
@@ -505,7 +505,7 @@ find_data_try()
       OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
 
-      $MOUNT -r "$DEVICE" "$1" $OPTIONS 2>/dev/null
+      $MOUNT "$DEVICE" "$1" $OPTIONS 2>/dev/null
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
       if [ -f "$1/$FROM" ]; then
