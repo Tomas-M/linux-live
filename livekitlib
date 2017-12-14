@@ -322,10 +322,6 @@ fs_options()
    if [ "$1" = "vfat" ]; then
       echo ",check=s,shortname=mixed,iocharset=utf8"
    fi
-
-   if [ "$1" = "ntfs-3g" ]; then
-      echo ",acl"
-   fi
 }
 
 
