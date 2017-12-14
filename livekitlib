@@ -297,14 +297,14 @@ device_bestfs()
 
 
 # Filesystem options for mount
-# $1 = filesystem or '-t filesystem'
-# returns also the $1 parameter back where appropriate
+# $1.. = filesystem or '-t filesystem'
+# returns also the $1.. parameter back where appropriate
 #
 fs_options()
 {
    debug_log "fs_options" "$*"
    local FS
-   FS="$1"
+   FS="$*"
 
    if [ "$1" = "-t" ]; then
       shift
@@ -325,7 +325,7 @@ fs_options()
 
 
 # Mount command for given filesystem
-# $1 = filesystem or '-t filesystem'
+# $1.. = filesystem or '-t filesystem'
 #
 mount_command()
 {
@@ -496,7 +496,7 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS
+   local DEVICE FS FROM OPTIONS MOUNT
 
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
