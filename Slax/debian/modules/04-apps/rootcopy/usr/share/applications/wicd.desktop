@@ -1,5 +1,5 @@
 [Desktop Entry]
 Exec=wicd-gtk --no-tray
-Icon=wicd-gtk
+Icon=gnome_network_workgroup
 Name=Net Manager
 Terminal=false
