@@ -15,7 +15,7 @@ ARCH=$(uname -m)
 if [ "$ARCH" = "x86_64" ]; then ARCH=64; else ARCH=32; fi
 EXTLINUX=extlinux.x$ARCH
 
-"$EXTLINUX" --install "$BOOT"
+./"$EXTLINUX" --install "$BOOT"
 
 if [ $? -ne 0 ]; then
    echo "Error installing boot loader."

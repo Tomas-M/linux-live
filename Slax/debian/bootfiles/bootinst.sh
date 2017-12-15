@@ -114,7 +114,7 @@ fi
 # install syslinux bootloader
 echo "* attempting to install bootloader to $BOOT..."
 
-"$EXTLINUX" --install "$BOOT"
+./"$EXTLINUX" --install "$BOOT"
 
 if [ $? -ne 0 ]; then
    echo "Error installing boot loader."
