@@ -9,6 +9,7 @@ rm -Rf /usr/share/icons/gnome/256x256
 mv /usr/bin/chromium /usr/bin/chromium-launcher
 
 (cd rootcopy && cp --parents -afr * /)
+chown guest.users /home/guest
 chown -R guest.users /home/guest/.config
 
 rm -Rf /squashfs-root/root/.fluxbox
