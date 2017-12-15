@@ -14,6 +14,7 @@ cd /
 unsquashfs /apps-stock.sb
 rm -Rf /squashfs-root/home
 rm -Rf /squashfs-root/root/.fluxbox
+rm -f /squashfs-root/root/.gtk-bookmarks
 
 # we want to patch pcmanfm it to hide ugly root warning icon
 # so we will recompile whole package
