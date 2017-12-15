@@ -12,7 +12,7 @@
 # If you do not need booting from CD (eg you're booting only from USB)
 # then you can ignore recompiling isolinux.bin, just rename LIVEKITNAME
 # and you're done.
-LIVEKITNAME="linux"
+LIVEKITNAME="slax"
 
 # Kernel file, will be copied to your Live Kit
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
