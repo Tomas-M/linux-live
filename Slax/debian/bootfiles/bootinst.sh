@@ -99,23 +99,20 @@ if [ "$(fdisk -l "$DEV" | fgrep "$DEV" | fgrep "*")" != "" ]; then
    read junk
 fi
 
-if [ ! -x ./extlinux.exe ]; then
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then ARCH=64; else ARCH=32; fi
+EXTLINUX=extlinux.x$ARCH
+
+if [ ! -x ./$EXTLINUX ]; then
    # extlinux is not executable. There are two possible reasons:
    # either the fs is mounted with noexec, or file perms are wrong.
    # Try to fix both, no fail on error yet
-   chmod a+x ./extlinux.exe
+   chmod a+x ./$EXTLINUX
    mount -o remount,exec $DEV
 fi
 
 # install syslinux bootloader
 echo "* attempting to install bootloader to $BOOT..."
-
-# Try to use installed extlinux binary and fallback to extlinux.exe only
-# if no installed extlinux is not found at all.
-EXTLINUX="$(which extlinux 2>/dev/null)"
-if [ "$EXTLINUX" = "" ]; then
-   EXTLINUX="./extlinux.exe"
-fi
 
 "$EXTLINUX" --install "$BOOT"
 

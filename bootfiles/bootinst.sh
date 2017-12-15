@@ -11,12 +11,9 @@ cd "$BOOT"
 PART="$(df . | tail -n 1 | tr -s " " | cut -d " " -f 1)"
 DEV="$(echo "$PART" | sed -r "s:[0-9]+\$::" | sed -r "s:([0-9])[a-z]+\$:\\1:i")"   #"
 
-# Try to use installed extlinux binary and fallback to extlinux.exe only
-# if no installed extlinux is not found at all.
-EXTLINUX="$(which extlinux 2>/dev/null)"
-if [ "$EXTLINUX" = "" ]; then
-   EXTLINUX="./extlinux.exe"
-fi
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then ARCH=64; else ARCH=32; fi
+EXTLINUX=extlinux.x$ARCH
 
 "$EXTLINUX" --install "$BOOT"
 
