@@ -1,8 +1,10 @@
 [begin] (Desktop menu)
    [exec] (Terminal) { fbstartupnotify && xterm -ls }
-   [exec] (Web browser) { fbstartupnotify && chromium }
-   [exec] (Text editor) { fbstartupnotify && leafpad }
+   [exec] (File Manager) { fbstartupnotify && pcmanfm }
+   [exec] (Web Browser) { fbstartupnotify && chromium }
+   [exec] (Text Editor) { fbstartupnotify && leafpad }
    [exec] (Calculator) { fbstartupnotify && qalculate }
+   [exec] (Network Manager) { fbstartupnotify && wicd-gtk --no-tray }
    [exec] (Run) { fbappselect }
    [separator]
    [workspaces] (Workspaces                ...)
