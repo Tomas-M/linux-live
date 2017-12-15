@@ -41,5 +41,7 @@ cp bios/com32/elflink/ldlinux/ldlinux.c32 $CWD
 cp bios/com32/lib/libcom32.c32 $CWD
 cp bios/com32/libutil/libutil.c32 $CWD
 cp bios/com32/menu/vesamenu.c32 $CWD
+cp bios/extlinux/extlinux $CWD/extlinux.exe
+strip --strip-unneeded $CWD/extlinux.exe
 
 echo "done"
