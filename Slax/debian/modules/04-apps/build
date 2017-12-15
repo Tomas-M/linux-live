@@ -12,6 +12,8 @@ chown -R guest.users /home/guest
 savechanges /apps-stock.sb
 cd /
 unsquashfs /apps-stock.sb
+rm -Rf /squashfs-root/home
+rm -Rf /squashfs-root/root/.fluxbox
 
 # we want to patch pcmanfm it to hide ugly root warning icon
 # so we will recompile whole package
