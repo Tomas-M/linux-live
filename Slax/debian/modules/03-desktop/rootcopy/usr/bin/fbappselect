@@ -1,10 +1,11 @@
 #!/bin/bash
 
 COMMAND=$(
-  xlunch --input /etc/xlunch/entries.dsv --scroll \
+  xlunch_genquick 64 | \
+  xlunch --scroll \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
          --voidclickterminate --iconpadding 30 --textpadding 10 \
-         --paddingswap --leastmargin 10 --hidemissing --iconsize 128 \
+         --paddingswap --leastmargin 10 --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
          --outputonly
 )
@@ -25,7 +26,7 @@ if [ "$Ndep" != "" -o "$cmd" = "man" -o "$cmd" = "mc" ]; then
    WAIT=""
 fi
 
-if [ "$Xdep" = "" -a "$cmd" != "chromium" ]; then
+if [ "$Xdep" = "" -a "$cmd" != "chromium" -a "$cmd" != "wicd-gtk" ]; then
    exec xterm -ls -e bash --login -c -- "echo $USER@$HOSTNAME:$PWD# '$COMMAND'; $COMMAND; $WAIT"
 else
    exec $COMMAND

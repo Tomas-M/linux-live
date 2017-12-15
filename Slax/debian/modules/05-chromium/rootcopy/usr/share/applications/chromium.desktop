@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Web Browser
+Exec=/usr/bin/chromium
+Terminal=false
+Icon=chromium

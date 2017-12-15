@@ -11,4 +11,4 @@ mv /usr/bin/chromium /usr/bin/chromium-launcher
 (cd rootcopy && cp --parents -afr * /)
 chown -R guest.users /home/guest
 
-savechanges /04-chromium.sb
+savechanges /05-chromium.sb

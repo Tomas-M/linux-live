@@ -1,0 +1,5 @@
+[Desktop Entry]
+Icon=terminal
+Name=Terminal
+Exec=xterm -ls
+Terminal=false
