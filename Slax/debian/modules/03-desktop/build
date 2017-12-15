@@ -54,12 +54,13 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v3.1.3.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v3.2.4.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
-cd xlunch-3.1.3
+cd xlunch-3.2.4
 make
 cp xlunch /squashfs-root/usr/bin
+cp extra/gentriesquick /squashfs-root/usr/bin/xlunch_genquick
 mkdir -p /squashfs-root/usr/share/icons/hicolor/48x48/apps/
 cp extra/ghost.png /squashfs-root/usr/share/icons/hicolor/48x48/apps/xlunch_ghost.png
 

@@ -804,7 +804,7 @@ fstab_create()
       FS="$(device_tag $DEVICE TYPE)"
       LABEL="$(device_tag $DEVICE LABEL | sed -r "s:[/ ]:_:g")"
       if [ "$LABEL" = "" ]; then LABEL="$(basename $DEVICE)"; fi
-      if [ "$FS" != "swap" ]; then
+      if [ "$FS" != "swap" -a "$FS" != "squashfs" ]; then
          mkdir -p "$1/media/$LABEL"
          echo "$DEVICE" "/media/$LABEL" $FS defaults,noatime 0 0 >> $FSTAB
       fi
