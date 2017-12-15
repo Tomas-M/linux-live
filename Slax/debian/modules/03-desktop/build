@@ -12,7 +12,7 @@ apt-get install --no-install-recommends --yes $NAME feh compton volumeicon-alsa 
 . ../../cleanup
 
 (cd rootcopy && cp --parents -afr * /)
-chown -R guest.users /hom/guest/.gtkrc-2.0
+chown -R guest.users /home/guest/.gtkrc-2.0
 
 savechanges /$NAME-stock.sb
 
