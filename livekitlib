@@ -780,12 +780,13 @@ union_append_bundles()
 
 # Create empty fstab properly
 # $1 = root directory
+# $2 = directory where boot disk is mounted
 #
 fstab_create()
 {
    debug_log "fstab_create" "$*"
 
-   local FSTAB DEVICE FS LABEL
+   local FSTAB DEVICE FS LABEL BOOTDEVICE OPTS
 
    FSTAB="$1/etc/fstab"
    echo aufs / aufs defaults 0 0 > $FSTAB
@@ -798,14 +799,18 @@ fstab_create()
       return
    fi
 
+   BOOTDEVICE=$(df "$2" | tail -n 1 | cut -d " " -f 1)
+
    echo >> $FSTAB
 
    blkid | grep -v "^/dev/loop" | cut -d: -f 1 | while read DEVICE; do
-      FS="$(device_tag $DEVICE TYPE)"
+      FS="$(device_bestfs $DEVICE)"
       LABEL="$(basename $DEVICE)"
-      if [ "$FS" != "swap" -a "$FS" != "squashfs" ]; then
+      OPTS="defaults,noatime,nofail,x-systemd.device-timeout=2"
+
+      if [ "$FS" != "swap" -a "$FS" != "squashfs" -a "$DEVICE" != "$BOOTDEVICE" ]; then
          mkdir -p "$1/media/$LABEL"
-         echo "$DEVICE" "/media/$LABEL" $FS defaults,noatime 0 0 >> $FSTAB
+         echo "$DEVICE" "/media/$LABEL" $FS $OPTS 0 0 >> $FSTAB
       fi
    done
 }

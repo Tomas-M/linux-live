@@ -49,7 +49,7 @@ union_append_bundles "$DATA" "$BUNDLES" "$UNION"
 copy_rootcopy_content "$DATA" "$UNION"
 
 # create fstab
-fstab_create "$UNION"
+fstab_create "$UNION" "$DATAMNT"
                                                                                                                                                       debug_shell
 header "Live Kit done, starting $LIVEKITNAME"
 change_root "$UNION"
