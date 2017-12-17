@@ -803,7 +803,7 @@ fstab_create()
 
    echo >> $FSTAB
 
-   blkid | grep -v "^/dev/loop" | cut -d: -f 1 | while read DEVICE; do
+   blkid | grep -v "^/dev/loop" | grep -v "^/dev/zram" | cut -d: -f 1 | while read DEVICE; do
       FS="$(device_bestfs $DEVICE)"
       LABEL="$(basename $DEVICE)"
       OPTS="defaults,noatime,nofail,x-systemd.device-timeout=2"
