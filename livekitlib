@@ -640,23 +640,11 @@ persistent_changes()
       EXISTS=""
    fi
 
-   # test sparse file support. If supported, use it in favor of fynfilefs
-   dd if=/dev/zero of="$T1" seek=200k bs=1 count=0 >/dev/null 2>/dev/null && \
-   test "$(du -k "$T1" | sed -r "s/[^0-9].*//")" -lt 200
-
-   if [ $? -eq 0 ]; then
-      if [ ! "$EXISTS" ]; then
-         dd if=/dev/zero of="$CHANGES/changes.dat" seek=16000M bs=1 count=0 >/dev/null 2>&1
-         mke2fs -F "$CHANGES/changes.dat" >/dev/null 2>&1
-      fi
-      mount -o loop "$CHANGES/changes.dat" "$2"
-   else
-      @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
-      if [ ! "$EXISTS" ]; then
-         mke2fs -F "$2/loop.fs" >/dev/null 2>&1
-      fi
-      mount -o loop,sync "$2/loop.fs" "$2"
+   @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
+   if [ ! "$EXISTS" ]; then
+      mke2fs -F "$2/loop.fs" >/dev/null 2>&1
    fi
+   mount -o loop,sync "$2/loop.fs" "$2"
 
    # if test failed at any point, we may have temp files left behind
    rm "$T1" "$T2" 2>/dev/null
