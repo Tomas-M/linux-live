@@ -291,6 +291,7 @@ device_tag()
 # Make sure to mount FAT12/16/32 using vfat
 # in order to support long filenames
 # $1 = device
+# $2 = prefix to add, like -t
 #
 device_bestfs()
 {
@@ -303,31 +304,27 @@ device_bestfs()
    elif [ "$FS" = "ntfs" ]; then
       FS="ntfs-3g"
    fi
-   echo "-t $FS"
+
+   if [ "$2" != "" ]; then
+      echo -n "$2"
+   fi
+
+   echo "$FS"
 }
 
 
 # Filesystem options for initial mount
-# $1.. = filesystem or '-t filesystem'
-# returns also the $1.. parameter back where appropriate
+# $1.. = filesystem
 #
 fs_options()
 {
    debug_log "fs_options" "$*"
-   local FS
-   FS="$*"
 
-   if [ "$1" = "-t" ]; then
-      shift
-   else
-      FS="-t $FS"
+   if [ "$1" != "ntfs-3g" ]; then
+      echo -n "-t $1 "
    fi
 
-   if [ "$1" = "ntfs-3g" ]; then
-      FS=""
-   fi
-
-   echo -n "$FS -o rw"
+   echo -n "-o rw"
 
    if [ "$1" = "vfat" ]; then
       echo ",check=s,shortname=mixed,iocharset=utf8"
@@ -336,21 +333,17 @@ fs_options()
 
 
 # Mount command for given filesystem
-# $1.. = filesystem or '-t filesystem'
+# $1.. = filesystem
 #
 mount_command()
 {
    debug_log "mount_command" "$*"
 
-   if [ "$1" = "-t" ]; then
-      shift
-   fi
    if [ "$1" = "ntfs-3g" ]; then
       echo "@mount.ntfs-3g"
-      return
+   else
+      echo "mount"
    fi
-
-   echo "mount"
 }
 
 
@@ -804,7 +797,7 @@ fstab_create()
    echo >> $FSTAB
 
    blkid | grep -v "^/dev/loop" | grep -v "^/dev/zram" | cut -d: -f 1 | while read DEVICE; do
-      FS="$(device_bestfs $DEVICE) | sed -r 's/^-t //'"
+      FS="$(device_bestfs $DEVICE)"
       LABEL="$(basename $DEVICE)"
       OPTS="defaults,noatime,nofail,x-systemd.device-timeout=2"
 
