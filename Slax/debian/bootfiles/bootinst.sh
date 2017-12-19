@@ -94,7 +94,7 @@ if [ "$(fdisk -l "$DEV" | fgrep "$DEV" | fgrep "*")" != "" ]; then
    echo ""
    echo "Partition $PART seems to be located on a physical disk,"
    echo "which is already bootable. If you continue, your drive $DEV"
-   echo "will boot only Linux by default."
+   echo "will boot only Slax by default."
    echo "Press [Enter] to continue, or [Ctrl+C] to abort..."
    read junk
 fi
@@ -107,8 +107,16 @@ if [ ! -x ./$EXTLINUX ]; then
    # extlinux is not executable. There are two possible reasons:
    # either the fs is mounted with noexec, or file perms are wrong.
    # Try to fix both, no fail on error yet
-   chmod a+x ./$EXTLINUX
    mount -o remount,exec $DEV
+   chmod a+x ./$EXTLINUX
+fi
+
+if [ ! -x ./$EXTLINUX ]; then
+   # extlinux is still not executable. As a last try, copy it to .exe
+   # because the partition may be mounted with showexec option, from which
+   # we probably can't escape by remount
+   cp -f ./$EXTLINUX ./extlinux.exe
+   EXTLINUX=extlinux.exe
 fi
 
 # install syslinux bootloader
