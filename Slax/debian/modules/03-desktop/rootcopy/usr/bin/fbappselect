@@ -26,7 +26,7 @@ if [ "$Ndep" != "" -o "$cmd" = "man" -o "$cmd" = "mc" ]; then
    WAIT=""
 fi
 
-if [ "$Xdep" = "" -a "$cmd" != "chromium" -a "$cmd" != "wicd-gtk" ]; then
+if [ "$Xdep" = "" -a "$cmd" != "chromium" -a "$cmd" != "wicd-manager" ]; then
    exec xterm -ls -e bash --login -c -- "echo $USER@$HOSTNAME:$PWD# '$COMMAND'; $COMMAND; $WAIT"
 else
    exec $COMMAND
