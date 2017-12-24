@@ -13,13 +13,8 @@ xrdb -merge ~/.Xresources
 # set keyboard layout
 fbsetkb $(cat ~/.fluxbox/kblayout)
 
-# setup bookmarks
-cat ~/.gtk-bookmarks | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' > ~/.gtk-bookmarks.tmp 2>/dev/null
-ls -1 /media | while read LINE; do
-   echo "file:///media/$LINE $LINE" >> ~/.gtk-bookmarks.tmp
-done
-echo "file:/// /" >> ~/.gtk-bookmarks.tmp # add root
-mv -f ~/.gtk-bookmarks.tmp ~/.gtk-bookmarks
+# setup bookmarks for file manager
+gtk-bookmarks-update
 
 # Share common directories with guest user. This is necessary
 # because some apps like chromium must be running under guest

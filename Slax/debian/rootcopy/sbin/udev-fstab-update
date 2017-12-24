@@ -1,0 +1,185 @@
+#!/bin/bash
+# Recreate fstab entries in /etc/fstab and make /media directories
+# This script is called by udev rules, see /etc/udev/rules.d/
+#
+# Author: Tomas M <http://slax.linux-live.org/>
+
+# Variables available in udev environment:
+# $ACTION (eg: add, remove)
+# $DEVNAME (full device node name including path)
+# $DEVTYPE (eg: disk)
+# $ID_FS_TYPE (eg: ext3)
+# $MAJOR and $MINOR numbers
+# $SUBSYSTEM (eg: block)
+
+PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
+FSTAB=/etc/fstab
+FSTABFLAG="# AutoUpdate"
+
+# a logging function
+log()
+{
+    mkdir -p /dev/.udev
+    echo "process ID $$:" "$@" >>/dev/.udev/udev-fstab-update.log
+}
+
+# Make sure the part of a script after 'mutex_lock' call is atomic,
+# that means the 'locked' part of the script can never be execuetd 
+# from several processes at the same time, in parallel.
+# Every script waits until it gathers the lock.
+# The lock directory is saved in /dev instead of /tmp, because /tmp may be
+# readonly at the time when the lock is needed (eg. when udev is starting)
+# $1 = name of the lock
+#
+mutex_lock()
+{
+   while ! mkdir "/dev/ll-mutex-lock-$1" 2>/dev/null; do
+      usleep 100000;
+   done
+}
+
+
+# Unlock the lock so another waiting process can reusse it and continue
+# $1 = name of the lock
+#
+mutex_unlock()
+{
+   rmdir "/dev/ll-mutex-lock-$1" 2>/dev/null
+}
+
+
+# Get device tag.
+# $1 = device
+# $2 = tag name, such as TYPE, LABEL, UUID, etc
+#
+device_tag()
+{
+   blkid -s $2 "$1" | sed -r "s/^[^=]+=//" | tr -d '"'
+}
+
+
+# Make sure to mount FAT12/16/32 using vfat
+# in order to support long filenames
+# $1 = device
+#
+device_bestfs()
+{
+   local FS
+
+   FS="$(device_tag "$1" TYPE | tr [A-Z] [a-z])"
+   if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
+      FS="vfat"
+   elif [ "$FS" = "ntfs" ]; then
+      FS="ntfs-3g"
+   fi
+
+   echo "$FS"
+}
+
+
+# Filesystem options for initial mount
+# $1.. = filesystem
+#
+fs_options()
+{
+   debug_log "fs_options" "$*"
+
+   echo -n "defaults"
+
+   if [ "$1" = "vfat" ]; then
+      echo ",check=s,shortname=mixed,iocharset=utf8"
+   fi
+}
+
+
+# Find out if device is in fstab already
+# $1 = fstab file
+# $2 = device name
+dev_is_in_fstab()
+{
+   cat "$1" | sed -r "s/#.*//" | egrep -q "^[[:space:]]*$2[[:space:]]"
+}
+
+
+# update given line in fstab, add new values only if the device is not found
+# $1 = fstab file to parse
+# $2 = device name
+# $3 = mountpoint
+# $4 = filesystem
+# $5 = mount options
+#
+fstab_add_line()
+{
+   local DIR
+
+   if [ "$4" != "swap" ]; then DIR="$3"; else DIR="none"; fi
+   if ! dev_is_in_fstab "$1" "$2"; then
+      echo "$2" "$DIR" "$4" "$5" 0 0 "$FSTABFLAG" >>$1
+   fi
+}
+
+# tell us if the given filesystem is supported
+# (eg. it's in /proc/filesystems or we know it)
+# $1 = filesystem name
+#
+is_supported_filesystem()
+{
+   egrep -q "[[:space:]]$1\$" /proc/filesystems
+}
+
+
+log starting udev-fstab-update with parameters $ACTION $DEVNAME
+
+mutex_lock udev-fstab-update
+
+
+if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
+   if ! dev_is_in_fstab $FSTAB $DEVNAME; then
+
+      # find some information about the device
+      FS=$(device_bestfs $DEVNAME)
+      OPT=$(fs_options $FS fstab)
+      BAS=$(basename "$DEVNAME")
+      MNT=/media/$BAS
+      log "Found the following: FS=$FS OPT=$OPT MNT=$MNT"
+
+      # If udev detected floppy, add it here. Thanks Quax :)
+      if [ "$(echo "$DEVNAME" | grep /fd)" != "" ]; then
+         mkdir -p /media/floppy
+         fstab_add_line $FSTAB $DEVNAME /media/floppy auto rw,noauto,user,sync
+      fi
+
+      if [ "$FS" = "swap" ]; then
+         fstab_add_line $FSTAB $DEVNAME $MNT $FS $OPT
+      fi
+
+      # If the partition has a valid filesystem, add it to fstab.
+      # This probably won't handle HotAdded CDROMs with no media,
+      # but that shouldn't be any problem as those devices would
+      # be of no use when empty, and it will notify us when a
+      # new media is inserted.
+      if is_supported_filesystem "$FS"; then
+         log Calling fstab_add_line $FSTAB $DEVNAME $MNT $FS $OPT
+         fstab_add_line $FSTAB $DEVNAME $MNT $FS $OPT
+         mkdir -p "$MNT"
+         gtk-bookmarks-update
+         mutex_unlock udev-fstab-update
+
+         if [ -e /usr/bin/pcmanfm ]; then
+            su - root -c "export DISPLAY=:0; mount "$MNT"; pcmanfm $MNT >/dev/null 2>/dev/null"
+            #umount "$MNT"
+            #rmdir "$MNT"
+            #gtk-bookmarks-update
+         fi
+         exit
+      fi
+   else
+      log device $DEVNAME already in fstab, skipped
+   fi
+fi
+
+if [ "$ACTION" = "remove" ]; then
+   sed -i -r "\\;^[[:space:]]*$DEVNAME[[:space:]].*;d" $FSTAB
+fi
+
+mutex_unlock udev-fstab-update
