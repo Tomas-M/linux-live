@@ -4,7 +4,7 @@
    [exec] (Web Browser) { fbstartupnotify && chromium }
    [exec] (Text Editor) { fbstartupnotify && leafpad }
    [exec] (Calculator) { fbstartupnotify && qalculate }
-   [exec] (Network Manager) { fbstartupnotify && wicd-gtk --no-tray }
+   [exec] (Network Manager) { fbstartupnotify && wicd-manager }
    [exec] (Run) { fbappselect }
    [separator]
    [workspaces] (Workspaces                ...)
