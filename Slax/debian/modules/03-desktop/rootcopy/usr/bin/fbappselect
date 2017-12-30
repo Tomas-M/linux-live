@@ -5,7 +5,7 @@ COMMAND=$(
   xlunch --scroll \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
          --voidclickterminate --iconpadding 30 --textpadding 10 \
-         --paddingswap --leastmargin 10 --hidemissing --iconsize 64 \
+         --paddingswap --leastmargin 6 --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
          --outputonly
 )
