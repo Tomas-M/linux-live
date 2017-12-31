@@ -1,8 +1,19 @@
+#!/bin/bash
 
 apt-get update
-apt-get install --yes --no-install-recommends xserver-xorg xinit xterm \
-blackbox libxcursor1 breeze-cursor-theme x11-utils wmctrl xdotool \
-libdrm-intel1 libgl1-mesa-dri libglu1-mesa
+apt-get install --yes --no-install-recommends 
+    xserver-xorg \
+    xinit \
+    xterm \
+    blackbox \
+    libxcursor1 \
+    breeze-cursor-theme \
+    x11-utils \
+    wmctrl \
+    xdotool \
+    libdrm-intel1 \
+    libgl1-mesa-dri \
+    libglu1-mesa
 
 # use only white cursors. There were some troubles if the other cursors
 # was left behind, installing gtk apps reverted the cursor from white to gray,
