@@ -1,10 +1,18 @@
+#!/bin/bash
 
 apt-get update
 apt-get install --yes --no-install-recommends \
-   firmware-linux-free firmware-linux-nonfree \
-   firmware-atheros firmware-iwlwifi firmware-zd1211 firmware-realtek \
-   firmware-bnx2 firmware-brcm80211 firmware-cavium \
-   firmware-ipw2x00 firmware-libertas \
+   firmware-linux-free \
+   firmware-linux-nonfree \
+   firmware-atheros \
+   firmware-iwlwifi \
+   firmware-zd1211 \
+   firmware-realtek \
+   firmware-bnx2 \
+   firmware-brcm80211 \
+   firmware-cavium \
+   firmware-ipw2x00 \
+   firmware-libertas \
    firmware-ti-connectivity
 
 . ../../cleanup
