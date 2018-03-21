@@ -15,6 +15,7 @@ apt-get install --no-install-recommends --yes \
     volumeicon-alsa \
     murrine-themes \
     libnotify4 \
+    xarchiver xdg-utils \
     scrot
 
 . ../../cleanup
@@ -62,10 +63,10 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v3.2.8.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v3.2.9.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
-cd xlunch-3.2.8
+cd xlunch-3.2.9
 make
 cp xlunch /squashfs-root/usr/bin
 cp extra/gentriesquick /squashfs-root/usr/bin/xlunch_genquick
