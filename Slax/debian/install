@@ -6,9 +6,11 @@ apt-get dist-upgrade --yes
 # if kernel was upgraded, you may need to reboot
 apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
-hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat ssh gpm wireless-tools ntfs-3g
+hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat ssh gpm wireless-tools ntfs-3g rfkill
 
 ln -sf bash /bin/sh
+
+apt-get remove --yes vim* grub* debconf-i18n installation-report
 
 CWD="$(pwd)"
 cd /tmp
