@@ -14,6 +14,7 @@ apt-get install --no-install-recommends --yes \
     compton \
     volumeicon-alsa \
     murrine-themes \
+    libnotify4 \
     scrot
 
 . ../../cleanup
@@ -79,5 +80,27 @@ cd SystrayIconLauncher-master
 apt-get install --yes libgtk2.0-dev
 make
 cp systrayicon /squashfs-root/usr/bin
+
+
+# battery icon app
+cd /tmp
+wget https://github.com/valr/cbatticon/archive/1.6.7.tar.gz
+tar -xf 1.6.7.tar.gz
+cd cbatticon-1.6.7
+cp -R /usr/include/glib-2.0/* /usr/include
+cp -R /usr/include/gtk-2.0/* /usr/include
+apt install libnotify-dev
+sed -i "s/WITH_GTK3 = 1/WITH_GTK3 = 0/" Makefile
+CFLAGS="-O2 \
+-I/usr/lib/x86_64-linux-gnu/glib-2.0/include/ \
+-I/usr/lib/x86_64-linux-gnu/gtk-2.0/include/ \
+-I/usr/include/gdk-pixbuf-2.0/ \
+-I/usr/include/atk-1.0/ \
+-I/usr/include/cairo \
+-I/usr/include/pango-1.0 \
+-I/usr/include/glib-2.0 \
+-I/usr/include/gtk-2.0" \
+make
+cp cbatticon /squashfs-root/usr/bin
 
 dir2sb /squashfs-root /03-desktop.sb
