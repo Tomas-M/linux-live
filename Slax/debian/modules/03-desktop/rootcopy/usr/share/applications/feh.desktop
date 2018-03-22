@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Name=Image viewer
+GenericName=Image viewer
+Exec=feh %U
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Icon=none.png
+Categories=ImageViewer;
+MimeType=image/*;
+StartupWMClass=feh
+StartupNotify=true
+Hidden=true
