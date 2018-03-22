@@ -31,6 +31,8 @@ dpkg -x x11-xserver-utils*.deb /tmp/x11utils
 cd /tmp/x11utils
 cp -aR * /
 
+update-alternatives --set x-terminal-emulator /usr/bin/xterm
+
 . /tmp/cleanup
 
 savechanges /02-xorg.sb
