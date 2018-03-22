@@ -15,7 +15,6 @@ apt-get install --no-install-recommends --yes \
     volumeicon-alsa \
     murrine-themes \
     libnotify4 \
-    xarchiver xdg-utils \
     scrot
 
 . ../../cleanup
