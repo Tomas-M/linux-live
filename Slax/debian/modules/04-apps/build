@@ -3,10 +3,10 @@
 CWD=$(dirname $(readlink -f $0))
 
 apt-get update
-apt-get install --no-install-recommends --yes /
-    leafpad /
-    qalculate-gtk /
-    pcmanfm /
+apt-get install --no-install-recommends --yes \
+    leafpad \
+    qalculate-gtk \
+    pcmanfm \
     xarchiver xdg-utils \
     wicd
 
