@@ -1,7 +1,0 @@
-#!/bin/bash
-xhost + >/dev/null 2>/dev/null
-if [ "$EUID" -ne 0 ]; then
-   chromium-launcher "$@"
-   exit 0
-fi
-su -c "chromium-launcher "$@"" guest

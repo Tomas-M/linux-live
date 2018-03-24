@@ -26,6 +26,14 @@ qt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
    GUEST=true
 fi
 
+if [ "$1" = "chromium" ]; then
+   NAME="Chromium Web Browser"
+   EXECUTABLE="/usr/bin/chromium"
+   INSTALL="apt install --yes chromium"
+   GUEST=true
+fi
+
+shift
 
 # ------------------------------------------------
 #   do not touch anything below this line
@@ -52,15 +60,15 @@ fi
 
 
 if [ -f "$EXECUTABLE" ]; then
-   if [ "$GUEST" = "true" ]; then
+
+   fbstartupnotify
+
+   if [ "$GUEST" = "true" -a "$EUID" -eq 0 ]; then
       xhost + >/dev/null 2>/dev/null
-      if [ "$EUID" -ne 0 ]; then
-         "$EXECUTABLE"
-         exit 0
-      fi
-      su -c "$EXECUTABLE" guest
+      su -c "$EXECUTABLE "$@""  guest
       exit 0
    fi
 
-   "$EXECUTABLE"
+   "$EXECUTABLE" "$@"
+
 fi

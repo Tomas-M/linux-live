@@ -48,7 +48,6 @@ rm -Rf /usr/share/icons/gnome/256x256
 rm /usr/share/applications/compton.desktop
 rm /usr/share/applications/debian-uxterm.desktop
 rm /usr/share/applications/debian-xterm.desktop
-rm /usr/share/applications/feh.desktop
 rm /usr/share/applications/htop.desktop
 rm /usr/share/applications/mc.desktop
 rm /usr/share/applications/mcedit.desktop
