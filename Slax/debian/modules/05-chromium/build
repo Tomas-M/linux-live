@@ -6,7 +6,10 @@ apt-get install --yes --no-install-recommends chromium
 . ../../cleanup
 
 rm -Rf /usr/share/icons/gnome/256x256
-rm -Rf /squashfs-root/root/.fluxbox
-rm -f /squashfs-root/root/.gtk-bookmarks
+rm -Rf /root/.fluxbox
+rm -Rf /root/.fluxbox/kblayout
+rm -Rf /root/.gtk-bookmarks
+rm -Rf /var/lib/wicd/dhclient.conf
+rm -Rf /usr/share/applications/chromium.desktop
 
 savechanges /05-chromium.sb
