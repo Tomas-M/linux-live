@@ -6,11 +6,6 @@ apt-get install --yes --no-install-recommends chromium
 . ../../cleanup
 
 rm -Rf /usr/share/icons/gnome/256x256
-
-(cd rootcopy && cp --parents -afr * /)
-chown guest.users /home/guest
-chown -R guest.users /home/guest/.config
-
 rm -Rf /squashfs-root/root/.fluxbox
 rm -f /squashfs-root/root/.gtk-bookmarks
 

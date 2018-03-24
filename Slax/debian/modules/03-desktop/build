@@ -20,7 +20,9 @@ apt-get install --no-install-recommends --yes \
 . ../../cleanup
 
 (cd rootcopy && cp --parents -afr * /)
+chown guest.users /home/guest
 chown -R guest.users /home/guest/.gtkrc-2.0
+chown -R guest.users /home/guest/.config
 
 savechanges /$NAME-stock.sb
 
