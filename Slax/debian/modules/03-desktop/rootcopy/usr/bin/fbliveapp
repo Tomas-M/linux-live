@@ -9,14 +9,6 @@ if [ "$1" = "votecoin" ]; then
    ONLY64=true
 fi
 
-if [ "$1" = "gnumeric" ]; then
-   NAME="Gnumeric Spreadsheet"
-   EXECUTABLE="/usr/bin/gnumeric"
-   INSTALL="apt install --yes gnumeric"
-   POSTINSTALL="rm -f /usr/share/applications/gnumeric.desktop"
-fi
-
-
 if [ "$1" = "vlc" ]; then
    NAME="VLC Video Player"
    EXECUTABLE="/usr/bin/vlc"
@@ -30,6 +22,7 @@ if [ "$1" = "chromium" ]; then
    NAME="Chromium Web Browser"
    EXECUTABLE="/usr/bin/chromium"
    INSTALL="apt install --yes chromium"
+   POSTINSTALL="rm -f /usr/share/applications/chromium.desktop"
    GUEST=true
 fi
 
