@@ -4,7 +4,7 @@ if [ "$1" = "votecoin" ]; then
    NAME="VoteCoin Wallet"
    TMP="/tmp/votecoin.tar.gz"
    EXECUTABLE="/opt/VoteCoin Wallet-linux-x64/VoteCoin Wallet"
-   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt && rm -f $TMP && apt update && apt install --yes libxss1 libgconf-2-4 libnss3"
+   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt && rm -f $TMP && apt install --yes libxss1 libgconf-2-4 libnss3"
    POSTINSTALL=""
    ONLY64=true
 fi
