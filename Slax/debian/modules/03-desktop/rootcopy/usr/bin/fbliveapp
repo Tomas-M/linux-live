@@ -21,7 +21,8 @@ if [ "$1" = "vlc" ]; then
    NAME="VLC Video Player"
    EXECUTABLE="/usr/bin/vlc"
    INSTALL="apt install --yes vlc"
-   POSTINSTALL="rm /usr/share/applications/vlc.desktop; mkdir /home/guest/.config/vlc; echo '[qt4]\nqt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
+   POSTINSTALL="rm /usr/share/applications/vlc.desktop; mkdir /home/guest/.config/vlc; echo '[qt4]
+qt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
    GUEST=true
 fi
 
