@@ -1,0 +1,5 @@
+[Desktop Entry]
+Icon=votecoin
+Name=VoteCoin
+Exec=fbliveapp votecoin
+Terminal=false

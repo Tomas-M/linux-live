@@ -3,6 +3,11 @@
   [Layer]	{2}
 [end]
 
+[app] (name=gtkdialog)
+  [Position]	(WINCENTER)	{0 0}
+  [Layer]	{2}
+[end]
+
 [app] (name=xlunch)
   [DECO]	{NONE}
   [IconHidden]	{yes}

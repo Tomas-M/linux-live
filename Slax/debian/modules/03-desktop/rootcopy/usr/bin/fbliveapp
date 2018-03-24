@@ -1,0 +1,68 @@
+#!/bin/bash
+
+if [ "$1" = "votecoin" ]; then
+   NAME="VoteCoin Wallet"
+   TMP="/tmp/votecoin.tar.gz"
+   EXECUTABLE="/opt/VoteCoin Wallet-linux-x64/VoteCoin Wallet"
+   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt; rm -f $TMP"
+   POSTINSTALL=""
+   ONLY64=true
+fi
+
+if [ "$1" = "gnumeric" ]; then
+   NAME="Gnumeric Spreadsheet"
+   EXECUTABLE="/usr/bin/gnumeric"
+   INSTALL="apt install --yes gnumeric"
+   POSTINSTALL="rm -f /usr/share/applications/gnumeric.desktop"
+fi
+
+
+if [ "$1" = "vlc" ]; then
+   NAME="VLC Video Player"
+   EXECUTABLE="/usr/bin/vlc"
+   INSTALL="apt install --yes vlc"
+   POSTINSTALL="rm /usr/share/applications/vlc.desktop"
+   GUEST=true
+fi
+
+
+# ------------------------------------------------
+#   do not touch anything below this line
+# ------------------------------------------------
+
+
+if [ "$EXECUTABLE" = "" ]; then
+   exit
+fi
+
+
+if [ ! -f "$EXECUTABLE" ]; then
+
+   if [ $(uname -m) != 'x86_64' -a "$ONLY64" = "true" ]; then
+      gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-warning.png  -t Error -m "$NAME only works in 64bit version of Slax" -y OK
+      exit 1
+   fi
+
+   if gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-question.png -t Install -m "$NAME is not yet installed.
+Do you like to download and install it now?" -y Yes -n No; then
+      xterm -ls -e bash --login -c -- "$INSTALL"
+      if [ "$POSTINSTALL" != "" ]; then
+         $POSTINSTALL
+      fi
+   fi
+fi
+
+
+if [ -f "$EXECUTABLE" ]; then
+   if [ "$GUEST" = "true" ]; then
+      xhost + >/dev/null 2>/dev/null
+      if [ "$EUID" -ne 0 ]; then
+         "$EXECUTABLE"
+         exit 0
+      fi
+      su -c "$EXECUTABLE" guest
+      exit 0
+   fi
+
+   "$EXECUTABLE"
+fi
