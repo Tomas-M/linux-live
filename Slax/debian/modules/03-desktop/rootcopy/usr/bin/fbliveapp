@@ -4,7 +4,7 @@ if [ "$1" = "votecoin" ]; then
    NAME="VoteCoin Wallet"
    TMP="/tmp/votecoin.tar.gz"
    EXECUTABLE="/opt/VoteCoin Wallet-linux-x64/VoteCoin Wallet"
-   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt; rm -f $TMP"
+   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt && rm -f $TMP"
    POSTINSTALL=""
    ONLY64=true
 fi
@@ -21,7 +21,7 @@ if [ "$1" = "vlc" ]; then
    NAME="VLC Video Player"
    EXECUTABLE="/usr/bin/vlc"
    INSTALL="apt install --yes vlc"
-   POSTINSTALL="rm /usr/share/applications/vlc.desktop"
+   POSTINSTALL="rm /usr/share/applications/vlc.desktop; mkdir /home/guest/.config/vlc; echo '[qt4]\nqt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
    GUEST=true
 fi
 
@@ -45,10 +45,7 @@ if [ ! -f "$EXECUTABLE" ]; then
 
    if gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-question.png -t Install -m "$NAME is not yet installed.
 Do you like to download and install it now?" -y Yes -n No; then
-      xterm -ls -e bash --login -c -- "$INSTALL"
-      if [ "$POSTINSTALL" != "" ]; then
-         $POSTINSTALL
-      fi
+      xterm -ls -e bash --login -c -- "$INSTALL; $POSTINSTALL"
    fi
 fi
 
