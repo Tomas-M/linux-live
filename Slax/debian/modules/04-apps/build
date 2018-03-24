@@ -43,4 +43,9 @@ dpkg-buildpackage -us -uc
 strip --strip-unneeded src/pcmanfm
 cp src/pcmanfm /squashfs-root/usr/bin
 
+rm -f /squashfs-root/usr/share/applications/leafpad.desktop
+rm -f /squashfs-root/usr/share/applications/qalculate-gtk.desktop
+rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
+rm -f /squashfs-root/usr/share/applications/wicd.desktop
+
 dir2sb /squashfs-root /04-apps.sb
