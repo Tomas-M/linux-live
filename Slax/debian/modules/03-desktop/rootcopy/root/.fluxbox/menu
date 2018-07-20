@@ -1,7 +1,7 @@
 [begin] (Desktop menu)
    [exec] (Terminal) { fbstartupnotify && xterm -ls }
    [exec] (File Manager) { fbstartupnotify && pcmanfm }
-   [exec] (Web Browser) { fbstartupnotify && chromium }
+   [exec] (Web Browser) { fbstartupnotify && fbliveapp chromium }
    [exec] (Text Editor) { fbstartupnotify && leafpad }
    [exec] (Calculator) { fbstartupnotify && qalculate }
    [exec] (Network Manager) { fbstartupnotify && wicd-manager }
