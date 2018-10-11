@@ -465,7 +465,7 @@ download_data_pxe()
 
       init_network_ip
 
-      echo "* Downloading PXE file list"
+      echo "* Downloading PXE file list" >&2
 
       PROTOCOL=http
       wget -q -O "$1/PXEFILELIST" "http://$SERVER:$PORT/PXEFILELIST?$(uname -r):$(uname -m)"
@@ -475,7 +475,7 @@ download_data_pxe()
          tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
       fi
 
-      echo "* Downloading files from the list"
+      echo "* Downloading files from the list" >&2
 
       cat "$1/PXEFILELIST" | while read FILE; do
          if [ "$PROTOCOL" = "http" ]; then
