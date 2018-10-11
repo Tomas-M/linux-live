@@ -17,6 +17,8 @@ if [ "$IP" = "" ]; then
    ifconfig $(ls -1 /sys/class/net | egrep -v '^lo$' | sort | head -n 1) $IP netmask 255.255.255.0
 fi
 
+echo Starting PXE server on $IP ...
+
 # calculate C class range
 RANGE=$(echo $IP | cut -d "." -f 1-3)
 
