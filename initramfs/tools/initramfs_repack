@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+
+if [ "$1" = "-h" -o "$1" = "--help" -o "$2" = "" ]; then
+   echo ""
+   echo "Create initramfs image from a directory tree"
+   echo "Usage: $0 [source_directory] [target_initramfs_file.img]"
+   echo ""
+   exit 2
+fi
+
+cd "$1"
+
+find . -print | cpio -o -H newc | xz -f --extreme --check=crc32 >"$2"

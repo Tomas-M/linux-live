@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -e
+
+if [ "$1" = "-h" -o "$1" = "--help" -o "$2" = "" ]; then
+   echo ""
+   echo "Unpack initramfs image to a directory"
+   echo "Usage: $0 [source_initramfs_file.img] [target_directory]"
+   echo ""
+   exit 2
+fi
+
+mkdir -p "$2"
+
+(cd "$2"; xz -d | cpio -idv) < "$1"
