@@ -4,7 +4,7 @@ COMMAND=$(
   xlunch_genquick 64 | \
   xlunch --scroll --border 7% --sideborder 10% --borderratio 100 --sideborderratio 50 \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
-         --voidclickterminate --iconpadding 30 --textpadding 10 \
+         --voidclickterminate --iconpadding 40 --textpadding 10 \
          --paddingswap --leastmargin 6 --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
          --outputonly
