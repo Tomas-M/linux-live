@@ -36,6 +36,7 @@ cd $LIVE
 ) | cpio -pvd $FTPROOT/tmp 2>/dev/null
 
 cp /lib/modules/$(uname -r)/modules.* $FTPROOT/tmp/lib/modules/$(uname -r)
+depmod -b $FTPROOT/tmp
 rm $FTPROOT/tmp/lib/initramfs_escaped
 
 # pack root in initramfs
