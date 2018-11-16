@@ -13,6 +13,8 @@ ln -sf bash /bin/sh
 
 apt-get remove --yes vim* grub* debconf-i18n installation-report
 
+sed -i -r "s/ENABLED=1/ENABLED=0/" /etc/default/dnsmasq
+
 CWD="$(pwd)"
 cd /tmp
 apt-get download acpi-support
