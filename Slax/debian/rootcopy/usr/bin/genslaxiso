@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CWD=$(pwd)
-DATA=/run/initramfs/memory/data
+SOURCE=/run/initramfs/memory
 TEMP=/tmp/slaxiso.$$
 TARGET="$(readlink -f "$1")"
 
@@ -12,11 +12,24 @@ if [ "$TARGET" = "" ]; then
    exit 1
 fi
 
+if [ -d "$SOURCE/data/slax/boot" ]; then
+   SLAX=$SOURCE/data/slax
+fi
+
+if [ -d "$SOURCE/toram/boot" ]; then
+   SLAX=$SOURCE/toram
+fi
+
+if [ "$SLAX" = "" ]; then
+   echo "Cannot find Slax data" >&2
+   exit 2
+fi
+
 GRAFT=\
 $(
-  cd "$DATA/slax"
+  cd "$SLAX"
   find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | while read LINE; do
-     echo "slax/$LINE=$DATA/slax/$LINE"
+     echo "slax/$LINE=$SLAX/$LINE"
   done
 )
 
@@ -24,7 +37,7 @@ $(
 while [ "$2" != "" ]; do
    if [ ! -e "$2" ]; then
       echo "File does not exist: $2"
-      exit 2
+      exit 3
    fi
    BAS="$(basename "$2")"
    MOD="$(readlink -f "$2")"
@@ -34,7 +47,7 @@ done
 
 (
    mkdir -p $TEMP/slax/{boot,modules,changes}
-   cp "$DATA/slax/boot/isolinux.bin" "$TEMP/slax/boot"
+   cp "$SLAX/boot/isolinux.bin" "$TEMP/slax/boot"
    cd "$TEMP"
    genisoimage -o - -quiet -v -J -R -D -A slax -V slax \
    -no-emul-boot -boot-info-table -boot-load-size 4 -input-charset utf-8 \
