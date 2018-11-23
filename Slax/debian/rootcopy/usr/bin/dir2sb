@@ -8,43 +8,51 @@ usage()
    echo "Usage: $0 [source_directory.sb] [[target_file.sb]]"
    echo "  If source_directory does not have .sb suffix and it is not 'squashfs-root',"
    echo "  then the source_directory itself is included in the module and"
-   echo "  then the target_file.sb parameter is required"
+   echo "  then the target_file.sb parameter is required."
+   echo "  If target_file.sb is not specified, the source_directory is erased"
+   echo "  and replaced by the newly generated module file."
 }
 
-SB=$(echo "$1" | grep -o "[.]sb/*\$")
-if [ "$(echo "$1" | grep -o "/squashfs-root/*\$")" != "" ]; then
+P1="$(readlink -f "$1")"
+P2="$(readlink -f "$2")"
+
+if [ "$P1" = "$P2" ]; then
+   P2=""
+fi
+
+SB=$(echo "$P1" | grep -o "[.]sb/*\$")
+if [ "$(echo "$P1" | grep -o "/squashfs-root/*\$")" != "" ]; then
    SB="true"
 fi
 
 if [ "$SB" = "" ]; then
    KEEP="-keep-as-directory"
-   if [ "$2" = "" ]; then
+   if [ "$P2" = "" ]; then
       usage
-      exit
+      exit 1
    fi
 else
    KEEP=""
 fi
 
-
-if [ ! -d "$1" ]; then
-   echo "Not a directory: $1" >&2
+if [ ! -d "$P1" ]; then
+   echo "Not a directory: $P1" >&2
    exit 2
 fi
 
 
-if [ "$2" = "" ]; then
-   TARGET="$1".sb
+if [ "$P2" = "" ]; then
+   TARGET="$P1".sb
    while [ -e "$TARGET" ]; do TARGET="$TARGET"x; done
-   mksquashfs "$1" "$TARGET" -comp xz -b 512K $KEEP >/dev/null
-   umount "$1" 2>/dev/null
-   rmdir "$1" 2>/dev/null && mv "$TARGET" "$1" && exit
-   echo "Created file $TARGET"
+   mksquashfs "$P1" "$TARGET" -comp xz -b 512K $KEEP >/dev/null || exit 3
+   umount "$P1" 2>/dev/null
+   rm -Rf "$P1"
+   mv "$TARGET" "$P1"
 else
-   if [ -e "$2" ]; then
-      echo "Target exists: $2" >&2
-      exit 3
+   if [ -e "$P2" ]; then
+      echo "Target exists: $P2" >&2
+      exit 4
    fi
 
-   mksquashfs "$1" "$2" -comp xz -b 512K $KEEP >/dev/null
+   mksquashfs "$P1" "$P2" -comp xz -b 512K $KEEP >/dev/null
 fi
