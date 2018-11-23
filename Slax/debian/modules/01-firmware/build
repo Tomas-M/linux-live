@@ -13,7 +13,8 @@ apt-get install --yes --no-install-recommends \
    firmware-cavium \
    firmware-ipw2x00 \
    firmware-libertas \
-   firmware-ti-connectivity
+   firmware-ti-connectivity \
+   firmware-b43-installer
 
 . ../../cleanup
 
