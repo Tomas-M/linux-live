@@ -1,6 +1,6 @@
 [Unit]
 Description=X-Window
-ConditionKernelCommandLine!=text
+ConditionKernelCommandLine=!text
 After=systemd-user-sessions.service
 
 [Service]
