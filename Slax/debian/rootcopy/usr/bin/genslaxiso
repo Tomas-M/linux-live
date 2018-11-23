@@ -1,0 +1,46 @@
+#!/bin/bash
+
+CWD=$(pwd)
+DATA=/run/initramfs/memory/data
+TEMP=/tmp/slaxiso.$$
+TARGET="$(readlink -f "$1")"
+
+if [ "$TARGET" = "" ]; then
+   echo ""
+   echo "Generate Slax ISO image, adding specified modules"
+   echo "Usage: $0 target.iso [[module.sb]] [[module.sb]] ..."
+   exit 1
+fi
+
+GRAFT=\
+$(
+  cd "$DATA/slax"
+  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | while read LINE; do
+     echo "slax/$LINE=$DATA/slax/$LINE"
+  done
+)
+
+# add all modules
+while [ "$2" != "" ]; do
+   if [ ! -e "$2" ]; then
+      echo "File does not exist: $2"
+      exit 2
+   fi
+   BAS="$(basename "$2")"
+   MOD="$(readlink -f "$2")"
+   GRAFT="$GRAFT slax/modules/$BAS=$MOD"
+   shift
+done
+
+(
+   mkdir -p $TEMP/slax/{boot,modules,changes}
+   cp "$DATA/slax/boot/isolinux.bin" "$TEMP/slax/boot"
+   cd "$TEMP"
+   genisoimage -o - -quiet -v -J -R -D -A slax -V slax \
+   -no-emul-boot -boot-info-table -boot-load-size 4 -input-charset utf-8 \
+   -b slax/boot/isolinux.bin -c slax/boot/isolinux.boot \
+   -graft-points $GRAFT \
+   . \
+) > "$TARGET"
+
+rm -Rf $TEMP
