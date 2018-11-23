@@ -7,7 +7,7 @@ apt-get dist-upgrade --yes
 apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
 hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat ssh gpm wireless-tools \
-ntfs-3g rfkill file dnsmasq
+ntfs-3g rfkill file dnsmasq ntpdate
 
 ln -sf bash /bin/sh
 
