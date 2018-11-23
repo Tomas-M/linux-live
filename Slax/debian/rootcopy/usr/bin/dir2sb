@@ -1,25 +1,52 @@
 #!/bin/bash
+# Author: Tomas M. <http://www.slax.org/>
 
-if [ "$2" = "" ]; then
-   echo "Usage: $0 [source_directory] [target_file.sb] [ -d ]"
-   exit 1
+usage()
+{
+   echo ""
+   echo "---"
+   echo "Convert directory to .sb compressed module"
+   echo ""
+   echo "Usage: $0 [source_directory.sb] [[target_file.sb]]"
+   echo "  If source_directory does not have .sb suffix and it is not 'squashfs-root',"
+   echo "  then the source_directory itself is included in the module and"
+   echo "  then the target_file.sb parameter is required"
+}
+
+SB=$(echo "$1" | grep -o "[.]sb/*\$")
+if [ "$(echo "$1" | grep -o "/squashfs-root/*\$")" != "" ]; then
+   SB="true"
 fi
 
-
-if [ ! -d "$1" ]; then
-   echo "Not a directory: $1"
-   exit 2
-fi
-
-if [ -e "$2" ]; then
-   echo "Target exists: $2"
-   exit 3
-fi
-
-if [ "$3" = "-d" ]; then
+if [ "$SB" = "" ]; then
    KEEP="-keep-as-directory"
+   if [ "$2" = "" ]; then
+      usage
+      exit
+   fi
 else
    KEEP=""
 fi
 
-mksquashfs "$1" "$2" -comp xz -b 512K $KEEP
+
+if [ ! -d "$1" ]; then
+   echo "Not a directory: $1" >&2
+   exit 2
+fi
+
+
+if [ "$2" = "" ]; then
+   TARGET="$1".sb
+   while [ -e "$TARGET" ]; do TARGET="$TARGET"x; done
+   mksquashfs "$1" "$TARGET" -comp xz -b 512K $KEEP >/dev/null
+   umount "$1" 2>/dev/null
+   rmdir "$1" 2>/dev/null && mv "$TARGET" "$1" && exit
+   echo "Created file $TARGET"
+else
+   if [ -e "$2" ]; then
+      echo "Target exists: $2" >&2
+      exit 3
+   fi
+
+   mksquashfs "$1" "$2" -comp xz -b 512K $KEEP >/dev/null
+fi
