@@ -12,7 +12,7 @@ if [ "$TARGET" = "" ]; then
    exit 1
 fi
 
-if [ -d "$SOURCE/data/slax/boot" ]; then
+if [ -d "$SOURCE/data/slax" ]; then
    SLAX=$SOURCE/data/slax
 fi
 
