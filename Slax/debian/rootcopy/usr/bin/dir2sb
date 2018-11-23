@@ -4,9 +4,7 @@
 usage()
 {
    echo ""
-   echo "---"
    echo "Convert directory to .sb compressed module"
-   echo ""
    echo "Usage: $0 [source_directory.sb] [[target_file.sb]]"
    echo "  If source_directory does not have .sb suffix and it is not 'squashfs-root',"
    echo "  then the source_directory itself is included in the module and"

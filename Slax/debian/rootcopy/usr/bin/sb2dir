@@ -4,7 +4,7 @@
 if [ ! -e "$1" ]; then
    echo 
    echo "Convert .sb compressed module into directory with the same name"
-   echo "usage: $0 [source_file.sb] [[optional output_directory]]"
+   echo "Usage: $0 [source_file.sb] [[optional output_directory]]"
    echo "  If the output_directory is specified, it must exist"
    echo "  If the output_directory is not specified, the name source_file.sb"
    echo "  is used and the directory is overmounted with tmpfs"
