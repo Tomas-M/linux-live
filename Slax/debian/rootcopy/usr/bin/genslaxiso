@@ -12,16 +12,16 @@ if [ "$TARGET" = "" ]; then
    exit 1
 fi
 
-if [ -d "$SOURCE/data/slax" ]; then
+if [ -e "$SOURCE/data/slax/boot/isolinux.bin" ]; then
    SLAX=$SOURCE/data/slax
 fi
 
-if [ -d "$SOURCE/toram/boot" ]; then
+if [ -d "$SOURCE/toram/boot/isolinux.bin" ]; then
    SLAX=$SOURCE/toram
 fi
 
 if [ "$SLAX" = "" ]; then
-   echo "Cannot find Slax data" >&2
+   echo "Cannot find boot/isolinux.bin in Slax data" >&2
    exit 2
 fi
 
