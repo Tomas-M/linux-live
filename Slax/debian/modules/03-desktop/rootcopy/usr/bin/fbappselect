@@ -19,7 +19,7 @@ fbstartupnotify
 # if command is a .desktop file, parse it
 if [[ "$COMMAND" =~ \.desktop ]]; then
    NoTerm="$(cat "$COMMAND" | grep Terminal\\s*= | grep -i "Terminal\\s*=\\s*false")"
-   COMMAND="$(cat "$COMMAND" | grep Exec\\s*= | sed -r s/.*=// | sed -r "s/%[^%]+//g")"
+   COMMAND="$(cat "$COMMAND" | grep Exec\\s*= | head -n 1 | sed -r s/.*=// | sed -r "s/%[^%]+//g")"
 fi
 
 cmd="$(echo $COMMAND | sed -r "s/\\s.*//")"
