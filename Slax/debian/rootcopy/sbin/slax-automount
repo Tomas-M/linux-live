@@ -1,6 +1,6 @@
 #!/bin/bash
 # Recreate fstab entries in /etc/fstab and make /media directories
-# This script is called by udev rules, see /etc/udev/
+# This script is called by udev rules, see /lib/udev/rules.d/
 #
 # Author: Tomas M <http://slax.linux-live.org/>
 
