@@ -2,7 +2,7 @@
 
 # Functions library :: for Linux Live Kit scripts
 # Author: Tomas M. <http://www.linux-live.org>
-#
+# Modifications: Olaf Koch <http.//mediakit.education>
 
 # =================================================================
 # debug and output functions
@@ -189,6 +189,8 @@ init_devs()
    modprobe loop 2>/dev/null
    modprobe squashfs 2>/dev/null
    modprobe fuse 2>/dev/null
+   modprobe nvme_core 2>/dev/null
+   modprobe nvme 2>/dev/null
    refresh_devs
 }
 
@@ -503,12 +505,16 @@ find_data_try()
    local DEVICE FS FROM OPTIONS MOUNT
 
    mkdir -p "$1"
-   blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
+   ls /dev/ | egrep "sd|nvme" | while read DEVICE; do
+    nb=`printf $DEVICE | tail -c 1`
+    if [ "$nb" = "1" -o "$nb" = "2" -o "$nb" = "3" -o "$nb" = "4" -o "$nb" = "5" -o "$nb" = "6" -o "$nb" = "7" -o "$nb" = "8" -o "$nb" = "9" ]; then
+      DEVICE="/dev/$DEVICE"
+      #blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
-
+      #echo -n "..$DEVICE.." >&2
       $MOUNT "$DEVICE" "$1" $OPTIONS 2>/dev/null
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
@@ -528,6 +534,7 @@ find_data_try()
       # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
       umount "$1" 2>/dev/null
       umount "$1" 2>/dev/null
+    fi
    done
 }
 
