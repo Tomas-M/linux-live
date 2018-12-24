@@ -94,11 +94,16 @@ copy_including_deps /$LMK/kernel/drivers/staging/zsmalloc # needed by zram
 copy_including_deps /$LMK/kernel/drivers/block/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
 
+# nvme drivers // Change to support nvme SDD Drives
+copy_including_deps /$LMK/kernel/drivers/nvme
+copy_including_deps /$LMK/kernel/drivers/nvmem
+
 # usb drivers
-copy_including_deps /$LMK/kernel/drivers/usb/storage/usb-storage.*
-copy_including_deps /$LMK/kernel/drivers/usb/host
-copy_including_deps /$LMK/kernel/drivers/usb/common
-copy_including_deps /$LMK/kernel/drivers/usb/core
+#copy_including_deps /$LMK/kernel/drivers/usb/storage/usb-storage.*
+#copy_including_deps /$LMK/kernel/drivers/usb/host
+#copy_including_deps /$LMK/kernel/drivers/usb/common
+#copy_including_deps /$LMK/kernel/drivers/usb/core
+copy_including_deps /$LMK/kernel/drivers/usb
 copy_including_deps /$LMK/kernel/drivers/hid/usbhid
 copy_including_deps /$LMK/kernel/drivers/hid/hid.*
 copy_including_deps /$LMK/kernel/drivers/hid/uhid.*
