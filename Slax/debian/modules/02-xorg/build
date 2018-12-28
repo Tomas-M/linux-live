@@ -2,7 +2,7 @@
 
 apt-get update
 apt-get install --yes --no-install-recommends \
-    xserver-xorg \
+    xserver-xorg xserver-xorg-video-all xserver-xorg-video-intel \
     xinit \
     xterm \
     blackbox \
