@@ -20,6 +20,18 @@ UNIT="media-$BAS.mount"
 MNT="/media/$BAS"
 TARGET="/etc/systemd/system/$UNIT"
 
+
+# exit if noautomount boot parameter is present
+if cat /proc/cmdline | grep -q noautomount; then
+   exit
+fi
+
+# exit if 'automount' boot parameter is missing
+if ! cat /proc/cmdline | grep -q automount; then
+   exit
+fi
+
+
 if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
    if [ ! -r "$TARGET" ]; then # skip if exists
 
