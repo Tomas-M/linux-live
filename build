@@ -81,6 +81,6 @@ chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
 
 echo "-----------------------------"
 echo "Finished. Find your result in $LIVEKITDATA"
-echo "To build ISO, run: $TARGET/gen_iso.sh"
-echo "To build ZIP, run: $TARGET/gen_zip.sh"
+echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
+echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
 cd $CWD
