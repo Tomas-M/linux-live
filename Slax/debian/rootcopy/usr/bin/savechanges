@@ -40,7 +40,7 @@ done
 
 cd $CWD
 
-mksquashfs $TMP "$1" -comp xz -b 512k -noappend
+mksquashfs $TMP "$1" -comp xz -b 1024K -always-use-fragments -noappend
 
 umount $TMP
 rmdir $TMP

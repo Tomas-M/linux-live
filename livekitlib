@@ -118,7 +118,7 @@ create_bundle()
 {
    debug_log "create_module" "$*"
    rm -f "$2" # overwrite, never append to existing file
-   mksquashfs "$1" "$2" -comp xz -b 512K $3 $4 $5 $6 $7 $8 $9>/dev/null
+   mksquashfs "$1" "$2" -comp xz -b 1024K -always-use-fragments $3 $4 $5 $6 $7 $8 $9>/dev/null
 }
 
 

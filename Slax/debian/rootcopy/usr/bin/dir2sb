@@ -44,7 +44,7 @@ fi
 if [ "$P2" = "" ]; then
    TARGET="$P1".sb
    while [ -e "$TARGET" ]; do TARGET="$TARGET"x; done
-   mksquashfs "$P1" "$TARGET" -comp xz -b 512K $KEEP >/dev/null || exit 3
+   mksquashfs "$P1" "$TARGET" -comp xz -b 1024K -always-use-fragments $KEEP >/dev/null || exit 3
    umount "$P1" 2>/dev/null
    rm -Rf "$P1"
    mv "$TARGET" "$P1"
@@ -54,5 +54,5 @@ else
       exit 4
    fi
 
-   mksquashfs "$P1" "$P2" -comp xz -b 512K $KEEP >/dev/null
+   mksquashfs "$P1" "$P2" -comp xz -b 1024K -always-use-fragments $KEEP >/dev/null
 fi
