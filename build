@@ -1,6 +1,10 @@
 #!/bin/bash
 # Linux Live Kit version 7
 
+## get all necessary packages
+apt-get update
+apt-get install squashfs-tools genisoimage zip aufs-dkms
+
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
 CHANGEDIR=$(dirname $(readlink -f $0))
