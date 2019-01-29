@@ -42,6 +42,7 @@ echo "liveimagename=$liveimagename"
 echo "squashfilesystem=$squashfilesystem"
 echo "kernelfile=$kernelfile"
 echo "initrfsfile=$initrfsfile"
+echo "device="${dev}
 echo "(Enter to continue/STRG-C to abort)"
 tput sgr0
 read
@@ -59,22 +60,6 @@ if [[ -z "${dev}" || ! -b ${dev} ]]; then
   exit 1
 fi
 
-
-#if [[ "${dev}" =~ ^.*[0-9]$ ]]; then
-#  echo "target block device should be device, not a partition (must not end with digit)"
-#  exit 1
-#fi
-tput setaf 11
-echo "liveimagename="$liveimagename
-#echo "squashfilesystem="$squashfilesystem
-echo "kernelfile="$kernelfile
-echo "initrfsfile="$initrfsfile
-echo "device="${dev}
-#echo "Install on device ${dev}? (Enter to continue/STRG-C to abort)"
-#read
-tput sgr0
-#rm -rf $dirname/LIVE_BOOT/
-
 tput setaf 11
 echo "unmounting old partitions"
 tput sgr0
@@ -83,15 +68,14 @@ umount ${dev}*
 tput setaf 11
 echo "install all neccessary packages..."
 tput sgr0
-#apt-get install \
-#    grub-pc-bin \
-#    grub-efi-amd64-bin \
-#    mtools
+apt-get install \
+    grub-pc-bin \
+    grub-efi-amd64-bin \
+    mtools
 
 ###########
 tput setaf 11
 echo "creating bootable medium ..."
-#read
 
 tput sgr0
 export disk=${dev}
@@ -219,7 +203,7 @@ tput sgr0
 mkdir /mnt/usb/$liveimagename
 mkdir /mnt/usb/$liveimagename/modules
 mkdir /mnt/usb/$liveimagename/changes
-#mkdir /mnt/usb/scripts
+mkdir /mnt/usb/$liveimagename/scripts
 cp  -R $squashfilesystem/$liveimagename/* /mnt/usb/$liveimagename/
 #cp ./createBootDevice.sh /mnt/usb/scripts/
 #cp ./saveLiveKit2Disk.sh /mnt/usb/scripts/
