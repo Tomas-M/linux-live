@@ -1,6 +1,7 @@
 #!/bin/bash
 
 LOCK=/run/lock/gtk-bookmark-update-lock
+BOOKMARKS=/root/.gtk-bookmarks
 
 # make sure to avoid parallel execution by using mkdir as lock
 while true; do
@@ -10,13 +11,15 @@ while true; do
    fi
 done
 
-echo "file:/// /" > ~/.gtk-bookmarks.tmp # add root at the beginning
+rm -f $BOOKMARKS.tmp
 
-cat ~/.gtk-bookmarks | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' >> ~/.gtk-bookmarks.tmp 2>/dev/null
+cat $BOOKMARKS | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' >> $BOOKMARKS.tmp 2>/dev/null
 ls -1 /media | sort | while read LINE; do
-   echo "file:///media/$LINE $LINE" >> ~/.gtk-bookmarks.tmp
+   echo "file:///media/$LINE $LINE" >> $BOOKMARKS.tmp
 done
 
-mv -f ~/.gtk-bookmarks.tmp ~/.gtk-bookmarks
+echo "file:/// /" >> $BOOKMARKS.tmp # add root at the beginning
+
+mv -f $BOOKMARKS.tmp $BOOKMARKS
 
 rmdir $LOCK
