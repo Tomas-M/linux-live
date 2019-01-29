@@ -1,10 +1,22 @@
 #!/bin/bash
 
-cat ~/.gtk-bookmarks | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' > ~/.gtk-bookmarks.tmp 2>/dev/null
-ls -1 /media | while read LINE; do
+LOCK=/run/lock/gtk-bookmark-update-lock
+
+# make sure to avoid parallel execution by using mkdir as lock
+while true; do
+   mkdir $LOCK 2>/dev/null
+   if [ $? = 0 ]; then
+      break
+   fi
+done
+
+echo "file:/// /" > ~/.gtk-bookmarks.tmp # add root at the beginning
+
+cat ~/.gtk-bookmarks | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' >> ~/.gtk-bookmarks.tmp 2>/dev/null
+ls -1 /media | sort | while read LINE; do
    echo "file:///media/$LINE $LINE" >> ~/.gtk-bookmarks.tmp
 done
 
-echo "file:/// /" >> ~/.gtk-bookmarks.tmp # add root at the end
-
 mv -f ~/.gtk-bookmarks.tmp ~/.gtk-bookmarks
+
+rmdir $LOCK

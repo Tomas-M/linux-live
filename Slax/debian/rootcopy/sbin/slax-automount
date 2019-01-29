@@ -13,7 +13,6 @@
 # $SUBSYSTEM (eg: block)
 
 PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
-BOOKMARKS="/root/.gtk-bookmarks"
 
 BAS="$(basename "$DEVNAME")"
 UNIT="media-$BAS.mount"
@@ -54,7 +53,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          systemctl enable $UNIT
          systemctl start $UNIT
 
-         echo "file://$MNT" "$BAS" >>$BOOKMARKS
+         gtk-bookmarks-update
          DISPLAY=:0.0 pcmanfm file://$MNT >/dev/null 2>&1
       fi
    fi
@@ -62,7 +61,7 @@ fi
 
 if [ "$ACTION" = "remove" ]; then
    systemctl disable $UNIT
-   rm $TARGET
-   sed -i -r "\\;^file://$MNT;d" $BOOKMARKS
+   rm "$TARGET"
+   rmdir "$MNT"
+   gtk-bookmarks-update
 fi
-
