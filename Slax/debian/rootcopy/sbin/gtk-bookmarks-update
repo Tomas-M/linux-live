@@ -11,9 +11,7 @@ while true; do
    fi
 done
 
-rm -f $BOOKMARKS.tmp
-
-cat $BOOKMARKS | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' >> $BOOKMARKS.tmp 2>/dev/null
+cat $BOOKMARKS | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' > $BOOKMARKS.tmp 2>/dev/null
 ls -1 /media | sort | while read LINE; do
    echo "file:///media/$LINE $LINE" >> $BOOKMARKS.tmp
 done
