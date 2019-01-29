@@ -19,7 +19,8 @@ LIVEKITNAME="linux"
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
 # out of the box.
 # VMLINUZ=/boot/vmlinuz-4.9.0-8-amd64
-VMLINUZ=/vmlinuz
+# VMLINUZ=/vmlinuz
+VMLINUZ=/boot/vmlinuz-4.15.0-29-generic
 
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running
@@ -41,7 +42,7 @@ NETWORK=false
 
 # Temporary directory to store livekit filesystem
 #LIVEKITDATA=/run/initramfs/memory/data/$LIVEKITNAME-data-$$
-LIVEKITDATA=/tmp/$LIVEKITNAME-data-$$
+LIVEKITDATA=/a/$LIVEKITNAME-data-$$
 
 # Bundle extension, for example 'sb' for .sb extension
 BEXT=sb
