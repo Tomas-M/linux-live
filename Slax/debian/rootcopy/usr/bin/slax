@@ -8,6 +8,7 @@
 
 
 LIVE=/run/initramfs/memory
+RAMSTORE=$LIVE/modules
 
 # Print error message and exit
 # $1 = error message
@@ -16,26 +17,6 @@ die()
 {
    echo "$1" >&2
    exit 1
-}
-
-
-# returns writable directory outside of AUFS root
-# where Slax Bundle can be safely stored
-#
-get_bundle_storage_dir()
-{
-   local TGT
-
-   TGT=$LIVE/data/slax/modules
-
-   mkdir -p $TGT 2>/dev/null
-   touch $TGT/.empty 2>/dev/null && rm $TGT/.empty 2>/dev/null
-   if [ $? -ne 0 ]; then
-      TGT=$LIVE/modules
-      mkdir -p $TGT
-   fi
-
-   echo $TGT
 }
 
 
@@ -73,20 +54,15 @@ activate()
       usage "file not found $SB"
    fi
 
-   # copy the module to storage dir so it can be activated from there
-   TGT="$(get_bundle_storage_dir)"
-
-   if [ -r $TGT/$BAS ]; then
-      die "File exists: $TGT/$BAS"
+   # check if the file is part of aufs union, if yes we need to copy it outside
+   if df "$SB" | cut -d " " -f 1 | grep -q aufs; then
+      TGT="$RAMSTORE"
+      mkdir -p "$TGT"
+      if [ -r $TGT/$BAS ]; then die "File exists: $TGT/$BAS"; fi
+      cp -n "$SB" "$TGT/$BAS"
+      if [ $? -ne 0 ]; then die "Error copying file to $TGT/$BAS. Not enough free RAM or disk space?"; fi
+      SB="$TGT/$BAS"
    fi
-
-   cp -n "$SB" "$TGT/$BAS"
-
-   if [ $? -ne 0 ]; then
-      die "Error copying file to $TGT/$BAS. Not enough space?"
-   fi
-
-   SB="$TGT/$BAS"
 
    # check if this particular file is already activated
    if print_branches | cut -f 2 | fgrep -q "$SB"; then
@@ -161,13 +137,13 @@ deactivate()
    # free the loop device manually since umount fails to do that if the bundle was activated on boot
    losetup -d "$LOOP" 2>/dev/null
 
-   # remove the .sb file, but keep it if deactivate was issued on full sb real path
-   if [ "$(realpath "$1")" != "$(realpath "$LOOPFILE")" ]; then
-      rm -f "$LOOPFILE" 2>/dev/null
+   if echo "$LOOPFILE" | grep -q $RAMSTORE; then
+      rm -f $LOOPFILE
    fi
 
    echo "Slax Bundle deactivated: $SB"
 }
+
 
 if [ "$1" = "" ]; then
    die "Usage: $0 [ activate | deactivate | list ] [ file.sb ]"
