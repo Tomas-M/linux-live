@@ -42,7 +42,7 @@ NETWORK=false
 
 # Temporary directory to store livekit filesystem
 #LIVEKITDATA=/run/initramfs/memory/data/$LIVEKITNAME-data-$$
-LIVEKITDATA=/a/$LIVEKITNAME-data-$$
+LIVEKITDATA=/media/okoch/Kochsystem/$LIVEKITNAME-data-$$
 
 # Bundle extension, for example 'sb' for .sb extension
 BEXT=sb

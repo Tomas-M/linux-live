@@ -3,7 +3,7 @@
 
 ## get all necessary packages
 apt-get update
-apt-get install squashfs-tools genisoimage zip aufs-dkms
+apt-get install squashfs-tools genisoimage zip aufs-dkms dkms
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
@@ -56,7 +56,7 @@ fi
 cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp $VMLINUZ $BOOT/
+cp $VMLINUZ $BOOT/vmlinuz
 
 # create compressed 01-core.sb
 COREFS=""
