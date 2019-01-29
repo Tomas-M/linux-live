@@ -1,24 +1,53 @@
 #!/bin/bash
 # script by Olaf Koch 3.11.2018
 
-### settings
-dev=$1
-liveimagename="mediakit"
-squashfilesystem="/run/initramfs/memory/data"
-if [ -e /run/initramfs/memory/data/vmlinuz ]; then
- kernelfile="/run/initramfs/memory/data/vmlinuz"
-else
- kernelfile="/run/initramfs/memory/data/mediakit/boot/vmlinuz"
+
+if [[ ${EUID} -ne 0 ]]; then
+  echo "this script must be executed with elevated privileges"
+  exit 1
 fi
-if [ -e /run/initramfs/memory/data/initrfs.img ]; then
- initrfsfile="/run/initramfs/memory/data/initrfs.img"
-else
- initrfsfile="/run/initramfs/memory/data/mediakit/boot/initrfs.img"
-fi
+
+# get other disks
+mapfile -t info < <( lsblk )
+
+i=1
+for entry in "${info[@]}"
+do
+    if [[ `echo "$entry" | awk '{ print $6}'` == "disk" ]]; then
+       echo -e "\033[43m $i \e[0m" $entry
+       devices[$i]=`echo "$entry" | awk '{ print $1}'`
+       i=`expr $i + 1` 
+    fi
+done
+ 
+tput setaf 11
+echo "Please select the disknumber of the destination device: (All data on this device will be destroyed!)"
+tput sgr0
+read destination
+destinationpath="/dev/${devices[$destination]}"
+
+dev=$destinationpath
+cd ..
+liveimagename=`echo "${PWD##*/}"`
+cd ..
+squashfilesystem=`echo "${PWD}"`
+kernelfile="${squashfilesystem}/${liveimagename}/boot/vmlinuz"
+initrfsfile="${squashfilesystem}/${liveimagename}/boot/initrfs.img"
+
+### 
+tput setaf 11
+echo "Copy $liveimagename to $destinationpath..."
+echo "Settings:"
+echo "liveimagename=$liveimagename"
+echo "squashfilesystem=$squashfilesystem"
+echo "kernelfile=$kernelfile"
+echo "initrfsfile=$initrfsfile"
+echo "(Enter to continue/STRG-C to abort)"
+tput sgr0
+read
+exit
 
 ###
-
-
 
 if [[ ${EUID} -ne 0 ]]; then
   echo "this script must be executed with elevated privileges"

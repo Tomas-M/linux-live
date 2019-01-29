@@ -2,7 +2,7 @@ Linux Live Kit
 ==============
 
 Use this set of scripts to turn your existing preinstalled Linux
-distribution into a Live Kit (formely known as Live CD).
+distribution into a Live Kit (formely known as Live CD or Live USB Stick).
 Make sure to extract and use it on a posix-compatible filesystem,
 since it creates some (sym)links and such.
 
@@ -14,7 +14,7 @@ Note:
   Be warned, if you put it to /tmp, some distros may erase it on reboot.
 
 * Before you start building your Kit, edit the file ./config
-  Most importantly change the LIVEKITNAME variable.
+  Most importantly change the LIVEKITNAME variable and the LIVEKITDATA path.
 
 * Make sure your kernel is in /boot/vmlinuz or change the path in ./config
   Your kernel must support squashfs and aufs. Debian Jessie's kernel does.
@@ -35,18 +35,20 @@ Note:
   isolinux sources, patching them using your actual LIVEKITNAME and
   recompiling. This step is not needed if you plan to boot from USB only.
 
-* If you have tmpfs mounted on /tmp, make sure you have enough RAM
+* Make sure you have enough RAM on the given LIVEKITDATA path 
   since LiveKit will store lots of data there. If you are low on RAM,
-  make sure /tmp is a regular on-disk directory.
+  make sure LIVEKITDATA is a regular on-disk directory.
 
 * When done, run the ./build script to create your Live Kit
-  - it will create ISO and TAR files for you in /tmp
-  - make sure you have enough free space in /tmp to handle it
 
 * You will need the following packages to be installed:
   - squashfs-tools
   - genisoimage or mkisofs
   - zip
 
-
-Author: Tomas M. <http://www.linux-live.org>
+* After the successful build you will find your livelinux system under the path
+  given by LIVEKITDATA
+ 
+* to create a bootable device you can use the script createBootDevice.,sh un der scripts
+ 
+Author: Tomas M. <http://www.linux-live.org> and Olaf Koch <http://mediakit.education>

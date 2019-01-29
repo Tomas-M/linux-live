@@ -48,6 +48,7 @@ BOOT="$LIVEKITDATA"/"$LIVEKITNAME"/boot
 mkdir -p "$BOOT"
 mkdir -p "$BOOT"/../changes
 mkdir -p "$BOOT"/../modules
+mkdir -p "$BOOT"/../scripts
 
 if [ "$INITRAMFS" != "" ]; then
    mv "$INITRAMFS" $BOOT/initrfs.img
@@ -57,6 +58,7 @@ cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp $VMLINUZ $BOOT/vmlinuz
+cp scripts/* $BOOT/../scripts
 
 # create compressed 01-core.sb
 COREFS=""
