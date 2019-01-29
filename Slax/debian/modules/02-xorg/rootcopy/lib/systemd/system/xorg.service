@@ -4,4 +4,4 @@ ConditionKernelCommandLine=!text
 After=systemd-user-sessions.service
 
 [Service]
-ExecStart=/bin/su --login -c "/usr/bin/startx -- :0 vt7"
+ExecStart=/bin/su --login -c "/usr/bin/startx -- :0 vt7 -ac"

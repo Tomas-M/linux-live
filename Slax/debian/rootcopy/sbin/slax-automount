@@ -55,6 +55,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          systemctl start $UNIT
 
          echo "file://$MNT" "$BAS" >>$BOOKMARKS
+         DISPLAY=:0.0 pcmanfm file://$MNT >/dev/null 2>&1
       fi
    fi
 fi
