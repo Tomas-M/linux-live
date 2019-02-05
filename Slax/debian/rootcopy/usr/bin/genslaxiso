@@ -3,12 +3,30 @@
 CWD=$(pwd)
 SOURCE=/run/initramfs/memory
 TEMP=/tmp/slaxiso.$$
+REGEX='^$'
+
+if [ "$1" = "-e" ]; then
+   REGEX="$2"
+   shift
+   shift
+fi
+
 TARGET="$(readlink -f "$1")"
 
 if [ "$TARGET" = "" ]; then
    echo ""
    echo "Generate Slax ISO image, adding specified modules"
-   echo "Usage: $0 target.iso [[module.sb]] [[module.sb]] ..."
+   echo "Regular expression is used to exclude any existing path or file with -e regex"
+   echo ""
+   echo "Usage:"
+   echo "        $0 [[ -e regex ]] target.iso [[module.sb]] [[module.sb]] ..."
+   echo ""
+   echo "Examples:"
+   echo "        # to create Slax iso without chromium.sb module:"
+   echo "        $0 -e 'chromium' slax_without_chromium.iso"
+   echo ""
+   echo "        # to create Slax text-mode core only:"
+   echo "        $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
    exit 1
 fi
 
@@ -28,7 +46,7 @@ fi
 GRAFT=\
 $(
   cd "$SLAX"
-  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | while read LINE; do
+  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | egrep -v "$REGEX" | while read LINE; do
      echo "slax/$LINE=$SLAX/$LINE"
   done
 )
