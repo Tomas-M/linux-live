@@ -16,7 +16,7 @@ if [ -e "$SOURCE/data/slax/boot/isolinux.bin" ]; then
    SLAX=$SOURCE/data/slax
 fi
 
-if [ -d "$SOURCE/toram/boot/isolinux.bin" ]; then
+if [ -e "$SOURCE/toram/boot/isolinux.bin" ]; then
    SLAX=$SOURCE/toram
 fi
 
