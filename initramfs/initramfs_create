@@ -111,6 +111,7 @@ copy_including_deps /$LMK/kernel/drivers/scsi/sd_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/scsi_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/sg.*
 copy_including_deps /$LMK/kernel/drivers/ata
+copy_including_deps /$LMK/kernel/drivers/nvme
 
 # network support drivers
 if [ "$NETWORK" = "true" ]; then
