@@ -452,7 +452,7 @@ mount_data_http()
 download_data_pxe()
 {
    debug_log "download_data_pxe" "$*"
-   local IP CMD CLIENT SERVER GW MASK PORT PROTOCOL
+   local IP CMD CLIENT SERVER GW MASK PORT PROTOCOL JOBS
 
    mkdir -p "$1/$LIVEKITNAME"
    IP="$(cmdline_value ip)"
@@ -477,14 +477,17 @@ download_data_pxe()
 
       echo "* Downloading files from the list" >&2
 
-      cat "$1/PXEFILELIST" | while read FILE; do
-         if [ "$PROTOCOL" = "http" ]; then
+      if [ "$PROTOCOL" = "http" ]; then
+         cat "$1/PXEFILELIST" | while read FILE; do
             wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
-         else
-            echo "* $FILE ..." >&2
-            tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
-         fi
-      done
+         done
+      else
+         JOBS=3
+         for i in `seq 0 $((JOBS-1))`; do
+            awk "$i == NR % $JOBS"'{print("* "$0" ...") > "/dev/stderr";system("tftp -b 1486 -g -r "$0" -l '"$1/$LIVEKITNAME/"'"$0" '"$SERVER"'")}' < "$1/PXEFILELIST" &
+         done
+         wait
+      fi
    done
 
    echo "$1/$LIVEKITNAME"
