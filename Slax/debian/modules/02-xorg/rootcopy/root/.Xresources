@@ -26,3 +26,5 @@ Xft.hinting:    true
 Xft.hintstyle:  hintfull
 Xft.lcdfilter:  lcdlegacy
 Xft.rgba:       rgb
+
+XTerm*selectToClipboard: true
