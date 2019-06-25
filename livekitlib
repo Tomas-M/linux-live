@@ -453,6 +453,7 @@ mount_data_http()
 tftp_mget()
 {
    while read FNAME; do
+      echo "* $FNAME ..." >&2
       tftp -b 1486 -g -r "$FNAME" -l "$2/$FNAME" "$1"
    done
 }
