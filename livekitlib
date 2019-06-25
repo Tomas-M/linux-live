@@ -446,6 +446,18 @@ mount_data_http()
 }
 
 
+# stdin = files to get
+# $1 = server
+# $2 = destination directory
+#
+tftp_mget()
+{
+   while read FNAME; do
+      tftp -b 1486 -g -r "$FNAME" -l "$2/$FNAME" "$1"
+   done
+}
+
+
 # Download data from tftp
 # $1 = target (store downloaded files there)
 #
@@ -472,7 +484,7 @@ download_data_pxe()
       if [ $? -ne 0 ]; then
          echo "Error downloading from http://$SERVER:$PORT, trying TFTP" >&2
          PROTOCOL=tftp
-         tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
+         echo PXEFILELIST | tftp_mget "$SERVER" "$1"
       fi
 
       echo "* Downloading files from the list" >&2
@@ -484,7 +496,7 @@ download_data_pxe()
       else
          JOBS=3
          for i in `seq 0 $((JOBS-1))`; do
-            awk "$i == NR % $JOBS"'{print("* "$0" ...") > "/dev/stderr";system("tftp -b 1486 -g -r "$0" -l '"$1/$LIVEKITNAME/"'"$0" '"$SERVER"'")}' < "$1/PXEFILELIST" &
+            awk "NR % $JOBS == $i {print}" < "$1/PXEFILELIST" | tftp_mget "$SERVER" "$1/$LIVEKITNAME" &
          done
          wait
       fi
