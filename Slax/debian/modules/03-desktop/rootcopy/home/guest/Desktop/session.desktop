@@ -1,6 +1,0 @@
-[Desktop Entry]
-Icon=metro_power
-Name=End session
-Exec=fblogout
-Terminal=false
-Type=Application

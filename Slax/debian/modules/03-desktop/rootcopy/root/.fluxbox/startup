@@ -68,7 +68,7 @@ rm -f $SIGNAL2 2>/dev/null
       sleep 0.1
    done
    touch $SIGNAL2
-   exec compton --sw-opti -e 0.9 --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped'
+   exec compton --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped'
 ) &
 
 # We want to run systrayicon only after the volumeicon is started
@@ -91,9 +91,6 @@ rm -f $SIGNAL2 2>/dev/null
 # gen screen resolutions to fluxbox menu
 xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 | sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
-
-# start desktop icons
-pcmanfm --desktop &
 
 # In all cases, wait for the sound sleeper.
 # If startup took longer (sound completed already), no extra wait

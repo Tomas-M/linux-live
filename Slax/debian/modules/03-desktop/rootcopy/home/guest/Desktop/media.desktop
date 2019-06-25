@@ -1,6 +1,0 @@
-[Desktop Entry]
-Icon=metro_media
-Name=Media
-Exec=pcmanfm /media
-Terminal=false
-Type=Application
