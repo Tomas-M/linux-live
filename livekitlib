@@ -446,13 +446,26 @@ mount_data_http()
 }
 
 
+# stdin = files to get
+# $1 = server
+# $2 = destination directory
+#
+tftp_mget()
+{
+   while read FNAME; do
+      echo "* $FNAME ..." >&2
+      tftp -b 1486 -g -r "$FNAME" -l "$2/$FNAME" "$1"
+   done
+}
+
+
 # Download data from tftp
 # $1 = target (store downloaded files there)
 #
 download_data_pxe()
 {
    debug_log "download_data_pxe" "$*"
-   local IP CMD CLIENT SERVER GW MASK PORT PROTOCOL
+   local IP CMD CLIENT SERVER GW MASK PORT PROTOCOL JOBS
 
    mkdir -p "$1/$LIVEKITNAME"
    IP="$(cmdline_value ip)"
@@ -472,19 +485,22 @@ download_data_pxe()
       if [ $? -ne 0 ]; then
          echo "Error downloading from http://$SERVER:$PORT, trying TFTP" >&2
          PROTOCOL=tftp
-         tftp -g -r PXEFILELIST -l "$1/PXEFILELIST" $SERVER
+         echo PXEFILELIST | tftp_mget "$SERVER" "$1"
       fi
 
       echo "* Downloading files from the list" >&2
 
-      cat "$1/PXEFILELIST" | while read FILE; do
-         if [ "$PROTOCOL" = "http" ]; then
+      if [ "$PROTOCOL" = "http" ]; then
+         cat "$1/PXEFILELIST" | while read FILE; do
             wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
-         else
-            echo "* $FILE ..." >&2
-            tftp -g -r $FILE -l "$1/$LIVEKITNAME/$FILE" $SERVER
-         fi
-      done
+         done
+      else
+         JOBS=3
+         for i in `seq 0 $((JOBS-1))`; do
+            awk "NR % $JOBS == $i {print}" < "$1/PXEFILELIST" | tftp_mget "$SERVER" "$1/$LIVEKITNAME" &
+         done
+         wait
+      fi
    done
 
    echo "$1/$LIVEKITNAME"
