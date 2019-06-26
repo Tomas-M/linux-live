@@ -496,8 +496,8 @@ download_data_pxe()
          done
       else
          JOBS=3
-         for i in `seq 0 $((JOBS-1))`; do
-            awk "NR % $JOBS == $i {print}" < "$1/PXEFILELIST" | tftp_mget "$SERVER" "$1/$LIVEKITNAME" &
+         for i in $(seq 1 $JOBS); do
+            awk "NR % $JOBS == $i-1" "$1/PXEFILELIST" | tftp_mget "$SERVER" "$1/$LIVEKITNAME" &
          done
          wait
       fi
