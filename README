@@ -42,6 +42,10 @@ Note:
 * When done, run the ./build script to create your Live Kit
   - it will create ISO and TAR files for you in /tmp
   - make sure you have enough free space in /tmp to handle it
+  
+* If you want to use the Live Kit on a USB you have to either
+  - use Windows to execute the bootinst.bat file in the $NAME/boot folder
+  - or use Linux to execute the shellscript bootinst.sh in the $NAME/boot folder.
 
 * You will need the following packages to be installed:
   - squashfs-tools
