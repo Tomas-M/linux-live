@@ -41,11 +41,11 @@ if [ "$DEV" != "$PART" ]; then
 fi
 
 # Now to be able to boot from most of UEFI devices
-EFIDIR="$BOOT/EFI/efi/boot"
+EFIDIR="$BOOT/EFI/boot"
 mkdir -p "$EFIDIR"
 cp efi-files/* "$EFIDIR"
 
-# I didn't renamed the binary in place so it could be updated more easily
+# I didn't rename the binary in place so it could be updated more easily
 mv "$EFIDIR/syslinux.efi" "$EFIDIR/bootx64.efi"
 
 echo "Boot installation finished."
