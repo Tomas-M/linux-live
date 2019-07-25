@@ -39,3 +39,4 @@ update-alternatives --set x-terminal-emulator /usr/bin/xterm
 . /tmp/cleanup
 
 savechanges /02-xorg.sb
+
