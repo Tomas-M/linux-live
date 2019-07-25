@@ -15,6 +15,9 @@ apt-get install --yes --no-install-recommends \
     libgl1-mesa-dri \
     libglu1-mesa
 
+# Set setuid bit on xorg binary, so it can be started by guest user
+chmod u+s /usr/lib/xorg/Xorg
+
 # use only white cursors. There were some troubles if the other cursors
 # was left behind, installing gtk apps reverted the cursor from white to gray,
 # so we're going to nuke it to leave only Snow cursors active.
