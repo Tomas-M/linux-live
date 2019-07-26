@@ -52,7 +52,7 @@ fi
 cp bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp $VMLINUZ $BOOT/
+cp $VMLINUZ $BOOT/ || exit
 
 # create compressed 01-core.sb
 COREFS=""
@@ -67,7 +67,8 @@ cd "$LIVEKITDATA"
 ARCH=$(uname -m)
 TARGET=/tmp
 
-cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$//" > readme.txt
+cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/
+/" > readme.txt
 
 echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
 -no-emul-boot -boot-info-table -boot-load-size 4 \
