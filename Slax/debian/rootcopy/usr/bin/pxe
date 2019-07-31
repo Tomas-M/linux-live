@@ -9,7 +9,7 @@ FTPROOT=/var/state/dnsmasq/root
 
 # find out our own IP address. If more interfaces are available, use the first one
 IP="$(hostname -I | cut -d " " -f 1)"
-GW=$(ip route show | grep default | grep -o "via.*" | cut -d " " -f 2)
+GW=$(ip route show | grep default | grep -o "via.*" | head -n 1 | cut -d " " -f 2)
 
 # if no IP is assigned to this computer, setup private address randomly
 if [ "$IP" = "" ]; then
