@@ -39,7 +39,3 @@ export -f l
 export -f apt-get
 export -f apt
 
-# disable screen blanking
-setterm -blank 0
-setterm -powerdown 0
-setterm -powersave off
