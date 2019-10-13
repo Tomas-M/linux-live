@@ -43,7 +43,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          echo "" >>$TARGET
          echo "[Mount]" >>$TARGET
          echo "What=$DEVNAME" >>$TARGET
-         echo "where=$MNT" >>$TARGET
+         echo "Where=$MNT" >>$TARGET
          echo "Type=$ID_FS_TYPE" >>$TARGET
          echo "Options=defaults" >>$TARGET
          echo "" >>$TARGET
