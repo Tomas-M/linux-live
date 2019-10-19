@@ -23,10 +23,12 @@ cd initramfs
 . ./initramfs_create
 
 # unpack the sb archive and add aufs modules to /lib/modules
-unsquashfs $LIVEKITDATA/$LIVEKITNAME/slax/01-core.sb
-cp -a /$LMK/kernel/fs/aufs $LIVEKITDATA/$LIVEKITNAME/slax/squashfs-root/$LMK/kernel/fs
-rm -f $LIVEKITDATA/$LIVEKITNAME/slax/01-core.sb
-mksquashfs $LIVEKITDATA/$LIVEKITNAME/slax/squashfs-root $LIVEKITDATA/$LIVEKITNAME/01-core.$BEXT -comp xz -b 1024K -always-use-fragments || exit
+cd $LIVEKITDATA/$LIVEKITNAME
+unsquashfs 01-core.$BEXT
+cp -a /$LMK/kernel/fs/aufs squashfs-root/$LMK/kernel/fs
+rm -f 01-core.$BEXT
+mksquashfs squashfs-root 01-core.$BEXT -comp xz -b 1024K -always-use-fragments || exit
+rm -Rf squashfs-root
 
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
 cp -vf $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
