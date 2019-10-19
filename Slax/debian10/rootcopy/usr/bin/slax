@@ -1,0 +1,167 @@
+#!/bin/bash
+# Slax management and control script
+# Author: Tomas M <http://www.slax.org/>
+
+# activate
+# deactivate
+# list
+
+
+LIVE=/run/initramfs/memory
+RAMSTORE=$LIVE/modules
+
+# Print error message and exit
+# $1 = error message
+#
+die()
+{
+   echo "$1" >&2
+   exit 1
+}
+
+
+print_branches()
+{
+   local SI BUNDLE LOOP CWD
+
+   SI="/sys/fs/aufs/$(cat /proc/mounts | grep 'aufs / aufs' | egrep -o 'si=([^,) ]+)' | tr = _)"
+   CWD="$(pwd)"
+   cd "$SI"
+   ls -v1 | grep -v xi_path | egrep 'br[0-9]+' | xargs cat | grep memory/bundles | rev | cut -b 4- | rev | while read BUNDLE; do
+      if mountpoint -q "$BUNDLE"; then
+         LOOP=$(cat /proc/mounts | fgrep " $BUNDLE squashfs" | cut -d " " -f 1)
+         echo -n "$BUNDLE"
+         echo -ne "\t"
+         losetup $LOOP | sed -r "s:.*[(]|[)].*::g"
+      fi
+   done | tac
+   cd "$CWD"
+}
+
+
+# Activate Slax Bundle
+# $1 = file to activate
+#
+activate()
+{
+   local SB TGT BAS
+
+   SB="$(readlink -f "$1")"
+   BAS="$(basename "$SB")"
+
+   # check if file exists
+   if [ ! -r "$SB" ]; then
+      usage "file not found $SB"
+   fi
+
+   # check if the file is part of aufs union, if yes we need to copy it outside
+   if df "$SB" | cut -d " " -f 1 | grep -q aufs; then
+      TGT="$RAMSTORE"
+      mkdir -p "$TGT"
+      if [ -r $TGT/$BAS ]; then die "File exists: $TGT/$BAS"; fi
+      cp -n "$SB" "$TGT/$BAS"
+      if [ $? -ne 0 ]; then die "Error copying file to $TGT/$BAS. Not enough free RAM or disk space?"; fi
+      SB="$TGT/$BAS"
+   fi
+
+   # check if this particular file is already activated
+   if print_branches | cut -f 2 | fgrep -q "$SB"; then
+      exit
+   fi
+
+   # mount remount,add
+   TGT="$LIVE/bundles/$BAS"
+   mkdir -p "$TGT"
+
+   mount -n -o loop,ro "$SB" "$TGT"
+   if [ $? -ne 0 ]; then
+      die "Error mounting $SB to $TGT, perhaps corrupted download"
+   fi
+
+   # add current branch to aufs union
+   mount -t aufs -o remount,add:1:"$TGT" aufs /
+   if [ $? -ne 0 ]; then
+      umount "$TGT"
+      rmdir "$TGT"
+      die "Error attaching bundle filesystem to Slax"
+   fi
+
+   echo "Slax Bundle activated: $BAS"
+}
+
+
+# Deactivate Slax bundle of the given name
+# $1 = path to bundle file, or its name
+#
+deactivate()
+{
+   local BUNDLES SB MATCH LOOP LOOPFILE
+
+   BUNDLES=$LIVE/bundles
+   MODULES=$LIVE/modules
+   SB="$(basename "$1")"
+
+   rmdir "$BUNDLES/$SB" 2>/dev/null    # this fails unless the dir is
+   rmdir "$BUNDLES/$SB.sb" 2>/dev/null # forgotten there empty. It's safe this way
+
+   if [ ! -d "$BUNDLES/$SB" ]; then
+      # we don't have real filename match, lets try to add .sb extension
+      if [ ! -d "$BUNDLES/$SB.sb" ]; then
+         # no, still no match. Lets use some guesswork
+         SB=$(print_branches | cut -f 2 | egrep -o "/[0-9]+-$SB.sb\$" | tail -n 1 | xargs -r basename)
+      else
+         SB="$SB.sb"
+      fi
+   fi
+
+   if [ "$SB" = "" -o ! -d "$BUNDLES/$SB" ]; then
+      die "can't find active slax bundle $1"
+   fi
+
+   echo "Attempting to deactivate Slax bundle $SB..."
+   mount -t aufs -o remount,verbose,del:"$BUNDLES/$SB" aufs / 2>/dev/null
+   if [ $? -ne 0 ]; then
+      die "Unable to deactivate Slax Bundle - still in use. See dmesg for more."
+   fi
+
+   # remember what loop device was the bundle mounted to, it may be needed later
+   LOOP="$(cat /proc/mounts | fgrep " $BUNDLES/$SB " | cut -d " " -f 1)"
+   LOOPFILE="$(losetup "$LOOP" | cut -d " " -f 3 | sed -r 's:^.|.$::g')"
+
+   umount "$BUNDLES/$SB" 2>/dev/null
+   if [ $? -ne 0 ]; then
+      die "Unable to umount Slax bundle loop-mount $BUNDLES/$SB"
+   fi
+   rmdir "$BUNDLES/$SB"
+
+   # free the loop device manually since umount fails to do that if the bundle was activated on boot
+   losetup -d "$LOOP" 2>/dev/null
+
+   if echo "$LOOPFILE" | grep -q $RAMSTORE; then
+      rm -f $LOOPFILE
+   fi
+
+   echo "Slax Bundle deactivated: $SB"
+}
+
+
+if [ "$1" = "" ]; then
+   die "Usage: $0 [ activate | deactivate | list ] [ file.sb ]"
+fi
+
+if [ "$1" = "activate" ]; then
+   activate "$2"
+fi
+
+if [ "$1" = "deactivate" ]; then
+   deactivate "$2"
+fi
+
+if [ "$1" = "list" ]; then
+   print_branches
+fi
+
+if [ "$1" = "savechanges" ]; then
+   shift
+   savechanges "$@"
+fi

@@ -1,0 +1,26 @@
+#!/bin/bash
+
+THIS=$(dirname $(readlink -f $0))
+
+sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
+
+. ./copy
+. ./install
+. ./cleanup
+. ./copy
+
+# now run build script
+SKIPINITRFS=true
+cd ../../
+. ./build
+
+# setup initrd now, to include aufs
+apt-get update
+apt-get install aufs-dkms linux-headers-$(uname -r) --yes
+
+cd initramfs
+. ./initramfs_create
+
+mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
+cp -vf $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/

@@ -1,0 +1,77 @@
+#!/bin/bash
+
+CWD=$(pwd)
+SOURCE=/run/initramfs/memory
+TEMP=/tmp/slaxiso.$$
+REGEX='^$'
+
+if [ "$1" = "-e" ]; then
+   REGEX="$2"
+   shift
+   shift
+fi
+
+TARGET="$(readlink -f "$1")"
+
+if [ "$TARGET" = "" ]; then
+   echo ""
+   echo "Generate Slax ISO image, adding specified modules"
+   echo "Regular expression is used to exclude any existing path or file with -e regex"
+   echo ""
+   echo "Usage:"
+   echo "        $0 [[ -e regex ]] target.iso [[module.sb]] [[module.sb]] ..."
+   echo ""
+   echo "Examples:"
+   echo "        # to create Slax iso without chromium.sb module:"
+   echo "        $0 -e 'chromium' slax_without_chromium.iso"
+   echo ""
+   echo "        # to create Slax text-mode core only:"
+   echo "        $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
+   exit 1
+fi
+
+if [ -e "$SOURCE/data/slax/boot/isolinux.bin" ]; then
+   SLAX=$SOURCE/data/slax
+fi
+
+if [ -e "$SOURCE/toram/boot/isolinux.bin" ]; then
+   SLAX=$SOURCE/toram
+fi
+
+if [ "$SLAX" = "" ]; then
+   echo "Cannot find boot/isolinux.bin in Slax data" >&2
+   exit 2
+fi
+
+GRAFT=\
+$(
+  cd "$SLAX"
+  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | egrep -v "$REGEX" | while read LINE; do
+     echo "slax/$LINE=$SLAX/$LINE"
+  done
+)
+
+# add all modules
+while [ "$2" != "" ]; do
+   if [ ! -e "$2" ]; then
+      echo "File does not exist: $2"
+      exit 3
+   fi
+   BAS="$(basename "$2")"
+   MOD="$(readlink -f "$2")"
+   GRAFT="$GRAFT slax/modules/$BAS=$MOD"
+   shift
+done
+
+(
+   mkdir -p $TEMP/slax/{boot,modules,changes}
+   cp "$SLAX/boot/isolinux.bin" "$TEMP/slax/boot"
+   cd "$TEMP"
+   genisoimage -o - -quiet -v -J -R -D -A slax -V slax \
+   -no-emul-boot -boot-info-table -boot-load-size 4 -input-charset utf-8 \
+   -b slax/boot/isolinux.bin -c slax/boot/isolinux.boot \
+   -graft-points $GRAFT \
+   . \
+) > "$TARGET"
+
+rm -Rf $TEMP

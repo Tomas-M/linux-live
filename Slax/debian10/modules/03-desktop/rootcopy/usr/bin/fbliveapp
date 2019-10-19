@@ -1,0 +1,83 @@
+#!/bin/bash
+
+if [ "$1" = "votecoin" ]; then
+   NAME="VoteCoin Wallet"
+   ABOUT="VoteCoin Wallet is a crypto currency wallet,
+forked from ZCash, which itslef forked from Bitcoin.
+It supports fully anonymous transactions and voting.
+Receive free 10 VOT coins for installing the wallet.
+In the future, VoteCoin will be used for decision
+funding in Slax."
+   TMP="/tmp/votecoin.tar.gz"
+   EXECUTABLE="/opt/VoteCoin Wallet-linux-x64/VoteCoin Wallet"
+   INSTALL="wget -O $TMP 'https://votecoin.site/download.php?os=linux' && tar -xf $TMP -C /opt && rm -f $TMP && apt install --yes libxss1 libgconf-2-4 libnss3"
+   POSTINSTALL=""
+   ONLY64=true
+fi
+
+if [ "$1" = "vlc" ]; then
+   NAME="VLC Video Player"
+   ABOUT="VLC Video Player is a free and open source multimedia player
+and framework that plays most multimedia files as well as DVDs,
+Audio CDs, CVDs, and various streaming protocols."
+   EXECUTABLE="/usr/bin/vlc"
+   INSTALL="apt install --yes vlc"
+   POSTINSTALL="rm /usr/share/applications/vlc.desktop; mkdir /home/guest/.config/vlc; echo '[qt4]
+qt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
+   GUEST=true
+fi
+
+if [ "$1" = "chromium" ]; then
+   NAME="Chromium Web Browser"
+   ABOUT="Chromium is a free and open source version of
+the famous Chrome browser, developed by Google."
+   EXECUTABLE="/usr/bin/chromium"
+   INSTALL="apt install --yes chromium"
+   POSTINSTALL="rm -f /usr/share/applications/chromium.desktop"
+   GUEST=true
+fi
+
+shift
+
+# ------------------------------------------------
+#   do not touch anything below this line
+# ------------------------------------------------
+
+if [ "$ABOUT" != "" ]; then
+   ABOUT="$ABOUT
+
+"
+fi
+
+
+if [ "$EXECUTABLE" = "" ]; then
+   exit
+fi
+
+
+if [ ! -f "$EXECUTABLE" ]; then
+
+   if [ $(uname -m) != 'x86_64' -a "$ONLY64" = "true" ]; then
+      gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-warning.png  -t Error -m "$NAME only works in 64bit version of Slax" -y OK
+      exit 1
+   fi
+
+   if gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-question.png -t Question -m "$ABOUT$NAME is not yet installed.
+Do you like to download and install it now?" -y Yes -n No; then
+      xterm -ls -e bash --login -c -- "$INSTALL; $POSTINSTALL"
+   fi
+fi
+
+
+if [ -f "$EXECUTABLE" ]; then
+
+   fbstartupnotify
+
+   if [ "$GUEST" = "true" -a "$EUID" -eq 0 ]; then
+      xhost + >/dev/null 2>/dev/null
+      exec su -c "$EXECUTABLE "$@""  guest
+   fi
+
+   exec "$EXECUTABLE" "$@"
+
+fi

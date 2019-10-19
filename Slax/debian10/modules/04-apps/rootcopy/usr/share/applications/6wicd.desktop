@@ -1,0 +1,5 @@
+[Desktop Entry]
+Exec=wicd-manager
+Icon=gnome_network_workgroup
+Name=Net Manager
+Terminal=false

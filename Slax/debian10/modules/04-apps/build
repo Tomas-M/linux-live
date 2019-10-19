@@ -1,0 +1,53 @@
+#!/bin/bash
+
+CWD=$(dirname $(readlink -f $0))
+
+apt-get update
+apt-get install --no-install-recommends --yes \
+    leafpad \
+    qalculate-gtk \
+    pcmanfm \
+    lxtask \
+    xarchiver xdg-utils libgconf-2-4 \
+    wicd
+
+. ../../cleanup
+
+(cd rootcopy && cp --parents -afr * /)
+
+savechanges /apps-stock.sb
+cd /
+unsquashfs /apps-stock.sb
+rm -Rf /squashfs-root/root/.fluxbox
+rm -f /squashfs-root/root/.gtk-bookmarks
+
+# we want to patch pcmanfm it to hide ugly root warning icon
+# so we will recompile whole package
+
+REBUILD=/tmp/pcmanfm-rebuild-$$
+
+apt-get update
+apt-get --yes build-dep pcmanfm
+
+mkdir -p -m 0777 $REBUILD
+cd $REBUILD
+
+apt-get source pcmanfm
+
+cd pcmanfm-1.2.5
+
+cat $CWD/patches/pcmanfm-slax.diff > debian/patches/pcmanfm-slax.diff
+echo pcmanfm-slax.diff >> debian/patches/series
+
+dpkg-buildpackage -us -uc
+
+strip --strip-unneeded src/pcmanfm
+cp src/pcmanfm /squashfs-root/usr/bin
+
+rm -f /squashfs-root/usr/share/applications/leafpad.desktop
+rm -f /squashfs-root/usr/share/applications/qalculate-gtk.desktop
+rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
+rm -f /squashfs-root/usr/share/applications/wicd.desktop
+rm -f /squashfs-root/usr/share/applications/lxtask.desktop
+
+dir2sb /squashfs-root /04-apps.sb

@@ -1,0 +1,67 @@
+#!/bin/bash
+# Recreate fstab entries in /etc/fstab and make /media directories
+# This script is called by udev rules, see /lib/udev/rules.d/
+#
+# Author: Tomas M <http://slax.linux-live.org/>
+
+# Variables available in udev environment:
+# $ACTION (eg: add, remove)
+# $DEVNAME (full device node name including path)
+# $DEVTYPE (eg: disk)
+# $ID_FS_TYPE (eg: ext3)
+# $MAJOR and $MINOR numbers
+# $SUBSYSTEM (eg: block)
+
+PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
+
+BAS="$(basename "$DEVNAME")"
+UNIT="media-$BAS.mount"
+MNT="/media/$BAS"
+TARGET="/etc/systemd/system/$UNIT"
+
+
+# exit if noautomount boot parameter is present
+if cat /proc/cmdline | grep -q noautomount; then
+   exit
+fi
+
+# exit if 'automount' boot parameter is missing
+if ! cat /proc/cmdline | grep -q automount; then
+   exit
+fi
+
+
+if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
+   if [ ! -r "$TARGET" ]; then # skip if exists
+
+      if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
+
+         mkdir -p "$MNT"
+
+         echo "[Unit]" >$TARGET
+         echo "Description=Disk $BAS" >>$TARGET
+         echo "" >>$TARGET
+         echo "[Mount]" >>$TARGET
+         echo "What=$DEVNAME" >>$TARGET
+         echo "Where=$MNT" >>$TARGET
+         echo "Type=$ID_FS_TYPE" >>$TARGET
+         echo "Options=defaults" >>$TARGET
+         echo "" >>$TARGET
+         echo "[Install]" >>$TARGET
+         echo "WantedBy=multi-user.target" >>$TARGET
+
+         systemctl enable $UNIT
+         systemctl start $UNIT
+
+         gtk-bookmarks-update
+         DISPLAY=:0.0 pcmanfm -n file://$MNT >/dev/null 2>&1
+      fi
+   fi
+fi
+
+if [ "$ACTION" = "remove" ]; then
+   systemctl disable $UNIT
+   rm "$TARGET"
+   rmdir "$MNT"
+   gtk-bookmarks-update
+fi

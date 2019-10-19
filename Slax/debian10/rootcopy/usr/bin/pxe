@@ -1,0 +1,86 @@
+#!/bin/bash
+# Rebuild initial ramdisk with full network drivers,
+# start DHCP and TFTP server in order to provide PXE service
+#
+# Author: Tomas M <www.slax.org>
+
+LIVE=/run/initramfs
+FTPROOT=/var/state/dnsmasq/root
+
+# find out our own IP address. If more interfaces are available, use the first one
+IP="$(hostname -I | cut -d " " -f 1)"
+GW=$(ip route show | grep default | grep -o "via.*" | head -n 1 | cut -d " " -f 2)
+
+# if no IP is assigned to this computer, setup private address randomly
+if [ "$IP" = "" ]; then
+   killall dhclient 2>/dev/null
+   IP="10."$(($RANDOM/130+1))"."$(($RANDOM/130+1))".1"
+   ifconfig $(ls -1 /sys/class/net | egrep -v '^lo$' | sort | head -n 1) $IP netmask 255.255.255.0
+fi
+
+# if gateway is not recognized, lets make our IP a gateway and enable forwarding
+if [ "$GW" = "" ]; then
+   GW="$IP"
+   echo 1 > /proc/sys/net/ipv4/conf/all/forwarding
+   echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+fi
+
+echo Starting PXE server on $IP ...
+
+# calculate C class range
+RANGE=$(echo $IP | cut -d "." -f 1-3)
+
+# make sure dnsmasq can be started
+killall dnsmasq 2>/dev/null
+killall busybox 2>/dev/null
+rm -Rf $FTPROOT 2>/dev/null
+mkdir -p $FTPROOT/{pxelinux.cfg,tmp}/
+
+# create root filesystem for ftfp
+cd $LIVE
+( find . -print | grep -v "memory"
+  cd /
+  find /lib/modules/$(uname -r)/kernel/drivers/net | grep -v wireless
+) | cpio -pvd $FTPROOT/tmp 2>/dev/null
+
+cp /lib/modules/$(uname -r)/modules.* $FTPROOT/tmp/lib/modules/$(uname -r)
+depmod -b $FTPROOT/tmp
+rm $FTPROOT/tmp/lib/initramfs_escaped
+
+# pack root in initramfs
+cd $FTPROOT/tmp
+find . -print | cpio -o -H newc 2>/dev/null | gzip -f --fast >../initrfs.img
+cd ..
+rm -Rf tmp
+
+# link files here since copying is not necessary
+ln -s $(find $LIVE/memory/{data,iso,toram} 2>/dev/null | grep vmlinuz | head -n 1) $FTPROOT/vmlinuz
+ln -s $(find $LIVE/memory/{data,iso,toram} 2>/dev/null | grep pxelinux.0 | head -n 1) $FTPROOT/pxelinux.0
+ln -s $(find $LIVE/memory/{data,iso,toram} 2>/dev/null | grep ldlinux.c32 | head -n 1) $FTPROOT/ldlinux.c32
+
+find $LIVE/memory/{data,iso,toram} 2>/dev/null | egrep "[.]sb\$" | sort -n | while read LINE; do
+   BAS="$(basename "$LINE")"
+   ln -s $LINE "$FTPROOT/$BAS"
+   echo $BAS >> "$FTPROOT/PXEFILELIST"
+done
+
+echo "This is <a href=http://www.slax.org/>Slax</a> PXE data server. PXE clients will download <a href=PXEFILELIST>file list</a>" > "$FTPROOT/index.html"
+
+# default pxelinux configuration. Keep xmode selection for clients the same like for the server
+echo "
+PROMPT 0
+DEFAULT slax
+LABEL slax
+KERNEL /vmlinuz
+IPAPPEND 1
+APPEND initrd=/initrfs.img load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 $(cat /proc/cmdline | egrep -o 'slax.flags=[^ ]+' | sed -r 's:[,=]pxe::' | sed -r 's:[,=]toram::')
+" > $FTPROOT/pxelinux.cfg/default
+
+# start the DHCP server and TFTP server
+dnsmasq --enable-tftp --tftp-root=/var/state/dnsmasq/root \
+--dhcp-boot=pxelinux.0,"$IP",$IP \
+--dhcp-option=3,$GW \
+--dhcp-range=$RANGE.2,$RANGE.250,infinite --log-dhcp
+
+# start HTTP server at port 7529 (that are the numbers you type on your phone to write 'slax')
+busybox httpd -p 7529 -h /var/state/dnsmasq/root

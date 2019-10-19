@@ -1,0 +1,4 @@
+Terminal;/usr/share/icons/hicolor/128x128/apps/terminal.png;xterm -title Terminal
+Web Browser;/usr/share/icons/hicolor/128x128/apps/chromium.png;chromium
+Text Editor;/usr/share/icons/hicolor/128x128/apps/editor.png;leafpad
+Calculator;/usr/share/icons/hicolor/128x128/apps/calculator.png;qalculate

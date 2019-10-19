@@ -1,0 +1,17 @@
+#!/bin/bash
+
+apt-get update
+apt-get install --yes --no-install-recommends chromium
+
+. ../../cleanup
+
+echo 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disk-cache-dir=/dev/null --disk-cache-size=1"' >>/etc/chromium.d/default-flags
+
+rm -Rf /usr/share/icons/gnome/256x256
+rm -Rf /root/.fluxbox
+rm -Rf /root/.fluxbox/kblayout
+rm -Rf /root/.gtk-bookmarks
+rm -Rf /var/lib/wicd/dhclient.conf
+rm -Rf /usr/share/applications/chromium.desktop
+
+savechanges /05-chromium.sb

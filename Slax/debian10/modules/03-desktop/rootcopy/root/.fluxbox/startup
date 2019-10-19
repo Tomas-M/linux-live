@@ -1,0 +1,111 @@
+#!/bin/sh
+#
+# fluxbox startup-script:
+#
+# Lines starting with a '#' are ignored.
+
+# Change your keymap:
+xmodmap "/root/.Xmodmap"
+
+# merge xresource settings
+xrdb -merge ~/.Xresources
+
+# set keyboard layout
+fbsetkb $(cat ~/.fluxbox/kblayout)
+
+# setup bookmarks for file manager
+gtk-bookmarks-update
+
+# Share common directories with guest user. This is necessary
+# because some apps like chromium must be running under guest
+for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+   if ! mountpoint /root/$dir; then
+      mount --bind /home/guest/$dir /root/$dir
+   fi
+done
+
+# set background color and big wait mouse cursor
+xsetroot -solid '#111111'
+xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
+
+# disable screen blanking
+xset s off
+xset -dpms
+
+# volume icon in system tray. Can fail if no soundcard is detected
+volumeicon &
+
+# preload compton and fluxbox to cache
+(compton --help; fluxbox --help) >/dev/null 2>&1
+
+# Keep black screen for first second while the sound plays.
+# This slows startup a little, but it is nicer effect.
+SND=/usr/share/sounds/startup.wav
+if [ -r $SND ]; then
+   cat $SND > /dev/null # preload
+   aplay $SND &
+   sleep 1 &
+   SOUNDPID=$!
+fi
+
+# Debian-local change:
+#   - fbautostart has been added with a quick hack to check to see if it
+#     exists. If it does, we'll start it up by default.
+which fbautostart > /dev/null
+if [ $? -eq 0 ]; then
+    fbautostart
+fi
+
+# We need to postpone compton after fluxbox starts, else it won't set
+# the transparency of toolbar properly... So we check the fehbg file,
+# which is created by fluxbox at the phase when it sets background.
+# Once the file exist, fluxbox-toolbar is already started
+
+SIGNAL1=~/.fehbg
+SIGNAL2=~/.fehbg2
+
+rm -f $SIGNAL1 2>/dev/null
+rm -f $SIGNAL2 2>/dev/null
+
+(
+   while [ ! -e $SIGNAL1 ]; do
+      sleep 0.1
+   done
+   touch $SIGNAL2
+
+   (sleep 1; (echo; sleep 10; echo :quit) | xlunch --window --xposition 20 --yposition -30 \
+   --width 195 --height 53 --noscroll --noprompt --backgroundcolor ffffff00 \
+   --multiple --desktop --button "/usr/share/fluxbox/styles/Slax/pixmaps/start-here.png;;0,0;fbappselect" & ) &
+
+   exec compton --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped'
+) &
+
+# We want to run systrayicon only after the volumeicon is started
+# So we have to wait until it is visible to xwinfo
+# We also wait after background is set and compton is started
+(
+   while [ ! -e $SIGNAL2 ]; do
+      sleep 0.1
+   done
+
+   rm -f $SIGNAL2
+
+   while ! xwininfo -name volumeicon >/dev/null 2>&1 && pgrep volumeicon >/dev/null 2>&1; do
+      sleep 0.1
+   done
+
+   exec systrayicon --command fblogout --iconfile /usr/share/icons/locolor/16x16/actions/system-shutdown-symbolic.png
+) &
+
+# gen screen resolutions to fluxbox menu
+xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
+| sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
+
+# In all cases, wait for the sound sleeper.
+# If startup took longer (sound completed already), no extra wait
+wait $SOUNDPID
+
+# And last but not least we start fluxbox.
+# Because it is the last app you have to run it with ''exec'' before it.
+
+exec fluxbox
