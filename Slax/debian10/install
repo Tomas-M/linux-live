@@ -1,7 +1,17 @@
 #!/bin/bash
 
+CURRENT="$(ls -1 /boot)"
+
 apt-get update
 apt-get dist-upgrade --yes
+
+NEW="$(ls -1 /boot)"
+
+if [ "$CURRENT" -ne "$NEW" ]; then
+   echo "It looks like your kernel has been upgraded."
+   echo "You should reboot and restart the build process."
+   exit
+fi
 
 # if kernel was upgraded, you may need to reboot
 apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools \
