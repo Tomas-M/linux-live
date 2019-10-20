@@ -51,7 +51,8 @@ activate()
 
    # check if file exists
    if [ ! -r "$SB" ]; then
-      usage "file not found $SB"
+      usage
+      die "file not found $SB"
    fi
 
    # check if the file is part of aufs union, if yes we need to copy it outside
@@ -145,8 +146,18 @@ deactivate()
 }
 
 
+usage()
+{
+   echo "Usage: $0 [ activate | deactivate | list ] [ file.sb ]" >&2
+   if [ "$1" != "" ]; then
+      echo "$1" >&2
+   fi
+}
+
+
 if [ "$1" = "" ]; then
-   die "Usage: $0 [ activate | deactivate | list ] [ file.sb ]"
+   usage
+   die
 fi
 
 if [ "$1" = "activate" ]; then
