@@ -32,7 +32,7 @@ if [ "$1" = "chromium" ]; then
    ABOUT="Chromium is a free and open source version of
 the famous Chrome browser, developed by Google."
    EXECUTABLE="/usr/bin/chromium"
-   INSTALL="apt install --yes chromium"
+   INSTALL="apt install --yes chromium chromium-sandbox"
    POSTINSTALL="rm -f /usr/share/applications/chromium.desktop"
    GUEST=true
 fi
