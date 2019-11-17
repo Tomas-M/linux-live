@@ -1,0 +1,11 @@
+#!/bin/bash
+if [ "$#" -lt 1 ]; then
+   echo "Usage: sudo [command] [arguments]"
+   exit 1
+fi
+
+if [ "$UID" = 0 ]; then
+   exec "$@"
+fi
+
+echo "Sudo is not installed. Run the command as root or install sudo."
