@@ -11,9 +11,9 @@ set -e
 CWD=$(pwd)
 
 echo
-echo "--------------------------------------"
-echo "Add directory to isolinux search paths"
-echo -n "(for example /slax/boot): "
+echo "--------------------------------------------------------------------"
+echo "Add directory to isolinux search paths (usually /\$LIVEKITNAME/boot)"
+echo -n "(for example /slax/boot or /linux/boot): "
 read DIR
 
 
@@ -23,7 +23,7 @@ apt-get --yes build-dep syslinux
 mkdir -m 0777 /tmp/syslinux
 cd /tmp/syslinux
 apt-get source syslinux
-apt-get install upx
+apt-get --yes install upx
 cd syslinux*/core
 
 for file in fs/iso9660/iso9660.c fs/lib/loadconfig.c elflink/load_env32.c; do
