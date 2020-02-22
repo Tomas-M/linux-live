@@ -1,0 +1,46 @@
+#!/bin/bash
+# create boot image from program versions
+
+set -e
+
+#todo: documentation
+
+# Modify this list as needed.
+version_commands=(
+   "VBoxControl   --version" # virtualbox guest additions
+   "code          --version                       | head -1"
+   "git           --version | xargs | tr ' ' '\n' | tail -1"
+   "brave-browser --version | xargs | tr ' ' '\n' | tail -1"
+   "python3       --version | xargs | tr ' ' '\n' | tail -1"
+)
+
+# image settings: colors, sizes
+res=640x480
+bg=523
+fc=e53
+fs=28
+
+# build boot message
+message=""
+for ver_command in "${version_commands[@]}"; do
+   # newline
+   message+="|"
+   # program name
+   message+="$(echo $ver_command | awk '{print $1;}')"
+   # spaces
+   message+="++"
+   # program version
+   message+="$(eval $ver_command)"
+done
+
+# dummyimage.com can be used instead (or as fallback), but
+# it a) uses a slightly different url structure
+# and b) font-size is sensitive to long messages
+host=ipsumimage.appspot.com
+# for example, https://ipsumimage.appspot.com/640x480.png?s=28&b=523&f=e53&l=|VBoxControl++5.2.18r124319|code++1.42.0|git++2.17.1|brave-browser++79.1.2.42|python3++3.6.9
+remote_url="https://$host/$res.png?s=$fs&b=$bg&f=$fc&l=$message"
+target_path="$(dirname $(readlink -f $0))/../bootfiles/bootlogo.png"
+
+wgett -O "$target_path" "$remote_url" || curl -o "$target_path" "$remote_url"
+
+echo "complete"
