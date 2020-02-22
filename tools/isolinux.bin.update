@@ -21,6 +21,7 @@ read DIR
 
 if ! apt-get --yes build-dep syslinux; then
    echo "the most common cause of build-dep failures can be solved by following the steps described here: https://askubuntu.com/questions/496549/error-you-must-put-some-source-uris-in-your-sources-list"
+   exit 1
 fi
 mkdir -m 0777 /tmp/syslinux
 cd /tmp/syslinux
