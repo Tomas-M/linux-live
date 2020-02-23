@@ -20,6 +20,7 @@ Note:
   Your kernel must support squashfs and aufs. Debian Jessie's kernel does.
 
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
+  (one options is to modify and run the ./tools/bootlogo.update script) 
   and reorganize isolinux.cfg to fit your needs (when editing the file,
   keep all paths in /boot/, it will be rellocated during LiveKit creation)
 
@@ -34,12 +35,6 @@ Note:
   it will update ./bootfiles/isolinux.bin automatically by downloading
   isolinux sources, patching them using your actual LIVEKITNAME and
   recompiling. This step is not needed if you plan to boot from USB only.
-
-* A default startup image has been provided in ./bootfiles/bootlogo.png,
-  but you will probably want to replace it. There is a script that can
-  generate a new image within ./tools/ called bootlogo.update ...
-  it will update ./bootfiles/bootlogo.png with an image that lists the
-  versions of installed packages. Please modify the script as needed.
 
 * If you have tmpfs mounted on /tmp, make sure you have enough RAM
   since LiveKit will store lots of data there. If you are low on RAM,
