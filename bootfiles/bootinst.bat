@@ -24,10 +24,16 @@ goto setup95
 
 :setupNT
 \boot\syslinux.exe -maf -d /boot/ %DISK%:
-goto setupDone
+goto setupEFI
 
 :setup95
 \boot\syslinux.com -maf -d /boot/ %DISK%:
+goto setupEFI
+
+:setupEFI
+mkdir %DISK%:\EFI\Boot
+copy \boot\EFI\Boot\* %DISK%:\EFI\Boot
+goto setupDone
 
 :setupDone
 echo Installation finished.

@@ -40,5 +40,9 @@ if [ "$DEV" != "$PART" ]; then
    ) | fdisk $DEV >/dev/null 2>&1
 fi
 
+# UEFI boot loader
+mkdir -p "$BOOT/../../EFI"
+mv "EFI/Boot" "$BOOT/../../EFI/"
+
 echo "Boot installation finished."
 cd "$CWD"
