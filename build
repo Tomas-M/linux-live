@@ -49,14 +49,17 @@ if [ "$INITRAMFS" != "" ]; then
    mv "$INITRAMFS" $BOOT/initrfs.img
 fi
 
+# BIOS / MBR booting
 cp -r bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp $VMLINUZ $BOOT/ || exit
 
 # UEFI booting
-mv $BOOT/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
-cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesa::" > $BOOT/EFI/Boot/syslinux.cfg
+mkdir -p $BOOT/EFI/Boot
+cp bootfiles/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
+cp bootfiles/EFI/Boot/{ldlinux.e64,menu.c32,libutil.c32,vesamenu.c32,libcom32.c32} $BOOT/EFI/Boot
+cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesamenu:vesamenu:" > $BOOT/EFI/Boot/syslinux.cfg
 
 # create compressed 01-core.sb
 COREFS=""
