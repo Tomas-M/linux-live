@@ -1,0 +1,52 @@
+#!/bin/bash
+# create boot image from program versions
+# for example, https://ipsumimage.appspot.com/640x480.png?s=28&b=523&f=e53&l=|bash++4.4.20|VBoxControl++6.0.10r132072|code++1.43.1|git++2.17.1|brave-browser++80.1.5.113|python3++3.6.9
+
+set -euo pipefail
+
+# Modify this list as needed.
+version_commands=(
+   "bash          --version | grep -Eo '[0-9]+.[0-9]+.[0-9]+'"
+   "VBoxControl   --version" # virtualbox guest additions
+   "code          --version                       | head -1"
+   "git           --version | xargs | tr ' ' '\n' | tail -1"
+   "brave-browser --version | xargs | tr ' ' '\n' | tail -1"
+   "python3       --version | xargs | tr ' ' '\n' | tail -1"
+)
+
+# image settings
+resolution=640x480
+background=523
+fontcolor=e53
+fontsize=28
+
+# build boot message
+message=""
+for ver_command in "${version_commands[@]}"; do
+   # program name
+   program="$(echo $ver_command | awk '{print $1;}')"
+
+   if which $program > /dev/null; then
+      # pipes become newlines
+      message+="|"
+      # program name
+      message+="$program"
+      # pluses become spaces 
+      message+="++"
+      # program version. eval allows additional pipeline commands
+      message+="$(eval $ver_command)"
+   fi
+done
+
+# dummyimage.com can be used instead (or as fallback), but
+# it a) uses a slightly different url structure
+# and b) font-size is sensitive to long messages (whereas
+# ipsumimage let's you specify font size directly)
+host=ipsumimage.appspot.com
+remote_url="https://$host/$resolution.png?s=$fontsize&b=$background&f=$fontcolor&l=$message"
+target_path="$(dirname $(readlink -f $0))/../bootfiles/bootlogo.png"
+
+echo "downloading $remote_url"
+wget -O "$target_path" "$remote_url" || curl -o "$target_path" "$remote_url"
+
+echo "complete"

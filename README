@@ -20,6 +20,7 @@ Note:
   Your kernel must support squashfs and aufs. Debian Jessie's kernel does.
 
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
+  (one options is to modify and run the ./tools/bootlogo.update script) 
   and reorganize isolinux.cfg to fit your needs (when editing the file,
   keep all paths in /boot/, it will be rellocated during LiveKit creation)
 

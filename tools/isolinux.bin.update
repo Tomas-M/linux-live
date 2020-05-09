@@ -11,19 +11,22 @@ set -e
 CWD=$(pwd)
 
 echo
-echo "--------------------------------------"
-echo "Add directory to isolinux search paths"
-echo -n "(for example /slax/boot): "
+echo "--------------------------------------------------------------------"
+echo "Add directory to isolinux search paths (usually /\$LIVEKITNAME/boot)"
+echo -n "(for example /slax/boot or /linux/boot): "
 read DIR
 
 
 # download, unpack, and patch syslinux
 
-apt-get --yes build-dep syslinux
+if ! apt-get --yes build-dep syslinux; then
+   echo "the most common cause of build-dep failures can be solved by following the steps described here: https://askubuntu.com/questions/496549/error-you-must-put-some-source-uris-in-your-sources-list"
+   exit 1
+fi
 mkdir -m 0777 /tmp/syslinux
 cd /tmp/syslinux
 apt-get source syslinux
-apt-get install upx
+apt-get --yes install upx
 cd syslinux*/core
 
 for file in fs/iso9660/iso9660.c fs/lib/loadconfig.c elflink/load_env32.c; do
