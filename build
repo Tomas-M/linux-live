@@ -51,15 +51,10 @@ fi
 
 # BIOS / MBR booting
 cp -r bootfiles/* $BOOT
+cp -r boot $LIVEKITDATA
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
 cp $VMLINUZ $BOOT/ || exit
-
-# UEFI booting
-mkdir -p $BOOT/EFI/Boot
-cp bootfiles/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
-cp bootfiles/EFI/Boot/{ldlinux.e64,menu.c32,libutil.c32,vesamenu.c32,libcom32.c32} $BOOT/EFI/Boot
-cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesamenu:vesamenu:" > $BOOT/EFI/Boot/syslinux.cfg
 
 # create compressed 01-core.sb
 COREFS=""
@@ -76,18 +71,17 @@ TARGET=/tmp
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/\x0D/" > readme.txt
 
-echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
--no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> $TARGET/gen_"$LIVEKITNAME"_iso.sh
-chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
-
-echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
-> $TARGET/gen_"$LIVEKITNAME"_zip.sh
-chmod o+x $TARGET/gen_"$LIVEKITNAME"_zip.sh
+echo "---Creating ISO---"
+cd $LIVEKITDATA 
+ISO_Name=microVM-01.iso
+xorriso -as mkisofs  -v -J -R -D -A linux -V linux -no-emul-boot \
+                    -boot-info-table -boot-load-size 4 -b linux/boot/isolinux.bin -c linux/boot/isolinux.boot -l \
+		    -isohybrid-mbr linux/boot/mbr.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
+                    -eltorito-alt-boot \
+                    -e boot/grub/efi.img \
+                    -no-emul-boot -isohybrid-gpt-basdat \
+		    -o /tmp/$ISO_Name .
 
 echo "-----------------------------"
-echo "Finished. Find your result in $LIVEKITDATA"
-echo "To build ISO, run: $TARGET/gen_"$LIVEKITNAME"_iso.sh"
-echo "To build ZIP, run: $TARGET/gen_"$LIVEKITNAME"_zip.sh"
+echo "Finished. Find your result in /tmp/$ISO_Name"
 cd $CWD
