@@ -509,7 +509,7 @@ download_data_pxe()
 
       if [ "$PROTOCOL" = "http" ]; then
          cat "$1/PXEFILELIST" | while read FILE; do
-            wget -O "$1/$LIVEKITNAME/$FILE" "http://$SERVER:$PORT/$FILE"
+            wget -O "$1/$LIVEKITNAME/$(basename $FILE)" "http://$SERVER:$PORT/$FILE"
          done
       else
          JOBS=3
