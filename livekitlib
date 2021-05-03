@@ -792,7 +792,7 @@ union_append_bundles()
 {
    debug_log "union_append_bundles" "$*"
 
-   if aufs_is_supported; then
+   if aufs_is_supported >/dev/null; then
       echo_green_star
       echo "Adding bundles to union"
       find "$1" -maxdepth 1 | sortmod | while read BUNDLE; do
