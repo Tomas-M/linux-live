@@ -17,7 +17,9 @@ Note:
   Most importantly change the LIVEKITNAME variable.
 
 * Make sure your kernel is in /boot/vmlinuz or change the path in ./config
-  Your kernel must support squashfs and aufs. Debian Jessie's kernel does.
+  Your kernel must support squashfs. Your kernel must also support either
+  aufs or overlayfs or both. AUFS is recommended for more flexibility,
+  but if your distro does not support it, overlayfs will work too.
 
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
   (one options is to modify and run the ./tools/bootlogo.update script) 
