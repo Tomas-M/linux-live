@@ -211,31 +211,48 @@ init_zram()
 }
 
 
-# load the AUFS kernel module if needed
+aufs_is_supported()
+{
+   cat /proc/filesystems | grep aufs
+}
+
+
+# load the AUFS kernel driver. If not found,
+# load overlayfs instead.
 #
 init_aufs()
 {
    debug_log "init_aufs" "$*"
-   # TODO maybe check here if aufs support is working at all
-   # and produce useful error message if user has no aufs
    modprobe aufs 2>/dev/null
+   if ! aufs_is_supported >/dev/null; then
+      modprobe overlay 2>/dev/null
+   fi
    refresh_devs
 }
 
 
-# Setup empty union
+# Setup empty aufs union, or create overlayfs union
 # $1 = changes directory (ramfs or persistent changes)
 # $2 = union directory where to mount the union
+# $3 = bundles directory
 #
 init_union()
 {
    debug_log "init_union" "$*"
-
-   echo_green_star
-   echo "Setting up union using AUFS"
    mkdir -p "$1"
    mkdir -p "$2"
-   mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+
+   if aufs_is_supported >/dev/null; then
+      echo_green_star
+      echo "Setting up empty union using aufs"
+      mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+   else
+      echo_green_star
+      echo "Setting up union using overlayfs"
+      mkdir -p "$1/changes"
+      mkdir -p "$1/workdir"
+      mount -t overlay overlay -o lowerdir=$(find "$3" | sortmod | tac),upperdir=$1/changes,workdir=$1/workdir $2
+   fi
 }
 
 
@@ -752,26 +769,36 @@ sortmod()
 
 
 # Mount squashfs filesystem bundles
-# and add them to union
 # $1 = directory where to search for bundles
 # $2 = directory where to mount bundles
-# $3 = directory where union is mounted
-#
-union_append_bundles()
+mount_bundles()
 {
-   debug_log "union_append_bundles" "$*"
-
-   local BUN
-
    echo_green_star
-   echo "Adding bundles to union"
+   echo "Mounting bundles"
    ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod | filter_load) | grep '[.]'$BEXT'$' | filter_noload | while read BUNDLE; do
       echo "* $BUNDLE"
       BUN="$(basename "$BUNDLE")"
       mkdir -p "$2/$BUN"
       mount -o loop,ro -t squashfs "$1/$BUNDLE" "$2/$BUN"
-      mount -o remount,add:1:"$2/$BUN" aufs "$3"
    done
+}
+
+
+# Add mounted bundles to aufs union
+# $1 = directory where bundles are mounted
+# $2 = directory where union is mounted
+#
+union_append_bundles()
+{
+   debug_log "union_append_bundles" "$*"
+
+   if aufs_is_supported; then
+      echo_green_star
+      echo "Adding bundles to union"
+      find "$1" | sortmod | while read BUNDLE; do
+         mount -o remount,add:1:"$BUNDLE" aufs "$2"
+      done
+   fi
 }
 
 

@@ -74,6 +74,7 @@ mknod $INITRAMFS/dev/tty4 c 4 4
 #copy_including_deps /usr/bin/lsof
 
 copy_including_deps /$LMK/kernel/fs/aufs
+copy_including_deps /$LMK/kernel/fs/overlayfs
 copy_including_deps /$LMK/kernel/fs/ext2
 copy_including_deps /$LMK/kernel/fs/ext3
 copy_including_deps /$LMK/kernel/fs/ext4
