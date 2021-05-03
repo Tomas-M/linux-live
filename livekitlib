@@ -795,7 +795,7 @@ union_append_bundles()
    if aufs_is_supported; then
       echo_green_star
       echo "Adding bundles to union"
-      find "$1" | sortmod | while read BUNDLE; do
+      find "$1" -maxdepth 1 | sortmod | while read BUNDLE; do
          mount -o remount,add:1:"$BUNDLE" aufs "$2"
       done
    fi
