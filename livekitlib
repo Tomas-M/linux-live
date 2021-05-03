@@ -251,7 +251,7 @@ init_union()
       echo "Setting up union using overlayfs"
       mkdir -p "$1/changes"
       mkdir -p "$1/workdir"
-      mount -t overlay overlay -o lowerdir=$(find "$3" -maxdepth 1 | sortmod | tac),upperdir=$1/changes,workdir=$1/workdir $2
+      mount -t overlay overlay -o lowerdir=$(find "$3" -mindepth 1 -maxdepth 1 | sortmod | tac | tr '\n' ':'),upperdir=$1/changes,workdir=$1/workdir $2
    fi
 }
 
@@ -795,7 +795,7 @@ union_append_bundles()
    if aufs_is_supported >/dev/null; then
       echo_green_star
       echo "Adding bundles to union"
-      find "$1" -maxdepth 1 | sortmod | while read BUNDLE; do
+      find "$1" -mindepth 1 -maxdepth 1 | sortmod | while read BUNDLE; do
          mount -o remount,add:1:"$BUNDLE" aufs "$2"
       done
    fi
