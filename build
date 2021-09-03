@@ -26,7 +26,7 @@ if [ "$MKISOFS" = "" ]; then
    MKISOFS=$(which genisoimage)
 fi
 if [ "$MKISOFS" = "" ]; then
-   echo "Cannot found mkisofs or genisoimage, stop"
+   echo "Cannot find mkisofs or genisoimage, stop"
    exit 3
 fi
 
