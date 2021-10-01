@@ -5,8 +5,8 @@ export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
 CHANGEDIR=$(dirname $(readlink -f $0))
 echo "Changing current directory to $CHANGEDIR"
-CWD="$(pwd)"
 cd $CHANGEDIR
+CWD="$(pwd)"
 
 . ./config || exit 1
 . ./livekitlib || exit 1
