@@ -22,8 +22,8 @@ debug_log()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
       echo "- debug: $*" >&2
-      log "- debug: $*"
    fi
+   log "- debug: $*"
 }
 
 # header
