@@ -32,7 +32,7 @@ fi
 
 # build initramfs image
 if [ "$SKIPINITRFS" = "" ]; then
-   echo "Building intramfs image..."
+   echo "Building initramfs image..."
    cd initramfs
    INITRAMFS=$(./initramfs_create)
    cd ..
