@@ -17,7 +17,7 @@ LIVEKITNAME="linux"
 # Kernel file, will be copied to your Live Kit
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
 # out of the box.
-VMLINUZ=/vmlinuz
+VMLINUZ=/boot/vmlinuz
 
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running
