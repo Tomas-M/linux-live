@@ -27,7 +27,7 @@ chown -R guest.users /home/guest/.config
 savechanges /$NAME-stock.sb
 
 cd /
-unsquashfs /$NAME-stock.sb
+unsquashfs -no-xattrs /$NAME-stock.sb
 
 # create user directories
 for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
@@ -64,10 +64,10 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.5.3.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.7.1.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
-cd xlunch-4.5.3
+cd xlunch-4.7.1
 make
 cp xlunch /squashfs-root/usr/bin
 cp extra/gentriesquick /squashfs-root/usr/bin/xlunch_genquick
@@ -95,9 +95,9 @@ cp gtkdialog /squashfs-root/usr/bin
 
 # battery icon app
 cd /tmp
-wget https://github.com/valr/cbatticon/archive/1.6.7.tar.gz
-tar -xf 1.6.7.tar.gz
-cd cbatticon-1.6.7
+wget https://github.com/valr/cbatticon/archive/1.6.10.tar.gz
+tar -xf 1.6.10.tar.gz
+cd cbatticon-1.6.10
 cp -R /usr/include/glib-2.0/* /usr/include
 cp -R /usr/include/gtk-2.0/* /usr/include
 apt install --yes libnotify-dev
