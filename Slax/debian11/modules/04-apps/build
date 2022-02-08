@@ -4,11 +4,10 @@ CWD=$(dirname $(readlink -f $0))
 
 apt-get update
 apt-get install --no-install-recommends --yes \
-    qalculate-gtk \
-    pcmanfm \
+    gnome-calculator \
+    tuxcmd \
     lxtask \
-    xarchiver xdg-utils libgconf-2-4 \
-    wicd
+    xarchiver xdg-utils libgconf-2-4
 
 . ../../cleanup
 
