@@ -1,7 +1,8 @@
 #!/bin/bash
 
-apt remove apparmor
+apt remove apparmor --yes
 
+rm -Rf /usr/lib/modules/5.10.0-10-686-pae
 
 rm -f /etc/fstab
 rm -f /etc/mtab
