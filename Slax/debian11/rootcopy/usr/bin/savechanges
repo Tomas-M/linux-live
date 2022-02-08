@@ -22,6 +22,11 @@ if [ ! "$2" = "" ]; then
    CHANGES="$2"
 fi
 
+# Overlayfs requires one more subdir. Detect it this way
+if [ -d "$CHANGES/changes" -a -d "$CHANGES/workdir" -a "$(ls -1 "$CHANGES" | egrep -v '^changes$' | egrep -v '^workdir')" = "" ]; then
+   CHANGES="$CHANGES/changes"
+fi
+
 # exclude the save_file itself of course
 EXCLUDE="$EXCLUDE|^""$(readlink -f "$1" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
 
