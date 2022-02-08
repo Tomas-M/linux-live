@@ -16,7 +16,7 @@ apt-get install --no-install-recommends --yes \
 
 savechanges /apps-stock.sb
 cd /
-unsquashfs /apps-stock.sb
+unsquashfs -no-xattrs /apps-stock.sb
 rm -Rf /squashfs-root/root/.fluxbox
 rm -f /squashfs-root/root/.gtk-bookmarks
 
