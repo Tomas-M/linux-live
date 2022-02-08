@@ -1,0 +1,18 @@
+#!/bin/bash
+
+PICTURES=~/Pictures
+mkdir -p $PICTURES
+cd $PICTURES
+
+# make screenshot
+SCREENSHOT=$(scrot -e 'echo $f')
+
+if [ "$SCREENSHOT" = "" ]; then
+   exit 1
+fi
+
+# open screenshot in 2/3 window
+read W H X <<< $(xrandr 2>/dev/null | fgrep '*' | tr -s " " | tr "x" " ")
+W=$(($W*2/3))
+H=$(($H*2/3))
+exec feh --geometry $W"x"$H $SCREENSHOT

@@ -1,0 +1,79 @@
+*.appearance: flat solid
+
+*button.pressed.appearance: sunken solid
+*button.pressed.backgroundColor: rgb:69/c1/f1
+*button.appearance: parentrelative
+
+*.focus.backgroundColor: rgb:69/c1/f1
+*.unfocus.backgroundColor: rgb:28/28/28
+
+*font: Bitstream Vera Sans-9
+
+menu.title.appearance: flat solid
+menu.title.backgroundColor: rgb:69/c1/f1
+menu.title.textColor: rgb:28/28/28
+menu.title.alignment: center
+menu.title.marginWidth: 6
+
+menu.frame.appearance: flat gradient border
+menu.frame.textColor: rgb:28/28/28
+menu.frame.foregroundColor: grey40
+menu.frame.borderColor: rgb:69/c1/f1
+menu.frame.borderWidth: 6
+menu.frame.disabledColor: darkgrey
+menu.frame.alignment: left
+menu.frame.marginWidth: 2
+
+menu.active.appearance: flat solid border
+menu.active.backgroundColor: rgb:69/c1/f1
+menu.active.borderWidth: 4
+menu.active.borderColor: rgb:69/c1/f1
+menu.active.textColor: rgb:38/38/38
+
+rootCommand: bsetroot -solid rgb:77/90/aa
+
+slit.appearance: raised solid
+slit.backgroundColor: rgb:77/90/aa
+slit.marginWidth: 3
+
+toolbar.appearance: flat gradient border
+toolbar.alignment: center
+toolbar*textColor: rgb:28/28/28
+toolbar.label.appearance: parentrelative
+toolbar.clock.appearance: parentrelative
+toolbar.windowLabel.appearance: parentrelative
+
+window.title.focus.appearance: flat solid
+window.title.focus.backgroundColor: rgb:69/c1/f1
+window.title.unfocus.appearance: flat solid
+window.title.unfocus.backgroundColor: rgb:d6/d6/d6
+window.title.marginWidth: 5
+
+window.label.focus.appearance: parentrelative
+window.label.focus.textColor: rgb:28/28/28
+window.label.unfocus.appearance: parentrelative
+window.label.unfocus.textColor: rgb:28/28/28
+window.label.marginWidth: 1
+
+window.button.focus.appearance: parentrelative
+window.button.focus.foregroundColor: white
+
+window.button.unfocus.appearance: parentrelative
+window.button.unfocus.foregroundColor: darkgrey
+
+window.handle.focus.appearance: flat solid
+window.handle.focus.backgroundColor: rgb:69/c1/f1
+window.handle.unfocus.appearance: flat solid
+window.handle.unfocus.backgroundColor: rgb:d6/d6/d6
+
+window.grip.focus.appearance: flat solid
+window.grip.focus.backgroundColor: rgb:69/c1/f1
+window.grip.unfocus.appearance: flat solid
+window.grip.unfocus.backgroundColor: rgb:d6/d6/d6
+
+window*alignment: center
+
+window.handleHeight: 7
+window.frame.borderWidth: 7
+window.frame.focus.borderColor: rgb:69/c1/f1
+window.frame.unfocus.borderColor: rgb:d6/d6/d6

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+SIGNAL=~/.fehbg
+rm -f $SIGNAL
+
+OUTPUT=$(xrandr 2>/dev/null | grep -iv disconnected | grep -i 'connected' | head -n 1 | cut -d " " -f 1)
+MODE=$1
+
+xrandr --output $OUTPUT --mode $MODE -s $MODE
+
+while [ -e $SIGNAL ]; do
+   sleep 0.1
+done
+
+sleep 1
+
+killall -SIGUSR1 compton

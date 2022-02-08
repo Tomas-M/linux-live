@@ -1,0 +1,38 @@
+[Unit]
+Description=Load AppArmor profiles
+DefaultDependencies=no
+Before=sysinit.target
+After=local-fs.target
+After=systemd-journald-audit.socket
+RequiresMountsFor=/var/cache/apparmor
+AssertPathIsReadWrite=/sys/kernel/security/apparmor/.load
+ConditionSecurity=apparmor
+Documentation=man:apparmor(7)
+Documentation=https://gitlab.com/apparmor/apparmor/wikis/home/
+
+# Don't start this unit on the Ubuntu Live CD
+ConditionPathExists=!/rofs/etc/apparmor.d
+
+# Don't start this unit on the Debian Live CD when using overlayfs
+ConditionPathExists=!/run/live/overlay/work
+
+# Don't start this unit on Slax Live CD
+ConditionPathExists=!/run/initramfs/lib/livekitlib
+
+[Service]
+Type=oneshot
+ExecStart=/lib/apparmor/apparmor.systemd reload
+ExecReload=/lib/apparmor/apparmor.systemd reload
+
+# systemd maps 'restart' to 'stop; start' which means removing AppArmor confinement
+# from running processes (and not being able to re-apply it later).
+# Upstream systemd developers refused to implement an option that allows overriding
+# this behaviour, therefore we have to make ExecStop a no-op to error out on the
+# safe side.
+#
+# If you really want to unload all AppArmor profiles, run   aa-teardown
+ExecStop=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

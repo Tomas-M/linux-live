@@ -1,0 +1,4 @@
+#!/bin/bash
+
+setxkbmap $1
+echo $1 > ~/.fluxbox/kblayout

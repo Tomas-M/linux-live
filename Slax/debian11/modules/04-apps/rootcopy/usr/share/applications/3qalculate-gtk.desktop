@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Calculator
+Exec=qalculate-gtk
+Icon=calculator
+Terminal=false
