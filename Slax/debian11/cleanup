@@ -60,7 +60,8 @@ rm /usr/share/applications/pcmanfm-desktop-pref.desktop
 rm /usr/share/applications/python2.7.desktop
 rm /usr/share/applications/python3.7.desktop
 rm /usr/share/applications/vim.desktop
-rm /usr/share/applications/SciTe.desktop
+rm /usr/share/applications/SciTE.desktop
+rm /usr/share/applications/org.gnome.Calculator.desktop
 
 rm /etc/systemd/system/media-sr0.mount
 rm /etc/systemd/system/multi-user.target.wants/media-sr0.mount
