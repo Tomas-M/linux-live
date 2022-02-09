@@ -68,6 +68,7 @@ rm /etc/systemd/system/multi-user.target.wants/media-sda1.mount
 
 rm /etc/.pwd.lock
 rm /etc/console-setup/cached*
+rm /root/.gtk-bookmarks
 
 # newer modules are already available for Debian 11.2
 rm -Rf /usr/lib/modules/5.10.0-10-amd64
