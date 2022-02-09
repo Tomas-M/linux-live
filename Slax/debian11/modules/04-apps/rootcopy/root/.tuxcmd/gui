@@ -1,3 +1,4 @@
 [Profile_Default]
 Viewer=mcview
 Editor=mcedit
+TerminalCommand=xterm -T "TuxCommander" -e sh -c '%s'

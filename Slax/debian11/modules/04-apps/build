@@ -19,10 +19,8 @@ unsquashfs -no-xattrs /apps-stock.sb
 rm -Rf /squashfs-root/root/.fluxbox
 rm -f /squashfs-root/root/.gtk-bookmarks
 
-rm -f /squashfs-root/usr/share/applications/leafpad.desktop
-rm -f /squashfs-root/usr/share/applications/qalculate-gtk.desktop
-rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
-rm -f /squashfs-root/usr/share/applications/wicd.desktop
 rm -f /squashfs-root/usr/share/applications/lxtask.desktop
+rm -f /squashfs-root/usr/share/applications/tuxcmd.desktop
+rm -f /squashfs-root/usr/share/applications/org.gnome.calculator.desktop
 
 dir2sb /squashfs-root /04-apps.sb
