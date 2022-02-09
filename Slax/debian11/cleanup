@@ -62,6 +62,8 @@ rm /usr/share/applications/python2.7.desktop
 rm /usr/share/applications/python3.7.desktop
 rm /usr/share/applications/vim.desktop
 
+# newer modules are already available for Debian 11.2
+rm -Rf /usr/lib/modules/5.10.0-10-amd64
 
 
 # Unzip gzipped files (man pages), so LZMA can compress 2times better.
