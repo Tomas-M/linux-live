@@ -13,9 +13,6 @@ xrdb -merge ~/.Xresources
 # set keyboard layout
 fbsetkb $(cat ~/.fluxbox/kblayout)
 
-# setup bookmarks for file manager
-gtk-bookmarks-update
-
 # Share common directories with guest user. This is necessary
 # because some apps like chromium must be running under guest
 for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do

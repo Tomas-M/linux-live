@@ -53,8 +53,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          systemctl enable $UNIT
          systemctl start $UNIT
 
-         gtk-bookmarks-update
-         DISPLAY=:0.0 pcmanfm -n file://$MNT >/dev/null 2>&1
+         DISPLAY=:0.0 tuxcmd --left=$MNT >/dev/null 2>&1
       fi
    fi
 fi
@@ -63,5 +62,4 @@ if [ "$ACTION" = "remove" ]; then
    systemctl disable $UNIT
    rm "$TARGET"
    rmdir "$MNT"
-   gtk-bookmarks-update
 fi
