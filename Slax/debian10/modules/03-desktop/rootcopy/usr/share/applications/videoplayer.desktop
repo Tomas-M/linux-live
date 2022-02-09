@@ -1,5 +1,0 @@
-[Desktop Entry]
-Icon=videoplayer
-Name=Video Player
-Exec=fbliveapp vlc
-Terminal=false
