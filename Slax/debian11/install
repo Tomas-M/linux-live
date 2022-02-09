@@ -10,8 +10,9 @@ NEW="$(ls -1 /boot)"
 if [ "$CURRENT" != "$NEW" ]; then
    echo "----------------------------------------------------------------------"
    echo "It looks like your kernel has been upgraded."
-   echo "You should maybe reboot and restart the build process."
+   echo "You should reboot and restart the build process."
    echo "----------------------------------------------------------------------"
+   exit
 fi
 
 # if kernel was upgraded, you may need to reboot
