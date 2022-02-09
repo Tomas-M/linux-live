@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=Calculator
+Exec=gnome-qalculator
+Icon=calculator
+Terminal=false
