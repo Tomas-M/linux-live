@@ -3,7 +3,6 @@
 apt update
 apt install --yes --no-install-recommends \
    firmware-linux-free \
-   firmware-linux-nonfree \
    firmware-atheros \
    firmware-iwlwifi \
    firmware-zd1211 \
