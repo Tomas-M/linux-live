@@ -62,6 +62,11 @@ rm /usr/share/applications/python2.7.desktop
 rm /usr/share/applications/python3.7.desktop
 rm /usr/share/applications/vim.desktop
 
+rm /etc/systemd/system/media-sr0.mount
+rm /etc/systemd/system/multi-user.target.wants/media-sr0.mount
+rm /etc/systemd/system/media-sda1.mount
+rm /etc/systemd/system/multi-user.target.wants/media-sda1.mount
+
 # newer modules are already available for Debian 11.2
 rm -Rf /usr/lib/modules/5.10.0-10-amd64
 
