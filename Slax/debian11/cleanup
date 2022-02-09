@@ -104,4 +104,5 @@ remove_broken_links()
 
 remove_broken_links /etc/alternatives
 remove_broken_links /usr/share/man
+remove_broken_links /usr/share/scite
 
