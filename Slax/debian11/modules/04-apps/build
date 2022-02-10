@@ -19,9 +19,29 @@ cd /
 unsquashfs -no-xattrs /apps-stock.sb
 rm -Rf /squashfs-root/root/.fluxbox
 rm -f /squashfs-root/root/.gtk-bookmarks
-
 rm -f /squashfs-root/usr/share/applications/lxtask.desktop
-rm -f /squashfs-root/usr/share/applications/tuxcmd.desktop
 rm -f /squashfs-root/usr/share/applications/org.gnome.calculator.desktop
+rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
+
+# we want to patch pcmanfm it to hide ugly root warning icon
+# so we will recompile whole package
+
+REBUILD=/tmp/pcmanfm-rebuild-$$
+
+apt-get update
+apt-get --yes build-dep pcmanfm
+
+mkdir -p -m 0777 $REBUILD
+cd $REBUILD
+
+apt-get source pcmanfm
+
+cd pcmanfm-1.3.2
+dpkg-buildpackage -us -uc
+patch -p1 < $CWD/patches/pcmanfm-slax.diff
+make
+
+strip --strip-unneeded src/pcmanfm
+cp src/pcmanfm /squashfs-root/usr/bin
 
 dir2sb /squashfs-root /04-apps.sb
