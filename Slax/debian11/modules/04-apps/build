@@ -5,7 +5,7 @@ CWD=$(dirname $(readlink -f $0))
 apt-get update
 apt-get install --no-install-recommends --yes \
     gnome-calculator \
-    tuxcmd \
+    pcmanfm \
     lxtask \
     connman-gtk \
     scite \
