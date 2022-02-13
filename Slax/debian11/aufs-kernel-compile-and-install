@@ -1,0 +1,59 @@
+#!/bin/bash
+set -x -e
+KERNEL=linux-5.10.92
+CONFIG=/boot/config-5.10.0-11-amd64
+AUFS=aufs5-standalone
+CHECKOUT=origin/aufs5.10
+
+apt update
+apt install --yes git
+apt build-dep linux
+apt --yes source linux
+
+cd $KERNEL
+rm -Rf $AUFS
+git clone https://github.com/sfjro/$AUFS
+cd $AUFS
+git checkout $CHECKOUT
+cd ..
+
+cp -aR $AUFS/fs .
+cp -a $AUFS/include/uapi/linux/aufs_type.h include/uapi/linux
+
+sed -r -i "s/int update_time/int inode_update_time/" $AUFS/aufs5-base.patch
+sed -r -i "s/static int inode_update_time/int inode_update_time/" $AUFS/aufs5-base.patch
+
+patch -p1 < $AUFS/aufs5-kbuild.patch
+patch -p1 < $AUFS/aufs5-base.patch
+patch -p1 < $AUFS/aufs5-mmap.patch
+patch -p1 < $AUFS/aufs5-standalone.patch
+patch -p1 < $AUFS/aufs5-loopback.patch
+patch -p1 < $AUFS/vfs-ino.patch
+patch -p1 < $AUFS/tmpfs-idr.patch
+
+cat $CONFIG >.config
+
+echo "CONFIG_AUFS_FS=m
+# CONFIG_AUFS_BRANCH_MAX_127 is not set
+# CONFIG_AUFS_BRANCH_MAX_511 is not set
+# CONFIG_AUFS_BRANCH_MAX_1023 is not set
+CONFIG_AUFS_BRANCH_MAX_32767=y
+CONFIG_AUFS_SBILIST=y
+# CONFIG_AUFS_HNOTIFY is not set
+CONFIG_AUFS_EXPORT=y
+CONFIG_AUFS_INO_T_64=y
+CONFIG_AUFS_XATTR=y
+# CONFIG_AUFS_FHSM is not set
+# CONFIG_AUFS_RDU is not set
+CONFIG_AUFS_DIRREN=y
+CONFIG_AUFS_SHWH=y
+CONFIG_AUFS_BR_RAMFS=y
+CONFIG_AUFS_BR_FUSE=y
+CONFIG_AUFS_POLL=y
+CONFIG_AUFS_BR_HFSPLUS=y
+CONFIG_AUFS_BDEV_LOOP=y
+# CONFIG_AUFS_DEBUG is not set" >>.config
+
+make bzImage
+make modules
+make modules_install DESTDIR=/aaa
