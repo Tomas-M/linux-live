@@ -3,12 +3,14 @@ set -x -e
 KERNEL=linux-5.10.92
 CONFIG=/boot/config-5.10.0-11-amd64
 AUFS=aufs5-standalone
-CHECKOUT=origin/aufs5.10
+CHECKOUT=origin/aufs5.10.82
 
 apt update
 apt install --yes git
 apt build-dep linux
-apt --yes source linux
+apt source linux
+#wget https://cdn.kernel.org/pub/linux/kernel/v5.x/$KERNEL.tar.xz
+#tar -xf $KERNEL.tar.xz
 
 cd $KERNEL
 rm -Rf $AUFS
@@ -20,9 +22,6 @@ cd ..
 cp -aR $AUFS/fs .
 cp -a $AUFS/include/uapi/linux/aufs_type.h include/uapi/linux
 
-sed -r -i "s/int update_time/int inode_update_time/" $AUFS/aufs5-base.patch
-sed -r -i "s/static int inode_update_time/int inode_update_time/" $AUFS/aufs5-base.patch
-
 patch -p1 < $AUFS/aufs5-kbuild.patch
 patch -p1 < $AUFS/aufs5-base.patch
 patch -p1 < $AUFS/aufs5-mmap.patch
@@ -31,7 +30,7 @@ patch -p1 < $AUFS/aufs5-loopback.patch
 patch -p1 < $AUFS/vfs-ino.patch
 patch -p1 < $AUFS/tmpfs-idr.patch
 
-cat $CONFIG >.config
+cat $CONFIG | sed -r "s/CONFIG_SYSTEM_TRUSTED_KEYS/#CONFIG_SYSTEM_TRUSTED_KEYS/" >.config
 
 echo "CONFIG_AUFS_FS=m
 # CONFIG_AUFS_BRANCH_MAX_127 is not set
@@ -54,6 +53,7 @@ CONFIG_AUFS_BR_HFSPLUS=y
 CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
+make oldconfig
 make bzImage
 make modules
 make modules_install DESTDIR=/aaa
