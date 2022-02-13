@@ -23,4 +23,4 @@ cd initramfs
 . ./initramfs_create
 
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
-cp -vf $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
+cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
