@@ -2,7 +2,7 @@
 set -x -e
 KERNELVERSION=5.10.92
 KERNEL=linux-$KERNELVERSION
-CONFIG=/boot/config-5.10.0-11-amd64
+CONFIG=/boot/config-5.10.0-11-*
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.10.82
 
