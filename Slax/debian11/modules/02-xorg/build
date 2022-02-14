@@ -1,7 +1,7 @@
 #!/bin/bash
 
-apt-get update
-apt-get install --yes --no-install-recommends \
+apt update
+apt install --yes --no-install-recommends \
     xserver-xorg xserver-xorg-video-all xserver-xorg-video-intel \
     xinit \
     xterm \
@@ -15,6 +15,9 @@ apt-get install --yes --no-install-recommends \
     libdrm-intel1 \
     libgl1-mesa-dri \
     libglu1-mesa
+
+apt remove xserver-xorg-input-synaptics
+apt install xserver-xorg-input-libinput
 
 # Set setuid bit on xorg binary, so it can be started by guest user
 chmod u+s /usr/lib/xorg/Xorg
@@ -30,7 +33,7 @@ mv /usr/share/icons/Breeze_Snow /usr/share/icons/breeze_cursors
 cp ../../cleanup /tmp
 # install x11 server utils, apt-get would add cpp dependency, bullshit!
 cd /tmp
-apt-get download x11-xserver-utils
+apt download x11-xserver-utils
 dpkg -x x11-xserver-utils*.deb /tmp/x11utils
 cd /tmp/x11utils
 cp -aR * /
