@@ -49,6 +49,9 @@ rm -Rf /usr/share/man/*_*
 
 rm -Rf /usr/share/icons/elementaryXubuntu-dark
 rm -Rf /usr/share/icons/gnome/256x256
+rm -Rf /usr/share/icons/Adwaita/cursors
+rm -Rf /usr/share/icons/Adwaita/512x512
+rm -Rf /usr/share/icons/Adwaita/256x256
 
 rm /usr/share/applications/compton.desktop
 rm /usr/share/applications/debian-uxterm.desktop
