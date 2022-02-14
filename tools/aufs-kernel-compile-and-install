@@ -60,9 +60,9 @@ make -j8 bzImage
 make modules_install INSTALL_MOD_STRIP=1
 
 TMP=/aaa-kernel
-mkdir -p $TMP/lib/modules
-cp -aR /lib/modules/$KERNELVERSION $TMP/lib/modules
-rm $TMP/lib/modules/$KERNELVERSION/{build,source}
+mkdir -p $TMP/usr/lib/modules
+cp -aR /usr/lib/modules/$KERNELVERSION $TMP/usr/lib/modules
+rm -f $TMP/usr/lib/modules/$KERNELVERSION/{build,source}
 mkdir -p $TMP/boot
 cp arch/x86/boot/bzImage $TMP/boot/vmlinuz-$KERNELVERSION
 cd $TMP
