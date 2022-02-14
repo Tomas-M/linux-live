@@ -75,7 +75,8 @@ rm /root/.gtk-bookmarks
 # newer modules are already available for Debian 11.2
 rm -Rf /usr/lib/modules/5.10.0-10-amd64
 rm -Rf /usr/lib/modules/5.10.0-10-686-pae
-
+rm -Rf /usr/lib/modules/5.10.0-11-amd64
+rm -Rf /usr/lib/modules/5.10.0-11-686-pae
 
 # Unzip gzipped files (man pages), so LZMA can compress 2times better.
 # First we fix symlinks, then uncompress files
