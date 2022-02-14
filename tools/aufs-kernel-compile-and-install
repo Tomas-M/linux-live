@@ -54,6 +54,6 @@ CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
 make oldconfig
-make bzImage
-make modules
+make -j8 bzImage
+make -j8 modules
 make modules_install DESTDIR=/aaa
