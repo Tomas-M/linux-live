@@ -16,9 +16,6 @@ apt install --yes --no-install-recommends \
     libgl1-mesa-dri \
     libglu1-mesa
 
-apt remove xserver-xorg-input-synaptics
-apt install xserver-xorg-input-libinput
-
 # Set setuid bit on xorg binary, so it can be started by guest user
 chmod u+s /usr/lib/xorg/Xorg
 
