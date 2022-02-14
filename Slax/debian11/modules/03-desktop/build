@@ -15,6 +15,7 @@ apt install --no-install-recommends --yes \
     volumeicon-alsa \
     murrine-themes \
     libnotify4 \
+    libgtk2.0-0 \
     scrot
 
 . ../../cleanup
