@@ -27,6 +27,12 @@ if [ -d "$CHANGES/changes" -a -d "$CHANGES/workdir" -a "$(ls -1 "$CHANGES" | egr
    CHANGES="$CHANGES/changes"
 fi
 
+# exclude control files for automounted disk drives
+EXCLUDEDISKS=$(grep "Slax skip savechanges" /etc/systemd/system/{*,*/*} 2>/dev/null | cut -d : -f 1 | cut -b 2- | tr '\n' '|')
+if [ "$EXCLUDEDISKS" != "" ]; then
+   EXCLUDE="$EXCLUDE|^($EXCLUDEDISKS)\$"
+fi
+
 # exclude the save_file itself of course
 EXCLUDE="$EXCLUDE|^""$(readlink -f "$1" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
 

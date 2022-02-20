@@ -38,7 +38,8 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
 
          mkdir -p "$MNT"
 
-         echo "[Unit]" >$TARGET
+         echo "# Slax skip savechanges" >$TARGET
+         echo "[Unit]" >>$TARGET
          echo "Description=Disk $BAS" >>$TARGET
          echo "" >>$TARGET
          echo "[Mount]" >>$TARGET
