@@ -94,7 +94,7 @@ uncompress_files()
       ln -sfn "$LINK" "$FILE"
       rm -f "$LINE"
    done
-   find "$1" -type f -name "*.gz" | xargs -r gunzip
+   find "$1" -type f -name "*.gz" | xargs -r gunzip -f
 }
 
 uncompress_files /etc/alternatives
