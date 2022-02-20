@@ -7,7 +7,7 @@ apt install --no-install-recommends --yes \
     gnome-calculator \
     pcmanfm \
     lxtask \
-    connman-gtk \
+    connman-gtk at-spi2-core \
     scite \
     xarchiver xdg-utils libgconf-2-4
 
