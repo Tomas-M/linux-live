@@ -30,7 +30,7 @@ savechanges /$NAME-stock.sb
 cd /
 mkdir /squashfs-root
 mount -t tmpfs tmpfs /squashfs-root
-unsquashfs /$NAME-stock.sb
+unsquashfs -f /$NAME-stock.sb
 
 # create user directories
 for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
