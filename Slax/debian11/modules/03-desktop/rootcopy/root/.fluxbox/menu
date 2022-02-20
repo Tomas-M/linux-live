@@ -4,6 +4,7 @@
    [exec] (Web Browser) { fbstartupnotify && fbliveapp chromium }
    [exec] (Text Editor) { fbstartupnotify && scite }
    [exec] (Calculator) { fbstartupnotify && gnome-calculator }
+   [exec] (Network Manager) { fbstartupnotify && connman-gtk }
    [exec] (Run) { fbappselect }
    [separator]
    [workspaces] (Workspaces                ...)
