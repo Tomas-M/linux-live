@@ -137,3 +137,4 @@ Control Mod4 F11 :TakeToWorkspace 11
 Control Mod4 F12 :TakeToWorkspace 12
 
 Print :Exec fbprintscreen
+Super_L :Exec fbappselect
