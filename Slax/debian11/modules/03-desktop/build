@@ -67,10 +67,10 @@ cp debian/$NAME/usr/bin/fluxbox /squashfs-root/usr/bin
 
 
 # add xlunch from sources
-wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.7.1.tar.gz
+wget -O /tmp/xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.7.2.tar.gz
 cd /tmp
 tar -xf xlunch.tar.gz
-cd xlunch-4.7.1
+cd xlunch-4.7.2
 make
 cp xlunch /squashfs-root/usr/bin
 cp extra/gentriesquick /squashfs-root/usr/bin/xlunch_genquick
