@@ -3,3 +3,4 @@ Name=Text Editor
 Exec=scite
 Icon=Sci48M
 Terminal=false
+Type=Application
