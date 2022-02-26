@@ -3,3 +3,4 @@ Name=Calculator
 Exec=gnome-calculator
 Icon=calculator
 Terminal=false
+Type=Application
