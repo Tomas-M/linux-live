@@ -1,8 +1,5 @@
 #!/bin/bash
 
-SIGNAL=~/.fehbg
-rm -f $SIGNAL
-
 OUTPUT=$(xrandr 2>/dev/null | grep -iv disconnected | grep -i 'connected' | head -n 1 | cut -d " " -f 1)
 MODE=$1
 
