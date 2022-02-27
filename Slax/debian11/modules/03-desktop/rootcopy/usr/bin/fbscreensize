@@ -1,17 +1,13 @@
 #!/bin/bash
 
-SIGNAL=~/.fehbg
-rm -f $SIGNAL
-
 OUTPUT=$(xrandr 2>/dev/null | grep -iv disconnected | grep -i 'connected' | head -n 1 | cut -d " " -f 1)
 MODE=$1
 
 xrandr --output $OUTPUT --mode $MODE -s $MODE
 
-while [ -e $SIGNAL ]; do
+while [ "$(ps -ef | grep compton | grep -v grep)" != "" ]; do
+   killall compton
    sleep 0.1
 done
 
-sleep 1
-
-killall -SIGUSR1 compton
+compton --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped' &
