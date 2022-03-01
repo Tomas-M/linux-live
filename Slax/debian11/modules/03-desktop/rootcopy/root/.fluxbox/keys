@@ -61,7 +61,7 @@ Mod4 9 :Tab 9
 Mod1 F1 :Exec xterm
 
 # open a dialog to run programs
-Mod1 F2 :Exec fbappselect
+Mod1 F2 :Exec fbappselect >>/var/log/fbappselect.log 2>&1
 
 # volume settings, using common keycodes
 # if these don't work, use xev to find out your real keycodes
