@@ -52,6 +52,10 @@ rm -Rf /usr/share/icons/gnome/256x256
 rm -Rf /usr/share/icons/Adwaita/cursors
 rm -Rf /usr/share/icons/Adwaita/512x512
 rm -Rf /usr/share/icons/Adwaita/256x256
+rm -Rf /usr/share/icons/Adwaita/64x64
+rm -Rf /usr/share/icons/Adwaita/96x96
+rm -Rf /usr/share/icons/Adwaita/scalable*
+rm -Rf /usr/share/yudit/*
 
 rm /usr/share/applications/compton.desktop
 rm /usr/share/applications/debian-uxterm.desktop
