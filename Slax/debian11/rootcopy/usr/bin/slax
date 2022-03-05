@@ -176,3 +176,9 @@ if [ "$1" = "savechanges" ]; then
    shift
    savechanges "$@"
 fi
+
+if [[ "$1" != "" || "activate" || "deactivate" || "list" || "savechanges" ]]; then
+   echo "The command ""$1"" doesn't exist, please refer to the following info:"
+   usage
+   exit
+fi
