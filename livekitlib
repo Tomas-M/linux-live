@@ -700,6 +700,26 @@ copy_rootcopy_content()
 }
 
 
+# Run user custom preinit script if it exists
+# $1 = data directory
+# $2 = union directory
+user_preinit()
+{
+   debug_log "user_preinit" "$*"
+
+   local SRC
+
+   SRC="$1/rootcopy/run/preinit.sh"
+
+   if [ "$(ls -1 "$SRC" 2>/dev/null)" != "" ]; then
+      echo_green_star
+      echo "Executing user custom preinit..."
+      debug_log "Executing user custom preinit [$SRC]"
+      . "$SRC" "$2"
+   fi
+}
+
+
 # Copy data to RAM if requested
 # $1 = live data directory
 # $2 = changes directory
