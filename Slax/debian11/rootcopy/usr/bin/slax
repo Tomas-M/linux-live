@@ -155,24 +155,25 @@ usage()
 }
 
 
-if [ "$1" = "" ]; then
-   usage
-   die
-fi
-
 if [ "$1" = "activate" ]; then
    activate "$2"
+   exit
 fi
 
 if [ "$1" = "deactivate" ]; then
    deactivate "$2"
+   exit
 fi
 
 if [ "$1" = "list" ]; then
    print_branches
+   exit
 fi
 
 if [ "$1" = "savechanges" ]; then
    shift
    savechanges "$@"
+   exit
 fi
+
+usage
