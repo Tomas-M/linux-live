@@ -177,3 +177,4 @@ if [ "$1" = "savechanges" ]; then
 fi
 
 usage
+exit 1
