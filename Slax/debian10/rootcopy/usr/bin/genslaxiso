@@ -95,7 +95,7 @@ done
    genisoimage -o - -quiet -v -J -R -D -A slax -V slax \
    -no-emul-boot -boot-info-table -boot-load-size 4 -input-charset utf-8 \
    -b slax/boot/isolinux.bin -c slax/boot/isolinux.boot \
-   -graft-points $GRAFT \
+   -graft-points $GRAFT $ROOTCOPY \
    . \
 ) > "$TARGET"
 
