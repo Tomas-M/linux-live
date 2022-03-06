@@ -4,9 +4,17 @@ CWD=$(pwd)
 SOURCE=/run/initramfs/memory
 TEMP=/tmp/slaxiso.$$
 REGEX='^$'
+ROOTCOPY=''
+RCPYEX='^$'
 
 if [ "$1" = "-e" ]; then
    REGEX="$2"
+   shift
+   shift
+fi
+
+if [ "$1" = "-d" ]; then
+   ROOTCOPY="$2"
    shift
    shift
 fi
@@ -19,7 +27,7 @@ if [ "$TARGET" = "" ]; then
    echo "Regular expression is used to exclude any existing path or file with -e regex"
    echo ""
    echo "Usage:"
-   echo "        $0 [[ -e regex ]] target.iso [[module.sb]] [[module.sb]] ..."
+   echo "        $0 [[ -e regex ]] [[ -d dir ]] target.iso [[module.sb]] [[module.sb]] ..."
    echo ""
    echo "Examples:"
    echo "        # to create Slax iso without chromium.sb module:"
@@ -27,6 +35,9 @@ if [ "$TARGET" = "" ]; then
    echo ""
    echo "        # to create Slax text-mode core only:"
    echo "        $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
+   echo ""
+   echo "        # to add user rootcopy directory:"
+   echo "        $0 -d /tmp/my-rootcopy slax_with_rootcopy.iso"
    exit 1
 fi
 
@@ -47,10 +58,25 @@ if [ "$SLAX" = "" ]; then
    exit 2
 fi
 
+
+# add rootcopy
+if [ "$ROOTCOPY" != "" -a -d "$ROOTCOPY" ]; then
+   # use rootcopy, its a real directory
+   RCPYEX='^rootcopy/'
+   ROOTCOPY="/slax/rootcopy=$ROOTCOPY"
+elif [ "$ROOTCOPY" != "" ]; then
+   # not a real directory, disable rootcopy
+   RCPYEX='^rootcopy/'
+   ROOTCOPY=''
+else
+   # use rootcopy from current iso (if any)
+   ROOTCOPY=''
+fi
+
 GRAFT=\
 $(
   cd "$SLAX"
-  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | egrep -v "$REGEX" | while read LINE; do
+  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | egrep -v "$REGEX" | egrep -v "$RCPYEX" | while read LINE; do
      echo "slax/$LINE=$SLAX/$LINE"
   done
 )
@@ -66,6 +92,8 @@ while [ "$2" != "" ]; do
    GRAFT="$GRAFT slax/modules/$BAS=$MOD"
    shift
 done
+
+GRAFT="$GRAFT $ROOTCOPY"
 
 (
    mkdir -p $TEMP/slax/{boot,modules,changes}
