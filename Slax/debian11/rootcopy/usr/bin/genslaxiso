@@ -13,7 +13,7 @@ if [ "$1" = "-e" ]; then
    shift
 fi
 
-if [ "$1" = "-d" ]; then
+if [ "$1" = "-r" ]; then
    ROOTCOPY="$2"
    shift
    shift
@@ -27,7 +27,7 @@ if [ "$TARGET" = "" ]; then
    echo "Regular expression is used to exclude any existing path or file with -e regex"
    echo ""
    echo "Usage:"
-   echo "        $0 [[ -e regex ]] [[ -d dir ]] target.iso [[module.sb]] [[module.sb]] ..."
+   echo "        $0 [[ -e regex ]] [[ -r dir ]] target.iso [[module.sb]] [[module.sb]] ..."
    echo ""
    echo "Examples:"
    echo "        # to create Slax iso without chromium.sb module:"
@@ -37,7 +37,7 @@ if [ "$TARGET" = "" ]; then
    echo "        $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
    echo ""
    echo "        # to add user rootcopy directory:"
-   echo "        $0 -d /tmp/my-rootcopy slax_with_rootcopy.iso"
+   echo "        $0 -r /tmp/my-rootcopy slax_with_rootcopy.iso"
    exit 1
 fi
 
@@ -63,7 +63,7 @@ fi
 if [ "$ROOTCOPY" != "" -a -d "$ROOTCOPY" ]; then
    # use rootcopy, its a real directory
    RCPYEX='^rootcopy/'
-   ROOTCOPY="/slax/rootcopy=$ROOTCOPY"
+   ROOTCOPY="/slax/rootcopy=$(readlink -f $ROOTCOPY)"
 elif [ "$ROOTCOPY" != "" ]; then
    # not a real directory, disable rootcopy
    RCPYEX='^rootcopy/'
