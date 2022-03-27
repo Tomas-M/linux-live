@@ -1,7 +1,9 @@
 #!/bin/bash
 
+TEMPCONF=/tmp/xlunch$$.conf
+xlunch_genquick 64 --desktop > $TEMPCONF
+
 COMMAND=$(
-  xlunch_genquick 64 --desktop | \
   xlunch --border 7% --sideborder 10% --borderratio 100 --sideborderratio 50 \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
          --button "/usr/share/icons/locolor/24x24/actions/xlunch-logout.png;;24;-0;fblogout" \
@@ -9,8 +11,10 @@ COMMAND=$(
          --voidclickterminate --iconpadding 40 --textpadding 10 \
          --leastmargin 6 --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
-         --outputonly
+         --outputonly --input $TEMPCONF
 )
+
+rm $TEMPCONF
 
 if [ "$COMMAND" = "" ]; then
    exit
