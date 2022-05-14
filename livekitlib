@@ -295,6 +295,17 @@ mounted_dir()
 }
 
 
+# Initialize blkid cache by manually probing all devices
+#
+init_blkid_cache()
+{
+   local DEV
+   cat /proc/partitions | tr -s " " |  cut -d " " -f 5 | while read DEV; do
+      blkid /dev/$DEV >/dev/null 2>/dev/null
+   done
+}
+
+
 # Get device tag.
 # $1 = device
 # $2 = tag name, such as TYPE, LABEL, UUID, etc
