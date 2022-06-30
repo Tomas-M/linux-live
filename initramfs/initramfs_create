@@ -148,7 +148,7 @@ cp ../livekitlib $INITRAMFS/lib/
 cp ../config $INITRAMFS/lib/
 
 cd $INITRAMFS
-find . -print | cpio -o -H newc 2>/dev/null | xz -f --extreme --check=crc32 >$INITRAMFS.img
+find . -print | cpio -o -H newc 2>/dev/null | xz -T0 -f --extreme --check=crc32 >$INITRAMFS.img
 echo $INITRAMFS.img
 
 cd ..
