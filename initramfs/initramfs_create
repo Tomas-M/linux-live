@@ -45,7 +45,6 @@ rm -Rf $INITRAMFS
 mkdir -p $INITRAMFS/{bin,dev,etc,lib,lib64,mnt,proc,root,run,sys,tmp,usr,var/log}
 ln -s bin $INITRAMFS/sbin
 
-ldd /bin/tar | grep -o '/.*(' | tr -d "(" | sed 's/ //' | xargs -I abc sh -c 'nne=`dirname 'abc'`; cp "abc" "$nne"/ '
 whereis busybox | awk '{ print $1 }' | xargs cp {} $INITRAMFS/bin
 whereis busybox | awk '{ print $1 }' | xargs ldd | grep -o '/.*(' | tr -d "(" | sed 's/ //' | xargs -I abc sh -c 'nne=`dirname 'abc'`; cp "abc" $INITRAMFS"$nne"/ '
 
