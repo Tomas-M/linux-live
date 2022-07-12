@@ -5,6 +5,8 @@ KERNEL=linux-$KERNELVERSION
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.15.5
 
+mount /dev/sr0 /media/cdrom
+
 installpkg /media/cdrom/slackware*/l/*.txz
 removepkg qt5 gtk4 qt5-webkit opencv boost gtk+3
 rm -Rf /usr/doc /usr/share/locale /usr/share/gtk-doc
@@ -26,6 +28,8 @@ installpkg /media/cdrom/slackware*/k/kernel-source-*.txz
 cd /usr/src
 
 cd $KERNEL
+cat /boot/config > .config
+
 rm -Rf $AUFS
 git -c http.sslVerify=false clone https://github.com/sfjro/$AUFS
 cd $AUFS
