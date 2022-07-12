@@ -1,0 +1,32 @@
+#!/bin/bash
+
+mount /dev/sr0 /media/cdrom
+
+installpkg_local()
+{
+   while [ "$1" != "" ]; do
+      installpkg /media/cdrom/slackware*/*/$1*.txz
+      shift
+   done
+}
+
+removepkg grub
+removepkg kernel-firmware
+removepkg kernel-generic
+removepkg minicom
+removepkg mkinitrd
+removepkg mlocate
+removepkg nvi
+removepkg syslinux
+removepkg tcsh
+
+installpkg_local dhcpcd
+installpkg_local iputils libunistring
+
+# setup Linux Live git
+installpkg_local git openssh
+
+cd /tmp
+git config --global user.email "tomas@slax.org"
+git config --global user.name "Tomas M"
+git clone git@github.com:Tomas-M/linux-live.git
