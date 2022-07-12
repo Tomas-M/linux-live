@@ -22,6 +22,7 @@ removepkg tcsh
 
 installpkg_local dhcpcd
 installpkg_local iputils libunistring
+installpkg_local mc openssh
 
 # setup Linux Live git
 installpkg_local git openssh nghttp2 brotli cyrus-sasl
