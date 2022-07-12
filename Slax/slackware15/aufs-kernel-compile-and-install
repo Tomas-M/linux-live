@@ -5,12 +5,12 @@ KERNEL=linux-$KERNELVERSION
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.15.5
 
-installpkg /media/cdrom/slackware*/k/kernel-source-*.txz
-#installpkg /media/cdrom/slackware*/d/git-*.txz
-#installpkg /media/cdrom/slackware*/n/nghttp2-*.txz
-#installpkg /media/cdrom/slackware*/*/brotli-*.txz
-#installpkg /media/cdrom/slackware*/*/cyrus-sasl-*.txz
+#installpkg /media/cdrom/slackware*/k/kernel-source-*.txz
 
+installpkg /media/cdrom/slackware*/l/*.txz
+installpkg /media/cdrom/slackware*/d/*.txz
+installpkg /media/cdrom/slackware*/ap/*.txz
+installpkg /media/cdrom/slackware*/n/*.txz
 
 cd /usr/src
 
@@ -53,9 +53,7 @@ CONFIG_AUFS_BR_HFSPLUS=y
 CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
-exit
-
-make olddefconfig
+make oldconfig
 make -j8 modules
 make -j8 bzImage
 make modules_install INSTALL_MOD_STRIP=1
