@@ -5,9 +5,12 @@ KERNEL=linux-$KERNELVERSION
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.15.5
 
-#installpkg /media/cdrom/slackware*/k/kernel-source-*.txz
+installpkg /media/cdrom/slackware*/k/kernel-source-*.txz
 #installpkg /media/cdrom/slackware*/d/git-*.txz
 #installpkg /media/cdrom/slackware*/n/nghttp2-*.txz
+#installpkg /media/cdrom/slackware*/*/brotli-*.txz
+#installpkg /media/cdrom/slackware*/*/cyrus-sasl-*.txz
+
 
 cd /usr/src
 
