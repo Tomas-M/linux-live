@@ -20,12 +20,14 @@ removepkg nvi
 removepkg syslinux
 removepkg tcsh
 
-installpkg_local dhcpcd
-installpkg_local iputils libunistring
-installpkg_local mc openssh
+installpkg_local dhcpcd net-tools iputils libunistring
+installpkg_local mc
+installpkg_local openssh
+
+ln -s elvis /usr/bin/vi
 
 # setup Linux Live git
-installpkg_local git openssh nghttp2 brotli cyrus-sasl
+#installpkg_local git openssh nghttp2 brotli cyrus-sasl
 
 cd /tmp
 git config --global user.email "tomas@slax.org"

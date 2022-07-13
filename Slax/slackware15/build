@@ -1,0 +1,24 @@
+#!/bin/bash
+
+CHANGES=/tmp/slax-build
+UNION=$CHANGES/union
+
+modprobe aufs || exit 1
+
+mkdir -p $CHANGES/empty
+mkdir -p $UNION
+mount -t aufs -o xino="/tmp/.xino",trunc_xino,br="$CHANGES/empty" aufs "$UNION"
+
+for i in $(ls -1 modules); do
+   echo $i
+   mkdir -p $CHANGES/$i
+   mount -o remount,add:0:"$CHANGES/$i" aufs "$UNION"
+   touch $UNION/$i
+   cat modules/$i/packages | egrep -v '^$' | while read PKG; do
+      installpkg -root $UNION /media/cdrom/slackware*/*/$PKG*.txz
+   done
+   mount -o remount,mod:"$CHANGES/$i=ro" aufs "$UNION"
+done
+
+
+umount $UNION
