@@ -1,0 +1,208 @@
+#!/bin/bash
+
+if [ "$1" = "" ]; then
+   echo "usage: $0 root_directory"
+   exit 1
+fi
+
+function move_to_devel()
+{
+   while [ "$1" != "" ]; do
+      SOURCE="$(readlink -f $1)"
+      DESTINATION="../06-devel/$1"
+
+      if [ -e "$SOURCE" -a "$(echo $SOURCE | grep devel)" = "" ]; then
+         mkdir -p "$(dirname $DESTINATION)"
+         cp -af $SOURCE "$(dirname $DESTINATION)"
+         rm -Rf "$SOURCE"
+
+         if [ -d "$DESTINATION" ]; then
+            mkdir -p "$SOURCE"
+         fi
+      fi
+   shift
+   done
+}
+
+function zip_recompress()
+{
+   local ZIP CWD TMPDIR
+
+   ZIP="$(realpath "$1")"
+   CWD="$(pwd)"
+   TMPDIR=/tmp/zip-recompress
+
+   rm -Rf "$TMPDIR"
+   mkdir "$TMPDIR"
+   cd "$TMPDIR"
+   unzip "$ZIP"
+
+   if [ $? -eq 0 ]; then
+      zip -0 -r new.zip *
+      cat new.zip > "$ZIP" # this preserves attributes
+   fi
+
+   rm -Rf "$TMPDIR"
+   cd "$CWD"
+}
+
+
+CWD=$(pwd)
+
+cd "$1"
+
+find -name ".wh.*" | xargs rm -Rf
+rm -f boot/*
+rm -f dev/*
+rmdir mnt/*
+rmdir media/*
+rm -f media/*
+rm -f mnt/README
+
+rm -Rf usr/doc/*
+rm -Rf usr/man/{?????,??,??_??}
+rm -Rf {var,usr}/man/cat* usr/local/man/cat* # NOCACHE
+rm -f usr/man/man{2,3,4,6,9}/*
+rm -f usr/man/man1/perl?*
+rm -f usr/man/* # all files and links but no directories
+rm -f usr/info/*
+
+rm -Rf usr/share/gtk-doc/*
+
+# Unzip gzipped man pages, so LZMA can compress 2times better.
+# First we gunzip symlinks, which will be overwritten by the content of targets
+# this doesn't matter as mksquashfs will handle duplicate files correctly
+find usr/man -type l -name "*.gz" | xargs gunzip -f
+find usr/man -name "*.gz" | xargs gunzip
+
+# remove locales (translated output of commandline programs)
+find usr/share/locale -name "*.mo" | xargs -r rm
+find usr/share/locale -name "man" | xargs -r rm
+find usr/share/locale -name "LC_MESSAGES" | xargs -r rmdir
+find usr/share/locale | xargs -r rmdir
+ls -1d usr/lib{64,}/locale/* | grep -v en_US | xargs -r rm -Rf
+find usr/share/i18n/locales/* | grep -v en_US | grep _ | xargs -r rm
+rm usr/share/i18n/charmaps/*
+
+# remove files with broken dependencies
+rm usr/bin/alsaloop
+rm usr/bin/cifscreds
+rm usr/bin/getcifsacl
+rm usr/bin/setcifsacl
+rm usr/bin/wpa_gui
+rm usr/lib{64,}/alsa-lib/smixer/smixer-python.so
+#rm usr/lib/libcurl*
+#rm usr/lib/libldap*
+rm usr/lib{64,}/strigi/strigiindex_cluceneng.so
+
+#
+rm etc/ssh/moduli
+rm etc/termcap-BSD
+rm -Rf usr/lib{64,}/python2.7/site-packages
+rm -Rf usr/lib{64,}/gdbus-2.0/codegen/*
+rm -Rf usr/share/icons/Oxygen_*
+rm -Rf usr/share/gir-*
+rm -Rf usr/share/apps/kdm/pics/*
+rm -Rf usr/share/apps/desktoptheme/oxygen
+rm -Rf usr/share/apps/desktoptheme/default/widgets/monitor.svg
+rm -Rf usr/share/apps/kdm/themes/*/screenshot*
+rm -Rf usr/share/apps/kdm/themes/*/background*
+rm -Rf usr/share/apps/ksmserver/themes/*/screenshot*
+rm -Rf usr/share/gtk-2.0/demo
+rm usr/bin/mencoder
+rm usr/share/smplayer/translations/*
+
+# most terminfo is not needed.
+rm -Rf usr/share/terminfo/{1,2,3,4,5,6,7,8,9,A,E,L,M,N,P,Q,X,a,b,c,d,e,f,g,h,i,j,k,m,o,p,q,r,s,t,w,z}
+
+# we don't have c-shell anyway
+rm etc/profile.d/*.csh
+
+# copy oxygen icons over hicolor theme to effectively combine these while overwriting hicolor icons
+if [ -d usr/share/icons/hicolor ]; then
+   if [ -d usr/share/icons/oxygen ]; then
+      mv usr/share/icons/hicolor/index.theme usr/share/icons/hicolor/index.theme2
+      cp -a usr/share/icons/oxygen/* usr/share/icons/hicolor/
+      mv usr/share/icons/hicolor/index.theme2 usr/share/icons/hicolor/index.theme
+#      rm -Rf usr/share/icons/oxygen
+   fi
+#   mv usr/share/icons/hicolor usr/share/icons/oxygen
+fi
+
+rm -Rf usr/share/icons/hicolor/{256x256,128x128,64x64,scalable}/*
+rm -Rf usr/share/icons/hicolor/{48x48,32x32}/emotes/*
+rm -Rf usr/share/icons/oxygen/256x256
+find usr/share/icons/oxygen/128x128 | grep -v /krdc.png | grep -v /krfb.png | grep -v /folder.png | grep -v /inode-directory.png | grep -v /user-home.png | xargs rm -f
+find usr/share/icons/oxygen/64x64 | grep -v /krdc.png | grep -v /krfb.png | grep -v /folder.png | grep -v /inode-directory.png | grep -v /user-home.png | xargs rm -f
+rm -Rf usr/share/icons/oxygen/{48x48,32x32}/emotes/*
+rm -Rf usr/share/icons/oxygen/scalable
+
+rm -Rf usr/share/apps/kdm/*/*
+rm -f usr/share/apps/kwin/cubecap.png
+rm -f usr/share/apps/kwin/kcm_kwintabbox/*.png
+rm -Rf usr/share/apps/kthememanager/themes/*
+
+# cleanup qt
+rm -f usr/lib{64,}/qt/bin/{assistant,comp,designer,lconvert,linguist,lrelease,lupdate,qdoc3,qhelpconverter,qmlviewer,qt3to4}
+rm -Rf usr/lib{64,}/qt/{demos,examples,phrasebooks,tests,translations}
+rm -Rf usr/lib{64,}/qt/lib/libQtDesigner*
+rm -Rf usr/lib{64,}/qt/plugins/designer/*
+
+# KDE
+rm -Rf usr/share/apps/ksplash/Themes/Horos
+rm -f usr/share/apps/ksplash/Themes/Minimalistic/images/kde{letter,logo-contrast,logo,mask}.png
+rm usr/share/apps/kdeui/about/body-background.png
+
+# recompress zip archives
+find | xargs file | grep "Zip archive data" | cut -d ":" -f 1 | while read ZIP; do
+   echo recompressing ZIP: $ZIP
+   zip_recompress $ZIP
+done
+
+# recompress gzip archives
+find | xargs file | grep "gzip compressed data" | cut -d ":" -f 1 | while read GZIP; do
+   echo recompressing gzip: $GZIP
+   zcat "$GZIP" | gzip0.php > "$GZIP.recompress"
+   cat "$GZIP.recompress" > "$GZIP" # preserve attributes
+   rm "$GZIP.recompress"
+done
+
+# gcc some probably unused stuff
+rm -f usr/bin/ld.gold
+rm -f usr/bin/dwp
+#rm -f usr/libexec/gcc/*/*/lto1
+#rm -f usr/libexec/gcc/*/*/lto-wrapper
+
+rm -Rf usr/share/zenmap/locale/*
+rm -Rf usr/share/zenmap/docs/*
+rm -Rf usr/share/zenmap/pixmaps/*
+
+rm -f usr/share/sounds/alsa/*
+rm -f usr/share/sounds/purple/{alert,login,logout,send}.wav
+rm -f usr/share/mc/help/mc.hlp.*
+echo "[main]" > usr/share/mc/help/mc.hlp
+rm -f usr/share/ncat/ca-bundle.crt
+
+find usr/share/groff/current/font/ -maxdepth 1 | grep dev | grep -v devlatin1 | while read LINE; do
+   rm -Rf "$LINE"
+   ln -s devlatin1 "$LINE"
+done
+
+find usr/share/apps/kpat/previews/ -type f | sort | while read LINE; do
+   convert -resize 120x80 $LINE $LINE.x.png
+   mv $LINE.x.png $LINE
+done
+
+rm usr/share/applications/uxterm.desktop
+
+move_to_devel usr/include
+move_to_devel $(find -name "*.h")
+move_to_devel $(find -name "*.a")
+move_to_devel usr/share/apps/cmake
+move_to_devel usr/sbin/sln
+move_to_devel usr/lib{64,}/qt/bin/{moc,qmake,rcc,uic,uic3}
+
+find | xargs file | grep "not stripped" | cut -d : -f 1 | xargs -r strip --strip-unneeded
+find -type f -name "*.a" | xargs -r strip --strip-unneeded
+
+cd "$CWD"

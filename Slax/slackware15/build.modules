@@ -1,0 +1,167 @@
+#!/bin/bash
+
+SLAXVERSION="15.0"
+
+if [ "$(uname -m)" = "x86_64" ]; then
+   SLACKWARE=/media/cdrom/slackware64/
+   SLAX=/media/z/slax/packages/64bit
+   LIBSUFFIX=64
+   export SLAXVERSION="Slax $SLAXVERSION 64bit"
+else
+   SLACKWARE=/media/cdrom/slackware/
+   SLAX=/media/z/slax/packages/32bit
+   LIBSUFFIX=
+   export SLAXVERSION="Slax $SLAXVERSION 32bit"
+fi
+
+EMPTY=/tmp/slax-empty
+UNION=/tmp/slax-union
+
+umount $UNION 2>/dev/null
+rm -Rf $UNION
+mkdir -p $UNION
+
+umount $EMPTY 2>/dev/null
+rm -Rf $EMPTY
+mkdir -p $EMPTY
+
+# Install pakcage from Slackware pkg tree
+# $1 = package name to install
+# $2 = source tree to search for package
+# $3 = target root
+#
+sinstall()
+{
+   local PKG
+   PKG="$(find "$2" -noleaf | egrep "/$1-[^-]+-[^-]+-[^-]+[.]t[gx]z\$" | head -n 1)"
+
+   if [ "$PKG" = "" ]; then
+      echo -ne "\\nError! Package $1 not found!\\n"
+   else
+      echo Installing $PKG
+      installpkg -root "$3" "$PKG"
+   fi
+}
+
+# remove files which are already installed in $1
+# so the module won't include duplicated files
+# $1 = original files root (source for comparing)
+# $2 = new files root, remove duplicates from here
+#
+function remove_duplicites()
+{
+   find "$2" -noleaf | while read DUPLICATE; do
+      ORIGFILE=$1/"${DUPLICATE:$((${#2}+1))}"
+      if [ "$DUPLICATE" = "$ORIGFILE" ]; then continue; fi
+
+      # if one file is a symlink and the other one is not, don't delete anything
+      if [ -h "$DUPLICATE" -a ! -h "$ORIGFILE" ]; then continue; fi
+      if [ ! -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then continue; fi
+
+      # a symlink pointing to the same location can be removed
+      if [ -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then
+         if [ "$(readlink "$DUPLICATE")" = "$(readlink $ORIGFILE)" ]; then
+            rm -v "$DUPLICATE"
+            rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
+            continue
+         fi
+      fi
+
+      # existing files will be tested for UID and diff'ed
+      if [ ! -d "$DUPLICATE" -a -a "$ORIGFILE" ]; then
+         if [ "$(stat $ORIGFILE | grep Uid)" = "$(stat $DUPLICATE | grep Uid)" ]; then
+            diff --brief "$DUPLICATE" "$ORIGFILE" >/dev/null 2>/dev/null
+            if [ $? = 0 ]; then # is the same, can be removed
+               rm -v "$DUPLICATE"
+               rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
+            fi
+         fi
+      fi
+   done
+}
+
+# change union target storage to $1
+# work on union mount $2
+#
+union_target_set()
+{
+   rm -Rf "$1"
+   mkdir -p "$1"
+   mount -o remount,mod:$(cat /sys/fs/aufs/*/br0 | sed -r "s/=.*//")=ro none "$2" 2>/dev/null
+   mount -o remount,add:0:"$1" none "$2"
+}
+
+
+# setup union
+
+modprobe aufs
+#mount -t tmpfs tmpfs $EMPTY
+mount -t aufs -o xino="$EMPTY/.xino",br="$EMPTY" none "$UNION"
+
+# install all packages for bundles
+
+for i in $(ls -1 modules | sort); do
+   union_target_set /tmp/$i "$UNION"
+
+   cat ./modules/$i/pkglist | sed -r "s/#.*//" | egrep -v "^[[:space:]]*\$" | while read LINE; do
+      SRC="$(echo "$LINE" | cut -d: -f 1)"
+      PKG="$(echo "$LINE" | cut -d: -f 2)"
+
+      if [ "$SRC" = "slackware" ]; then
+         sinstall "$PKG" "$SLACKWARE" "$UNION"
+      fi
+
+      if [ "$SRC" = "slax" ]; then
+         sinstall "$PKG" "$SLAX" "$UNION"
+      fi
+   done
+
+   sh ./modules/$i/doinst.sh "$UNION"
+   cp -a ./modules/$i/rootfs/* "$UNION"
+
+   # update stuff so it is not needed during boot
+   if [ -x $UNION/usr/bin/update-gtk-immodules ]; then
+     chroot $UNION /usr/bin/update-gtk-immodules --verbose
+   fi
+   if [ -x $UNION/usr/bin/update-gdk-pixbuf-loaders ]; then
+     chroot $UNION /usr/bin/update-gdk-pixbuf-loaders --verbose
+   fi
+   if [ -x $UNION/usr/bin/update-pango-querymodules ]; then
+     chroot $UNION /usr/bin/update-pango-querymodules --verbose
+   fi
+   if [ -x $UNION/usr/bin/update-desktop-database ]; then
+     chroot $UNION /usr/bin/update-desktop-database /usr/share/applications
+   fi
+   if [ -x $UNION/usr/bin/update-mime-database ]; then
+     chroot $UNION /usr/bin/update-mime-database /usr/share/mime
+   fi
+   if [ -x $UNION/usr/bin/fc-cache ]; then
+     chroot $UNION /usr/bin/fc-cache -f
+   fi
+   chroot $UNION /sbin/ldconfig
+done
+
+umount "$UNION"
+umount "$EMPTY"
+rmdir "$UNION"
+rmdir "$EMPTY"
+
+# delete unneeded stuff
+for i in $(ls -1 modules | sort); do
+   ./reduce /tmp/$i
+   rm /tmp/$i.sb
+done
+
+# remove duplicites
+for i in $(ls -1 modules | sort); do
+   for j in $(ls -1 modules | sort); do
+      if [ "$i" \< "$j" ]; then
+         remove_duplicites /tmp/$i /tmp/$j
+      fi
+   done
+done
+
+# make squashfs images
+for i in $(ls -1 modules | sort); do
+   mksquashfs /tmp/$i /tmp/$i.sb -comp xz -Xbcj x86 -b 1024k -always-use-fragments
+done
