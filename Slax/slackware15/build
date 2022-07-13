@@ -1,7 +1,10 @@
 #!/bin/bash
 
+# installpkg squashfs-tools cdrtools lzo lz4
+
 CHANGES=/tmp/slax-build
 UNION=$CHANGES/union
+THIS=$(dirname $(readlink -f $0))
 
 modprobe aufs || exit 1
 
@@ -20,5 +23,24 @@ for i in $(ls -1 modules); do
    mount -o remount,mod:"$CHANGES/$i=ro" aufs "$UNION"
 done
 
-
 umount $UNION
+
+rm -f /vmlinuz
+cat /boot/vmlinuz-slax* > /vmlinuz
+
+sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
+
+SKIPINITRFS=true
+SKIPCOREMOD=true
+cd ../../
+. ./build
+
+cd initramfs
+. ./initramfs_create
+
+echo $INITRAMFS
+mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
+cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
+
+rm -f /vmlinuz

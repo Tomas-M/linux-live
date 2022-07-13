@@ -12,12 +12,12 @@
 # If you do not need booting from CD (eg you're booting only from USB)
 # then you can ignore recompiling isolinux.bin, just rename LIVEKITNAME
 # and you're done.
-LIVEKITNAME="linux"
+LIVEKITNAME="slax"
 
 # Kernel file, will be copied to your Live Kit
 # Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
 # out of the box.
-VMLINUZ=/vmlinuz
+VMLINUZ="/vmlinuz"
 
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running
@@ -34,7 +34,7 @@ MKMOD="bin etc home lib lib64 opt root sbin srv usr var"
 # you will need network modules included in your initrd.
 # This is disabled by default since most people won't need it.
 # To enable, set to true
-NETWORK=false
+NETWORK=true
 
 # Temporary directory to store livekit filesystem
 LIVEKITDATA=/tmp/$LIVEKITNAME-data-$$

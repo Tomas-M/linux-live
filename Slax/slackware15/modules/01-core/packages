@@ -113,6 +113,10 @@ xz
 zerofree
 zoo
 
+squashfs-tools
+lzo
+lz4
+cdrtools
 mc
 dhcpcd
 net-tools
