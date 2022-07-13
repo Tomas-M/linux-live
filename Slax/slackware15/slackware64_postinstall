@@ -24,7 +24,7 @@ installpkg_local dhcpcd
 installpkg_local iputils libunistring
 
 # setup Linux Live git
-installpkg_local git openssh
+installpkg_local git openssh nghttp2 brotli cyrus-sasl
 
 cd /tmp
 git config --global user.email "tomas@slax.org"
