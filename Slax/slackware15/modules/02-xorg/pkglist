@@ -3,7 +3,7 @@ slackware:libX11
 slackware:libXau
 slackware:libXdmcp
 slackware:libXext
-slackware:libXfont
+slackware:libXfont2
 slackware:libXmu
 slackware:libfontenc
 slackware:libgcrypt
@@ -114,7 +114,6 @@ slackware:fontconfig
 slackware:xkbcomp
 slackware:xkeyboard-config
 slackware:mtdev
-slackware:mkfontdir
 slackware:mkfontscale
 slackware:dejavu-fonts-ttf
 slackware:xrdb

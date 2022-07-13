@@ -24,4 +24,6 @@ echo $INITRAMFS
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
 cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
 
+mv /tmp/*.sb $LIVEKITDATA
+
 rm -f /vmlinuz
