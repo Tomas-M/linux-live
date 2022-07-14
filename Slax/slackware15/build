@@ -2,7 +2,7 @@
 
 # installpkg squashfs-tools cdrtools lzo lz4
 
-./build.modules
+./modbuild
 
 THIS=$(dirname $(readlink -f $0))
 
@@ -24,6 +24,6 @@ echo $INITRAMFS
 mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
 cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/
 
-mv /tmp/*.sb $LIVEKITDATA
+mv /tmp/*.sb $LIVEKITDATA/$LIVEKITNAME
 
 rm -f /vmlinuz

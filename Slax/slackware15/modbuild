@@ -3,12 +3,12 @@
 SLAXVERSION="15.0"
 
 if [ "$(uname -m)" = "x86_64" ]; then
-   SLACKWARE=/media/cdrom/slackware64/
+   SLACKWARE=/mnt/cdrom/slackware64/
    SLAX=/mnt/z/slax/64bit
    LIBSUFFIX=64
    export SLAXVERSION="Slax $SLAXVERSION 64bit"
 else
-   SLACKWARE=/media/cdrom/slackware/
+   SLACKWARE=/mnt/cdrom/slackware/
    SLAX=/mnt/z/slax/32bit
    LIBSUFFIX=
    export SLAXVERSION="Slax $SLAXVERSION 32bit"
