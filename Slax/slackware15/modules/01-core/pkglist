@@ -234,4 +234,4 @@ slackware:upower
 slackware:volume_key
 slackware:zerofree
 slackware:libmnl
-
+slackware:ncurses

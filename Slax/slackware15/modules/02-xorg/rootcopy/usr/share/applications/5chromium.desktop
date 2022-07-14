@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Web Browser
+GenericName=Web Browser
+Exec=fbliveapp chromium %U
+Terminal=false
+X-MultipleArgs=false
+Type=Application
+Icon=chromium.png
+Categories=Network;WebBrowser;
+MimeType=audio/*;image/*;video/*;application/pdf;application/x-pdf;text/html;text/xml;application/xhtml_xml;application/x-mimearchive;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=chromium
+StartupNotify=true

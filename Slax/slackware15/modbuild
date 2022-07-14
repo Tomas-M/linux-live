@@ -117,7 +117,7 @@ for i in $(ls -1 modules | sort); do
    done
 
    sh ./modules/$i/doinst.sh "$UNION"
-   cp -a ./modules/$i/rootfs/* "$UNION"
+   cp -a ./modules/$i/rootcopy/* "$UNION"
 
    # update stuff so it is not needed during boot
    if [ -x $UNION/usr/bin/update-gtk-immodules ]; then
