@@ -1,0 +1,86 @@
+#!/bin/bash
+#
+# usage: rc.FireWall start|stop|status
+#
+# Simple firewall disallowing all incomming connections
+# but allowing all traffic on localhost (lo device)
+# and allowing all outgoing traffic for $ALLOWED_PORTS
+# (you can set the variable below)
+#
+# You can rename this to rc.firewall (lowercase)
+# in order to get it executed automatically on start
+#
+# Author: Tomas M. <http://slax.linux-live.org/>
+#
+ALLOWED_PORTS="20 21 22 25 80 110 143 443"
+#-----------------------------------------------------------
+
+if [ "$1" = "start" ]; then
+
+   SYSCTLW="/sbin/sysctl -q -w"
+   IPTABLES="/usr/sbin/iptables"
+
+   # Disable routing triangulation. Respond to queries out
+   # the same interface, not another. Helps to maintain state
+   # Also protects against IP spoofing
+
+   $SYSCTLW net.ipv4.conf.all.rp_filter=1
+
+   # Enable logging of packets with malformed IP addresses,
+   # Disable redirects,
+   # Disable source routed packets,
+   # Disable acceptance of ICMP redirects,
+   # Turn on protection from Denial of Service (DOS) attacks,
+   # Disable responding to ping broadcasts,
+   # Enable IP routing. Required if your firewall is protecting a network, NAT included
+
+   $SYSCTLW net.ipv4.conf.all.log_martians=1
+   $SYSCTLW net.ipv4.conf.all.send_redirects=0
+   $SYSCTLW net.ipv4.conf.all.accept_source_route=0
+   $SYSCTLW net.ipv4.conf.all.accept_redirects=0
+   $SYSCTLW net.ipv4.tcp_syncookies=1
+   $SYSCTLW net.ipv4.icmp_echo_ignore_broadcasts=1
+   $SYSCTLW net.ipv4.ip_forward=1
+
+   # Firewall initialization, remove everything, start with clean tables
+   $IPTABLES -F      # remove all rules
+   $IPTABLES -X      # delete all user-defined chains
+
+   # allow everything for loop device
+   $IPTABLES -A INPUT -i lo -j ACCEPT
+   $IPTABLES -A OUTPUT -j ACCEPT
+
+   # allow DNS in all directions
+   $IPTABLES -A INPUT -p udp --dport 53 -j ACCEPT
+   $IPTABLES -A INPUT -p udp --sport 53 -j ACCEPT
+   $IPTABLES -A OUTPUT -p udp --dport 53 -j ACCEPT
+   $IPTABLES -A OUTPUT -p udp --sport 53 -j ACCEPT
+
+   # Allow previously established connections
+   $IPTABLES -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+   for PORT in $ALLOWED_PORTS; do
+      $IPTABLES -A INPUT -p tcp --dport $PORT -j ACCEPT
+   done
+
+   # Create a chain for logging all dropped packets
+   $IPTABLES -N LOG_DROP
+#  $IPTABLES -A LOG_DROP -j LOG --log-prefix "Attack log: "
+   $IPTABLES -A LOG_DROP -j DROP
+
+   $IPTABLES -A INPUT -j LOG_DROP    # drop all incomming
+   $IPTABLES -A FORWARD -j LOG_DROP  # drop all forwarded
+
+elif [ "$1" = "stop" ]; then
+   iptables -F
+   iptables -X
+   iptables -P OUTPUT ACCEPT
+   iptables -P FORWARD ACCEPT
+   iptables -P INPUT ACCEPT
+
+elif [ "$1" = "status" ]; then
+   iptables -L -v
+
+else
+   echo "usage: $0 start|stop|status"
+fi

@@ -1,0 +1,6 @@
+# /etc/hardwareclock
+#
+# Tells how the hardware clock time is stored.
+# You should run timeconfig to edit this file.
+
+localtime

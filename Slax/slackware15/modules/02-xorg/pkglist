@@ -80,7 +80,6 @@ slackware:libXdmcp
 slackware:libXevie
 slackware:libXext
 slackware:libXfixes
-slackware:libXfont
 slackware:libXfontcache
 slackware:libXft
 slackware:libXi
@@ -149,6 +148,15 @@ slackware:xvidtune
 slackware:xvinfo
 slackware:xwininfo
 slackware:fluxbox
+
+slackware:nettle
+slackware:libxshmfence
+slackware:freetype
+slackware:harfbuzz
+slackware:brotli
+slackware:graphite2
+slackware:libxml2
+
 
 #slax:imlib2
 #slax:xlunch

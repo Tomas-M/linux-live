@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# This script gets executed at the end of rc.M
+# Author: Tomas M <www.slax.org>
+
+if grep -q nosound /proc/cmdline; then
+   # mute sound
+   rexima pcm 0 2>/dev/null
+   rexima vol 0 2>/dev/null
+else
+   # set sound volume high
+   rexima pcm 90 2>/dev/null
+   rexima vol 90 2>/dev/null
+fi

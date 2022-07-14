@@ -1,0 +1,97 @@
+#!/bin/sh
+# Load the mixer settings and OSS compatibility for ALSA.
+# (the Advanced Linux Sound Architecture)
+
+# A function to load the ALSA mixer settings:
+load_alsa_mixer() {
+  if [ -r /var/lib/alsa/asound.state ]; then
+    echo "Loading ALSA mixer settings:  /usr/sbin/alsactl restore"
+    /usr/sbin/alsactl restore
+  else
+    # It's possible a user might not want to set a default sound state.
+    # In that case, do this:  touch /var/lib/alsa/no.asound.state
+    if [ ! -r /var/lib/alsa/no.asound.state ]; then
+      echo "Setting default ALSA mixer settings."
+      # set default mixer volumes for ALSA
+      # Taken from the alsaconfig script.
+      # TM: commented out some 0dB lines to make sound volume higher
+      amixer -s -q <<EOF
+set Master 75% unmute
+set Master -12dB
+set 'Master Mono' 75% unmute
+set 'Master Mono' -12dB
+set Front 75% unmute
+set Front -12dB
+set PCM 90% unmute
+#set PCM 0dB
+mixer Synth 90% unmute
+#mixer Synth 0dB
+mixer CD 90% unmute
+#mixer CD 0dB
+# mute mic
+set Mic 0% mute
+# ESS 1969 chipset has 2 PCM channels
+set PCM,1 90% unmute
+#set PCM,1 0dB
+# Trident/YMFPCI/emu10k1
+set Wave 100% unmute
+set Music 100% unmute
+set AC97 100% unmute
+# CS4237B chipset:
+set 'Master Digital' 75% unmute
+# Envy24 chips with analog outs
+set DAC 90% unmute
+set DAC -12dB
+set DAC,0 90% unmute
+set DAC,0 -12dB
+set DAC,1 90% unmute
+set DAC,1 -12dB
+# some notebooks use headphone instead of master
+set Headphone 75% unmute
+set Headphone -12dB
+set Playback 100% unmute
+# turn off digital switches
+set "SB Live Analog/Digital Output Jack" off
+set "Audigy Analog/Digital Output Jack" off
+EOF
+# TM: I'd rather skip this
+#      echo "Storing default ALSA mixer settings:  /usr/sbin/alsactl store"
+#      /usr/sbin/alsactl store
+    fi
+  fi
+}
+
+# A function to load the ALSA OSS compat modules:
+load_alsa_oss_modules() {
+  if modprobe -c | tr _ - | grep -wq snd-pcm-oss ; then
+    if ! cat /proc/modules | tr _ - | grep -wq snd-pcm-oss ; then
+      echo "Loading OSS compatibility modules for ALSA."
+      modprobe snd-pcm-oss
+      modprobe snd-seq-oss
+      modprobe snd-mixer-oss
+    fi
+  fi
+}
+
+# If hotplug or something else has loaded the ALSA modules, then
+# simply load the mixer settings and make sure the OSS compat
+# modules are loaded:
+if [ -d /proc/asound ]; then
+  load_alsa_oss_modules
+  load_alsa_mixer
+else
+  # If there are ALSA modules defined in /etc/modprobe.d/*, but
+  # ALSA is not yet loaded, then load the modules now:
+  DRIVERS=$(modprobe -c | grep -E "^[[:space:]]*alias[[:space:]]+snd-card-[[:digit:]]" | tr -s "[[:blank:]]" " " | cut -d " " -f 3)
+  if [ ! "$DRIVERS" = "" ]; then
+    echo "Loading ALSA kernel modules."
+    for module in $DRIVERS; do
+      modprobe $module
+    done
+  fi
+  # If ALSA is now up, then load the mixer settings and OSS modules:
+  if [ -d /proc/asound ]; then
+    load_alsa_oss_modules
+    load_alsa_mixer
+  fi
+fi

@@ -1,0 +1,80 @@
+#!/bin/bash
+# convert Debian/Ubuntu's DEB package into Slax bundle or Slackware txz package
+# Author: Manfred M. <http://www.fluxflux.net/>
+#
+
+CWD=$(pwd)
+
+if [ "$1" = "" ]; then
+   echo "Convert DEB package into .sb compressed Slax Bundle or Slackware txz package"
+   echo "usage: $0 source_filename.deb"
+   exit 1
+fi
+
+PKGDIR=/tmp/deb2pkg_$$
+SRCDIR=/tmp/deb2pkg_src_$$
+
+rm -Rf $PKGDIR $SRCDIR
+
+mkdir -p $PKGDIR/var/lib/dpkg/info $SRCDIR/control
+
+( cd $SRCDIR
+if [ -f $CWD/$1 ]; then
+    ar x $CWD/$1
+else
+    ar x $1
+fi
+if [ $? != 0 ]; then echo "error unpacking DEB package"; exit; fi
+cd $SRCDIR/control || exit 1
+tar xf $SRCDIR/control.tar.gz
+if [ $? != 0 ]; then echo "error extracting control.tar.gz"; exit; fi
+)
+
+SBPKG=$(grep ^Package $SRCDIR/control/control | sed 's/.*: //')
+SBVER=$(grep ^Version $SRCDIR/control/control | sed 's/.*: //')
+SBARCH=$(grep ^Architecture $SRCDIR/control/control | sed 's/.*: //')
+SBDESC=$(grep ^Description $SRCDIR/control/control | sed 's/.*: //')
+SBWEB=$(grep ^Homepage $SRCDIR/control/control | sed 's/.*: //')
+SBPKGVER=$(cat $SRCDIR/debian-binary | sed 's/\..*//')
+
+for FILE in $SRCDIR/control/*; do
+   cp $FILE $PKGDIR/var/lib/dpkg/info/$SBPKG.$(basename $FILE)
+done
+
+cd $PKGDIR
+tar xf $SRCDIR/data.tar.*
+if [ $? != 0 ]; then echo "error extracting data.tar.*"; exit; fi
+
+if [ $(basename $0) = "deb2txz" ]; then
+	mkdir -p $PKGDIR/install
+	if [ -f $PKGDIR/var/lib/dpkg/info/$SBPKG.postinst ]; then
+	    echo "sh /var/lib/dpkg/info/$SBPKG.postinst configure" >> $PKGDIR/install/doinst.sh
+	fi
+	echo "$SBPKG: $SBDESC" >> install/slack-desc
+	echo "$SBPKG: " >> install/slack-desc
+	echo "$SBPKG: Website: $SBWEB" >> install/slack-desc
+
+	grep ^Depends $SRCDIR/control/control | sed -e 's/.*: //' -e 's/[()]//g' | tr "," "\n" | awk '{print $1}' >> install/slack-required
+	grep ^Recommends $SRCDIR/control/control | sed 's/.*: //' | tr "|" "\n" | awk '{print $1}' >> install/slack-suggests
+	grep ^Suggests $SRCDIR/control/control | sed 's/.*: //' | tr "|" "\n" | awk '{print $1}' >> install/slack-suggests
+
+	makepkg -p -l y -c n /tmp/$SBPKG-$SBVER-$SBARCH-$SBPKGVER${TAG:-flx}.${PKGTYPE:-txz}
+	if [ $? != 0 ]; then 
+	    echo "error creating /tmp/"$SBPKG-$SBVER-$SBARCH-$SBPKGVER${TAG:-flx}.${PKGTYPE:-txz}""
+	    exit 1
+	else
+	    echo "/tmp/"$SBPKG-$SBVER-$SBARCH-$SBPKGVER${TAG:-flx}.${PKGTYPE:-txz}" created successfully"
+	    exit 0
+	fi
+	
+else
+	mksquashfs . /tmp/"$SBPKG-$SBVER-$SBARCH-$SBPKGVER.sb" -b 512K -comp xz -Xbcj x86 -noappend
+	if [ $? != 0 ]; then
+	      echo "error creating /tmp/"$SBPKG-$SBVER-$SBARCH-$SBPKGVER.sb""
+	      exit 1
+	else
+	      echo "/tmp/"$SBPKG-$SBVER-$SBARCH-$SBPKGVER.sb" created successfully"
+	      exit 0
+	fi
+fi
+rm -Rf $PKGDIR $SRCDIR

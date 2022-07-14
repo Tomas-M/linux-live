@@ -1,0 +1,13 @@
+#!/bin/bash
+# convert .sb compressed Slax Bundle file into directory tree
+# Author: Tomas M. <http://www.slax.org/>
+#
+
+if [ ! -d "$2" ]; then
+   echo 
+   echo "Convert .sb compressed Slax Bundle module into directory tree"
+   echo "usage: $0 source_file.sb existing_output_directory"
+   exit 1
+fi
+
+unsquashfs -f -dest "$2" "$1" >/dev/null

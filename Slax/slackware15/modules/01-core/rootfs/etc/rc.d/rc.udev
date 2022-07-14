@@ -1,0 +1,176 @@
+#!/bin/sh
+# This is a script to initialize udev, which populates the /dev
+# directory with device nodes, scans for devices, loads the
+# appropriate kernel modules, and configures the devices.
+
+PATH="/sbin:/bin"
+
+. /etc/udev/udev.conf
+
+# remove trailing slash from udev_root
+UDEV_ROOT=$(echo "${udev_root}" |sed 's/\/*$//')
+
+check_mounted() {
+  grep -E -q "^[^[:space:]]+ $1 $2" /proc/mounts
+  return $?	
+}
+
+mount_devpts() {
+  if ! check_mounted $UDEV_ROOT/pts devpts ; then
+    mkdir $UDEV_ROOT/pts 2> /dev/null
+    mount -n -o mode=0620,gid=5 -t devpts devpts $UDEV_ROOT/pts
+  fi
+}
+
+udev_daemon_start() {
+   if [ "$(grep MemTotal /proc/meminfo | sed -r 's/[^0-9]//g')" -lt 65536 ] ; then
+      echo "Starting udevd:  /sbin/udevd --daemon --children-max=1"
+      /sbin/udevd --daemon --children-max=1
+   else
+      echo "Starting udevd:  /sbin/udevd --daemon"
+      /sbin/udevd --daemon
+   fi
+}
+
+case "$1" in
+    start)
+        # Sanity check #1, udev requires that the kernel support devtmpfs:
+        if ! grep -wq devtmpfs /proc/filesystems ; then
+          echo "Sorry, but you need devtmpfs support in the kernel to use udev."
+          echo "Both of these options are needed:  CONFIG_DEVTMPFS=y CONFIG_DEVTMPFS_MOUNT=y"
+          echo
+          echo "FATAL:  Refusing to run /etc/rc.d/rc.udev."
+          sleep 10
+          exit 1
+        fi
+
+	# Sanity check #2, udev requires that the kernel support tmpfs:
+        if ! grep -wq tmpfs /proc/filesystems ; then
+          echo "Sorry, but you need tmpfs support in the kernel to use udev."
+          echo
+          echo "FATAL:  Refusing to run /etc/rc.d/rc.udev."
+          sleep 10
+          exit 1
+        fi
+
+        # Sanity check #3, make sure that a 2.6.x kernel is new enough:
+        if [ "$(uname -r | cut -f 1,2 -d .)" = "2.6" ]; then
+          if [ "$(uname -r | cut -f 3 -d . | sed 's/[^[:digit:]].*//')" -lt "32" ]; then
+            echo "Sorry, but you need a 2.6.32+ kernel to use this udev."
+            echo "Your kernel version is only $(uname -r)."
+            echo
+            echo "FATAL:  Refusing to run /etc/rc.d/rc.udev."
+            sleep 10
+            exit 1
+          fi
+        fi
+
+        # Sanity check #4, make sure the udev package was not removed.  If udevd
+        # is not there, this will also shut off this script to prevent further
+        # problems:
+        if [ ! -x /sbin/udevd ]; then
+          chmod 0644 /etc/rc.d/rc.udev
+          echo "No udevd daemon found."
+          echo "Turning off udev:  chmod 644 /etc/rc.d/rc.udev"
+          echo "FATAL:  Refusing to run /etc/rc.d/rc.udev."
+          sleep 10
+          exit 1
+        fi
+
+        # Disable hotplug helper since udevd listens to netlink:
+        if [ -e /proc/sys/kernel/hotplug ]; then
+          echo "" > /proc/sys/kernel/hotplug
+        fi
+
+	if grep -qw devtmpfs /proc/filesystems ; then
+	   if ! check_mounted $UDEV_ROOT devtmpfs ; then
+		# umount shm if needed
+		check_mounted $UDEV_ROOT/shm tmpfs && umount -l $UDEV_ROOT/shm
+
+		# Umount pts if needed, we will remount it later:
+		check_mounted $UDEV_ROOT/pts devpts && umount -l $UDEV_ROOT/pts
+		
+		# Mount tmpfs on $UDEV_ROOT:
+		mount -n -t devtmpfs devtmpfs $UDEV_ROOT 
+	   fi
+	else 
+		# Mount tmpfs on $UDEV_ROOT:
+		if ! check_mounted $UDEV_ROOT tmpfs ; then
+		  # umount shm if needed
+		  check_mounted $UDEV_ROOT/shm tmpfs && umount -l $UDEV_ROOT/shm
+
+		  # Umount pts if needed, we will remount it later:
+		  check_mounted $UDEV_ROOT/pts devpts && umount -l $UDEV_ROOT/pts
+		
+		  # Mount tmpfs on $UDEV_ROOT:
+		  # the -n is because we don't want $UDEV_ROOT umounted when
+		  # someone (rc.[06]) calls umount -a
+		  mount -n -o mode=0755 -t tmpfs tmpfs $UDEV_ROOT 
+		
+		fi
+	fi
+	# Mount devpts
+	mount_devpts
+
+        if ! /sbin/pidof udevd 1>/dev/null 2>/dev/null; then # start udevd
+          udev_daemon_start
+          # Since udev is just now being started we want to use add events:
+          echo "Triggering udev events:  /sbin/udevadm trigger --action=add"
+          # Call udevtrigger and udevsettle to do the device configuration:
+          /sbin/udevadm trigger --type=subsystems --action=add
+          /sbin/udevadm trigger --type=devices --action=add
+        else # trigger changes for already running udevd
+          # If the persistent rules files do not exist, trigger an add event:
+# TM:      if [ ! -r /etc/udev/rules.d/70-persistent-net.rules ]; then
+# Slax       # Test that we can actually write to the directory first:
+# doesnt     if touch /etc/udev/rules.d/testfile 2> /dev/null ; then
+# need         rm -f /etc/udev/rules.d/testfile
+# this         # This should add persistent net/cd rules:
+# delay        echo "Triggering udev to write persistent rules to /etc/udev/rules.d/"
+#              /sbin/udevadm trigger --type=devices --action=add
+#              sleep 3
+#            fi
+#          fi
+          # Since udevd is running, most of the time we only need change events:
+          echo "Triggering udev events:  /sbin/udevadm trigger --action=change"
+          /sbin/udevadm trigger --type=subsystems --action=change
+          /sbin/udevadm trigger --type=devices --action=change
+        fi
+        /sbin/udevadm settle --timeout=120
+        ;;
+    stop)
+	echo "Stopping udevd is STRONGLY discouraged and not supported."
+	echo "If you are sure you want to do this, use 'force-stop' instead."
+	;;
+    force-stop)
+	echo "Stopping udevd"
+	udevadm control --exit
+	killall udevd 2>/dev/null
+	;;
+    restart)
+	echo "Restarting udevd is STRONGLY discouraged and not supported."
+	echo "If you are sure you want to do this, use 'force-restart' instead."
+	;;
+    force-restart)
+	echo "Restarting udevd"
+	udevadm control --exit
+	sleep 3
+	udev_daemon_start
+	;;
+    reload)
+	echo "Reloading udev rules"
+	udevadm control --reload
+	cp --preserve=all --recursive --update /lib/udev/devices/* $UDEV_ROOT
+	;;
+    force-reload)
+	echo "Updating all available device nodes in $UDEV_ROOT"
+	udevadm control --reload
+	rm -rf $UDEV_ROOT/.udev $UDEV_ROOT/disk
+	cp --preserve=all --recursive --update /lib/udev/devices/* $UDEV_ROOT
+	;;
+	
+    *)
+	echo "Usage: $0 {start|stop|restart|reload|force-reload}"
+	exit 1
+	;;
+esac
