@@ -233,4 +233,5 @@ slackware:udisks2
 slackware:upower
 slackware:volume_key
 slackware:zerofree
+slackware:libmnl
 
