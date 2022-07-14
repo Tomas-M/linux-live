@@ -186,6 +186,7 @@ slackware:screen
 slackware:groff
 slackware:man-db
 slackware:man-pages
+slackware:libseccomp
 slackware:libx86
 slackware:amp
 slackware:popt
@@ -235,3 +236,5 @@ slackware:volume_key
 slackware:zerofree
 slackware:libmnl
 slackware:ncurses
+
+slax:slackpkg[+]
