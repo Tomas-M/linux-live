@@ -160,9 +160,12 @@ slackware:graphite2
 slackware:libxml2
 slackware:fribidi
 
-
 slax:imlib2
+slax:libpng
 slax:feh
 slax:xlunch
 slax:wmctrl
+slax:libconfig
+slax:compton
+
 #slax:slaxsetroot
