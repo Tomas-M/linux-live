@@ -161,7 +161,8 @@ slackware:libxml2
 slackware:fribidi
 
 
-#slax:imlib2
-#slax:xlunch
+slax:imlib2
+slax:feh
+slax:xlunch
+slax:wmctrl
 #slax:slaxsetroot
-#slax:wmctrl

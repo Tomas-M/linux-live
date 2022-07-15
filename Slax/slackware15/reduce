@@ -118,25 +118,6 @@ rm -Rf usr/share/terminfo/{1,2,3,4,5,6,7,8,9,A,E,L,M,N,P,Q,X,a,b,c,d,e,f,g,h,i,j
 # we don't have c-shell anyway
 rm etc/profile.d/*.csh
 
-# copy oxygen icons over hicolor theme to effectively combine these while overwriting hicolor icons
-if [ -d usr/share/icons/hicolor ]; then
-   if [ -d usr/share/icons/oxygen ]; then
-      mv usr/share/icons/hicolor/index.theme usr/share/icons/hicolor/index.theme2
-      cp -a usr/share/icons/oxygen/* usr/share/icons/hicolor/
-      mv usr/share/icons/hicolor/index.theme2 usr/share/icons/hicolor/index.theme
-#      rm -Rf usr/share/icons/oxygen
-   fi
-#   mv usr/share/icons/hicolor usr/share/icons/oxygen
-fi
-
-rm -Rf usr/share/icons/hicolor/{256x256,128x128,64x64,scalable}/*
-rm -Rf usr/share/icons/hicolor/{48x48,32x32}/emotes/*
-rm -Rf usr/share/icons/oxygen/256x256
-find usr/share/icons/oxygen/128x128 | grep -v /krdc.png | grep -v /krfb.png | grep -v /folder.png | grep -v /inode-directory.png | grep -v /user-home.png | xargs rm -f
-find usr/share/icons/oxygen/64x64 | grep -v /krdc.png | grep -v /krfb.png | grep -v /folder.png | grep -v /inode-directory.png | grep -v /user-home.png | xargs rm -f
-rm -Rf usr/share/icons/oxygen/{48x48,32x32}/emotes/*
-rm -Rf usr/share/icons/oxygen/scalable
-
 rm -Rf usr/share/apps/kdm/*/*
 rm -f usr/share/apps/kwin/cubecap.png
 rm -f usr/share/apps/kwin/kcm_kwintabbox/*.png

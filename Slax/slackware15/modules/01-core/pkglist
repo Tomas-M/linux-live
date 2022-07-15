@@ -34,7 +34,19 @@ slackware:pkgtools
 slackware:acpid
 slackware:alsa-lib
 slackware:alsa-oss
+slackware:alsa-plugins
 slackware:alsa-utils
+slackware:pulseaudio
+slackware:libsndfile
+slackware:flac
+slackware:libvorbis
+slackware:speexdsp
+slackware:orc
+slackware:opus
+slackware:libogg
+slackware:libopusenc
+slackware:libasyncns
+slackware:libao
 slackware:libraw1394
 slackware:ipw2100-fw
 slackware:ipw2200-fw
@@ -236,5 +248,6 @@ slackware:volume_key
 slackware:zerofree
 slackware:libmnl
 slackware:ncurses
+slackware:libcap-ng
 
 slax:slackpkg[+]

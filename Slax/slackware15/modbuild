@@ -141,6 +141,9 @@ for i in $(ls -1 modules | sort); do
    chroot $UNION /sbin/ldconfig
 done
 
+# mark last branch read-only and add new branch in order to remove some .wh. files
+union_target_set /tmp/empty2 "$UNION"
+
 umount "$UNION"
 umount "$EMPTY"
 rmdir "$UNION"
