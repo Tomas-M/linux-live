@@ -150,7 +150,6 @@ slackware:xsetroot
 slackware:xvidtune
 slackware:xvinfo
 slackware:xwininfo
-slackware:fluxbox
 
 slackware:nettle
 slackware:freetype
@@ -162,10 +161,12 @@ slackware:fribidi
 
 slax:imlib2
 slax:libpng
+slax:libjpeg
 slax:feh
 slax:xlunch
 slax:wmctrl
 slax:libconfig
 slax:compton
+slax:fluxbox
 
 #slax:slaxsetroot
