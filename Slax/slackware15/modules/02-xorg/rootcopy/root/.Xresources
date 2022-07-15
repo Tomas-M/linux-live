@@ -28,3 +28,4 @@ Xft.lcdfilter:  lcdlegacy
 Xft.rgba:       rgb
 
 XTerm*selectToClipboard: true
+Xcursor.theme: breeze_cursors
