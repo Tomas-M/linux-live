@@ -11,9 +11,9 @@ slackware:pkg-config
 slackware:libmpc
 slackware:mpfr
 slackware:yasm
+slackware:elfutils
 slackware:ncurses
-
-#slax:kernel-headers
+slackware:kernel-headers
 
 # X header files
 slackware:xorgproto

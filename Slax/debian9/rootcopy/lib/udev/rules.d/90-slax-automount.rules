@@ -1,2 +1,0 @@
-# we don't care about loop* and ram* devices
-KERNEL=="[!lr]*", SUBSYSTEM=="block", RUN+="/sbin/slax-automount %r/%k"

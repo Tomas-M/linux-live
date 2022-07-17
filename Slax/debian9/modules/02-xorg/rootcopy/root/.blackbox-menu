@@ -1,5 +1,0 @@
-[begin] ( Menu             )
-   [exec] (Terminal) { xterm -ls -title Terminal }
-   [exec] (Web browser) { chromium }
-   [exit] (Exit)
-[end]

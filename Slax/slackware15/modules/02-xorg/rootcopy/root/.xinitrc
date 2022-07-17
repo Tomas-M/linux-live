@@ -1,1 +1,1 @@
-startfluxbox
+startblackbox
