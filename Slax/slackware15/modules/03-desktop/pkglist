@@ -6,9 +6,25 @@ slackware:graphite2
 slackware:libxml2
 slackware:fribidi
 slackware:libpng
-slackware:libjpeg
+slackware:giflib
+slackware:libjpeg-turbo
 slackware:glib2
 slackware:pcre
+
+slackware:gtk[+]2
+slackware:gtk[+]3
+slackware:atk
+slackware:at-spi2-atk
+slackware:pango
+slackware:cairo
+slackware:gdk-pixbuf2
+slax:slax-gtk-utils
+
+slackware:at-spi2-core
+slackware:libxkbcommon
+slackware:wayland
+slackware:shared-mime-info
+slax:volumeicon
 
 slax:imlib2
 slax:feh
@@ -17,6 +33,5 @@ slax:wmctrl
 slax:libconfig
 slax:compton
 slax:fluxbox
-slax:slax-gtk-utils
 
 #slax:slaxsetroot

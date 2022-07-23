@@ -1,11 +1,6 @@
-slackware:at-spi2-atk
-slackware:at-spi2-core
-slackware:atk
-slackware:cairo
 slackware:mesa
 slackware:gnutls
 slackware:mozilla-nss
-slackware:pango
 slackware:libxkbcommon
 slackware:wayland
 slackware:p11-kit

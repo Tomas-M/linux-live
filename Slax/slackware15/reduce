@@ -169,11 +169,6 @@ find usr/share/groff/current/font/ -maxdepth 1 | grep dev | grep -v devlatin1 | 
    ln -s devlatin1 "$LINE"
 done
 
-find usr/share/apps/kpat/previews/ -type f | sort | while read LINE; do
-   convert -resize 120x80 $LINE $LINE.x.png
-   mv $LINE.x.png $LINE
-done
-
 rm usr/share/applications/uxterm.desktop
 
 move_to_devel usr/include
