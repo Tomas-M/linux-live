@@ -39,4 +39,12 @@ slax:fluxbox
 slax:scrot
 slax:giblib
 
+slackware:dbus-glib
+slackware:libexif
+slax:libfm
+slax:libfm-extra
+slax:menu-cache
+slax:pcmanfm
+
+
 #slax:slaxsetroot
