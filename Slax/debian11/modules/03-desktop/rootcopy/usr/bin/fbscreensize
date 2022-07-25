@@ -5,6 +5,10 @@ MODE=$1
 
 xrandr --output $OUTPUT --mode $MODE -s $MODE
 
+if [ "$2" = "-n" ]; then
+   exit
+fi
+
 while [ "$(ps -ef | grep compton | grep -v grep)" != "" ]; do
    killall compton
    sleep 0.1

@@ -115,8 +115,8 @@ wait $SOUNDPID
 if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
    # this is here to fix some strange virtualbox bug
    # to adjust window size properly
-   fbscreensize 1280x768
-   fbscreensize 1280x800
+   fbscreensize 1280x768 -n
+   fbscreensize 1280x800 -n
 fi
 
 # And last but not least we start fluxbox.
