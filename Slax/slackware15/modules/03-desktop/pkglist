@@ -20,6 +20,9 @@ slackware:cairo
 slackware:gdk-pixbuf2
 slax:slax-gtk-utils
 
+slackware:pamixer
+slackware:boost
+
 slackware:at-spi2-core
 slackware:libxkbcommon
 slackware:wayland
@@ -33,5 +36,7 @@ slax:wmctrl
 slax:libconfig
 slax:compton
 slax:fluxbox
+slax:scrot
+slax:giblib
 
 #slax:slaxsetroot

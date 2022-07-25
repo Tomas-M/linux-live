@@ -2,6 +2,7 @@
 
 COMMAND=$(
      xlunch --input /etc/xlunch/logout.dsv --noprompt --border auto --sideborder auto --columns 3 --rows 1 \
+            --backgroundcolor 00000066 \
             --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
             --voidclickterminate --iconpadding 30 --textpadding 10 \
             --leastmargin 10 --hidemissing --iconsize 128 \

@@ -32,9 +32,6 @@ xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
 xset s off
 xset -dpms
 
-# volume icon in system tray. Can fail if no soundcard is detected
-volumeicon &
-
 # preload compton and fluxbox to cache
 (compton --help; fluxbox --help) >/dev/null 2>&1
 
@@ -90,9 +87,19 @@ rm -f $SIGNAL2 2>/dev/null
 
    rm -f $SIGNAL2
 
+   volumeicon &
+
    while ! xwininfo -name volumeicon >/dev/null 2>&1 && pgrep volumeicon >/dev/null 2>&1; do
       sleep 0.1
    done
+
+   # If we are running inside VirtualBox or vmware,
+   # switch to bigger screen size right away
+   if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
+      fbscreensize 1280x800
+   fi
+
+   sleep 1
 
    exec systrayicon --command fblogout --iconfile /usr/share/icons/locolor/16x16/actions/system-shutdown-symbolic.png
 ) &
@@ -104,13 +111,6 @@ xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 # In all cases, wait for the sound sleeper.
 # If startup took longer (sound completed already), no extra wait
 wait $SOUNDPID
-
-# If we are running inside VirtualBox or vmware,
-# switch to bigger screen size right away
-OUTPUT=$(xrandr 2>/dev/null | grep -iv disconnected | grep -i 'connected' | head -n 1 | cut -d " " -f 1)
-if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
-  xrandr --output $OUTPUT --mode 1280x800 -s 1280x800
-fi
 
 # And last but not least we start fluxbox.
 # Because it is the last app you have to run it with ''exec'' before it.
