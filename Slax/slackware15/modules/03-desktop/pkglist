@@ -39,6 +39,9 @@ slax:fluxbox
 slax:scrot
 slax:giblib
 
+slackware:adwaita-icon-theme
+slackware:gmime
+slackware:shared-mime-info
 slackware:dbus-glib
 slackware:libexif
 slax:libfm

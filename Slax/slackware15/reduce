@@ -112,6 +112,8 @@ rm -Rf usr/share/gtk-2.0/demo
 rm usr/bin/mencoder
 rm usr/share/smplayer/translations/*
 
+rm -Rf usr/share/icons/Adwaita/{128x128,256x256,512x512,64x64,96x96,cursors,scalable,scalable-up-to-32}
+
 # most terminfo is not needed.
 rm -Rf usr/share/terminfo/{1,2,3,4,5,6,7,8,9,A,E,L,M,N,P,Q,X,a,b,c,d,e,f,g,h,i,j,k,m,o,p,q,r,s,t,w,z}
 
