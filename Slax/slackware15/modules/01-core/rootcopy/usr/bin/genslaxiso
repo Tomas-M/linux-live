@@ -1,0 +1,109 @@
+#!/bin/bash
+
+CWD=$(pwd)
+SOURCE=/run/initramfs/memory
+TEMP=/tmp/slaxiso.$$
+REGEX='^$'
+ROOTCOPY=''
+RCPYEX='^$'
+
+if [ "$1" = "-e" ]; then
+   REGEX="$2"
+   shift
+   shift
+fi
+
+if [ "$1" = "-r" ]; then
+   ROOTCOPY="$2"
+   shift
+   shift
+fi
+
+TARGET="$(readlink -f "$1")"
+
+if [ "$TARGET" = "" ]; then
+   echo ""
+   echo "Generate Slax ISO image, adding specified modules"
+   echo "Regular expression is used to exclude any existing path or file with -e regex"
+   echo ""
+   echo "Usage:"
+   echo "        $0 [[ -e regex ]] [[ -r dir ]] target.iso [[module.sb]] [[module.sb]] ..."
+   echo ""
+   echo "Examples:"
+   echo "        # to create Slax iso without chromium.sb module:"
+   echo "        $0 -e 'chromium' slax_without_chromium.iso"
+   echo ""
+   echo "        # to create Slax text-mode core only:"
+   echo "        $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
+   echo ""
+   echo "        # to add user rootcopy directory:"
+   echo "        $0 -r /tmp/my-rootcopy slax_with_rootcopy.iso"
+   exit 1
+fi
+
+if [ -e "$SOURCE/data/slax/boot/isolinux.bin" ]; then
+   SLAX=$SOURCE/data/slax
+fi
+
+if [ -e "$SOURCE/iso/slax/boot/isolinux.bin" ]; then
+   SLAX=$SOURCE/iso/slax
+fi
+
+if [ -e "$SOURCE/toram/boot/isolinux.bin" ]; then
+   SLAX=$SOURCE/toram
+fi
+
+if [ "$SLAX" = "" ]; then
+   echo "Cannot find boot/isolinux.bin in Slax data" >&2
+   exit 2
+fi
+
+
+# add rootcopy
+if [ "$ROOTCOPY" != "" -a -d "$ROOTCOPY" ]; then
+   # use rootcopy, its a real directory
+   RCPYEX='^rootcopy/'
+   ROOTCOPY="/slax/rootcopy=$(readlink -f $ROOTCOPY)"
+elif [ "$ROOTCOPY" != "" ]; then
+   # not a real directory, disable rootcopy
+   RCPYEX='^rootcopy/'
+   ROOTCOPY=''
+else
+   # use rootcopy from current iso (if any)
+   ROOTCOPY=''
+fi
+
+GRAFT=\
+$(
+  cd "$SLAX"
+  find . -type f | sed -r "s:^[.]/::" | egrep -v "^boot/isolinux.(bin|boot)$" | egrep -v "^changes/" | egrep -v "$REGEX" | egrep -v "$RCPYEX" | while read LINE; do
+     echo "slax/$LINE=$SLAX/$LINE"
+  done
+)
+
+# add all modules
+while [ "$2" != "" ]; do
+   if [ ! -e "$2" ]; then
+      echo "File does not exist: $2"
+      exit 3
+   fi
+   BAS="$(basename "$2")"
+   MOD="$(readlink -f "$2")"
+   GRAFT="$GRAFT slax/modules/$BAS=$MOD"
+   shift
+done
+
+GRAFT="$GRAFT $ROOTCOPY"
+
+(
+   mkdir -p $TEMP/slax/{boot,modules,changes}
+   cp "$SLAX/boot/isolinux.bin" "$TEMP/slax/boot"
+   cd "$TEMP"
+   genisoimage -o - -quiet -v -J -R -D -A slax -V slax \
+   -no-emul-boot -boot-info-table -boot-load-size 4 -input-charset utf-8 \
+   -b slax/boot/isolinux.bin -c slax/boot/isolinux.boot \
+   -graft-points $GRAFT \
+   . \
+) > "$TARGET"
+
+rm -Rf $TEMP
