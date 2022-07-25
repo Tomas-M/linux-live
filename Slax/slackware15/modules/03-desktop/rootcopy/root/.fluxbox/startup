@@ -96,12 +96,6 @@ rm -f $SIGNAL2 2>/dev/null
       sleep 0.1
    done
 
-   # If we are running inside VirtualBox or vmware,
-   # switch to bigger screen size right away
-   if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
-      fbscreensize 1280x800
-   fi
-
    sleep 1
 
    exec systrayicon --command fblogout --iconfile /usr/share/icons/locolor/16x16/actions/system-shutdown-symbolic.png
@@ -115,7 +109,16 @@ xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 # If startup took longer (sound completed already), no extra wait
 wait $SOUNDPID
 
+
+# If we are running inside VirtualBox or vmware,
+# switch to bigger screen size right away
+if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
+   # this is here to fix some strange virtualbox bug
+   # to adjust window size properly
+   fbscreensize 1280x768
+   fbscreensize 1280x800
+fi
+
 # And last but not least we start fluxbox.
 # Because it is the last app you have to run it with ''exec'' before it.
-
 exec fluxbox
