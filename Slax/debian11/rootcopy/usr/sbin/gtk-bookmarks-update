@@ -3,6 +3,9 @@
 LOCK=/run/lock/gtk-bookmark-update-lock
 BOOKMARKS=/root/.gtk-bookmarks
 
+# make sure it exists
+mkdir -p /run/lock
+
 # make sure to avoid parallel execution by using mkdir as lock
 while true; do
    mkdir $LOCK 2>/dev/null
