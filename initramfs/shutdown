@@ -38,6 +38,7 @@ detach_free_loops
 
 # do it the dirty way, simply try to umount everything to get rid of most mounts
 debug_log "- Unmounting submounts of union"
+grep "skip savechanges" /oldroot/etc/systemd/system/* 2>/dev/null | cut -d : -f 1 | xargs -r rm
 umount_all /oldroot
 
 # free aufs of /run mount, and umount aufs
