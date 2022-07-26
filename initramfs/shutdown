@@ -80,6 +80,7 @@ done
 
 debug_shell
 
+echo $1 ...
 debug_log $1 -f
 $1 -f
 

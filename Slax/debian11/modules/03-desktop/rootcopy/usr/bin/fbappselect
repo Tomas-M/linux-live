@@ -1,10 +1,13 @@
 #!/bin/bash
 
+killall xlunch
+
 TEMPCONF=/tmp/xlunch$$.conf
 xlunch_genquick 64 --desktop > $TEMPCONF
 
 COMMAND=$(
   xlunch --border 7% --sideborder 10% --borderratio 100 --sideborderratio 50 \
+         --backgroundcolor 00000066 \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
          --button "/usr/share/icons/locolor/24x24/actions/xlunch-logout.png;;24;-0;fblogout" \
          --button "/usr/share/icons/locolor/24x24/actions/xlunch-menu.png;;0;-0;" \

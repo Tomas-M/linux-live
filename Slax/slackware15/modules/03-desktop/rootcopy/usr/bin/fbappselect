@@ -1,5 +1,7 @@
 #!/bin/bash
 
+killall xlunch
+
 TEMPCONF=/tmp/xlunch$$.conf
 xlunch_genquick 64 --desktop > $TEMPCONF
 

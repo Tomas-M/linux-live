@@ -1,5 +1,7 @@
 #!/bin/bash
 
+killall xlunch
+
 COMMAND=$(
      xlunch --input /etc/xlunch/logout.dsv --noprompt --border auto --sideborder auto --columns 3 --rows 1 \
             --backgroundcolor 00000066 \
