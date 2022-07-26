@@ -37,9 +37,6 @@ debug_log "- Detaching loops"
 mdev -s
 detach_free_loops
 
-# This is dirty hack. This should be handled in Slax, not here. Anyway,...
-grep "skip savechanges" /oldroot/etc/systemd/system/* 2>/dev/null | cut -d : -f 1 | xargs -r rm
-
 # do it the dirty way, simply try to umount everything to get rid of most mounts
 debug_log "- Unmounting union"
 umount_all /oldroot
