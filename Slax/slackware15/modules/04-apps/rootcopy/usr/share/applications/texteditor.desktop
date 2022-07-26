@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Text Editor
+Exec=scite %f
+Icon=Sci48M
+Terminal=false
+Type=Application

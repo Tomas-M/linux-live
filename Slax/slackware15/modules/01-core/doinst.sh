@@ -6,6 +6,10 @@ chmod ago-x $1/etc/rc.d/rc.sshd
 ln -s /run/initramfs/bin/busybox $1/usr/bin/vi
 mkdir $1/var/spool/rwho
 
+# do not update module dependencies. If user adds new modules, he should run depmod manually
+chmod ugo-x $1/etc/rc.d/rc.modules
+chmod ugo-x $1/etc/rc.d/rc.setterm
+
 # syslinux c32 files not need
 rm -Rf $1/usr/share/syslinux
 

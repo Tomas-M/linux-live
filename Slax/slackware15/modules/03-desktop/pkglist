@@ -1,16 +1,9 @@
-slackware:nettle
-slackware:freetype
-slackware:harfbuzz
-slackware:brotli
-slackware:graphite2
-slackware:libxml2
 slackware:fribidi
 slackware:libpng
 slackware:giflib
 slackware:libjpeg-turbo
 slackware:glib2
 slackware:pcre
-
 slackware:gtk[+]2
 slackware:gtk[+]3
 slackware:atk
@@ -27,6 +20,7 @@ slackware:at-spi2-core
 slackware:libxkbcommon
 slackware:wayland
 slackware:shared-mime-info
+slackware:gmime
 slax:volumeicon
 
 slax:imlib2
@@ -38,16 +32,3 @@ slax:compton
 slax:fluxbox
 slax:scrot
 slax:giblib
-
-slackware:adwaita-icon-theme
-slackware:gmime
-slackware:shared-mime-info
-slackware:dbus-glib
-slackware:libexif
-slax:libfm
-slax:libfm-extra
-slax:menu-cache
-slax:pcmanfm
-
-
-#slax:slaxsetroot

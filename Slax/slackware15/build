@@ -2,7 +2,7 @@
 
 # installpkg squashfs-tools cdrtools lzo lz4
 
-bash ./modbuild
+bash ./modbuild keep
 
 THIS=$(dirname $(readlink -f $0))
 

@@ -1,0 +1,6 @@
+session.screen0.toolbar.widthPercent:	100
+session.screen0.strftimeFormat:	%H:%M
+session.edgeSnapThreshold:	10
+session.menuFile:	/root/.blackbox-menu
+session.styleFile:	/usr/share/blackbox/styles/Slax
+session.changeWorkspaceWithMouseWheel:	False

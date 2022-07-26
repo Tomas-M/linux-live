@@ -1,0 +1,355 @@
+#!/bin/bash
+#
+# rc.6		This file is executed by init when it goes into runlevel
+#		0 (halt) or runlevel 6 (reboot). It kills all processes,
+#		unmounts file systems and then either halts or reboots.
+#
+# Version:	@(#)/etc/rc.d/rc.6	15.0 Wed Nov 10 21:19:42 UTC 2021
+#
+# Author:	Miquel van Smoorenburg <miquels@drinkel.nl.mugnet.org>
+# Modified by:  Patrick J. Volkerding, <volkerdi@slackware.com>
+
+# Set the path.
+PATH=/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin
+
+# If we are in an lxc container, set $container to skip parts of the script.
+# Thanks to Matteo Bernardini <ponce@slackbuilds.org> and Chris Willing for
+# the initial work making this script lxc compatible.
+if grep -aq container=lxc /proc/1/environ 2> /dev/null ; then
+  container="lxc"
+fi
+
+# If there are SystemV init scripts for this runlevel, run them.
+if [ -x /etc/rc.d/rc.sysvinit ]; then
+  /etc/rc.d/rc.sysvinit
+fi
+
+# Set linefeed mode to avoid staircase effect.
+/bin/stty onlcr
+
+echo "Running shutdown script $0:"
+
+# Find out how we were called.
+case "$0" in
+	*0)
+		shutdown_command="halt"
+		;;
+	*6)
+		shutdown_command=reboot
+		;;
+	*)
+		echo "$0: call me as \"rc.0\" or \"rc.6\" please!"
+		exit 1
+		;;
+esac
+
+# Restart init. This prevents init from hanging on to file handles for removed
+# glibc shared libraries in the case that those were upgraded or reinstalled.
+/sbin/telinit u
+
+# Save the system time to the hardware clock using hwclock --systohc.
+# This will also create or update the timestamps in /etc/adjtime.
+if [ -x /sbin/hwclock -a -z "$container" ]; then
+  # Check for a broken motherboard RTC clock (where ioports for rtc are
+  # unknown) to prevent hwclock causing a hang:
+  if ! grep -q " : rtc" /proc/ioports ; then
+    CLOCK_OPT="--directisa"
+  fi
+  if [ /etc/adjtime -nt /etc/hardwareclock ]; then
+    if grep -q "^LOCAL" /etc/adjtime ; then
+      echo "Saving system time to the hardware clock (localtime)."
+    else
+      echo "Saving system time to the hardware clock (UTC)."
+    fi
+    /sbin/hwclock $CLOCK_OPT --systohc
+  elif grep -q "^UTC" /etc/hardwareclock 2> /dev/null ; then
+    echo "Saving system time to the hardware clock (UTC)."
+    if [ ! -r /etc/adjtime ]; then
+      echo "Creating system time correction file /etc/adjtime."
+    fi
+    /sbin/hwclock $CLOCK_OPT --utc --systohc
+  else
+    echo "Saving system time to the hardware clock (localtime)."
+    if [ ! -r /etc/adjtime ]; then
+      echo "Creating system time correction file /etc/adjtime."
+    fi
+    /sbin/hwclock $CLOCK_OPT --localtime --systohc
+  fi
+fi
+
+# Run any local shutdown scripts:
+if [ -x /etc/rc.d/rc.local_shutdown ]; then
+  /etc/rc.d/rc.local_shutdown stop
+fi
+
+# Stop the Apache web server:
+if [ -x /etc/rc.d/rc.httpd ]; then
+  /etc/rc.d/rc.httpd stop
+fi
+
+# Stop the MySQL database:
+if [ -x /etc/rc.d/rc.mysqld -a -r /var/run/mysql/mysql.pid ]; then
+  /etc/rc.d/rc.mysqld stop
+fi
+
+# Stop the Samba server:
+if [ -x /etc/rc.d/rc.samba ]; then
+  /etc/rc.d/rc.samba stop
+fi
+
+# Shut down the NFS server:
+if [ -x /etc/rc.d/rc.nfsd ]; then
+  /etc/rc.d/rc.nfsd stop
+fi
+
+# Shut down the SSH server:
+if [ -x /etc/rc.d/rc.sshd ]; then
+  /etc/rc.d/rc.sshd stop
+fi
+
+# Shut down the SASL authentication daemon:
+if [ -x /etc/rc.d/rc.saslauthd ]; then
+  /etc/rc.d/rc.saslauthd stop
+fi
+
+# Shut down OpenLDAP:
+if [ -x /etc/rc.d/rc.openldap ]; then
+  /etc/rc.d/rc.openldap stop
+fi
+
+# Stop the haveged entropy daemon:
+if [ -x /etc/rc.d/rc.haveged -a -z "$container" ]; then
+  /etc/rc.d/rc.haveged stop
+fi
+
+# Kill any processes (typically gam) that would otherwise prevent
+# unmounting NFS volumes:
+unset FUSER_DELAY
+for dir in $(/bin/mount | grep -e 'type nfs ' -e 'type nfs4 ' | sed -e 's|.* on ||g' | cut -d ' ' -f 1) ; do
+  echo "Killing processes holding NFS mount $dir open..."
+  # Background this to prevent fuser from also blocking shutdown:
+  /usr/bin/fuser -k -M -m "$dir" &
+  FUSER_DELAY=5
+done
+# If fuser was run, let it have some delay:
+if [ ! -z "$FUSER_DELAY" ]; then
+  sleep $FUSER_DELAY
+fi
+
+# Unmount any NFS, SMB, or CIFS filesystems:
+echo "Unmounting remote filesystems:"
+/bin/umount -v -a -l -f -r -t nfs,nfs4,smbfs,cifs | tr -d ' ' | grep successfully | sed "s/:successfullyunmounted/ has been successfully unmounted./g"
+
+# Stop D-Bus:
+if [ -x /etc/rc.d/rc.messagebus ]; then
+  /etc/rc.d/rc.messagebus stop
+fi
+
+# Try to shut down pppd:
+PS="$(ps ax)"
+if echo "$PS" | /bin/grep -q -w pppd ; then
+  if [ -x /usr/sbin/ppp-off ]; then
+    /usr/sbin/ppp-off
+  fi
+fi
+
+# Shut down YP services:
+if [ -x /etc/rc.d/rc.yp ]; then
+  if grep -wq stop /etc/rc.d/rc.yp ; then
+    /etc/rc.d/rc.yp stop
+  fi
+fi
+
+# Bring down the networking system, but first make sure that this
+# isn't a diskless client with the / partition mounted via NFS:
+if ! /bin/mount | /bin/grep -q -e 'on / type nfs' -e 'on / type nfs4' ; then
+  if [ -x /etc/rc.d/rc.inet1 ]; then
+    /etc/rc.d/rc.inet1 stop
+  fi
+fi
+
+# In case dhcpcd might have been manually started on the command line,
+# look for the .pid file, and shut dhcpcd down if it's found:
+if /bin/ls /etc/dhcpc/*.pid 1> /dev/null 2> /dev/null ; then
+  /sbin/dhcpcd -k 1> /dev/null 2> /dev/null
+  # A little time for /etc/resolv.conf and/or other files to
+  # restore themselves.
+  sleep 2
+fi
+
+# Shut down PCMCIA devices:
+if [ -x /etc/rc.d/rc.pcmcia -a -z "$container" ]; then
+  /etc/rc.d/rc.pcmcia stop
+  # The cards might need a little extra time here to deactivate:
+  /bin/sleep 5
+fi
+
+# Turn off process accounting:
+if [ -x /sbin/accton -a -r /var/log/pacct ]; then
+  /sbin/accton off
+fi
+
+# Terminate acpid before syslog:
+if [ -x /etc/rc.d/rc.acpid -a -r /var/run/acpid.pid -a -z "$container" ]; then # quit
+  /etc/rc.d/rc.acpid stop
+fi
+
+# Stop udev:
+if [ -x /etc/rc.d/rc.udev -a -z "$container" ]; then
+  /etc/rc.d/rc.udev force-stop
+fi
+
+# Kill all remaining processes.
+# TM: also omit mount.* processes (fuse fs for Slax)
+OMITPIDS="$(for p in $(pgrep "mdmon|mount[.]"); do echo -o $p; done)" # Don't kill mdmon
+if [ ! "$1" = "fast" ]; then
+  echo "Sending all processes the SIGTERM signal."
+  /sbin/killall5 -15 $OMITPIDS
+  /bin/sleep 5
+  echo "Sending all processes the SIGKILL signal."
+  /sbin/killall5 -9 $OMITPIDS
+fi
+
+# Try to turn off quota.
+if /bin/grep -q quota /etc/fstab ; then
+  if [ -x /sbin/quotaoff -a -z "$container" ]; then
+    echo "Turning off filesystem quotas."
+    /sbin/quotaoff -a
+  fi
+fi
+
+# Carry a random seed between reboots.
+if [ -z "$container" ]; then
+  echo "Saving random seed from /dev/urandom in /etc/random-seed."
+  # Use the pool size from /proc, or 4096 bits:
+  if [ -r /proc/sys/kernel/random/poolsize ]; then
+    /bin/dd if=/dev/urandom of=/etc/random-seed count=1 bs=$(expr $(cat /proc/sys/kernel/random/poolsize) / 8) 2> /dev/null
+  else
+    /bin/dd if=/dev/urandom of=/etc/random-seed count=1 bs=512 2> /dev/null
+  fi
+  /bin/chmod 600 /etc/random-seed
+fi
+
+# Before unmounting file systems write a reboot or halt record to wtmp.
+$shutdown_command -w
+
+# Turn off swap:
+if [ ! "$(cat /proc/swaps | wc -l)" = "1" -a -z "$container" ]; then
+  echo "Turning off swap."
+  /sbin/swapoff -a
+  /bin/sync
+fi
+
+# Umount all tmpfs mounts except /dev/shm and under /run:
+if [ -z "$container" ]; then
+  cat /proc/mounts | grep " tmpfs " | grep -v -e " /run " -e " /run/" -e " /dev/shm " | while read mount ; do
+    umount --recursive -v $(echo $mount | cut -f 2 -d ' ') 2> /dev/null
+  done
+fi
+
+# Unmount local file systems:
+if [ -z "$container" ]; then
+  echo "Unmounting local file systems:"
+  /bin/umount -v -a -t no,proc,sysfs,devtmpfs,fuse.gvfsd-fuse,tmpfs
+  # JFS needs a sync here or the / partition cannot be remounted read-only.
+  # In spite of this, it seems that a JFS root partition will always be checked
+  # (and found to be clean) at boot:
+  /bin/sync
+  echo "Remounting root filesystem read-only:"
+  /bin/mount -v -n -o remount,ro /
+fi
+
+# This never hurts:
+/bin/sync
+
+# Close any volumes opened by cryptsetup:
+if [ -f /etc/crypttab -a -x /sbin/cryptsetup ]; then
+  cat /etc/crypttab | grep -v "^#" | grep -v "^$" | while read line; do
+    # NOTE: we only support LUKS formatted volumes (except for swap)!
+    LUKS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f1 -d' ')
+    DEV=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f2 -d' ')
+    OPTS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f4 -d' ')
+    if /sbin/cryptsetup isLuks $DEV 2>/dev/null ; then
+      echo "Locking LUKS crypt volume '${LUKS}':"
+      /sbin/cryptsetup luksClose ${LUKS}
+    elif echo $OPTS | grep -wq swap ; then
+      # If any of the volumes was used as encrypted swap,
+      # then run mkswap on the underlying device -
+      # in case other Linux installations on this computer should use it:
+      echo "Erasing encrypted swap '${LUKS}' and restoring normal swap on ${DEV}:"
+      /sbin/cryptsetup remove ${LUKS}
+      mkswap $DEV
+    fi
+  done
+fi
+
+# Deactivate LVM volume groups:
+if [ -z "$container" ]; then
+  if [ -r /etc/lvmtab -o -d /etc/lvm/backup ]; then
+    echo "Deactivating LVM volume groups:"
+    /sbin/vgchange -an
+  fi
+fi
+
+# This never hurts again (especially since root-on-LVM always fails
+# to deactivate the / logical volume...  but at least it was
+# remounted as read-only first)
+/bin/sync
+
+# sleep 3 fixes problems with some hard drives that don't
+# otherwise finish syncing before reboot or poweroff
+/bin/sleep 3
+
+# This is to ensure all processes have completed on SMP machines:
+wait
+
+if [ -x /sbin/genpowerd -a -z "$container" ]; then
+  # See if this is a powerfail situation:
+  if /bin/egrep -q "FAIL|SCRAM" /etc/upsstatus 2> /dev/null ; then
+    # Signal UPS to shut off the inverter:
+    /sbin/genpowerd -k
+    if [ ! $? = 0 ]; then
+      echo
+      echo "There was an error signaling the UPS."
+      echo "Perhaps you need to edit /etc/genpowerd.conf to configure"
+      echo "the serial line and UPS type."
+      # Wasting 15 seconds of precious power:
+      /bin/sleep 15
+    fi
+  fi
+fi
+
+if [ "$container" = "lxc" ]; then
+  # Confirm successful shutdown of the container:
+  echo "LXC container stopped."
+fi
+
+if [ -x /run/initramfs/shutdown ]; then
+
+   cd /run/initramfs
+   mkdir oldroot
+   pivot_root . oldroot
+
+   cd /
+   mount -t proc proc proc
+   mount -t sysfs sysfs sys
+
+   # create bogus /sbin/init
+   echo "#!/bin/sh" > /sbin/init
+   echo "sleep 99999" >> /sbin/init
+
+   # re-execute /sbin/init (it will start the one in current pivot root)
+   bin/chroot oldroot /sbin/telinit u
+
+   # run shutdown script
+   exec bin/chroot . bin/sh shutdown < dev/console > dev/console 2>&1
+   # it ends here
+fi
+
+# Now halt (poweroff with APM or ACPI enabled kernels) or reboot.
+if [ "$shutdown_command" = "reboot" ]; then
+  echo "Rebooting."
+  /sbin/reboot
+else
+  /sbin/poweroff
+fi

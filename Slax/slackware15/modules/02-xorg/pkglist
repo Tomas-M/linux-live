@@ -1,4 +1,10 @@
-# pure X and deps
+# necessary Xorg deps
+slackware:nettle
+slackware:freetype
+slackware:harfbuzz
+slackware:brotli
+slackware:graphite2
+slackware:libxml2
 slackware:libgcrypt
 slackware:libgpg-error
 slackware:pixman
