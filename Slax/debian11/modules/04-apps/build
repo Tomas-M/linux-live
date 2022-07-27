@@ -4,7 +4,7 @@ CWD=$(dirname $(readlink -f $0))
 
 apt update
 apt install --no-install-recommends --yes \
-    gnome-calculator \
+    galculator \
     pcmanfm \
     lxtask \
     connman-gtk at-spi2-core \
