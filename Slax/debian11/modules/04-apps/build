@@ -23,8 +23,9 @@ unsquashfs -f /apps-stock.sb
 rm -Rf /squashfs-root/root/.fluxbox
 rm -f /squashfs-root/root/.gtk-bookmarks
 rm -f /squashfs-root/usr/share/applications/lxtask.desktop
-rm -f /squashfs-root/usr/share/applications/org.gnome.calculator.desktop
+rm -f /squashfs-root/usr/share/applications/galculator.desktop
 rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
+rm -f /squashfs-root/usr/share/icons/hicolor/scalable/apps/*
 
 # we want to patch pcmanfm it to hide ugly root warning icon
 # so we will recompile whole package
