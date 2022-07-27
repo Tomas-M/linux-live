@@ -3,7 +3,7 @@
    [exec] (File Manager) { fbstartupnotify && pcmanfm }
    [exec] (Web Browser) { fbstartupnotify && fbliveapp chromium }
    [exec] (Text Editor) { fbstartupnotify && scite }
-   [exec] (Calculator) { fbstartupnotify && gnome-calculator }
+   [exec] (Calculator) { fbstartupnotify && galculator }
    [exec] (Network Manager) { fbstartupnotify && connman-gtk }
    [exec] (Run) { fbappselect }
    [separator]
