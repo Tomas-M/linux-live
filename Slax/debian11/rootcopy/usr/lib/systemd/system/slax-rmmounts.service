@@ -1,0 +1,11 @@
+[Unit]
+Description=Remove previous Slax mount targets
+DefaultDependencies=no
+Before=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/slax-cleanup-automount
+
+[Install]
+WantedBy=sysinit.target

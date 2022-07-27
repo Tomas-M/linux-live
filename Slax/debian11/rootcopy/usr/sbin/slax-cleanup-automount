@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# remove mount services created by slax-automount before udev starts
+grep "Slax skip savechanges" /etc/systemd/system/multi-user.*/* /etc/systemd/system/* 2>/dev/null | cut -d : -f 1 | xargs -r rm -f
