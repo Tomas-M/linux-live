@@ -7,5 +7,5 @@ slax:menu-cache
 slax:pcmanfm
 slax:galculator
 slax:xarchiver
-
-#slax:scite
+slax:lxtask
+slax:scite

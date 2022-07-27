@@ -127,7 +127,7 @@ for i in $(ls -1 modules | sort); do
       fi
    done
 
-   sh ./modules/$i/doinst.sh "$UNION"
+   sh ./modules/$i/doinst.sh "$UNION" $SLACKWARE
    cp -a ./modules/$i/rootcopy/* "$UNION"
 
    # update stuff so it is not needed during boot
