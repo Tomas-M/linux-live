@@ -116,7 +116,6 @@ rm -Rf usr/share/icons/Adwaita/{128x128,256x256,512x512,64x64,96x96,cursors,scal
 
 rm -f usr/share/applications/compton.desktop
 rm -f usr/share/applications/galculator.desktop
-rm -f usr/share/applications/google-chrome.desktop
 rm -f usr/share/applications/gtk3-demo.desktop
 rm -f usr/share/applications/gtk3-icon-browser.desktop
 rm -f usr/share/applications/gtk3-widget-factory.desktop
@@ -128,6 +127,7 @@ rm -f usr/share/applications/pcmanfm.desktop
 rm -f usr/share/applications/wpa_gui.desktop
 rm -f usr/share/applications/xterm.desktop
 rm -f usr/share/applications/zlxtask.desktop
+rm -f usr/share/applications/SciTE.desktop
 
 # most terminfo is not needed.
 rm -Rf usr/share/terminfo/{1,2,3,4,5,6,7,8,9,A,E,L,M,N,P,Q,X,a,b,c,d,e,f,g,h,i,j,k,m,o,p,q,r,s,t,w,z}
