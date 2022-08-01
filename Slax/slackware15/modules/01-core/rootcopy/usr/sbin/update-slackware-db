@@ -4,20 +4,19 @@
 
 CWD=$(dirname $0)
 UNPACKDIR=$CWD/package$$
-TMPDB=/tmp/deps64
+DB=/var/cache/packages/db
 
 SLACKWARE="$1"
 if [ "$SLACKWARE" = "" ]; then
    SLACKWARE=/media/cdrom/slackware64
 fi
 
-RESULT="$2"
-if [ "$RESULT" = "" ]; then
-   RESULT=/var/cache/packages/library_dependencies.txt
-fi
-
 if [ ! -r "$SLACKWARE/MANIFEST.bz2" ]; then
-   echo usage: $0 [ SLACKWARE_DVD ] [[ target_dependencies_list.txt ]]
+   echo "Create database with Slackware files and their dependencies"
+   echo "Database goes to $DB"
+   echo ""
+   echo "   usage: $0   [ SLACKWARE_DVD ]"
+   echo ""
    exit 1
 fi
 
@@ -32,11 +31,12 @@ detect_shell()
 
 export -f detect_shell
 
+echo "===================================================================="
 echo "Processing Slackware packages from: $SLACKWARE"
-echo "Saving dependency list to: $RESULT"
+echo "This can take several hours"
 echo "===================================================================="
 
-mkdir -p $TMPDB
+mkdir -p $DB
 
 find "$SLACKWARE" -name *.txz | while read LINE; do
 
@@ -70,16 +70,3 @@ find "$SLACKWARE" -name *.txz | while read LINE; do
 
 done
 
-
-# print dependency results
-
-echo "Creating dependency list in $RESULT ..."
-
-cat $TMPDB/* | egrep -a "^dep:" | cut -d "" -f 2 | sort | uniq | fgrep -v '<' | sed -r "s@^/@@" | while read ISNEEDED; do
-   echo -ne "$ISNEEDED: "
-   egrep -a "^fos:(|lib64/|usr/lib64/|usr/local/lib64/|usr/x86_64-slackware-linux/lib64/|lib/|usr/lib/|usr/local/lib/|usr/i586-slackware-linux/lib/|bin/|usr/bin/|sbin/|usr/sbin/|usr/libexec/)($ISNEEDED)\$" $TMPDB/* \
-      | cut -d ":" -f 1 | sort | uniq | sed -r 's@^[^/]+/@@' | sed -r "s@-[^-]+-[^-]+-[^-]+[.]t[gx]z\$@@" | tr '\n' ',' | sed -r "s/,\$//"
-   echo ""
-done > $RESULT
-
-# rm -Rf $TMPDB
