@@ -784,6 +784,7 @@ filter_noload()
 {
    local FILTER
    FILTER=$(cmdline_value noload)
+   FILTER=${FILTER//,/|}
    if [ "$FILTER" = "" ]; then
       cat -
    else
