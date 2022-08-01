@@ -16,6 +16,10 @@ fbsetkb $(cat ~/.fluxbox/kblayout)
 # setup bookmarks for file manager
 gtk-bookmarks-update
 
+# start connection manager daemon if it is not running already
+# it is needed for connman-gtk to work properly
+connmand &
+
 # Share common directories with guest user. This is necessary
 # because some apps like chromium must be running under guest
 for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
