@@ -5,7 +5,7 @@ if [ "$1" = "google-chrome" ]; then
    ABOUT="Google Chrome is a web browser from Google,
 that makes the web faster, safer, and easier."
    EXECUTABLE="/opt/google/chrome/chrome"
-   INSTALL="wget -c -O /tmp/05-chrome.sb 'https://slax.org/download-google-chrome.php?b=slackware&v=$(cat /etc/slax-version | tr -s " " "_")' && slax activate /tmp/05-chrome.sb"
+   INSTALL="wget -c -O /tmp/05-chrome.sb 'https://slax.org/download-google-chrome.php?b=slackware&v=$(cat /etc/slax-version | tr -s " " "_")' && slax activate /tmp/05-chrome.sb && rm /tmp/05-chrome.sb"
    POSTINSTALL=""
    GUEST=true
 fi
