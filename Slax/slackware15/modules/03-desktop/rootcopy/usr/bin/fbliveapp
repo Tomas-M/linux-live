@@ -1,23 +1,11 @@
 #!/bin/bash
 
-if [ "$1" = "vlc" ]; then
-   NAME="VLC Video Player"
-   ABOUT="VLC Video Player is a free and open source multimedia player
-and framework that plays most multimedia files as well as DVDs,
-Audio CDs, CVDs, and various streaming protocols."
-   EXECUTABLE="/usr/bin/vlc"
-   INSTALL="wget -c -O /tmp/07-vlc.sb https://slax.org/download/vlc/07-vlc.sb && slax activate /tmp/07-vlc.sb"
-   POSTINSTALL="rm /usr/share/applications/vlc.desktop; mkdir /home/guest/.config/vlc; echo '[qt4]
-qt-privacy-ask=0' > /home/guest/.config/vlc/vlcrc;"
-   GUEST=true
-fi
-
 if [ "$1" = "google-chrome" ]; then
    NAME="Google Chrome Web Browser"
    ABOUT="Google Chrome is a web browser from Google,
 that makes the web faster, safer, and easier."
    EXECUTABLE="/opt/google/chrome/chrome"
-   INSTALL="wget -c -O /tmp/05-chrome.sb https://slax.org/download/google/chrome/05-chrome.sb && slax activate /tmp/05-chrome.sb"
+   INSTALL="wget -c -O /tmp/05-chrome.sb 'https://slax.org/download-google-chrome.php?b=slackware&v=$(cat /etc/slax-version | tr -s " " "_")' && slax activate /tmp/05-chrome.sb"
    POSTINSTALL=""
    GUEST=true
 fi
