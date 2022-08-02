@@ -1,9 +1,7 @@
 slackware:mesa
-slackware:gnutls
 slackware:mozilla-nss
 slackware:libxkbcommon
 slackware:wayland
-slackware:p11-kit
 slackware:sqlite
 slackware:icu4c
 

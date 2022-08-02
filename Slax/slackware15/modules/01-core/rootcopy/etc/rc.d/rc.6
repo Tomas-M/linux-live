@@ -342,7 +342,7 @@ if [ -x /run/initramfs/shutdown ]; then
    bin/chroot oldroot /sbin/telinit u
 
    # run shutdown script
-   exec bin/chroot . bin/sh shutdown < dev/console > dev/console 2>&1
+   exec bin/chroot . bin/sh shutdown $shutdown_command < dev/console > dev/console 2>&1
    # it ends here
 fi
 

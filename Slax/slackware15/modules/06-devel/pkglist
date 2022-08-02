@@ -14,6 +14,7 @@ slackware:yasm
 slackware:elfutils
 slackware:ncurses
 slackware:kernel-headers
+slackware:libffi
 
 # X header files
 slackware:xorgproto

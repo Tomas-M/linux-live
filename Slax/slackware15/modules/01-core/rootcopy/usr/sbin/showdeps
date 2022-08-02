@@ -14,7 +14,7 @@ echo "===="
 echo "Missing libraries can be found in the following Slackware packages:"
 echo ""
 
-DEPS="$(ldd "$CMD" 2>/dev/null | egrep '^\s' | fgrep 'not found' | sed -r 's/ =>.*//') | sed -r 's@^/@@'"
+DEPS="$(ldd "$CMD" 2>/dev/null | egrep '^\s' | fgrep 'not found' | sed -r 's/ =>.*//' | sed -r 's@^/@@')"
 
 echo ""
 echo "$DEPS" | while read LIBRARY; do

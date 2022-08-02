@@ -2,6 +2,7 @@ slackware:fribidi
 slackware:libpng
 slackware:giflib
 slackware:libjpeg-turbo
+slackware:libtiff
 slackware:glib2
 slackware:pcre
 slackware:gtk[+]2
