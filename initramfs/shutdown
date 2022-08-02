@@ -77,13 +77,21 @@ done
 
 debug_shell
 
+if [ "$2" != "" ]; then
+   echo $2 ...
+   debug_log $2 -f
+   $2 -f
+fi
+
 echo $1 ...
 debug_log $1 -f
 $1 -f
 
+# we shouldn't be here. But if we are, reboot
 debug_log reboot -f
 reboot -f
 
+# well, shit happens
 echo We should never reach so far. Something is totally fucked up.
 echo Here you have a shell, to experiment with the universe.
-/bin/sh
+/bin/sh < /dev/console > /dev/console
