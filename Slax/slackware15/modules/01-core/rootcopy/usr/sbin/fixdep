@@ -1,4 +1,0 @@
-#!/bin/bash
-CMD="$1"
-DB=/var/cache/packages/slackware-libs.txt
-# TODO
