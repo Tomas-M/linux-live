@@ -6,6 +6,7 @@ slackware:glib2
 slackware:pcre
 slackware:gtk[+]2
 slackware:gtk[+]3
+slackware:gnome-themes-extra
 slackware:atk
 slackware:at-spi2-atk
 slackware:pango
