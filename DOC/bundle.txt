@@ -11,10 +11,10 @@ where 'sb' means 'slax bundle'.
 
 How to create bundle:
 
-    # mksquashfs bundle_rootfs wholefs.sb -comp xz -bs 512k
+    # mksquashfs bundle_rootfs wholefs.sb -comp xz -bs 1024k -Xbcj x86
 
     or
-    # mksquashfs /usr /usr.sb --keep-as-directory -comp xz -bs 512k
+    # mksquashfs /usr /usr.sb --keep-as-directory -comp xz -bs 1024k -Xbcj x86
 
     or use function in livekitlib:
     # . livekitlib; make_bundle bundle_rootfs wholefs.sb
