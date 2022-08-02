@@ -31,13 +31,13 @@ fi
 if [ ! -f "$EXECUTABLE" ]; then
 
    if [ $(uname -m) != 'x86_64' -a "$ONLY64" = "true" ]; then
-      gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-warning.png  -t Error -m "$NAME only works in 64bit version of Slax" -y OK
+      gtkdialog -i /usr/share/icons/HighContrast/16x16/status/dialog-warning.png  -t Error -m "$NAME only works in 64bit version of Slax" -y OK
       exit 1
    fi
 
-   if gtkdialog -i /usr/share/icons/gnome/16x16/status/dialog-question.png -t Question -m "$ABOUT$NAME is not yet installed.
+   if gtkdialog -i /usr/share/icons/HighContrast/16x16/status/dialog-question.png -t Question -m "$ABOUT$NAME is not yet installed.
 Do you like to download and install it now?" -y Yes -n No; then
-      xterm -ls -e bash --login -c -- "$INSTALL; $POSTINSTALL"
+      xterm -ls -e bash --login -c -- "$INSTALL; sleep 2; $POSTINSTALL"
    fi
 fi
 

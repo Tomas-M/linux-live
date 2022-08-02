@@ -177,6 +177,7 @@ slackware:cryptsetup
 slackware:dcron
 slackware:dialog
 slackware:file
+slackware:glibc
 slackware:glibc-zoneinfo
 slackware:logrotate
 slackware:utempter
