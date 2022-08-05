@@ -77,15 +77,19 @@ done
 
 debug_shell
 
+
 if [ "$2" != "" ]; then
-   echo $2 ...
-   debug_log $2 -f
-   $2 -f
+   shutdown_command="$2"
+else
+   shutdown_command="$1"
 fi
 
-echo $1 ...
-debug_log $1 -f
-$1 -f
+if [ "$shutdown_command" = "reboot" ]; then
+   echo "Rebooting..." > /dev/console
+   reboot
+else
+   poweroff
+fi
 
 # we shouldn't be here. But if we are, reboot
 debug_log reboot -f
