@@ -330,7 +330,7 @@ device_bestfs()
    if [ "$FS" = "msdos" -o "$FS" = "fat" -o "$FS" = "vfat" ]; then
       FS="vfat"
    elif [ "$FS" = "ntfs" ]; then
-      FS="ntfs-3g"
+      FS="ntfs3"
    fi
 
    if [ "$2" != "" ]; then
@@ -348,10 +348,7 @@ fs_options()
 {
    debug_log "fs_options" "$*"
 
-   if [ "$1" != "ntfs-3g" ]; then
-      echo -n "-t $1 "
-   fi
-
+   echo -n "-t $1 "
    echo -n "-o rw"
 
    if [ "$1" = "vfat" ]; then
@@ -367,11 +364,7 @@ mount_command()
 {
    debug_log "mount_command" "$*"
 
-   if [ "$1" = "ntfs-3g" ]; then
-      echo "@mount.ntfs-3g"
-   else
-      echo "mount"
-   fi
+   echo "mount"
 }
 
 
