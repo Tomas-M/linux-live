@@ -633,9 +633,10 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2 EXISTS
+   local CHANGES T1 T2 EXISTS DEVICE
 
    CHANGES="$1/$(basename "$2")"
+   DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
    T1="$CHANGES/.empty"
    T2="$T1"2
 
@@ -664,9 +665,11 @@ persistent_changes()
    rm "$T1" "$T2" 2>/dev/null
 
    if [ $? -eq 0 ]; then
-      echo "* Activating native persistent changes"
-      mount --bind "$CHANGES" "$2"
-      return
+      if device_bestfs $DEVICE | grep ntfs >/dev/null; then
+         echo "* Activating native persistent changes"
+         mount --bind "$CHANGES" "$2"
+         return
+      fi
    fi
 
    if [ -e "$CHANGES/changes.dat" ]; then
