@@ -10,4 +10,4 @@ if [ "$1" = "-h" -o "$1" = "--help" -o "$2" = "" ]; then
    exit 2
 fi
 
-(cd "$1"; find . -print | cpio -o -H newc) | xz -f --extreme --check=crc32 >"$2"
+(cd "$1"; find . -print | cpio -o -H newc) | xz -T0 -f --extreme --check=crc32 >"$2"
