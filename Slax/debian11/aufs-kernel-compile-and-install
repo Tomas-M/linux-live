@@ -1,0 +1,56 @@
+#!/bin/bash
+set -x -e
+KERNELVERSION=5.10
+KERNEL=linux-source-$KERNELVERSION
+CONFIG=config-$KERNELVERSION.0-20-amd64
+AUFS=aufs5-standalone
+CHECKOUT=origin/aufs5.10.140
+
+apt install build-essential linux-source bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git
+
+cd /usr/src
+#tar -xf $KERNEL.tar.xz
+
+cd $KERNEL
+cat /boot/$CONFIG > .config
+sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/' .config
+
+rm -Rf $AUFS
+git -c http.sslVerify=false clone https://github.com/sfjro/$AUFS
+cd $AUFS
+git checkout $CHECKOUT
+cd ..
+
+cp -aR $AUFS/fs .
+cp -a $AUFS/include/uapi/linux/aufs_type.h include/uapi/linux
+
+patch -p1 < $AUFS/aufs5-kbuild.patch
+patch -p1 < $AUFS/aufs5-base.patch
+patch -p1 < $AUFS/aufs5-mmap.patch
+patch -p1 < $AUFS/aufs5-standalone.patch
+patch -p1 < $AUFS/aufs5-loopback.patch
+patch -p1 < $AUFS/vfs-ino.patch
+patch -p1 < $AUFS/tmpfs-idr.patch
+
+echo "CONFIG_AUFS_FS=m
+# CONFIG_AUFS_BRANCH_MAX_127 is not set
+# CONFIG_AUFS_BRANCH_MAX_511 is not set
+# CONFIG_AUFS_BRANCH_MAX_1023 is not set
+CONFIG_AUFS_BRANCH_MAX_32767=y
+CONFIG_AUFS_SBILIST=y
+# CONFIG_AUFS_HNOTIFY is not set
+CONFIG_AUFS_EXPORT=y
+CONFIG_AUFS_INO_T_64=y
+CONFIG_AUFS_XATTR=y
+# CONFIG_AUFS_FHSM is not set
+# CONFIG_AUFS_RDU is not set
+CONFIG_AUFS_DIRREN=y
+CONFIG_AUFS_SHWH=y
+CONFIG_AUFS_BR_RAMFS=y
+CONFIG_AUFS_BR_FUSE=y
+CONFIG_AUFS_POLL=y
+CONFIG_AUFS_BR_HFSPLUS=y
+CONFIG_AUFS_BDEV_LOOP=y
+# CONFIG_AUFS_DEBUG is not set" >>.config
+
+make -j4 bindep-pkg
