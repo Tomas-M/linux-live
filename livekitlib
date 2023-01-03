@@ -680,7 +680,7 @@ persistent_changes()
       EXISTS=""
    fi
 
-   @mount.dynfilefs "$CHANGES/changes.dat" 8000 "$2"
+   @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
    if [ ! "$EXISTS" ]; then
       mke2fs -F "$2/virtual.dat" >/dev/null 2>&1
    fi
