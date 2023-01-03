@@ -1,0 +1,16 @@
+#!/bin/bash
+DIR="/tmp/slax-data-511/slax/boot"
+FILE="initrfs.img"
+
+if [ ! -r "$DIR/$FILE" ]; then
+   echo "File does not exist $DIR/$FILE"
+   exit
+fi
+
+mv "$DIR/$FILE" "$DIR/$FILE".x
+mkdir "$DIR/$FILE"
+mount -t tmpfs tmpfs "$DIR/$FILE"
+cd "$DIR/$FILE"
+
+xzcat "$DIR/$FILE".x | cpio -i
+rm "$DIR/$FILE".x
