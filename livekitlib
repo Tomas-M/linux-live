@@ -680,11 +680,11 @@ persistent_changes()
       EXISTS=""
    fi
 
-   @mount.dynfilefs "$CHANGES/changes.dat" 4000 "$2"
+   @mount.dynfilefs "$CHANGES/changes.dat" 8000 "$2"
    if [ ! "$EXISTS" ]; then
-      mke2fs -F "$2/loop.fs" >/dev/null 2>&1
+      mke2fs -F "$2/virtual.dat" >/dev/null 2>&1
    fi
-   mount -o loop,sync "$2/loop.fs" "$2"
+   mount -o loop "$2/virtual.dat" "$2"
 
    # if test failed at any point, we may have temp files left behind
    rm "$T1" "$T2" 2>/dev/null
