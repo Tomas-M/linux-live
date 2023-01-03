@@ -9,7 +9,7 @@ CHECKOUT=origin/aufs5.10.140
 apt install build-essential linux-source bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git
 
 cd /usr/src
-#tar -xf $KERNEL.tar.xz
+tar -xf $KERNEL.tar.xz
 
 cd $KERNEL
 cat /boot/$CONFIG > .config
