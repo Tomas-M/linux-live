@@ -77,12 +77,7 @@ done
 
 debug_shell
 
-
-if [ "$2" != "" ]; then
-   shutdown_command="$2"
-else
-   shutdown_command="$1"
-fi
+shutdown_command="$1"
 
 if [ "$shutdown_command" = "reboot" ]; then
    echo "Rebooting..." > /dev/console
