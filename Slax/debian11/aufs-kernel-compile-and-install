@@ -2,7 +2,11 @@
 set -x -e
 KERNELVERSION=5.10
 KERNEL=linux-source-$KERNELVERSION
-CONFIG=config-$KERNELVERSION.0-20-amd64
+if [ "$(uname -m)" = "i686" ]; then
+   CONFIG=config-$KERNELVERSION.0-20-686-pae
+else
+   CONFIG=config-$KERNELVERSION.0-20-amd64
+fi
 AUFS=aufs5-standalone
 CHECKOUT=origin/aufs5.10.140
 
@@ -54,3 +58,10 @@ CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
 make -j4 bindeb-pkg
+
+cd ..
+rm -f linux-*.buildinfo
+rm -f linux-*.changes
+rm -f linux-image-*-dbg*.deb
+rm -f linux-patch-*.patch.xz
+rm -Rf linux-source-*
