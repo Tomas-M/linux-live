@@ -53,4 +53,4 @@ CONFIG_AUFS_BR_HFSPLUS=y
 CONFIG_AUFS_BDEV_LOOP=y
 # CONFIG_AUFS_DEBUG is not set" >>.config
 
-make -j4 bindep-pkg
+make -j4 bindeb-pkg
