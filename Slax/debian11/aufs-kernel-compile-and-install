@@ -60,8 +60,5 @@ CONFIG_AUFS_BDEV_LOOP=y
 make -j4 bindeb-pkg
 
 cd ..
-rm -f linux-*.buildinfo
-rm -f linux-*.changes
-rm -f linux-image-*-dbg*.deb
-rm -f linux-patch-*.patch.xz
-rm -Rf linux-source-*
+
+echo "You can find debian package in /usr/src"
