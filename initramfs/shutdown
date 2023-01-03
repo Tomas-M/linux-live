@@ -82,8 +82,10 @@ shutdown_command="$1"
 if [ "$shutdown_command" = "reboot" ]; then
    echo "Rebooting..." > /dev/console
    reboot
+   reboot -f
 else
    poweroff
+   poweroff -f
 fi
 
 # we shouldn't be here. But if we are, reboot
@@ -93,4 +95,4 @@ reboot -f
 # well, shit happens
 echo We should never reach so far. Something is totally fucked up.
 echo Here you have a shell, to experiment with the universe.
-/bin/sh < /dev/console > /dev/console
+/bin/sh < /dev/console > /dev/console 2> /dev/console
