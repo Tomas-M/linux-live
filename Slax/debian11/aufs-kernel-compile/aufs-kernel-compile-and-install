@@ -1,22 +1,28 @@
 #!/bin/bash
 set -x -e
-KERNELVERSION=5.10
+KERNELVERSION=6.0
 KERNEL=linux-source-$KERNELVERSION
-if [ "$(uname -m)" = "i686" ]; then
-   CONFIG=config-$KERNELVERSION.0-20-686-pae
-else
-   CONFIG=config-$KERNELVERSION.0-20-amd64
-fi
+CONFIG=config-$(uname -m)
 AUFS=aufs5-standalone
-CHECKOUT=origin/aufs5.10.140
+CHECKOUT=origin/aufs6.0
 
-apt install build-essential linux-source bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git rsync python3
+CWD=$(pwd)
+
+# add unstable debian repo
+if [ "$(cat /etc/apt/sources.list | grep unstable)" = "" ]; then
+   echo "deb http://deb.debian.org/debian unstable main contrib non-free" | tee -a /etc/apt/sources.list
+   echo "deb-src http://deb.debian.org/debian unstable main contrib non-free" | tee -a /etc/apt/sources.list
+fi
+
+apt update
+
+apt install build-essential $KERNEL bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git rsync python3
 
 cd /usr/src
 tar -xf $KERNEL.tar.xz
 
 cd $KERNEL
-cat /boot/$CONFIG > .config
+cat $CWD/$CONFIG > .config
 sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/' .config
 
 rm -Rf $AUFS
@@ -28,11 +34,11 @@ cd ..
 cp -aR $AUFS/fs .
 cp -a $AUFS/include/uapi/linux/aufs_type.h include/uapi/linux
 
-patch -p1 < $AUFS/aufs5-kbuild.patch
-patch -p1 < $AUFS/aufs5-base.patch
-patch -p1 < $AUFS/aufs5-mmap.patch
-patch -p1 < $AUFS/aufs5-standalone.patch
-patch -p1 < $AUFS/aufs5-loopback.patch
+patch -p1 < $AUFS/aufs6-kbuild.patch
+patch -p1 < $AUFS/aufs6-base.patch
+patch -p1 < $AUFS/aufs6-mmap.patch
+patch -p1 < $AUFS/aufs6-standalone.patch
+patch -p1 < $AUFS/aufs6-loopback.patch
 patch -p1 < $AUFS/vfs-ino.patch
 patch -p1 < $AUFS/tmpfs-idr.patch
 
@@ -55,8 +61,13 @@ CONFIG_AUFS_BR_FUSE=y
 CONFIG_AUFS_POLL=y
 CONFIG_AUFS_BR_HFSPLUS=y
 CONFIG_AUFS_BDEV_LOOP=y
-# CONFIG_AUFS_DEBUG is not set" >>.config
+# CONFIG_AUFS_DEBUG is not set
+CONFIG_NTFS3_FS=m
+CONFIG_NTFS3_LZX_XPRESS=y
+# CONFIG_NTFS3_FS_POSIX_ACL is not set
+" >>.config
 
+make menuconfig
 make -j4 bindeb-pkg
 
 cd ..
