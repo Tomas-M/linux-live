@@ -16,7 +16,7 @@ fi
 
 apt update
 
-apt install build-essential $KERNEL bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git rsync python3
+apt install build-essential $KERNEL bc kmod cpio flex libncurses5-dev libelf-dev libssl-dev dwarves bison git rsync python3 openssl
 
 cd /usr/src
 tar -xf $KERNEL.tar.xz
