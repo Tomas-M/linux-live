@@ -5,19 +5,23 @@ if [ "$1" = "keep" ]; then
    KEEP=true
 fi
 
-SLAXVERSION="15.0"
+SLAXVERSION="15.0.1"
 
 if [ "$(uname -m)" = "x86_64" ]; then
-   SLACKWARE=/mnt/cdrom/slackware64/
-   SLAX=/mnt/z/slax/64bit
+   SLACKWARE=/mnt/z/slackware-current/slackware64/
+   SLAX=/mnt/z/slackware-slax/64bit
+   FTP=rsync://rsync@ftp.linux.cz:/pub/linux/slackware/slackware64-current/slackware64/
    LIBSUFFIX=64
    export SLAXVERSION="Slax $SLAXVERSION 64bit"
 else
-   SLACKWARE=/mnt/cdrom/slackware/
-   SLAX=/mnt/z/slax/32bit
+   SLACKWARE=/mnt/z/slackware-current/slackware/
+   SLAX=/mnt/z/slackware-slax/32bit
+   FTP=rsync://rsync@ftp.linux.cz:/pub/linux/slackware/slackware-current/slackware/
    LIBSUFFIX=
    export SLAXVERSION="Slax $SLAXVERSION 32bit"
 fi
+
+rsync -avHS --delete $FTP $SLACKWARE
 
 EMPTY=/tmp/slax-empty
 UNION=/tmp/slax-union
@@ -100,7 +104,6 @@ union_target_set()
 
 
 # setup union
-
 modprobe aufs
 #mount -t tmpfs tmpfs $EMPTY
 mount -t aufs -o xino="$EMPTY/.xino",br="$EMPTY" none "$UNION"
