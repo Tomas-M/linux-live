@@ -66,6 +66,7 @@ slackware:libwacom
 slackware:libxcb
 slackware:libxkbfile
 slackware:libxshmfence
+slackware:libxcvt
 
 slackware:xf86-input-acecad
 slackware:xf86-input-evdev
