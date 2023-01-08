@@ -96,7 +96,7 @@ copy_including_deps /$LMK/kernel/drivers/block/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
 
 # usb drivers
-copy_including_deps /$LMK/kernel/drivers/usb/storage/usb-storage.*
+copy_including_deps /$LMK/kernel/drivers/usb/storage/*
 copy_including_deps /$LMK/kernel/drivers/usb/host
 copy_including_deps /$LMK/kernel/drivers/usb/common
 copy_including_deps /$LMK/kernel/drivers/usb/core
