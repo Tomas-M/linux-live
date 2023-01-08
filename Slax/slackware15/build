@@ -7,7 +7,7 @@ bash ./modbuild keep
 THIS=$(dirname $(readlink -f $0))
 
 rm -f /vmlinuz
-cat /boot/vmlinuz-slax* > /vmlinuz
+cat /boot/vmlinuz-6* > /vmlinuz
 
 sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
 sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
