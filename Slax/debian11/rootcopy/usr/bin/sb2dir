@@ -22,12 +22,12 @@ if [ "$2" = "" ]; then
    mv "$1" "$SOURCE" || exit
    mkdir "$1"
    mount -t tmpfs tmpfs "$1"
-   unsquashfs -f -dest "$1" "$SOURCE" >/dev/null || exit
+   unsquashfs -f -no-xattrs -dest "$1" "$SOURCE" >/dev/null || exit
    rm "$SOURCE"
 else
    if [ ! -d "$2" ]; then
       echo "Directory does not exist: $2" >&2
       exit
    fi
-   unsquashfs -f -dest "$2" "$1" >/dev/null
+   unsquashfs -f -no-xattrs -dest "$2" "$1" >/dev/null
 fi
