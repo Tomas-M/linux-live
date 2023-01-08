@@ -23,7 +23,6 @@ tar -xf $KERNEL.tar.xz
 
 cd $KERNEL
 cat $CWD/$CONFIG > .config
-sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/' .config
 
 rm -Rf $AUFS
 git -c http.sslVerify=false clone https://github.com/sfjro/$AUFS
