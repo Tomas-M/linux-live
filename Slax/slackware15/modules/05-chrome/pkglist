@@ -5,4 +5,5 @@ slackware:wayland
 slackware:sqlite
 slackware:icu4c
 
-slax:google-chrome
+slax:chromium
+
