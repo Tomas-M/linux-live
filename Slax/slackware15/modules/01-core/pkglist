@@ -36,6 +36,8 @@ slackware:alsa-lib
 slackware:alsa-oss
 slackware:alsa-plugins
 slackware:alsa-utils
+slackware:mpg123
+slackware:lame
 slackware:pulseaudio
 slackware:libsndfile
 slackware:flac
