@@ -68,16 +68,9 @@ slackware:libxkbfile
 slackware:libxshmfence
 slackware:libxcvt
 
-slackware:xf86-input-acecad
 slackware:xf86-input-evdev
-slackware:xf86-input-joystick
-slackware:xf86-input-keyboard
 slackware:xf86-input-libinput
-slackware:xf86-input-mouse
-slackware:xf86-input-penmount
 slackware:xf86-input-synaptics
-slackware:xf86-input-vmmouse
-slackware:xf86-input-void
 slackware:xf86-input-wacom
 slackware:xf86-video-amdgpu
 slackware:xf86-video-ati
