@@ -105,8 +105,9 @@ union_target_set()
 
 # setup union
 modprobe aufs
-#mount -t tmpfs tmpfs $EMPTY
+mount -t tmpfs tmpfs $EMPTY
 mount -t aufs -o xino="$EMPTY/.xino",br="$EMPTY" none "$UNION"
+
 
 # install all packages for bundles
 
