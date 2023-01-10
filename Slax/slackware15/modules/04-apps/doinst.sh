@@ -12,7 +12,7 @@ else
    ARCH=""
 fi
 
-cp -a $TMP/usr/lib64/libquadmath.so.* $UNION/usr/lib$ARCH
+cp -a $TMP/usr/lib$ARCH/libquadmath.so.* $UNION/usr/lib$ARCH
 rm -Rf $TMP
 
 glib-compile-schemas $1/usr/share/glib-2.0/schemas/
