@@ -2,7 +2,7 @@
 Version=1.0
 Name=Web Browser
 GenericName=Web Browser
-Exec=fbliveapp chromium %U
+Exec=fbliveapp chromium --no-default-browser-check %U
 Terminal=false
 X-MultipleArgs=false
 Type=Application
