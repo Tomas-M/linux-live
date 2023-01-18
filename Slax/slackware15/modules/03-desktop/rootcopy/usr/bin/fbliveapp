@@ -5,6 +5,7 @@ if [ "$1" = "chromium" ]; then
    ABOUT="Chromium is a free and open source version of
 the famous Chrome browser, developed by Google."
    EXECUTABLE="/usr/bin/chromium"
+   PARAMS="--disable-seccomp-filter-sandbox"
    INSTALL="wget -c -O /tmp/05-chromium.sb 'https://slax.org/download-web-browser.php?b=slackware&v=$(cat /etc/slax-version | tr -s " " "_")' && slax activate /tmp/05-chromium.sb && rm /tmp/05-chromium.sb"
    POSTINSTALL=""
    GUEST=true
@@ -48,7 +49,7 @@ if [ -f "$EXECUTABLE" ]; then
 
    if [ "$GUEST" = "true" -a "$EUID" -eq 0 ]; then
       xhost + >/dev/null 2>/dev/null
-      exec su -c "$EXECUTABLE "$@""  guest
+      exec su -c "$EXECUTABLE $PARAMS "$@""  guest
    fi
 
    exec "$EXECUTABLE" "$@"
