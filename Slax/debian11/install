@@ -34,5 +34,3 @@ cd /tmp/acpisupport
 cp -aR * /
 cp -aR lib/systemd /lib/
 cd "$CWD"
-
-systemctl enable dhclient.service
