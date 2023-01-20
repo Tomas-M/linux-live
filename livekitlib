@@ -373,7 +373,7 @@ mount_command()
 network_device()
 {
    debug_log "network_device" "$*"
-   cat /proc/net/dev | grep : | grep -v lo: | cut -d : -f 1 | tr -d " " | head -n 1
+   cat /proc/net/dev | grep : | grep -v lo: | grep -v ip6tnl | cut -d : -f 1 | tr -d " " | head -n 1
 }
 
 
