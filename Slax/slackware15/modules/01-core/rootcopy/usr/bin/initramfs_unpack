@@ -1,0 +1,20 @@
+#!/bin/bash
+
+set -e
+
+if [ "$1" = "-h" -o "$1" = "--help" -o "$1" = "" ]; then
+   echo ""
+   echo "Unpack initramfs image so it becomes a directory"
+   echo "Usage: $0 [source_initramfs_file.img]"
+   echo ""
+   exit 2
+fi
+
+IMG="$(readlink -f "$1")"
+
+mv "$IMG" "$IMG.2"
+mkdir -p "$IMG"
+mount -t tmpfs tmpfs "$IMG"
+
+(cd "$IMG"; xz -d | cpio -idv >/dev/null 2>&1) < "$IMG.2"
+rm "$IMG.2"
