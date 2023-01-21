@@ -1,1 +1,2 @@
+xhost +
 startfluxbox
