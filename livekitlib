@@ -672,7 +672,7 @@ persistent_changes()
       fi
    fi
 
-   if [ -e "$CHANGES/changes.dat.000" ]; then
+   if [ -e "$CHANGES/changes.dat.0" ]; then
       echo "* Restoring persistent changes"
       EXISTS="true"
    else
