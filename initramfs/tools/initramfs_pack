@@ -1,0 +1,19 @@
+#!/bin/bash
+
+set -e
+
+if [ "$1" = "-h" -o "$1" = "--help" -o "$1" = "" ]; then
+   echo ""
+   echo "Create initramfs image from a tmpfs-mounted directory tree"
+   echo "Usage: $0 [source_directory]"
+   echo ""
+   exit 2
+fi
+
+IMG="$(readlink -f "$1")"
+touch "$IMG.2" # ends if error
+
+(cd "$IMG"; find . -print | cpio -o -H newc 2>/dev/null) | xz -T0 -f --extreme --check=crc32 >"$IMG.2"
+umount "$IMG"
+rmdir "$IMG"
+mv "$IMG.2" "$IMG"
