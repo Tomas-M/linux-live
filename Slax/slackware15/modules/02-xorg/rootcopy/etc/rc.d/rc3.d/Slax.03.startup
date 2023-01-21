@@ -3,5 +3,9 @@
 # This script gets executed at the end of rc.M
 # Author: Tomas M <www.slax.org>
 
+if grep -q -w text /proc/cmdline; then
+   exit
+fi
+
 echo "Starting X ..."
 /bin/su --login -c "/usr/bin/startx -- :0 vt7 -ac -nolisten tcp" >/dev/null 2>/dev/null &
