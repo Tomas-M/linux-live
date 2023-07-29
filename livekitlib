@@ -633,7 +633,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2 EXISTS DEVICE
+   local CHANGES T1 T2 EXISTS DEVICE PERCHFILE PERCHSIZE SPLITSIZE SUFFIX
 
    CHANGES="$1/$(basename "$2")"
    DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
@@ -672,7 +672,22 @@ persistent_changes()
       fi
    fi
 
-   if [ -e "$CHANGES/changes.dat.0" ]; then
+   SPLITSIZE=4000
+   PERCHSIZE=$(cmdline_value perchsize)
+   PERCHFILE=$(cmdline_value perchfile)
+
+   if [ "$PERCHSIZE" = "" ]; then
+      PERCHSIZE=16000
+   fi
+
+   if [ "$PERCHFILE" = "" ]; then
+      PERCHFILE="changes.dat"
+   fi
+
+   # suffix for changes.dat based on final size, like 0, 00, 000 etc
+   SUFFIX=$(echo $((($PERCHSIZE + $SPLITSIZE - 1) / $SPLITSIZE)) | sed -r 's/./0/g')
+
+   if [ -e "$CHANGES/$PERCHFILE.$SUFFIX" ]; then
       echo "* Restoring persistent changes"
       EXISTS="true"
    else
@@ -680,7 +695,7 @@ persistent_changes()
       EXISTS=""
    fi
 
-   @mount.dynfilefs -f "$CHANGES/changes.dat" -s 16000 -m "$2" -p 4000
+   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p $SPLITSIZE
    if [ ! "$EXISTS" ]; then
       mke2fs -F "$2/virtual.dat" >/dev/null 2>&1
    fi
