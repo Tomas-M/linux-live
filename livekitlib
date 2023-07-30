@@ -657,16 +657,11 @@ persistent_changes()
       return
    fi
 
-   SPLITSIZE=4000
    PERCHSIZE=$(cmdline_value perchsize)
    PERCHFILE=$(cmdline_value perchfile)
 
-   if [ "$PERCHSIZE" = "" ]; then
-      PERCHSIZE=16000
-   fi
-
-   # if perchfile is not specified, try to use native fs
-   if [ "$PERCHFILE" = "" ]; then
+   # if neither perchfile nor perchsize is specified, try to use native fs
+   if [ "$PERCHFILE" = "" -a "$PERCHSIZE" = "" ]; then
       echo_green_star
       echo "Testing persistent changes for posix compatibility"
       touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
@@ -683,9 +678,16 @@ persistent_changes()
       fi
    fi
 
-   # native fs cannot supported. use perchfile
+   # If we are here, native fs was not supported or user requested perchfile anyway
+
+   SPLITSIZE=4000
+
    if [ "$PERCHFILE" = "" ]; then
       PERCHFILE="changes.dat"
+   fi
+
+   if [ "$PERCHSIZE" = "" ]; then
+      PERCHSIZE=16000
    fi
 
    # suffix for changes.dat based on final size, like 0, 00, 000 etc
