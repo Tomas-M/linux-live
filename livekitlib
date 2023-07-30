@@ -657,21 +657,6 @@ persistent_changes()
       return
    fi
 
-   echo_green_star
-   echo "Testing persistent changes for posix compatibility"
-   touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
-   chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
-   chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
-   rm "$T1" "$T2" 2>/dev/null
-
-   if [ $? -eq 0 ]; then
-      if device_bestfs $DEVICE | grep -v ntfs >/dev/null; then
-         echo "* Activating native persistent changes"
-         mount --bind "$CHANGES" "$2"
-         return
-      fi
-   fi
-
    SPLITSIZE=4000
    PERCHSIZE=$(cmdline_value perchsize)
    PERCHFILE=$(cmdline_value perchfile)
@@ -680,6 +665,25 @@ persistent_changes()
       PERCHSIZE=16000
    fi
 
+   # if perchfile is not specified, try to use native fs
+   if [ "$PERCHFILE" = "" ]; then
+      echo_green_star
+      echo "Testing persistent changes for posix compatibility"
+      touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
+      chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
+      chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
+      rm "$T1" "$T2" 2>/dev/null
+
+      if [ $? -eq 0 ]; then
+         if device_bestfs $DEVICE | grep -v ntfs >/dev/null; then
+            echo "* Activating native persistent changes"
+            mount --bind "$CHANGES" "$2"
+            return
+         fi
+      fi
+   fi
+
+   # native fs cannot supported. use perchfile
    if [ "$PERCHFILE" = "" ]; then
       PERCHFILE="changes.dat"
    fi
@@ -687,11 +691,12 @@ persistent_changes()
    # suffix for changes.dat based on final size, like 0, 00, 000 etc
    SUFFIX=$(echo $((($PERCHSIZE + $SPLITSIZE - 1) / $SPLITSIZE)) | sed -r 's/./0/g')
 
+   # restore or use new
    if [ -e "$CHANGES/$PERCHFILE.$SUFFIX" ]; then
-      echo "* Restoring persistent changes"
+      echo "* Restoring persistent changes from $PERCHFILE"
       EXISTS="true"
    else
-      echo "* Creating new persistent changes"
+      echo "* Creating new persistent changes in $PERCHFILE"
       EXISTS=""
    fi
 
