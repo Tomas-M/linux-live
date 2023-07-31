@@ -21,7 +21,8 @@ else
    export SLAXVERSION="Slax $SLAXVERSION 32bit"
 fi
 
-rsync -avHS --delete $FTP $SLACKWARE
+#rsync -avHS --delete $FTP $SLACKWARE || exit
+#upgradepkg $SLACKWARE/*/*
 
 EMPTY=/tmp/slax-empty
 UNION=/tmp/slax-union
