@@ -139,6 +139,8 @@ fi
 # Unmount any NFS, SMB, or CIFS filesystems:
 echo "Unmounting remote filesystems:"
 /bin/umount -v -a -l -f -r -t nfs,nfs4,smbfs,cifs | tr -d ' ' | grep successfully | sed "s/:successfullyunmounted/ has been successfully unmounted./g"
+# Update PATH hashes:
+hash -r
 
 # Stop D-Bus:
 if [ -x /etc/rc.d/rc.messagebus ]; then
@@ -147,7 +149,7 @@ fi
 
 # Try to shut down pppd:
 PS="$(ps ax)"
-if echo "$PS" | /bin/grep -q -w pppd ; then
+if echo "$PS" | grep -q -w pppd ; then
   if [ -x /usr/sbin/ppp-off ]; then
     /usr/sbin/ppp-off
   fi
@@ -162,7 +164,7 @@ fi
 
 # Bring down the networking system, but first make sure that this
 # isn't a diskless client with the / partition mounted via NFS:
-if ! /bin/mount | /bin/grep -q -e 'on / type nfs' -e 'on / type nfs4' ; then
+if ! /bin/mount | grep -q -e 'on / type nfs' -e 'on / type nfs4' ; then
   if [ -x /etc/rc.d/rc.inet1 ]; then
     /etc/rc.d/rc.inet1 stop
   fi
@@ -175,6 +177,21 @@ if /bin/ls /etc/dhcpc/*.pid 1> /dev/null 2> /dev/null ; then
   # A little time for /etc/resolv.conf and/or other files to
   # restore themselves.
   sleep 2
+fi
+
+# If there is a firewall_shutdown script, run it. Most firewall setups
+# will not need to be formally shut down, but in case yours needs that
+# (perhaps to do some shutdown-time cleanup or to save the state), then
+# create an /etc/rc.d/rc.firewall_shutdown script to do these things.
+# If your rc.firewall script supports a "stop" parameter, you might only
+# need this in your rc.firewall_shutdown script:
+#
+#   /etc/rc.d/rc.firewall stop
+#
+# Or in that case you could also just make rc.firewall_shutdown a symlink
+# to the rc.firewall script, since we also provide the stop parameter here.
+if [ -x /etc/rc.d/rc.firewall_shutdown ]; then
+  /etc/rc.d/rc.firewall_shutdown stop
 fi
 
 # Shut down PCMCIA devices:
@@ -211,7 +228,7 @@ if [ ! "$1" = "fast" ]; then
 fi
 
 # Try to turn off quota.
-if /bin/grep -q quota /etc/fstab ; then
+if grep -q quota /etc/fstab ; then
   if [ -x /sbin/quotaoff -a -z "$container" ]; then
     echo "Turning off filesystem quotas."
     /sbin/quotaoff -a
@@ -219,15 +236,33 @@ if /bin/grep -q quota /etc/fstab ; then
 fi
 
 # Carry a random seed between reboots.
+# Doing this properly requires the seedrng utility.
 if [ -z "$container" ]; then
-  echo "Saving random seed from /dev/urandom in /etc/random-seed."
-  # Use the pool size from /proc, or 4096 bits:
-  if [ -r /proc/sys/kernel/random/poolsize ]; then
-    /bin/dd if=/dev/urandom of=/etc/random-seed count=1 bs=$(expr $(cat /proc/sys/kernel/random/poolsize) / 8) 2> /dev/null
-  else
-    /bin/dd if=/dev/urandom of=/etc/random-seed count=1 bs=512 2> /dev/null
+  # Any old seed that exists here shall be deemed useless:
+  if [ -f /etc/random-seed ]; then
+    rm -f /etc/random-seed
+    sync /etc
   fi
-  /bin/chmod 600 /etc/random-seed
+  if [ -x /usr/sbin/seedrng ]; then
+    /usr/sbin/seedrng
+  else # we have to fall back on the old method:
+    OLD_UMASK="$(umask)"
+    umask 077
+    mkdir -p /var/lib/seedrng
+    echo "The SeedRNG utility was not found. Generating a non-creditable and"
+    echo "inferior RNG seed: /var/lib/seedrng/seed.no-credit"
+    SEED="$(cat /var/lib/seedrng/seed.* 2>/dev/null | base64)"
+    rm -f /var/lib/seedrng/seed.*
+    sync /var/lib/seedrng
+    POOLSIZE=$(expr $(cat /proc/sys/kernel/random/poolsize 2> /dev/null || echo 4096) / 8)
+    {
+      head -c $POOLSIZE /dev/urandom
+      echo "$SEED" | base64 -d
+    } | sha512sum | cut -d ' ' -f 1 > /var/lib/seedrng/seed.no-credit
+    umask "$OLD_UMASK"
+    unset OLD_UMASK
+    unset SEED
+  fi
 fi
 
 # Before unmounting file systems write a reboot or halt record to wtmp.
@@ -250,7 +285,9 @@ fi
 # Unmount local file systems:
 if [ -z "$container" ]; then
   echo "Unmounting local file systems:"
-  /bin/umount -v -a -t no,proc,sysfs,devtmpfs,fuse.gvfsd-fuse,tmpfs
+  /bin/umount -v -a -t no,proc,sysfs,devtmpfs,fuse.gvfsd-fuse,tmpfs 2>/dev/null
+  # Update PATH hashes:
+  hash -r
   # JFS needs a sync here or the / partition cannot be remounted read-only.
   # In spite of this, it seems that a JFS root partition will always be checked
   # (and found to be clean) at boot:
@@ -263,24 +300,8 @@ fi
 /bin/sync
 
 # Close any volumes opened by cryptsetup:
-if [ -f /etc/crypttab -a -x /sbin/cryptsetup ]; then
-  cat /etc/crypttab | grep -v "^#" | grep -v "^$" | while read line; do
-    # NOTE: we only support LUKS formatted volumes (except for swap)!
-    LUKS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f1 -d' ')
-    DEV=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f2 -d' ')
-    OPTS=$(echo $line | tr '\t' ' ' | tr -s ' ' | cut -f4 -d' ')
-    if /sbin/cryptsetup isLuks $DEV 2>/dev/null ; then
-      echo "Locking LUKS crypt volume '${LUKS}':"
-      /sbin/cryptsetup luksClose ${LUKS}
-    elif echo $OPTS | grep -wq swap ; then
-      # If any of the volumes was used as encrypted swap,
-      # then run mkswap on the underlying device -
-      # in case other Linux installations on this computer should use it:
-      echo "Erasing encrypted swap '${LUKS}' and restoring normal swap on ${DEV}:"
-      /sbin/cryptsetup remove ${LUKS}
-      mkswap $DEV
-    fi
-  done
+if [ -x /etc/rc.d/rc.luks ]; then
+  /etc/rc.d/rc.luks stop
 fi
 
 # Deactivate LVM volume groups:
@@ -305,7 +326,7 @@ wait
 
 if [ -x /sbin/genpowerd -a -z "$container" ]; then
   # See if this is a powerfail situation:
-  if /bin/egrep -q "FAIL|SCRAM" /etc/upsstatus 2> /dev/null ; then
+  if grep -E -q "FAIL|SCRAM" /etc/upsstatus 2> /dev/null ; then
     # Signal UPS to shut off the inverter:
     /sbin/genpowerd -k
     if [ ! $? = 0 ]; then
