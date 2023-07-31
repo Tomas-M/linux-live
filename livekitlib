@@ -693,8 +693,13 @@ persistent_changes()
    # suffix for changes.dat based on final size, like 0, 00, 000 etc
    SUFFIX=$(echo $((($PERCHSIZE + $SPLITSIZE - 1) / $SPLITSIZE)) | sed -r 's/./0/g')
 
+   # for backward compatibility, can be removed in 2025
+   if [ -e "$CHANGES/$PERCHFILE.$SUFFIX" -a ! -e "$CHANGES/$PERCHFILE" ]; then
+      dd if="$CHANGES/$PERCHFILE.$SUFFIX" of="$CHANGES/$PERCHFILE" bs=4k count=1
+   fi
+
    # restore or use new
-   if [ -e "$CHANGES/$PERCHFILE.$SUFFIX" ]; then
+   if [ -e "$CHANGES/$PERCHFILE" ]; then
       echo "* Restoring persistent changes from $PERCHFILE"
       EXISTS="true"
    else
