@@ -18,7 +18,7 @@ fi
 # if kernel was upgraded, you may need to reboot
 apt-get install --yes --no-install-recommends mc squashfs-tools genisoimage zip unzip psmisc net-tools \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
-hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat ssh gpm wireless-tools \
+hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
 ntfs-3g rfkill file dnsmasq ntpdate dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman
 
 ln -sf bash /bin/sh
