@@ -1,18 +1,18 @@
 #!/bin/bash
 set -x -e
-KERNELVERSION=6.0
+KERNELVERSION=6.1
 KERNEL=linux-source-$KERNELVERSION
 CONFIG=config-$(uname -m)
 AUFS=aufs5-standalone
-CHECKOUT=origin/aufs6.0
+CHECKOUT=origin/aufs6.1
 
 CWD=$(pwd)
 
 # add unstable debian repo
-if [ "$(cat /etc/apt/sources.list | grep unstable)" = "" ]; then
-   echo "deb http://deb.debian.org/debian unstable main contrib non-free" | tee -a /etc/apt/sources.list
-   echo "deb-src http://deb.debian.org/debian unstable main contrib non-free" | tee -a /etc/apt/sources.list
-fi
+#if [ "$(cat /etc/apt/sources.list | grep unstable)" = "" ]; then
+#   echo "deb http://deb.debian.org/debian unstable main contrib non-free " | tee -a /etc/apt/sources.list
+#   echo "deb-src http://deb.debian.org/debian unstable main contrib non-free" | tee -a /etc/apt/sources.list
+#fi
 
 apt update
 
