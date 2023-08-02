@@ -27,7 +27,6 @@ mv /usr/share/icons/Breeze_Snow /usr/share/icons/breeze_cursors
 
 (cd rootcopy && cp --parents -afr * /)
 
-cp ../../cleanup /tmp
 # install x11 server utils, apt-get would add cpp dependency, bullshit!
 cd /tmp
 apt download x11-xserver-utils
@@ -37,7 +36,5 @@ cp -aR * /
 
 update-alternatives --set x-terminal-emulator /usr/bin/xterm
 
-. /tmp/cleanup
-
-savechanges /02-xorg.sb
+/cleanup
 

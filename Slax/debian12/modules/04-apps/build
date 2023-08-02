@@ -11,41 +11,14 @@ apt install --no-install-recommends --yes \
     scite \
     xarchiver xdg-utils libgconf-2-4
 
-. ../../cleanup
+/cleanup
 
 (cd rootcopy && cp --parents -afr * /)
 
-savechanges /apps-stock.sb
-cd /
-mkdir /squashfs-root
-mount -t tmpfs tmpfs /squashfs-root
-unsquashfs -f /apps-stock.sb
-rm -Rf /squashfs-root/root/.fluxbox
-rm -f /squashfs-root/root/.gtk-bookmarks
-rm -f /squashfs-root/usr/share/applications/lxtask.desktop
-rm -f /squashfs-root/usr/share/applications/galculator.desktop
-rm -f /squashfs-root/usr/share/applications/pcmanfm.desktop
-rm -f /squashfs-root/usr/share/icons/hicolor/scalable/apps/*
+rm -Rf /root/.fluxbox
+rm -f /root/.gtk-bookmarks
+rm -f /usr/share/applications/lxtask.desktop
+rm -f /usr/share/applications/galculator.desktop
+rm -f /usr/share/applications/pcmanfm.desktop
+rm -f /usr/share/icons/hicolor/scalable/apps/*
 
-# we want to patch pcmanfm it to hide ugly root warning icon
-# so we will recompile whole package
-
-REBUILD=/tmp/pcmanfm-rebuild-$$
-
-apt update
-apt --yes build-dep pcmanfm
-
-mkdir -p -m 0777 $REBUILD
-cd $REBUILD
-
-apt source pcmanfm
-
-cd pcmanfm-1.3.2
-dpkg-buildpackage -us -uc
-patch -p1 < $CWD/patches/pcmanfm-slax.diff
-make
-
-strip --strip-unneeded src/pcmanfm
-cp src/pcmanfm /squashfs-root/usr/bin
-
-dir2sb /squashfs-root /04-apps.sb

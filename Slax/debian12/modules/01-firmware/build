@@ -15,6 +15,4 @@ apt install --yes --no-install-recommends \
    firmware-ti-connectivity \
    firmware-b43-installer
 
-. ../../cleanup
-
-savechanges /01-firmware.sb
+/cleanup

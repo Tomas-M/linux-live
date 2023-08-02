@@ -1,0 +1,29 @@
+#!/bin/bash
+
+CWD=$(dirname $(readlink -f $0))
+
+cd /
+mkdir /squashfs-root
+#mount -t tmpfs tmpfs /squashfs-root
+
+# we want to patch pcmanfm it to hide ugly root warning icon
+# so we will recompile whole package
+
+REBUILD=/tmp/pcmanfm-rebuild-$$
+
+apt update
+apt --yes build-dep pcmanfm
+
+mkdir -p -m 0777 $REBUILD
+cd $REBUILD
+
+apt source pcmanfm
+
+cd pcmanfm-1.3.2
+dpkg-buildpackage -us -uc
+patch -p1 < $CWD/patches/pcmanfm-slax.diff
+make
+
+strip --strip-unneeded src/pcmanfm
+cp src/pcmanfm /squashfs-root/usr/bin
+
