@@ -1,0 +1,97 @@
+--- a/src/Window.cc	2013-02-13 05:04:05.000000000 -0500
++++ b/src/Window.cc	2017-11-05 17:31:37.516503305 -0500
+@@ -2745,6 +2745,14 @@
+     m_button_grab_x = x - frame().x() - frame().window().borderWidth();
+     m_button_grab_y = y - frame().y() - frame().window().borderWidth();
+ 
++    // If mouse clicked on the border, start window resize instead of move
++    if (m_button_grab_x <= 0 || m_button_grab_x >= (int)frame().window().width()
++        || m_button_grab_y >= (int)frame().window().height() ) {
++        ReferenceCorner dir = getResizeDirection(m_button_grab_x,m_button_grab_y,EDGEORCORNERRESIZE,frame().window().borderWidth(),frame().window().borderWidth());
++        startResizing(m_button_grab_x, m_button_grab_y, dir);
++        return;
++    }
++
+     moving = true;
+ 
+     Fluxbox *fluxbox = Fluxbox::instance();
+@@ -2752,7 +2760,7 @@
+     // freely map and unmap the window we're moving.
+     grabPointer(screen().rootWindow().window(), False, ButtonMotionMask |
+                 ButtonReleaseMask, GrabModeAsync, GrabModeAsync,
+-                screen().rootWindow().window(), frame().theme()->moveCursor(), CurrentTime);
++                screen().rootWindow().window(), None, CurrentTime);
+ 
+     if (menu().isVisible())
+         menu().hide();
+--- a/src/FbTk/FbDrawable.hh
++++ b/src/FbTk/FbDrawable.hh
+@@ -52,7 +52,8 @@ public:
+         LEFT,
+         RIGHT,
+         UP,
+-        DOWN
++        DOWN,
++        MENU
+     };
+ 
+     // x, y, width and height define a space within which we're drawing a triangle
+--- a/src/ToolFactory.cc	2013-02-13 05:04:05.000000000 -0500
++++ b/src/ToolFactory.cc	2017-10-31 12:11:20.000000000 -0400
+@@ -101,6 +101,8 @@
+             cmd_str += " (workspace=[current])";
+         }
+ 
++        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbappselect";
++
+         FbTk::RefCount<FbTk::Command<void> > cmd(FbTk::CommandParser<void>::instance().parse(cmd_str));
+         if (cmd == 0) // we need a command
+             return 0;
+@@ -110,6 +112,9 @@
+         if (name.find("prev") != std::string::npos)
+             arrow_type = FbTk::FbDrawable::LEFT;
+ 
++        if (name.find("menu") != std::string::npos)
++        arrow_type = FbTk::FbDrawable::MENU;
++
+         ArrowButton *win = new ArrowButton(arrow_type, parent,
+                                            0, 0,
+                                            button_size, button_size);
+--- a/src/FbTk/FbDrawable.cc	2017-10-19 06:06:08.000000000 -0400
++++ a/src/FbTk/FbDrawable.cc	2017-10-19 06:06:57.013131070 -0400
+@@ -96,7 +96,7 @@
+     if (drawable() == 0 || gc == 0 || width == 0 || height == 0)
+         return;
+ 
+-    XPoint pts[3];
++    XPoint pts[4];
+ 
+     if (scale < 100) scale = 100; // not bigger than the space allowed
+     else if (scale > 10000) scale = 10000; // not too small...
+@@ -115,6 +115,26 @@
+     }
+ 
+     switch (type) {
++    case FbTk::FbDrawable::MENU:
++    {
++       int s=7; int m=2; int d=2; int sh=-1; //size margin distance
++       pts[0].x=m+sh; pts[0].y=m+sh; pts[1].x=m+s+sh; pts[1].y=m+sh;
++       pts[2].x=m+s+sh; pts[2].y=m+s+sh; pts[3].x=m+sh; pts[3].y=m+s+sh;
++       fillPolygon(gc, pts, 4, Convex, CoordModeOrigin);
++
++       pts[0].x=m+s+d+sh; pts[0].y=m+sh; pts[1].x=m+s+d+s+sh; pts[1].y=m+sh;
++       pts[2].x=m+s+d+s+sh; pts[2].y=m+s+sh; pts[3].x=m+s+d+sh; pts[3].y=m+s+sh;
++       fillPolygon(gc, pts, 4, Convex, CoordModeOrigin);
++
++       pts[0].x=m+sh; pts[0].y=m+s+d+sh; pts[1].x=m+s+sh; pts[1].y=m+s+d+sh;
++       pts[2].x=m+s+sh; pts[2].y=m+s+d+s+sh; pts[3].x=m+sh; pts[3].y=m+s+d+s+sh;
++       fillPolygon(gc, pts, 4, Convex, CoordModeOrigin);
++
++       pts[0].x=m+s+d+sh; pts[0].y=m+s+d+sh; pts[1].x=m+s+d+s+sh; pts[1].y=m+s+d+sh;
++       pts[2].x=m+s+d+s+sh; pts[2].y=m+s+d+s+sh; pts[3].x=m+s+d+sh; pts[3].y=m+s+d+s+sh;
++       fillPolygon(gc, pts, 4, Convex, CoordModeOrigin);
++       return;
++    }
+     case FbTk::FbDrawable::LEFT:
+         // start at the tip
+         pts[0].x = (width / 2) - (ax / 2); pts[0].y = height / 2;
