@@ -57,6 +57,10 @@ cd $NAME-$VERSION
 cat $CWD/patches/fluxbox-slax.diff > debian/patches/fluxbox-slax.diff
 echo fluxbox-slax.diff >> debian/patches/series
 
+# enable imlib2 support
+cat $CWD/patches/imlib2-config >/usr/bin/imlib2-config
+chmod ugo+x /usr/bin/imlib2-config
+
 dpkg-buildpackage -us -uc
 
 rm -Rf debian/$NAME/DEBIAN
