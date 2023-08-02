@@ -1,5 +1,10 @@
 #!/bin/bash
 
+for i in $(seq 1 5); do
+killall systemd-journald
+sleep 0.5
+done
+
 rm -f /etc/fstab
 rm -f /etc/mtab
 rm -f /etc/apt/sources.list~
