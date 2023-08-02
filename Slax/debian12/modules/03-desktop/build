@@ -21,9 +21,9 @@ apt install --no-install-recommends --yes \
 . ../../cleanup
 
 (cd rootcopy && cp --parents -afr * /)
-chown guest.users /home/guest
-chown -R guest.users /home/guest/.gtkrc-2.0
-chown -R guest.users /home/guest/.config
+chown guest:users /home/guest
+chown -R guest:users /home/guest/.gtkrc-2.0
+chown -R guest:users /home/guest/.config
 
 savechanges /$NAME-stock.sb
 
@@ -37,7 +37,7 @@ for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; d
    mkdir -p /squashfs-root/home/guest/$dir
    mkdir -p /squashfs-root/root/$dir
 done
-chown -R guest.users /squashfs-root/home/guest
+chown -R guest:users /squashfs-root/home/guest
 
 # then, we want to patch it to implement window resizing!
 # so we will recompile whole package
