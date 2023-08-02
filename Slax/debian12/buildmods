@@ -20,20 +20,60 @@ union_target_set()
    rm -Rf "$1"
    mkdir -p "$1"
    mount -o remount,mod:$(cat /sys/fs/aufs/*/br0 | sed -r "s/=.*//")=ro none "$2" 2>/dev/null
+   mount -o remount,mod:$(cat /sys/fs/aufs/*/br1 | sed -r "s/=.*//")=ro none "$2" 2>/dev/null
    mount -o remount,add:0:"$1" none "$2"
 }
 
-union_remove()
+# remove files which are already installed in $1
+# so the module won't include duplicated files
+# $1 = original files root (source for comparing)
+# $2 = new files root, remove duplicates from here
+#
+function remove_duplicites()
 {
-   mount -o remount,del:0:"$1" none "$2"
+   find "$2" -noleaf | while read DUPLICATE; do
+      ORIGFILE=$1/"${DUPLICATE:$((${#2}+1))}"
+      if [ "$DUPLICATE" = "$ORIGFILE" ]; then continue; fi
+
+      # if one file is a symlink and the other one is not, don't delete anything
+      if [ -h "$DUPLICATE" -a ! -h "$ORIGFILE" ]; then continue; fi
+      if [ ! -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then continue; fi
+
+      # a symlink pointing to the same location can be removed
+      if [ -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then
+         if [ "$(readlink "$DUPLICATE")" = "$(readlink $ORIGFILE)" ]; then
+            rm -v "$DUPLICATE"
+            rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
+            continue
+         fi
+      fi
+
+      # existing files will be tested for UID and diff'ed
+      if [ ! -d "$DUPLICATE" -a -a "$ORIGFILE" ]; then
+         if [ "$(stat $ORIGFILE | grep Uid)" = "$(stat $DUPLICATE | grep Uid)" ]; then
+            diff --brief "$DUPLICATE" "$ORIGFILE" >/dev/null 2>/dev/null
+            if [ $? = 0 ]; then # is the same, can be removed
+               rm -v "$DUPLICATE"
+               rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
+            fi
+         fi
+      fi
+   done
 }
+
 
 # setup union
 modprobe aufs
 mount -t tmpfs tmpfs $EMPTY
 mount -t aufs -o xino="$EMPTY/.xino",br="$EMPTY" none "$UNION"
 
-for i in boot dev proc run sys tmp media mnt; do
+for i in boot media mnt tmp; do
+   mkdir -p $UNION/$i
+done
+
+mount -t tmpfs tmpfs $UNION/tmp
+
+for i in dev proc run sys; do
    mkdir -p $UNION/$i
    mount --rbind /$i $UNION/$i
 done
@@ -54,33 +94,32 @@ for i in $(ls -1 modules | sort); do
    chroot $UNION /cleanup
    rm -Rf $UNION/{a,cleanup}
 
-   if [ "$(echo $i | fgrep -tmp)" != "" ]; then
+   if [ "$(echo $i | fgrep -- '-tmp')" != "" ]; then
+      mount -o remount,mod:/tmp/$(echo $i | sed -r 's/-tmp//')=rw "$UNION"
       mount -o remount,del:/tmp/$i "$UNION"
    fi
 done
 
 # mark last branch read-only and add new branch in order to remove some .wh. files
 union_target_set /tmp/empty2 "$UNION"
-exit
 
-umount "$UNION/*"
+
+umount -l "$UNION/*"
 umount "$UNION"
 umount "$EMPTY"
 rmdir "$UNION"
 rmdir "$EMPTY"
 
-exit
 
-
-# delete unneeded stuff
-for i in $(ls -1 modules | sort); do
-   ./reduce /tmp/$i
-   rm /tmp/$i.sb
+ls -1 modules | sort | fgrep -- '-tmp' | while read DIR; do
+   PREV=$(echo $DIR | sed -r 's/-tmp//')
+   (cd /tmp/$DIR/squashfs-root && cp --parents -afrv * ../../$PREV)
+   rm -Rf /tmp/$DIR
 done
 
 # remove duplicites
-for i in $(ls -1 modules | sort); do
-   for j in $(ls -1 modules | sort); do
+for i in $(ls -1 modules | fgrep -v -- '-tmp' | sort); do
+   for j in $(ls -1 modules | fgrep -v -- '-tmp' | sort); do
       if [ "$i" \< "$j" ]; then
          remove_duplicites /tmp/$i /tmp/$j
       fi
