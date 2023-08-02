@@ -24,6 +24,7 @@ ntfs-3g rfkill file dnsmasq ntpdate dvd+rw-tools usb-modeswitch pm-utils wget vi
 ln -sf bash /bin/sh
 
 apt-get remove --yes vim* grub* debconf-i18n installation-report
+apt-get remove --yes apparmor
 apt-get autoremove --yes
 
 CWD="$(pwd)"

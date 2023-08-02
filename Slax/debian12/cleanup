@@ -1,8 +1,5 @@
 #!/bin/bash
 
-apt remove apparmor --yes
-
-
 rm -f /etc/fstab
 rm -f /etc/mtab
 rm -f /etc/apt/sources.list~
