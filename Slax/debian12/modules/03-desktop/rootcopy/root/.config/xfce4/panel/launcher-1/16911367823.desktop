@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Launcher
+Comment=Application Launcher screen
+Exec=fbappselect
+Icon=emblem-generic
+Path=
+Terminal=false
+StartupNotify=false

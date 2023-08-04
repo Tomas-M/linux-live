@@ -16,6 +16,7 @@ apt install --no-install-recommends --yes \
     murrine-themes \
     libnotify4 \
     libgtk2.0-0 \
+    xfce4-panel \
     scrot
 
 . ../../cleanup
