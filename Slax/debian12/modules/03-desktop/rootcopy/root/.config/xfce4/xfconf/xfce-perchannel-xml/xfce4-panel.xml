@@ -36,7 +36,8 @@
       <property name="flat-buttons" type="bool" value="true"/>
       <property name="show-handle" type="bool" value="false"/>
       <property name="sort-order" type="uint" value="4"/>
-      <property name="show-wireframes" type="bool" value="true"/>
+      <property name="show-wireframes" type="bool" value="false"/>
+      <property name="show-tooltips" type="bool" value="false"/>
     </property>
     <property name="plugin-3" type="string" value="separator">
       <property name="expand" type="bool" value="true"/>
@@ -61,6 +62,7 @@
     <property name="plugin-12" type="string" value="clock">
       <property name="digital-layout" type="uint" value="3"/>
       <property name="digital-time-font" type="string" value="Sans 14"/>
+      <property name="tooltip-format" type="string" value=""/>
     </property>
     <property name="plugin-13" type="string" value="separator">
       <property name="style" type="uint" value="0"/>
@@ -69,6 +71,8 @@
       <property name="items" type="array">
         <value type="string" value="16911524441.desktop"/>
       </property>
+      <property name="disable-tooltips" type="bool" value="true"/>
+      <property name="show-label" type="bool" value="false"/>
     </property>
     <property name="plugin-4" type="string" value="pager">
       <property name="rows" type="uint" value="2"/>
