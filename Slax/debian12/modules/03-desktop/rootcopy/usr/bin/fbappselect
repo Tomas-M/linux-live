@@ -9,8 +9,8 @@ COMMAND=$(
   xlunch --border 7% --sideborder 10% --borderratio 100 --sideborderratio 50 \
          --backgroundcolor 00000066 \
          --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
-         --button "/usr/share/icons/locolor/48x48/actions/xlunch-logout.png;;3;-54;fblogout" \
-         --button "/usr/share/icons/hicolor/48x48/apps/org.xfce.panel.applicationsmenu.png;;3;-3;" \
+         --button "/usr/share/icons/locolor/48x48/actions/xlunch-logout.png;;2;-53;fblogout" \
+         --button "/usr/share/icons/hicolor/48x48/apps/org.xfce.panel.applicationsmenu.png;;2;-2;" \
          --voidclickterminate --iconpadding 40 --textpadding 10 \
          --leastmargin 6 --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
