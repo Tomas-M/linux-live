@@ -2,9 +2,9 @@
 Version=1.0
 Type=Application
 Name=Launcher
-Comment=Application Launcher screen
+Comment=Application launcher screen
 Exec=fbappselect
-Icon=emblem-generic
+Icon=xlunch-menu-big
 Path=
 Terminal=false
 StartupNotify=false
