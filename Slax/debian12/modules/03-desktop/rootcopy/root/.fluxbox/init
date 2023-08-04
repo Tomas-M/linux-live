@@ -10,11 +10,11 @@ session.screen0.clientMenu.usePixmap:	true
 session.screen0.tab.placement:	TopLeft
 session.screen0.tab.width:	64
 session.screen0.toolbar.maxOver:	false
-session.screen0.toolbar.tools:	RootMenu, iconbar, systemtray, clock
+session.screen0.toolbar.tools:	
 session.screen0.toolbar.autoHide:	false
 session.screen0.toolbar.widthPercent:	100
 session.screen0.toolbar.alpha:	255
-session.screen0.toolbar.visible:	true
+session.screen0.toolbar.visible:	false
 session.screen0.toolbar.placement:	BottomCenter
 session.screen0.toolbar.layer:	Dock
 session.screen0.toolbar.height:	0
