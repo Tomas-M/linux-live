@@ -26,9 +26,6 @@ chown guest:users /home/guest
 chown -R guest:users /home/guest/.gtkrc-2.0
 chown -R guest:users /home/guest/.config
 
-gtk-update-icon-cache /usr/share/icons/locolor
-gtk-update-icon-cache /usr/share/icons/hicolor
-
 savechanges /$NAME-stock.sb
 
 cd /
