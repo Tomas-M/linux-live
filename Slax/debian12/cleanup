@@ -17,7 +17,9 @@ rm -f /etc/ssh/ssh_host*
 rm -f /var/backups/*
 rm -f /var/cache/ldconfig/*
 rm -f /var/cache/debconf/*
+rm -Rf /var/cache/apparmor/*
 rm -f /var/cache/fontconfig/*
+rm -Rf /var/cache/man/*
 rm -f /var/lib/apt/extended_states
 rm -f /var/lib/systemd/random-seed
 rm -f /var/lib/apt/lists/deb.*
