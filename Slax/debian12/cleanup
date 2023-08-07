@@ -43,6 +43,7 @@ rm -Rf /usr/share/locale/??@*
 rm -Rf /usr/share/locale/???
 rm -Rf /usr/share/i18n/locales/*_*
 rm -Rf /usr/share/man/??
+rm -Rf /usr/share/man/??.*
 rm -Rf /usr/share/man/*_*
 
 rm -Rf /usr/share/icons/elementaryXubuntu-dark
