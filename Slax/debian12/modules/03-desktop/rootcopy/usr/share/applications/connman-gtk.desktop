@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Exec=connman-gtk-start
+Name=Connman Settings
+Categories=GTK;GNOME;Settings;X-GNOME-Settings-Panel;X-Unity-Settings-Panel;HardwareSettings
+Keywords=connman;network;settings;wired;wifi;wi-fi;bluetooth;vpn;tethering
+Icon=preferences-system-network

@@ -47,12 +47,13 @@
       <property name="style" type="uint" value="0"/>
     </property>
     <property name="plugin-6" type="string" value="systray">
-      <property name="square-icons" type="bool" value="false"/>
+      <property name="square-icons" type="bool" value="true"/>
       <property name="known-legacy-items" type="array">
+        <value type="string" value="connman-gtk"/>
         <value type="string" value="volumeicon"/>
         <value type="string" value="systrayicon"/>
       </property>
-      <property name="icon-size" type="int" value="0"/>
+      <property name="icon-size" type="int" value="22"/>
       <property name="single-row" type="bool" value="true"/>
       <property name="symbolic-icons" type="bool" value="false"/>
     </property>

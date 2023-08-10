@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if pgrep -x connman-gtk; then
+   gtkdialog -t "Already running" -m "The Network Manager is already running.
+To access its window, double-click the icon that resembles two
+computers, located at the bottom right corner of the screen" -y OK
+else
+   exec connman-gtk
+fi
