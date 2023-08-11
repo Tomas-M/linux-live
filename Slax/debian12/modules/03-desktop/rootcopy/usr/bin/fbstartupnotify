@@ -3,6 +3,11 @@
 CURSORSDIR=/usr/share/icons/breeze_cursors/cursors/
 SIZE=16
 
+if [ "$1" = "false" ]; then
+   xsetroot -xcf $CURSORSDIR/left_ptr $SIZE
+   exit
+fi
+
 # Set cursor to wait. As soon as new window is detected, change cursor back
 xsetroot -xcf $CURSORSDIR/left_ptr_watch $SIZE
 export WINDOWS="$(wmctrl -l)"
