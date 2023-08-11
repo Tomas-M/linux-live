@@ -1,7 +1,7 @@
 [begin] (Desktop menu)
    [exec] (Terminal) { fbstartupnotify && xterm -ls }
    [exec] (File Manager) { fbstartupnotify && pcmanfm }
-   [exec] (Web Browser) { fbstartupnotify && fbliveapp chromium --no-default-browser-check %U }
+   [exec] (Web Browser) { fbstartupnotify && fbliveapp chromium --no-default-browser-check }
    [exec] (Text Editor) { fbstartupnotify && scite }
    [exec] (Calculator) { fbstartupnotify && galculator }
    [exec] (Network Manager) { fbstartupnotify && connman-gtk }

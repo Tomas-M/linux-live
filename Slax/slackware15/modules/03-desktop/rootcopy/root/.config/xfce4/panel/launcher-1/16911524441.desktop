@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Launcher
+Comment=Application launcher screen
+Exec=fbappselect
+Icon=org.xfce.panel.applicationsmenu
+Path=
+Terminal=false
+StartupNotify=false
