@@ -12,9 +12,9 @@ apt install --yes --no-install-recommends \
     x11-utils \
     wmctrl \
     xdotool \
-    libdrm-intel1 
-#    libgl1-mesa-dri \
-#    libglu1-mesa
+    libdrm-intel1
+    libgl1-mesa-dri \
+    libglu1-mesa
 
 # Set setuid bit on xorg binary, so it can be started by guest user
 chmod u+s /usr/lib/xorg/Xorg
