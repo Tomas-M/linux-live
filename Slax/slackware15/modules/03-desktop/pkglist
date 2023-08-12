@@ -33,6 +33,7 @@ slackware:libxfce4util
 slackware:startup-notification
 slackware:xfconf
 slackware:exo
+slackware:hicolor-icon-theme
 slackware:xfce4-panel
 
 slax:imlib2
