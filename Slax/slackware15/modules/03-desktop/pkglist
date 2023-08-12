@@ -25,6 +25,15 @@ slackware:shared-mime-info
 slackware:gmime
 slax:volumeicon
 
+slackware:garcon
+slackware:libdbusmenu
+slackware:libwnck3
+slackware:libxfce4ui
+slackware:libxfce4util
+slackware:startup-notification
+slackware:xfconf
+slackware:xfce4-panel
+
 slax:imlib2
 slax:feh
 slax:xlunch
