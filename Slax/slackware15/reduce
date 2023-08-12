@@ -115,6 +115,7 @@ rm usr/share/smplayer/translations/*
 rm -Rf usr/share/icons/Adwaita/{128x128,256x256,512x512,64x64,96x96,cursors,scalable,scalable-up-to-32}
 
 rm -f usr/share/applications/panel-*.desktop
+rm -f usr/share/applications/xfce-about.desktop
 rm -f usr/share/applications/compton.desktop
 rm -f usr/share/applications/galculator.desktop
 rm -f usr/share/applications/gtk3-demo.desktop
