@@ -32,6 +32,7 @@ slackware:libxfce4ui
 slackware:libxfce4util
 slackware:startup-notification
 slackware:xfconf
+slackware:exo
 slackware:xfce4-panel
 
 slax:imlib2
