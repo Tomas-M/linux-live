@@ -27,7 +27,7 @@ KERNEL=$(uname -r)
 # No subdirectories are allowed, no slashes,
 # so You can't use /var/tmp here for example
 # Exclude directories like proc sys tmp
-MKMOD="bin etc home lib lib64 opt root sbin srv usr var"
+MKMOD="bin etc home lib lib64 libx32 opt root sbin srv usr var"
 
 # If you require network support in initrd, for example to boot over
 # PXE or to load data using 'from' boot parameter from a http server,
