@@ -5,7 +5,7 @@ if [ "$1" = "keep" ]; then
    KEEP=true
 fi
 
-SLAXVERSION="15.0.1"
+SLAXVERSION="15.0.2"
 
 if [ "$(uname -m)" = "x86_64" ]; then
    SLACKWARE=/mnt/z/slackware-current/slackware64/
