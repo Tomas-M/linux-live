@@ -1,2 +1,2 @@
 #!/bin/bash
-su --login -c startx
+su --login -c /usr/bin/Xdetect

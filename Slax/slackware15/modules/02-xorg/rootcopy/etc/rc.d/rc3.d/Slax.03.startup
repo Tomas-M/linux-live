@@ -8,4 +8,4 @@ if grep -q -w text /proc/cmdline; then
 fi
 
 echo "Starting X ..."
-/bin/su --login -c "/usr/bin/startx -- :0 vt7 -ac -nolisten tcp" >/dev/null 2>/dev/null &
+/bin/su --login -c "/usr/bin/Xdetect -- :0 vt7 -ac -nolisten tcp" >/dev/null 2>/dev/null &

@@ -1,0 +1,10 @@
+#!/bin/bash
+
+CONF=/etc/X11/xorg.conf.d/01-xautodetected.conf
+
+rm $CONF
+Xorg -config 2>/dev/null
+mv -f /root/xorg.conf.new $CONF
+
+exec /usr/bin/startx
+
