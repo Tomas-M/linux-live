@@ -4,7 +4,7 @@ TMP=/tmp/changes$$
 EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]pwd[.]lock|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^root/[.]Xauthority|^root/[.]xsession-errors|^root/[.]fehbg|^root/[.]fluxbox/lastwallpaper|^root/[.]fluxbox/menu_resolution|^etc/mtab|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
 CHANGES=/run/initramfs/memory/changes
 
-if [ "$1" = "" ]; then
+if [ "$1" = "-h" -o "$1" = "--help" ]; then
    echo ""
    echo "savechanges - save all changed files in a compressed filesystem bundle"
    echo "            - excluding some predefined files such as /etc/mtab,"
@@ -14,8 +14,22 @@ if [ "$1" = "" ]; then
    echo "        $0 [ target_file.sb ] [ changes_directory ]"
    echo ""
    echo "If changes_directory is not specified, /run/initramfs/memory/changes is used."
+   echo "If target_file.sb is not specified, /run/initramfs/memory/data/slax/modules/99-changes-??.sb is used."
    echo ""
    exit 1
+fi
+
+TARGET="$1"
+
+if [ "$TARGET" = "" ]; then
+   TARGETDIR=/run/initramfs/memory/data/slax/modules
+   ix=$(cat /run/savechanges.session 2>/dev/null)
+   if [ "$ix" = "" ]; then
+      ix=$(cd $TARGETDIR; ls -1 | sort -V | last -n 1 | sed -r "s/^99-changes-//" | sed -r "s/[.]sb\$//")
+      ix=$(($ix + 1))
+   fi
+   echo $ix > /run/savechanges.session
+   TARGET=$TARGETDIR/99-changes-$ix.sb
 fi
 
 if [ ! "$2" = "" ]; then
@@ -34,7 +48,7 @@ if [ "$EXCLUDEDISKS" != "" ]; then
 fi
 
 # exclude the save_file itself of course
-EXCLUDE="$EXCLUDE|^""$(readlink -f "$1" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
+EXCLUDE="$EXCLUDE|^""$(readlink -f "$TARGET" | cut -b 2- | sed -r "s/[.]/[.]/")""\$"
 
 CWD=$(pwd)
 
@@ -51,7 +65,7 @@ done
 
 cd $CWD
 
-mksquashfs $TMP "$1" -comp xz -b 1024K -Xbcj x86 -always-use-fragments -noappend
+mksquashfs $TMP "$TARGET" -comp xz -b 1024K -Xbcj x86 -always-use-fragments -noappend
 
 umount $TMP
 rmdir $TMP
