@@ -25,12 +25,14 @@ if [ "$TARGET" = "" ]; then
    TARGETDIR=/run/initramfs/memory/data/slax/modules
    ix=$(cat /run/savechanges.session 2>/dev/null)
    if [ "$ix" = "" ]; then
-      ix=$(cd $TARGETDIR; ls -1 | sort -V | last -n 1 | sed -r "s/^99-changes-//" | sed -r "s/[.]sb\$//")
+      ix=$(cd $TARGETDIR; ls -1 | sort -V | tail -n 1 | sed -r "s/^99-changes-//" | sed -r "s/[.]sb\$//")
       ix=$(($ix + 1))
    fi
    echo $ix > /run/savechanges.session
    TARGET=$TARGETDIR/99-changes-$ix.sb
 fi
+
+touch $TARGET || exit 1
 
 if [ ! "$2" = "" ]; then
    CHANGES="$2"
@@ -65,7 +67,7 @@ done
 
 cd $CWD
 
-mksquashfs $TMP "$TARGET" -comp xz -b 1024K -Xbcj x86 -always-use-fragments -noappend
+mksquashfs $TMP "$TARGET" -comp xz -b 1024K -Xbcj x86 -always-use-fragments -noappend > /dev/null
 
 umount $TMP
 rmdir $TMP
