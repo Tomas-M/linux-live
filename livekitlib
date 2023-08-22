@@ -845,7 +845,7 @@ union_append_bundles()
       echo_green_star
       echo "Adding bundles to union"
       find "$1" -mindepth 1 -maxdepth 1 | sortmod | while read BUNDLE; do
-         mount -o remount,add:1:"$BUNDLE" aufs "$2"
+         mount -o remount,add:1:"$BUNDLE=rr+wh" aufs "$2"
       done
    fi
 }

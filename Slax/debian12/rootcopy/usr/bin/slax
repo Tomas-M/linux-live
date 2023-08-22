@@ -80,7 +80,7 @@ activate()
    fi
 
    # add current branch to aufs union
-   mount -t aufs -o remount,add:1:"$TGT" aufs /
+   mount -t aufs -o remount,add:1:"$TGT=rr+wh" aufs /
    if [ $? -ne 0 ]; then
       umount "$TGT"
       rmdir "$TGT"
