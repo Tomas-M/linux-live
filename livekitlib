@@ -562,6 +562,13 @@ find_data_try()
          return
       fi
 
+      # search for bundles in modules directory
+      if [ "$(find "$1/$FROM/modules" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+         # we found at least one bundle/module here
+         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
+         return
+      fi
+
       # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
       umount "$1" 2>/dev/null
       umount "$1" 2>/dev/null
