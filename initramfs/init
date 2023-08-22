@@ -43,7 +43,7 @@ persistent_changes "$DATA" "$CHANGES"
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
 
 # mount bundles
-mount_bundles "$DATA" "$BUNDLES"
+mount_bundles "$DATA/modules" "$BUNDLES"
                                                                                                                                                       debug_shell
 # init aufs union, or setup overlayfs union
 init_union "$CHANGES" "$UNION" "$BUNDLES"

@@ -817,16 +817,26 @@ sortmod()
 }
 
 
-# Mount squashfs filesystem bundles
+# list modules in order
 # $1 = directory where to search for bundles
+#
+list_bundles()
+{
+   ls -1 "$1" | sort -n | sortmod | filter_load | grep '[.]'$BEXT'$' | filter_noload
+}
+
+
+# Mount squashfs filesystem bundles
+# $1 = directory where to search for bundles (modules)
 # $2 = directory where to mount bundles
+#
 mount_bundles()
 {
    echo_green_star
-   echo "Mounting bundles"
-   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod | filter_load) | grep '[.]'$BEXT'$' | filter_noload | while read BUNDLE; do
-      echo "* $BUNDLE"
+   echo "Mounting modules"
+   list_bundles "$1" | while read BUNDLE; do
       BUN="$(basename "$BUNDLE")"
+      echo "* $BUN"
       mkdir -p "$2/$BUN"
       mount -o loop,ro -t squashfs "$1/$BUNDLE" "$2/$BUN"
    done
