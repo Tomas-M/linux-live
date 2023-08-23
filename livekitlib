@@ -643,6 +643,39 @@ check_data_found()
    fi
 }
 
+# Restore persostent changes from previous session.
+# Store persistent changes to a directory and keep the path in a session file,
+# so we know which session was active last time so we can resume it next time
+# $1 = changes directory
+# $2 = currently requested perch filename
+#
+restore_perch_session()
+{
+   debug_log "gen_perch_sessions" "$*"
+
+   local CHDIR FILE LAST NEW
+
+   CHDIR="$1"
+   FILE="$2"
+   LAST=last_session.txt
+
+   # restore name for previous session if empty
+   if [ "$FILE" = "" ]; then
+      FILE="$(cat "$CHDIR/$LAST" 2>/dev/null)"
+   fi
+
+   # if empty or new requested, create new
+   if [ "$FILE" = "new" -o "$FILE" = "" ]; then
+      NEW="$(date '+%Y-%m-%d_at_%H~%I~%S')"
+      mkdir -p "$CHDIR/$NEW"
+      FILE="$NEW/changes.dat"
+   fi
+
+   # remember current
+   echo "$FILE" > "$CHDIR/$LAST"
+   echo "$FILE"
+}
+
 
 # Activate persistent changes
 # $1 = data directory
@@ -701,9 +734,7 @@ persistent_changes()
 
    SPLITSIZE=4000
 
-   if [ "$PERCHFILE" = "" ]; then
-      PERCHFILE="changes.dat"
-   fi
+   PERCHFILE=$(restore_perch_session "$CHANGES" "$PERCHFILE")
 
    if [ "$PERCHSIZE" = "" ]; then
       PERCHSIZE=16000
