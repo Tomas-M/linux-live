@@ -651,7 +651,7 @@ check_data_found()
 #
 restore_perch_session()
 {
-   debug_log "gen_perch_sessions" "$*"
+   debug_log "restore_perch_session" "$*"
 
    local CHDIR FILE LAST NEW
 
@@ -660,12 +660,12 @@ restore_perch_session()
    LAST=last_session.txt
 
    # restore name for previous session if empty
-   if [ "$FILE" = "" ]; then
+   if [ "$FILE" = "" -o "$FILE" = "resume" ]; then
       FILE="$(cat "$CHDIR/$LAST" 2>/dev/null)"
    fi
 
-   # if empty or new requested, create new
-   if [ "$FILE" = "new" -o "$FILE" = "" ]; then
+   # if last is empty or new is requested, create new
+   if [ "$FILE" = "" -o "$FILE" = "new" ]; then
       NEW="$(date '+%Y-%m-%d_at_%H~%I~%S')"
       mkdir -p "$CHDIR/$NEW"
       FILE="$NEW/changes.dat"
