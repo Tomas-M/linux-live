@@ -665,8 +665,8 @@ restore_perch_session()
    fi
 
    # if last is empty or new is requested, create new
-   if [ "$FILE" = "" -o "$FILE" = "new" ]; then
-      NEW="$(date '+%Y-%m-%d_at_%H~%I~%S')"
+   if [ "$FILE" = "" -o "$FILE" = "new" -o ! -e "$CHDIR/$FILE" ]; then
+      NEW="$(date '+%Y-%m-%d_at_%H~%M~%S')"
       mkdir -p "$CHDIR/$NEW"
       FILE="$NEW/changes.dat"
    fi
