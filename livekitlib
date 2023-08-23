@@ -751,9 +751,9 @@ persistent_changes()
 
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p $SPLITSIZE
    if [ "$EXISTS" ]; then
-      resize2fs "$2/virtual.dat" >/dev/null 2>&1
+      resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
    else
-      mke2fs "$2/virtual.dat" >/dev/null 2>&1
+      mke2fs -F "$2/virtual.dat" >/dev/null 2>&1
    fi
    mount -o loop "$2/virtual.dat" "$2"
 
