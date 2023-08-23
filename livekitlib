@@ -542,6 +542,18 @@ find_data_try()
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
+
+      # supported syntax is even like from=/dev/sr0/livekitname. It is not so much
+      # optiomal to put the following block of code here inside the while loop,
+      # but there is no harm so lets modify DEVICE and FROM to make it work
+      if echo "$FROM" | grep -q '^/dev/'; then
+         DEVICE="$(echo "$FROM" | cut -d '/' -f 1-3)"
+         FROM="$(echo "$FROM" | cut -d '/' -f 4-)"
+         if [ "$FROM" = "" ]; then
+            FROM="$LIVEKITNAME"
+         fi
+      fi
+
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
