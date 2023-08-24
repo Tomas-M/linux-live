@@ -1,19 +1,25 @@
 
- Welcome
+ Welcome to Slax.
 
- If you need to edit boot command line (for advanced users), hit [Tab].
- When finished, press [Enter].
+ Select a pre-configured option from the boot menu, or press [Tab] key to
+ manually edit the boot command line in order to customize how Slax boots.
+ A detailed description of various boot parameters is provided below.
 
+ * toram: If specified, all data are copied to memory during startup so you
+   can eject the boot device. Needs enough RAM to store all necessary files.
 
- Keep changes persistent
+ * nosound: If specified, sound devices are muted during startup
 
- Save all filesystem modifications to 'changes' directory and restore
- those changes next time you boot. Only usable while running from a
- writable media such as USB device or hard disk.
+ * perchfile=[resume/new/ask]: When Slax is started from a writable media,
+   all changes are saved to /slax/changes/ directory to make them persistent
+   during reboots. This parameter lets you to choose what session to resume
 
+ * perchsize=[size_MB]: Default maximum size for every session is 16000MB.
+   You can increase it with this parameter. For example perchsize=32000
 
- Copy to RAM
+ * from=[file/path/device] is used to set a directory or even device from
+   which is Slax started. For example, from=/slax, from=/dev/sr1/slaxdata
+   or even from=http://some_url/to_iso_file.iso
 
- Copies all data to memory during startup so you can eject the boot device.
- Requires enough RAM to store all modules and to run the system.
-
+ * noload=[regex] is used to specify what modules will not be loaded. Use
+   a regular expression, for example noload=04-apps or noload=apps|chromium
