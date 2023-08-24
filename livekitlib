@@ -645,38 +645,38 @@ check_data_found()
    fi
 }
 
-# Restore persostent changes from previous session.
-# Store persistent changes to a directory and keep the path in a session file,
+# Restore persistent changes from previous session.
+# Store persistent changes to a directory and keep the directory in a session file,
 # so we know which session was active last time so we can resume it next time
 # $1 = changes directory
-# $2 = currently requested perch filename
+# $2 = currently requested perch directory (e.g. '3')
 #
 restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
-   local CHDIR FILE LAST NEW
+   local CHANDIR SESSDIR FILE LAST NEW
 
-   CHDIR="$1"
-   FILE="$2"
+   CHANDIR="$1"
+   SESSDIR="$2"
    LAST=last_session.txt
 
    # restore name for previous session if empty
-   if [ "$FILE" = "" -o "$FILE" = "resume" ]; then
-      FILE="$(cat "$CHDIR/$LAST" 2>/dev/null)"
+   if [ "$SESSDIR" = "" -o "$SESSDIR" = "resume" ]; then
+      SESSDIR="$(cat "$CHANDIR/$LAST" 2>/dev/null)"
    fi
 
-   # if last is empty or new is requested, create new
-   if [ "$FILE" = "" -o "$FILE" = "new" -o ! -e "$CHDIR/$FILE" ]; then
-      NEW="$(ls -1 $CHDIR | egrep '^[0-9]' | sed -r 's/[^0-9].*//' | sort | tail -n 1)"
+   # if last is empty or new/nonexistent is requested, create new
+   if [ "$SESSDIR" = "" -o "$SESSDIR" = "new" -o ! -d "$CHANDIR/$SESSDIR" ]; then
+      NEW="$(ls -1 $CHANDIR | egrep '^[0-9]' | sed -r 's/[^0-9].*//' | sort | tail -n 1)"
       NEW=$(($NEW + 1))
-      mkdir -p "$CHDIR/$NEW"
-      FILE="$NEW/changes.dat"
+      mkdir -p "$CHANDIR/$NEW"
+      SESSDIR="$NEW"
    fi
 
    # remember current
-   echo "$FILE" > "$CHDIR/$LAST"
-   echo "$FILE"
+   echo "$SESSDIR" > "$CHANDIR/$LAST"
+   echo "$SESSDIR"
 }
 
 
@@ -688,7 +688,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2 EXISTS DEVICE PERCHFILE PERCHSIZE SPLITSIZE SUFFIX
+   local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE SUFFIX
 
    CHANGES="$1/$(basename "$2")"
    DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
@@ -699,6 +699,7 @@ persistent_changes()
    mkdir -p "$2"
 
    # If persistent changes are not requested, end here
+   # so memory will be used to save chanves temporarily
    if grep -vq perch /proc/cmdline; then
       return
    fi
@@ -713,10 +714,12 @@ persistent_changes()
    fi
 
    PERCHSIZE=$(cmdline_value perchsize)
-   PERCHFILE=$(cmdline_value perchfile)
 
-   # if neither perchfile nor perchsize is specified, try to use native fs
-   if [ "$PERCHFILE" = "" -a "$PERCHSIZE" = "" ]; then
+   PERCHDIR=$(cmdline_value perchdir)
+   PERCHDIR=$(restore_perch_session "$CHANGES" "$PERCHDIR")
+
+   # try to use native fs unless user explicitly specified perchsize
+   if [ "$PERCHSIZE" = "" ]; then
       echo_green_star
       echo "Testing persistent changes for posix compatibility"
       touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
@@ -727,21 +730,19 @@ persistent_changes()
       if [ $? -eq 0 ]; then
          if device_bestfs $DEVICE | grep -v ntfs >/dev/null; then
             echo "* Activating native persistent changes"
-            mount --bind "$CHANGES" "$2"
+            mount --bind "$CHANGES/$PERCHDIR" "$2"
             return
          fi
       fi
    fi
 
-   # If we are here, native fs was not supported or user requested perchfile anyway
-
-   SPLITSIZE=4000
-
-   PERCHFILE=$(restore_perch_session "$CHANGES" "$PERCHFILE")
+   # If we are here, native fs was not supported or user requested perchsize anyway
 
    if [ "$PERCHSIZE" = "" ]; then
       PERCHSIZE=16000
    fi
+
+   PERCHFILE="$PERCHDIR/changes.dat"
 
    # restore or use new
    if [ -e "$CHANGES/$PERCHFILE" ]; then
@@ -752,7 +753,8 @@ persistent_changes()
       EXISTS=""
    fi
 
-   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p $SPLITSIZE
+   # mount dynfilefs, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
+   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
    if [ "$EXISTS" ]; then
       resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
    else
