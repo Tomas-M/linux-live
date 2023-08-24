@@ -10,12 +10,14 @@
 
  * nosound: If specified, sound devices are muted during startup
 
- * perchfile=[resume/new/ask]: When Slax is started from a writable media,
-   all changes are saved to /slax/changes/ directory to make them persistent
-   during reboots. This parameter lets you to choose what session to resume
+ * perchdir=[resume/new/ask/#]: When Slax is started from a writable media,
+   all changes are saved to subdirectories of /slax/changes/ to make them
+   persistent. This parameter allows you to choose what session to resume.
+   Use perchdir=resume to auto resume the session used on previous boot.
 
- * perchsize=[size_MB]: Default maximum size for every session is 16000MB.
-   You can increase it with this parameter. For example perchsize=32000
+ * perchsize=[size_MB]: When stored on non-linux filesystem such as FAT32,
+   sessions are limited to maximum size of 16GB. You can increase the limit
+   with this parameter, use for example perchsize=32000 for 32GB.
 
  * from=[file/path/device] is used to set a directory or even device from
    which is Slax started. For example, from=/slax, from=/dev/sr1/slaxdata
