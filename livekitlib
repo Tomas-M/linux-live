@@ -645,6 +645,27 @@ check_data_found()
    fi
 }
 
+
+# Get a human readable format of time elapsed since given datetime
+# $1 = date time
+#
+date_diff_since_now()
+{
+   now=$(date '+%s')
+   timestamp=$(date --date "$1" '+%s')
+   sec=$(($now - $timestamp))
+   mins=$(($sec / 60))
+   hours=$(($sec / 3600))
+   days=$(($sec / 86400))
+
+   if [ "$days" -gt 0 ]; then echo "$days days" | sed -r "s/^1 days/1 day/";
+   elif [ "$hours" -gt 0 ]; then echo "$hours hours" | sed -r "s/^1 hours/1 hour/";
+   elif [ "$mins" -gt 0 ]; then echo "$mins minutes" | sed -r "s/^1 minutes/1 minute/";
+   else echo "$sec seconds" | sed -r "s/^1 seconds/1 second/";
+   fi
+}
+
+
 # Restore persistent changes from previous session.
 # Store persistent changes to a directory and keep the directory in a session file,
 # so we know which session was active last time so we can resume it next time
@@ -655,15 +676,37 @@ restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
-   local CHANDIR SESSDIR FILE LAST NEW
+   local CHANDIR SESSDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST DAYS
 
    CHANDIR="$1"
    SESSDIR="$2"
    LAST=last_session.txt
 
+   LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null)
+
+   # ask for session, print msgs to stderr so it is visible
+   if [ "$LASTSESSION" != "" -a "$SESSDIR" = "ask" ]; then
+      echo "" >&2
+      echo "Choose session to resume from the list:" >&2
+      echo "---------------------------------------" >&2
+
+      ls -1 $CHANDIR | grep -E "^[0-9]+" | while read DIR; do
+         USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed -r "s/[[:space:]].*//")
+         LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
+         DAYS=$(date_diff_since_now "$LASTMOD")
+         echo "$LASTMOD Session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
+      done | sort -r | cut -d " " -f 3- >&2
+
+      echo "---------------------------------------" >&2
+      echo -ne "Type session number to resume and press Enter ($LASTSESSION): " >&2
+      read SESSDIR
+
+      SESSDIR=$(echo "$SESSDIR" | sed -r "s/[^0-9]//g")
+   fi
+
    # restore name for previous session if empty
    if [ "$SESSDIR" = "" -o "$SESSDIR" = "resume" ]; then
-      SESSDIR="$(cat "$CHANDIR/$LAST" 2>/dev/null)"
+      SESSDIR="$LASTSESSION"
    fi
 
    # if last is empty or new/nonexistent is requested, create new
@@ -674,8 +717,9 @@ restore_perch_session()
       SESSDIR="$NEW"
    fi
 
-   # remember current
+   # remember current, update timestamp
    echo "$SESSDIR" > "$CHANDIR/$LAST"
+   touch "$CHANDIR/$SESSDIR"
    echo "$SESSDIR"
 }
 
@@ -713,30 +757,32 @@ persistent_changes()
       return
    fi
 
-   PERCHSIZE=$(cmdline_value perchsize)
-
    PERCHDIR=$(cmdline_value perchdir)
    PERCHDIR=$(restore_perch_session "$CHANGES" "$PERCHDIR")
 
-   # try to use native fs unless user explicitly specified perchsize
-   if [ "$PERCHSIZE" = "" ]; then
-      echo_green_star
-      echo "Testing persistent changes for posix compatibility"
-      touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
-      chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
-      chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
-      rm "$T1" "$T2" 2>/dev/null
+   # try to use native fs if posix-compatible
+   echo_green_star
+   echo "Testing persistent changes for posix compatibility"
+   touch "$T1" && ln -sf "$T1" "$T2" 2>/dev/null && \
+   chmod +x "$T1" 2>/dev/null && test -x "$T1" && \
+   chmod -x "$T1" 2>/dev/null && test ! -x "$T1" && \
+   rm "$T1" "$T2" 2>/dev/null
 
-      if [ $? -eq 0 ]; then
-         if device_bestfs $DEVICE | grep -v ntfs >/dev/null; then
-            echo "* Activating native persistent changes"
-            mount --bind "$CHANGES/$PERCHDIR" "$2"
-            return
-         fi
+   if [ $? -eq 0 ]; then
+      if device_bestfs $DEVICE | grep -v ntfs >/dev/null; then
+         echo "* Activating native persistent changes for session #$PERCHDIR"
+         mount --bind "$CHANGES/$PERCHDIR" "$2"
+         return
       fi
+   else
+      # if test failed at any point, we may have temp files left behind
+      rm "$T1" "$T2" 2>/dev/null
    fi
 
+
    # If we are here, native fs was not supported or user requested perchsize anyway
+
+   PERCHSIZE=$(cmdline_value perchsize)
 
    if [ "$PERCHSIZE" = "" ]; then
       PERCHSIZE=16000
@@ -744,16 +790,16 @@ persistent_changes()
 
    PERCHFILE="$PERCHDIR/changes.dat"
 
-   # restore or use new
+   # resume or use new
    if [ -e "$CHANGES/$PERCHFILE" ]; then
-      echo "* Restoring persistent changes from $PERCHFILE"
+      echo "* Resuming persistent changes for session #$PERCHDIR"
       EXISTS="true"
    else
-      echo "* Creating new persistent changes in $PERCHFILE"
+      echo "* Creating new persistent changes for session #$PERCHDIR"
       EXISTS=""
    fi
 
-   # mount dynfilefs, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
+   # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
    if [ "$EXISTS" ]; then
       resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
@@ -762,8 +808,6 @@ persistent_changes()
    fi
    mount -o loop "$2/virtual.dat" "$2"
 
-   # if test failed at any point, we may have temp files left behind
-   rm "$T1" "$T2" 2>/dev/null
    rmdir "$2/lost+found" 2>/dev/null
 }
 
