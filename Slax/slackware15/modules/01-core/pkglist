@@ -139,6 +139,7 @@ slackware:jfsutils
 slackware:reiserfsprogs
 slackware:xfsprogs
 slackware:xfsdump
+slackware:userspace-rcu
 slackware:dmapi
 slackware:btrfs-progs
 slackware:dosfstools
