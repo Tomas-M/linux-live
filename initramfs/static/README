@@ -1,1 +1,2 @@
 To rebuild these static binaries, use buildroot  <buildroot.org>
+Most of the binaries provided here are also packed with upx
