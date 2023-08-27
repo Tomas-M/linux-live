@@ -795,10 +795,15 @@ persistent_changes()
    # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
    if [ "$EXISTS" ]; then
+      echo "- filesystem check"
+      e2fsck -y "$2/virtual.dat" >/dev/null 2>&1
+      echo "- filesystem grow if needed"
       resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
    else
+      echo "- filesystem creation"
       mke2fs -t ext4 -F "$2/virtual.dat" >/dev/null 2>&1
    fi
+   echo "- filesystem mount"
    mount -o loop "$2/virtual.dat" "$2"
 
    rmdir "$2/lost+found" 2>/dev/null
