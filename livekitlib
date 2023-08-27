@@ -797,7 +797,7 @@ persistent_changes()
    if [ "$EXISTS" ]; then
       resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
    else
-      mke2fs -F "$2/virtual.dat" >/dev/null 2>&1
+      mke2fs -t ext4 -F "$2/virtual.dat" >/dev/null 2>&1
    fi
    mount -o loop "$2/virtual.dat" "$2"
 
