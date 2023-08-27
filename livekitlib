@@ -686,22 +686,15 @@ restore_perch_session()
 
    # ask for session, print msgs to stderr so it is visible
    if [ "$LASTSESSION" != "" -a "$SESSDIR" = "ask" ]; then
-      echo "" >&2
-      echo "Choose session to resume from the list:" >&2
-      echo "---------------------------------------" >&2
-
       ls -1 $CHANDIR | grep -E "^[0-9]+" | while read DIR; do
          USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed -r "s/[[:space:]].*//")
          LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
          DAYS=$(date_diff_since_now "$LASTMOD")
          echo "$LASTMOD Session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
-      done | sort -r | cut -d " " -f 3- >&2
+      done | sort -r | cut -d " " -f 3- | sed -r 's/(.*)/"\1"/' > /tmp/sessions.txt
 
-      echo "---------------------------------------" >&2
-      echo -ne "Type session number to resume and press Enter ($LASTSESSION): " >&2
-      read SESSDIR
-
-      SESSDIR=$(echo "$SESSDIR" | sed -r "s/[^0-9]//g")
+      SESSDIR="$(eval ncurses-menu '"Select session to resume:"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
+      SESSDIR="$(echo "$SESSDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
    fi
 
    # restore name for previous session if empty
