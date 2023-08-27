@@ -796,9 +796,9 @@ persistent_changes()
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
    if [ "$EXISTS" ]; then
       echo "- filesystem check"
-      e2fsck -y "$2/virtual.dat" >/dev/null 2>&1
+      e2fsck -y "$2/virtual.dat" >>/var/log/perch.fsck.log 2>&1
       echo "- filesystem grow if needed"
-      resize2fs -f "$2/virtual.dat" >/dev/null 2>&1
+      resize2fs -f "$2/virtual.dat" >>/var/log/perch.resize.log 2>&1
    else
       echo "- filesystem creation"
       mke2fs -t ext4 -F "$2/virtual.dat" >/dev/null 2>&1
