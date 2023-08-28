@@ -781,6 +781,11 @@ persistent_changes()
       PERCHSIZE=16000
    fi
 
+   # minimum size is 16GB
+   if [ "$PERCHSIZE" -lt 16000 ]; then
+      PERCHSIZE=16000
+   fi
+
    PERCHFILE="$PERCHDIR/changes.dat"
 
    # resume or use new
@@ -794,19 +799,16 @@ persistent_changes()
 
    # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
-   if [ "$EXISTS" ]; then
-      echo "- filesystem check"
-      e2fsck -y "$2/virtual.dat" >>/var/log/perch.fsck.log 2>&1
-      echo "- filesystem grow if needed"
-      resize2fs -f "$2/virtual.dat" >>/var/log/perch.resize.log 2>&1
-   else
-      echo "- filesystem creation"
-      mke2fs -t ext4 -F "$2/virtual.dat" >/dev/null 2>&1
+   if [ ! "$EXISTS" ]; then
+      echo "- creating filesystem using XFS"
+      mkfs.xfs.custom "$2/virtual.dat"
    fi
+
    echo "- filesystem mount"
    mount -o loop "$2/virtual.dat" "$2"
 
-   rmdir "$2/lost+found" 2>/dev/null
+   echo "- filesystem grow if needed"
+   xfs_growfs "$2"
 }
 
 
