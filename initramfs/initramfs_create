@@ -143,7 +143,7 @@ mv $INITRAMFS/$LMK/_ $INITRAMFS/$LMK/modules.order
 
 depmod -b $INITRAMFS $KERNEL
 
-echo "root::0:0::/root:/bin/bash" >$INITRAMFS/etc/passwd
+echo "root::0:0::/root:/bin/sh" >$INITRAMFS/etc/passwd
 touch $INITRAMFS/etc/{m,fs}tab
 
 cp init $INITRAMFS
