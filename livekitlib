@@ -725,7 +725,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE SUFFIX
+   local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE GROWDIR
 
    CHANGES="$1/$(basename "$2")"
    DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
@@ -798,17 +798,25 @@ persistent_changes()
    fi
 
    # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
+   echo "- mounting dynamically enlarged storage"
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
    if [ ! "$EXISTS" ]; then
-      echo "- creating filesystem using XFS"
+      echo "- creating filesystem"
       mkfs.xfs.custom "$2/virtual.dat"
+   else
+      if [ "$PERCHSIZE" -gt 16000 ]; then
+         GROWDIR=/tmp/changes.grow
+         echo "- grow if needed"
+         mkdir -p "$GROWDIR"
+         mount -o loop "$2/virtual.dat" "$GROWDIR"
+         xfs_growfs "$GROWDIR" >/dev/null
+         umount "$GROWDIR"
+         rmdir "$GROWDIR"
+      fi
    fi
 
-   echo "- filesystem mount"
+   echo "- mounting persistent changes"
    mount -o loop "$2/virtual.dat" "$2"
-
-   echo "- filesystem grow if needed"
-   xfs_growfs "$2"
 }
 
 
