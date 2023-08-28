@@ -651,17 +651,19 @@ check_data_found()
 #
 date_diff_since_now()
 {
-   now=$(date '+%s')
-   timestamp=$(date --date "$1" '+%s')
-   sec=$(($now - $timestamp))
-   mins=$(($sec / 60))
-   hours=$(($sec / 3600))
-   days=$(($sec / 86400))
+   local NOW TIMESTAMP SEC MINS HOURS DAYS
 
-   if [ "$days" -gt 0 ]; then echo "$days days" | sed -r "s/^1 days/1 day/";
-   elif [ "$hours" -gt 0 ]; then echo "$hours hours" | sed -r "s/^1 hours/1 hour/";
-   elif [ "$mins" -gt 0 ]; then echo "$mins minutes" | sed -r "s/^1 minutes/1 minute/";
-   else echo "$sec seconds" | sed -r "s/^1 seconds/1 second/";
+   NOW=$(date '+%s')
+   TIMESTAMP=$(date --date "$1" '+%s')
+   SEC=$(($NOW - $timestamp))
+   NINS=$(($SEC / 60))
+   HOURS=$(($SEC / 3600))
+   DAYS=$(($SEC / 86400))
+
+   if [ "$DAYS" -gt 0 ]; then echo "$DAYS days" | sed -r "s/^1 days/1 day/";
+   elif [ "$HOURS" -gt 0 ]; then echo "$HOURS hours" | sed -r "s/^1 hours/1 hour/";
+   elif [ "$MINS" -gt 0 ]; then echo "$MINS minutes" | sed -r "s/^1 minutes/1 minute/";
+   else echo "$SEC seconds" | sed -r "s/^1 seconds/1 second/";
    fi
 }
 
@@ -690,11 +692,16 @@ restore_perch_session()
          USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed -r "s/[[:space:]].*//")
          LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
          DAYS=$(date_diff_since_now "$LASTMOD")
-         echo "$LASTMOD Session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
+         echo "$LASTMOD Resume session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
       done | sort -r | cut -d " " -f 3- | sed -r 's/(.*)/"\1"/' > /tmp/sessions.txt
 
-      SESSDIR="$(eval ncurses-menu '"Select session to resume:"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
-      SESSDIR="$(echo "$SESSDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
+      SESSDIR="$(eval ncurses-menu '"Select action:"' '"Start a new session"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
+
+      if echo "$SESSDIR" | grep -q "new"; then
+         SESSDIR="new"
+      else
+         SESSDIR="$(echo "$SESSDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
+      fi
    fi
 
    # restore name for previous session if empty
