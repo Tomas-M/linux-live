@@ -782,7 +782,7 @@ persistent_changes()
 
    # If we are here, native fs was not supported or user requested perchsize anyway
 
-   PERCHSIZE=$(cmdline_value perchsize | sed -r "s/T/000000/" | sed -r "s/G/000/" | sed -r "s/M//")
+   PERCHSIZE=$(cmdline_value perchsize | sed -r "s/T/000000/" | sed -r "s/GB?/000/i" | sed -r "s/MB?//i")
 
    if [ "$PERCHSIZE" = "" ]; then
       PERCHSIZE=16000
