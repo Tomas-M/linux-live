@@ -782,7 +782,7 @@ persistent_changes()
 
    # If we are here, native fs was not supported or user requested perchsize anyway
 
-   PERCHSIZE=$(cmdline_value perchsize | sed -r "s/T/000000/" | sed -r "s/GB?/000/i" | sed -r "s/MB?//i")
+   PERCHSIZE=$(cmdline_value perchsize | sed -r "s/TB?/000000/" | sed -r "s/GB?/000/i" | sed -r "s/[^0-9]//g")
 
    if [ "$PERCHSIZE" = "" ]; then
       PERCHSIZE=16000
@@ -810,16 +810,15 @@ persistent_changes()
    if [ ! "$EXISTS" ]; then
       echo "- creating filesystem"
       mkfs.xfs.custom "$2/virtual.dat"
-   else
-      if [ "$PERCHSIZE" -gt 16000 ]; then
-         GROWDIR=/tmp/changes.grow
-         echo "- grow if needed"
-         mkdir -p "$GROWDIR"
-         mount -o loop "$2/virtual.dat" "$GROWDIR"
-         xfs_growfs "$GROWDIR" >/dev/null
-         umount "$GROWDIR"
-         rmdir "$GROWDIR"
-      fi
+
+   if [ "$PERCHSIZE" -gt 16000 ]; then
+      GROWDIR=/tmp/changes.grow
+      echo "- grow if needed"
+      mkdir -p "$GROWDIR"
+      mount -o loop "$2/virtual.dat" "$GROWDIR"
+      xfs_growfs "$GROWDIR" >/dev/null
+      umount "$GROWDIR"
+      rmdir "$GROWDIR"
    fi
 
    echo "- mounting persistent changes"
