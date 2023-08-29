@@ -655,7 +655,7 @@ date_diff_since_now()
 
    NOW=$(date '+%s')
    TIMESTAMP=$(date --date "$1" '+%s')
-   SEC=$(($NOW - $timestamp))
+   SEC=$(($NOW - $TIMESTAMP))
    NINS=$(($SEC / 60))
    HOURS=$(($SEC / 3600))
    DAYS=$(($SEC / 86400))
