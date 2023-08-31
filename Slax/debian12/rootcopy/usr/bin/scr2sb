@@ -1,0 +1,185 @@
+#!/bin/bash
+
+# Author: crims0n. <http://minios.dev>
+
+VERSION="1.0"
+BEXT="sb"
+
+function help() {
+    echo "Usage: $(basename $0) [OPTIONS]... --script=FILE"
+    echo "Packages a module from changes made by an installation script."
+    echo ""
+    echo "Options:"
+    echo "  -d, --directory=DIR   copy contents of DIR to the root of the module"
+    echo "  -f, --file=FILE       use FILE as the filename for the module"
+    echo "  -l, --level=LEVEL     use LEVEL as the filter level"
+    echo "  -s, --script=FILE     use FILE as the installation script"
+    echo "      --help            display this help and exit"
+    echo "      --version         display version information and exit"
+    echo ""
+    echo "Examples:"
+    echo "  $(basename $0) -s /path/to/install_script.sh"
+    echo "  $(basename $0) --level=03 --script=/path/to/install_script.sh"
+    echo "  $(basename $0) -s /path/to/install_script.sh -f 06-chromium.$BEXT -l 3"
+    exit 0
+}
+
+function brief_help() {
+    echo "Usage: $(basename $0) [OPTIONS]... --script=FILE"
+    echo "Try '$(basename $0) --help' for more information."
+    exit 1
+}
+
+function version() {
+    echo "$(basename $0) $VERSION"
+    exit 0
+}
+
+if [ $# -eq 0 ]; then
+    brief_help
+fi
+
+INSTALL_SCRIPT=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+    -d | --directory=*)
+        if [ "$1" == --* ]; then
+            DIRECTORY="${1#*=}"
+        else
+            DIRECTORY="$2"
+            shift
+        fi
+        shift
+        ;;
+    -f | --file=*)
+        if [ "$1" == --* ]; then
+            FILENAME="${1#*=}"
+        else
+            FILENAME="$2"
+            shift
+        fi
+        shift
+        ;;
+    -l | --level=*)
+        if [ "$1" == --* ]; then
+            FILTER_LEVEL=$(printf "%02d" "${1#*=}")
+        else
+            FILTER_LEVEL=$(printf "%02d" "$2")
+            shift
+        fi
+        shift
+        ;;
+    -s | --script=*)
+        if [ "$1" == --* ]; then
+            INSTALL_SCRIPT="${1#*=}"
+        else
+            INSTALL_SCRIPT="$2"
+            shift
+        fi
+        shift
+        ;;
+    --help)
+        help
+        ;;
+    --version)
+        version
+        ;;
+    *) # unknown option
+        if [ "$1" == -* ]; then
+            brief_help
+        fi
+        ;;
+    esac
+done
+
+if [ "$(id -u)" != "0" ]; then
+    echo "This script must be run as root."
+    brief_help
+fi
+
+if [ ! "$INSTALL_SCRIPT" ]; then
+    brief_help
+fi
+
+if [ "$DIRECTORY" ] && [ ! -d "$DIRECTORY" ] || [ ! -r "$DIRECTORY" ]; then
+    echo "The specified directory must exist and be readable."
+    exit 1
+fi
+
+TMP=$(mktemp -d)
+CHANGES=$TMP/changes
+UNION=$TMP/union
+
+trap 'umount $UNION; umount $TMP; rm -rf $TMP' EXIT
+
+if [ -d /run/initramfs/memory/bundles ]; then
+    BUNDLES=/run/initramfs/memory/bundles
+elif [ -d /memory/bundles ]; then
+    BUNDLES=/memory/bundles
+fi
+
+mount -t tmpfs tmpfs $TMP
+mkdir -p $CHANGES
+mkdir -p $UNION
+
+if [ -n "$FILTER_LEVEL" ]; then
+    LOWERS=$(for BUNDLE in $(ls -1dr "$BUNDLES"/*); do
+        if [[ $(basename "$BUNDLE") =~ ^[0-9]+ ]]; then
+            if [ ${BASH_REMATCH[0]} -gt $FILTER_LEVEL ]; then
+                continue
+            fi
+        fi
+        printf '%s:' "$BUNDLE"
+    done)
+    LOWERS=${LOWERS/%:/}
+else
+    LOWERS=$(printf '%s:' $(ls -1dr "$BUNDLES"/*))
+    LOWERS=${LOWERS/%:/}
+fi
+
+mkdir $TMP/work
+
+mount -t overlay -o lowerdir=$LOWERS,upperdir=$CHANGES,workdir=$TMP/work overlay $UNION
+
+for d in boot dev proc sys tmp media mnt run; do
+    mkdir -p $UNION/$d
+done
+
+chmod ugo+rwx $UNION/tmp
+
+for d in dev proc sys; do mount --bind /$d $UNION/$d; done
+
+if [ "$DIRECTORY" ]; then
+    cp -r "$DIRECTORY"/* $UNION/
+fi
+
+cp "$INSTALL_SCRIPT" $UNION/install
+chmod ugo+x $UNION/install
+mount --bind /etc/resolv.conf $UNION/etc/resolv.conf
+if ! chroot $UNION /install; then
+    FAILED="true"
+fi
+
+umount $UNION/etc/resolv.conf
+umount $UNION/sys
+umount $UNION/proc
+umount $UNION/dev
+rm $CHANGES/install
+rmdir $CHANGES/* 2>/dev/null
+
+if [ "$FAILED" != "true" ]; then
+    if [ ! "$FILENAME" ]; then
+        FILENAME="$(basename "${INSTALL_SCRIPT%.*}")".$BEXT
+    fi
+    if [ ! "$FILENAME" ]; then
+        if [ -n "$FILTER_LEVEL" ]; then
+            PREFIX="$(printf "%02d" $((10#$FILTER_LEVEL + 1)))-"
+        else
+            PREFIX=""
+        fi
+        FILENAME="$PREFIX$(basename "${INSTALL_SCRIPT%.*}")".$BEXT
+    fi
+
+    echo "Saving changes made by installation script into a module "$FILENAME"..."
+    savechanges "$FILENAME" $CHANGES
+fi
