@@ -899,8 +899,23 @@ copy_to_ram()
 #
 filter_load()
 {
-   local FILTER
+   local FILTER NUM START END
    FILTER=$(cmdline_value load)
+   FILTER=${FILTER//,/|}
+   if [ "$FILTER" != "" ]; then
+      # Добавьте этот код для обработки диапазона
+      if echo $FILTER | grep -qE '^[0-9]+-[0-9]+$'; then
+         START=$(echo $FILTER | cut -d '-' -f 1)
+         END=$(echo $FILTER | cut -d '-' -f 2)
+         FILTER=""
+         while [ $START -le $END ]; do
+            NUM=$(printf "%02d" $START)
+            FILTER="$FILTER|$NUM"
+            START=$(($START + 1))
+         done
+         FILTER=${FILTER#|}
+      fi
+   fi
    if [ "$FILTER" = "" ]; then
       cat -
    else
@@ -908,14 +923,26 @@ filter_load()
    fi
 }
 
-
 # noload filter
 #
 filter_noload()
 {
-   local FILTER
+   local FILTER NUM START END
    FILTER=$(cmdline_value noload)
    FILTER=${FILTER//,/|}
+   if [ "$FILTER" != "" ]; then
+      if echo $FILTER | grep -qE '^[0-9]+-[0-9]+$'; then
+         START=$(echo $FILTER | cut -d '-' -f 1)
+         END=$(echo $FILTER | cut -d '-' -f 2)
+         FILTER=""
+         while [ $START -le $END ]; do
+            NUM=$(printf "%02d" $START)
+            FILTER="$FILTER|$NUM"
+            START=$(($START + 1))
+         done
+         FILTER=${FILTER#|}
+      fi
+   fi
    if [ "$FILTER" = "" ]; then
       cat -
    else
@@ -938,7 +965,7 @@ mount_bundles()
 {
    echo_green_star
    echo "Mounting bundles"
-   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod | filter_load) | grep '[.]'$BEXT'$' | filter_noload | while read BUNDLE; do
+   ( ls -1 "$1" | sort -n ; cd "$1" ; find modules/ 2>/dev/null | sortmod) | grep '[.]'$BEXT'$' | filter_load | filter_noload | while read BUNDLE; do
       echo "* $BUNDLE"
       BUN="$(basename "$BUNDLE")"
       mkdir -p "$2/$BUN"
