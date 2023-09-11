@@ -3,7 +3,7 @@
 CURRENT="$(ls -1 /boot)"
 
 apt update
-#apt upgrade --yes
+apt upgrade --yes
 
 NEW="$(ls -1 /boot)"
 
