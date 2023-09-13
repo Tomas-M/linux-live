@@ -599,7 +599,7 @@ find_data()
 {
    debug_log "find_data" "$*"
 
-   local DATA FROM
+   local DATA FROM TIMEOUT
 
    FROM="$(cmdline_value from)"
 
@@ -619,7 +619,7 @@ find_data()
 
    echo_green_star >&2
    echo -n "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
-   for timeout in $(seq 1 $1); do
+   for TIMEOUT in $(seq 1 $1); do
       echo -n "." >&2
       refresh_devs
       DATA="$(find_data_try "$2" "$FROM")"
@@ -672,22 +672,56 @@ date_diff_since_now()
 # Store persistent changes to a directory and keep the directory in a session file,
 # so we know which session was active last time so we can resume it next time
 # $1 = changes directory
-# $2 = currently requested perch directory (e.g. '3')
 #
 restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
-   local CHANDIR SESSDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST DAYS
+   local TIMEOUT DEVICE FS OPTIONS MOUNT
+   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST DAYS
 
    CHANDIR="$1"
-   SESSDIR="$2"
-   LAST=last_session.txt
+   PERCHDIR="$(cmdline_value perchdir)"
 
+   # Supported syntax is even like perchdir=/dev/sda1/changes
+   # In this case, perchdir is mounted over $CHANDIR and is set to ask
+   if echo "$PERCHDIR" | grep -q '^/dev/'; then
+      DEVICE="$(echo "$PERCHDIR" | cut -d '/' -f 1-3)"
+      PERCHDIR="$(echo "$PERCHDIR" | cut -d '/' -f 4-)"
+
+      FS="$(device_bestfs "$DEVICE")"
+      OPTIONS="$(fs_options $FS)"
+      MOUNT="$(mount_command $FS)"
+
+      echo -n "* Waiting for persistent changes on $DEVICE .." >&2
+      for TIMEOUT in $(seq 1 20); do
+         echo -n "." >&2
+         refresh_devs
+         $MOUNT "$DEVICE" "$CHANDIR" $OPTIONS 2>/dev/null
+         if [ $? -eq 0 ]; then
+            if [ "$PERCHDIR" != "" -a "$PERCHDIR" != "/" ]; then
+               mkdir -p "$CHANDIR/$PERCHDIR"
+               $MOUNT --bind "$CHANDIR/$PERCHDIR" "$CHANDIR"
+               if [ $? -eq 0 ]; then
+                 echo -e "\n" >&2
+                 PERCHDIR=ask
+                 break
+               fi
+            else
+              echo -e "\n" >&2
+               PERCHDIR=ask
+               break
+            fi
+         fi
+         sleep 1
+      done
+   fi
+
+   LAST=last_session.txt
    LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null)
 
    # ask for session, print msgs to stderr so it is visible
-   if [ "$LASTSESSION" != "" -a "$SESSDIR" = "ask" ]; then
+   if [ "$LASTSESSION" != "" -a "$PERCHDIR" = "ask" ]; then
       ls -1 $CHANDIR | grep -E "^[0-9]+" | while read DIR; do
          USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed -r "s/[[:space:]].*//")
          LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
@@ -695,32 +729,32 @@ restore_perch_session()
          echo "$LASTMOD Resume session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
       done | sort -r | cut -d " " -f 3- | sed -r 's/(.*)/"\1"/' > /tmp/sessions.txt
 
-      SESSDIR="$(eval ncurses-menu '"Select action:"' '"Start a new session"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
+      PERCHDIR="$(eval ncurses-menu '"Select action:"' '"Start a new session"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
 
-      if echo "$SESSDIR" | grep -q "new"; then
-         SESSDIR="new"
+      if echo "$PERCHDIR" | grep -q "new"; then
+         PERCHDIR="new"
       else
-         SESSDIR="$(echo "$SESSDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
+         PERCHDIR="$(echo "$PERCHDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
       fi
    fi
 
    # restore name for previous session if empty
-   if [ "$SESSDIR" = "" -o "$SESSDIR" = "resume" ]; then
-      SESSDIR="$LASTSESSION"
+   if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "resume" ]; then
+      PERCHDIR="$LASTSESSION"
    fi
 
    # if last is empty or new/nonexistent is requested, create new
-   if [ "$SESSDIR" = "" -o "$SESSDIR" = "new" -o ! -d "$CHANDIR/$SESSDIR" ]; then
+   if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "new" -o ! -d "$CHANDIR/$PERCHDIR" ]; then
       NEW="$(ls -1 $CHANDIR | egrep '^[0-9]' | sed -r 's/[^0-9].*//' | sort | tail -n 1)"
       NEW=$(($NEW + 1))
       mkdir -p "$CHANDIR/$NEW"
-      SESSDIR="$NEW"
+      PERCHDIR="$NEW"
    fi
 
    # remember current, update timestamp
-   echo "$SESSDIR" > "$CHANDIR/$LAST"
-   touch "$CHANDIR/$SESSDIR"
-   echo "$SESSDIR"
+   echo "$PERCHDIR" > "$CHANDIR/$LAST"
+   touch "$CHANDIR/$PERCHDIR"
+   echo "$PERCHDIR"
 }
 
 
@@ -748,6 +782,8 @@ persistent_changes()
       return
    fi
 
+   PERCHDIR=$(restore_perch_session "$CHANGES")
+
    # check if changes directory exists and is writable
    touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
 
@@ -756,9 +792,6 @@ persistent_changes()
       echo "* Persistent changes not writable or not used"
       return
    fi
-
-   PERCHDIR=$(cmdline_value perchdir)
-   PERCHDIR=$(restore_perch_session "$CHANGES" "$PERCHDIR")
 
    # try to use native fs if posix-compatible
    echo_green_star
