@@ -537,11 +537,24 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS MOUNT
+   local DEVICE FS FROM OPTIONS MOUNT ASKFROM ASKPID
 
    mkdir -p "$1"
+
+   if [ "$FROM" = "ask" ]; then
+      (while true; do blkid -s TYPE | grep -E -v "/loop|/ram|/zram" >/tmp/0.txt; mv -f /tmp/0.txt /tmp/ask.txt; sleep 1; done) &
+      ASKPID=$!
+      ASKFROM="$(ncurses-menu -t 'Search for $LIVEKITNAME data on:' -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
+      ASKFROM="$(echo "$ASKFROM" | cut -d : -f 1)"
+      kill $ASKPID
+   fi
+
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
+
+      if [ "$ASKFROM" != "" ]; then
+         FROM="$ASKFROM"
+      fi
 
       # supported syntax is even like from=/dev/sr0/livekitname. It is not so much
       # optiomal to put the following block of code here inside the while loop,
@@ -727,9 +740,9 @@ restore_perch_session()
          LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
          DAYS=$(date_diff_since_now "$LASTMOD")
          echo "$LASTMOD Resume session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
-      done | sort -r | cut -d " " -f 3- | sed -r 's/(.*)/"\1"/' > /tmp/sessions.txt
+      done | sort -r | cut -d " " -f 3- > /tmp/sessions.txt
 
-      PERCHDIR="$(eval ncurses-menu '"Select action:"' '"Start a new session"' $(cat /tmp/sessions.txt) 2>&1 >/dev/tty1 < /dev/tty1)"
+      PERCHDIR="$(ncurses-menu -t 'Select action:' -o 'Start a new session' -f /tmp/sessions.txt 2>&1 >/dev/tty1 < /dev/tty1)"
 
       if echo "$PERCHDIR" | grep -q "new"; then
          PERCHDIR="new"
