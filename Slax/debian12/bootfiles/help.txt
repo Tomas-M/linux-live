@@ -10,18 +10,19 @@
 
  * nosound: If specified, sound devices are muted during startup
 
- * perchdir=[resume/new/ask/#]: When Slax is started from a writable media,
-   all changes are saved to subdirectories of /slax/changes/ to make them
-   persistent. This parameter allows you to choose what session to resume.
-   Use perchdir=resume to auto resume the session used on previous boot.
+ * perchdir=[resume|new|ask|device]: All changes you make to Slax can be
+   saved to a writable media. By default, the directory /slax/changes is
+   used for this purpose if you run Slax from flash drive or disk. To save
+   Slax changes to a different disk, or when running Slax from CD, use
+   perchdir=/dev/writable_device/path
 
  * perchsize=[size_MB]: When stored on non-linux filesystem such as FAT32,
    sessions are limited to maximum size of 16GB. You can increase the limit
-   with this parameter, use for example perchsize=32000 for 32GB.
+   with this parameter, use just once. For example perchsize=32GB
 
- * from=[file/path/device] is used to set a directory or even device from
-   which is Slax started. For example, from=/slax, from=/dev/sr1/slaxdata
-   or even from=http://some_url/to_iso_file.iso
+ * from=[file|path|device|ask] is used to set a directory or even device
+   from which is Slax started. For example, from=/slax, from=/dev/sr1/data
+   or from=http://some_url/to_iso_file.iso, or from=ask to select from list
 
  * noload=[regex] is used to specify what modules will not be loaded. Use
    a regular expression, for example noload=04-apps or noload=apps|chromium
