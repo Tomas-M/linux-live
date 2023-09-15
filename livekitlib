@@ -537,24 +537,11 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS MOUNT ASKFROM ASKPID
+   local DEVICE FS FROM OPTIONS MOUNT
 
    mkdir -p "$1"
-
-   if [ "$FROM" = "ask" ]; then
-      (while true; do blkid -s TYPE | grep -E -v "/loop|/ram|/zram" >/tmp/0.txt; mv -f /tmp/0.txt /tmp/ask.txt; sleep 1; done) &
-      ASKPID=$!
-      ASKFROM="$(ncurses-menu -t 'Search for $LIVEKITNAME data on:' -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
-      ASKFROM="$(echo "$ASKFROM" | cut -d : -f 1)"
-      kill $ASKPID
-   fi
-
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
-
-      if [ "$ASKFROM" != "" ]; then
-         FROM="$ASKFROM"
-      fi
 
       # supported syntax is even like from=/dev/sr0/livekitname. It is not so much
       # optiomal to put the following block of code here inside the while loop,
@@ -612,7 +599,7 @@ find_data()
 {
    debug_log "find_data" "$*"
 
-   local DATA FROM TIMEOUT
+   local DATA FROM TIMEOUT ASKPID
 
    FROM="$(cmdline_value from)"
 
@@ -628,6 +615,17 @@ find_data()
       return
    fi
 
+   # If user wants to get asked, ask and periodically update list of devices
+   if [ "$FROM" = "ask" ]; then
+      (while true; do blkid -s TYPE | grep -E -v "/loop|/ram|/zram" >/tmp/0.txt; mv -f /tmp/0.txt /tmp/ask.txt; sleep 1; done) &
+      ASKPID=$!
+      sleep 1 # give blkid some chance to finish
+      FROM="$(ncurses-menu -t 'Search for $LIVEKITNAME data on:' -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
+      FROM="$(echo "$FROM" | cut -d : -f 1)"
+      kill $ASKPID
+   fi
+
+   # default to livekitname autodetected on all disks
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
 
    echo_green_star >&2
