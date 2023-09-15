@@ -21,6 +21,16 @@ if [ ! -r "$1" ]; then
    exit 1
 fi
 
+if [ -d "$1" -a "$(basename "$1")" = "initrfs.img" ]; then
+   initramfs_pack "$1"
+   exit $?
+fi
+
+if [ -f "$1" -a "$(basename "$1")" = "initrfs.img" ]; then
+   initramfs_unpack "$1"
+   exit $?
+fi
+
 if [ -d "$1" ]; then
    dir2sb "$@"
    exit $?
