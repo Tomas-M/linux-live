@@ -616,12 +616,34 @@ find_data()
    fi
 
    # If user wants to get asked, ask and periodically update list of devices
-   if [ "$FROM" = "ask" ]; then
-      (while true; do blkid -o full -s TYPE -s LABEL | grep -E -v "/loop|/ram|/zram" >/tmp/0.txt; mv -f /tmp/0.txt /tmp/ask.txt; sleep 1; done) &
+   # boot parameter specified as from=ask or from=ask/directory/where/system/is/installed
+   if echo "$FROM" | grep -q '^ask'; then
+      (while true; do
+         # Among other things, filter out swap, since the user may have a hard disk with a swap partition on the actual hardware.
+         blkid -o full -s TYPE -s LABEL | grep -E -v "/loop|/ram|/zram|TYPE=\"swap\"" | while read -r LINE; do
+            PARTITION=$(echo "$LINE" | awk '{print $1}' | awk -F':' '{print $1}')
+            SIZE=$(fdisk -l "$PARTITION" 2>/dev/null | head -n 1 | awk '/Disk \// {print $3, $4}' | tr -d ",")
+            TYPE=$(echo $LINE | awk -F'TYPE="' '{print $2}' | awk -F'"' '{print $1}')
+            LABEL=$(echo $LINE | awk -F'LABEL="' '{print $2}' | awk -F'"' '{print $1}')
+            echo "$PARTITION: SIZE=\"$SIZE\" TYPE=\"$TYPE\" LABEL=\"$LABEL\" "
+         done >/tmp/0.txt
+         mv -f /tmp/0.txt /tmp/ask.txt
+         sleep 1
+      done) &
       ASKPID=$!
       sleep 1 # give blkid some chance to finish
-      FROM="$(ncurses-menu -t "Look for /$LIVEKITNAME/ directory on:" -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
-      FROM="$(echo "$FROM" | cut -d : -f 1)/$LIVEKITNAME"
+      if echo "$FROM" | grep -q '^ask/'; then
+         DIR="$(echo "$FROM" | cut -d '/' -f 2-)"
+      else
+         DIR="$LIVEKITNAME"
+      fi
+      DEVICE="$(ncurses-menu -t "Look for /$DIR/ directory on:" -f /tmp/ask.txt -s 2>&1 >/dev/tty1 </dev/tty1)"
+      DEVICE="$(echo "$DEVICE" | cut -d : -f 1)"
+      if echo "$FROM" | grep -q '^ask/'; then
+         FROM="$DEVICE/$(echo "$FROM" | cut -d '/' -f 2-)"
+      else
+         FROM="$DEVICE"
+      fi
       kill $ASKPID
    fi
 
