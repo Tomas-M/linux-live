@@ -617,7 +617,18 @@ find_data()
 
    # If user wants to get asked, ask and periodically update list of devices
    if [ "$FROM" = "ask" ]; then
-      (while true; do blkid -o full -s TYPE -s LABEL | grep -E -v "/loop|/ram|/zram" >/tmp/0.txt; mv -f /tmp/0.txt /tmp/ask.txt; sleep 1; done) &
+      (
+         while true; do
+            blkid -o full -s TYPE -s LABEL | grep -E -v "/loop|/ram|/zram|swap" | while read LINE; do
+               DISK="$(echo "$LINE" | cut -d : -f 1)"
+               SIZE="$(fdisk -l "$DISK" 2>/dev/null | grep $DISK | grep : | sed -r "s/.*: |,.*//g")"
+               echo -n "$DISK: $SIZE, "
+               echo "$LINE" | sed -r 's/[^"]*"([^"]*)"/\1, /g' | sed -r 's/, $//'
+            done >/tmp/0.txt
+            mv -f /tmp/0.txt /tmp/ask.txt
+            sleep 1
+         done
+      ) &
       ASKPID=$!
       sleep 1 # give blkid some chance to finish
       FROM="$(ncurses-menu -t "Look for /$LIVEKITNAME/ directory on:" -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
