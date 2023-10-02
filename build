@@ -21,12 +21,11 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    exit 1
 fi
 
-MKISOFS=$(which mkisofs)
-if [ "$MKISOFS" = "" ]; then
-   MKISOFS=$(which genisoimage)
-fi
-if [ "$MKISOFS" = "" ]; then
-   echo "Cannot find mkisofs or genisoimage, stop"
+XORRISO=$(which xorriso)
+ISOHYBRID=$(which isohybrid)
+
+if [[ -z ${XORISO} && -z ${ISOHYBRID} ]]; then
+   echo "Cannot find xorisso and/or isohybrid, stop"
    exit 3
 fi
 
@@ -56,10 +55,11 @@ cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:
 cp $VMLINUZ $BOOT/ || exit
 
 # UEFI booting
-mkdir -p $BOOT/EFI/Boot
-cp bootfiles/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
-cp bootfiles/EFI/Boot/{ldlinux.e64,menu.c32,libutil.c32,vesamenu.c32,libcom32.c32} $BOOT/EFI/Boot
-cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesamenu:vesamenu:" > $BOOT/EFI/Boot/syslinux.cfg
+mkdir -p ${LIVEKITDATA}/EFI/BOOT
+mkdir -p ${LIVEKITDATA}/boot/grub/x86_64-efi
+cp bootfiles/EFI/BOOT/* ${LIVEKITDATA}/EFI/BOOT
+cp bootfiles/boot/grub/grub.cfg ${LIVEKITDATA}/boot/grub
+cp bootfiles/boot/grub/x86_64-efi/*.mod ${LIVEKITDATA}/boot/grub/x86_64-efi
 
 # create compressed 01-core.sb
 COREFS=""
@@ -78,11 +78,14 @@ TARGET=/tmp
 
 cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/\x0D/" > readme.txt
 
-echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
--no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> $TARGET/gen_"$LIVEKITNAME"_iso.sh
-chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
+echo cd $LIVEKITDATA '&&' ${XORRISO} -as mkisofs -o "${TARGET}/${LIVEKITNAME}-${ARCH}.iso" \
+-U -r -v -T -J -joliet-long  -A "${LIVEKITNAME}" -V "${LIVEKITNAME}" -volset "${LIVEKITNAME}" \
+-b "${LIVEKITNAME}/boot/isolinux.bin" -c "${LIVEKITNAME}/boot/boot.cat" \
+-no-emul-boot -boot-load-size 4 -boot-info-table -eltorito-alt-boot \
+-e /EFI/BOOT/efiboot.img -no-emul-boot .  '&&' \
+${ISOHYBRID} --uefi "${TARGET}/${LIVEKITNAME}-${ARCH}.iso" \
+> ${TARGET}/gen_"${LIVEKITNAME}"_iso.sh
+chmod +x ${TARGET}/gen_"${LIVEKITNAME}"_iso.sh
 
 echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \
 > $TARGET/gen_"$LIVEKITNAME"_zip.sh

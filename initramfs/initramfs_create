@@ -120,6 +120,13 @@ copy_including_deps /$LMK/kernel/drivers/ata
 copy_including_deps /$LMK/kernel/drivers/nvme
 copy_including_deps /$LMK/kernel/drivers/mmc
 
+# Required for running in Hyper-v VM
+copy_including_deps /$LMK/kernel/drivers/input/serio/hyperv-keyboard.*
+copy_including_deps /$LMK/kernel/drivers/scsi/hv_storvsc.ko
+
+# Required for ventoy support
+copy_including_deps /$LMK/kernel/drivers/md
+
 # network support drivers
 if [ "$NETWORK" = "true" ]; then
    # add all known ethernet drivers
