@@ -31,7 +31,7 @@ modprobe_everything -v /drivers/net/
 
 # initialize blkid cache file
 init_blkid_cache
-
+                                                                                                                                                      debug_shell
 # If iso is loaded through ventoy, execute ventoy hook script.
 # Creates mapper device: /dev/mapper/ventoy (which is a simlink to /dev/dm-0)
 if [[ -d /ventoy ]]
