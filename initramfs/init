@@ -38,7 +38,10 @@ if [[ -d /ventoy ]]
 then
     # init_devs must be executed again, otherwise disk devices are not available yet
     # But these are required for the ventoy disk mount hook
-    init_devs
+    while [[ get_ventoy_disk_name == "unknown" ]]
+    do
+        init_devs
+    done
     . /ventoy/hook/ventoy-hook-lib.sh
     /ventoy/busybox/sh /ventoy/hook/debian/disk_mount_hook.sh
 fi
