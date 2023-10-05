@@ -15,6 +15,9 @@ slackware:cairo
 slackware:gdk-pixbuf2
 slax:slax-gtk-utils
 
+# this is real, wtf
+slackware:binutils
+
 slackware:pamixer
 slackware:boost
 
