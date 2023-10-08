@@ -3,8 +3,19 @@
 CONF=/etc/X11/xorg.conf.d/01-xautodetected.conf
 
 rm $CONF
-Xorg -configure 2>/dev/null
+/usr/bin/Xorg -configure 2>/dev/null
 mv -f /root/xorg.conf.new $CONF
 
-exec /usr/bin/startx
+TIME=$(date +%s)
+echo $TIME
 
+/usr/bin/startx
+
+END=$(date +%s)
+
+# if X ended within 10 seconds, there was probably something wrong
+# remove the autodetected config and try without it
+if [ $(($END - $TIME)) -lt 10 ]; then
+   rm -f $CONF
+   /usr/bin/startx
+fi
