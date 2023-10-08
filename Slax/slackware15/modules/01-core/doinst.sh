@@ -13,6 +13,13 @@ chmod ugo-x $1/etc/rc.d/rc.setterm
 # syslinux c32 files not need
 rm -Rf $1/usr/share/syslinux
 
+# update mirror
+if [ "$(uname -m)" = "x86_64" ]; then
+    sed -i s/slackware64-15.0/slackware64-current/ $1/etc/slackpkg/slackpkgplus.conf
+else
+    sed -i s/slackware64-15.0/slackware-current/ $1/etc/slackpkg/slackpkgplus.conf
+fi
+
 # unneeded, or wont work without dependency anyway
 rm $1/usr/sbin/cifs.idmap
 
