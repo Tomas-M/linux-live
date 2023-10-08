@@ -15,9 +15,9 @@ rm -Rf $1/usr/share/syslinux
 
 # update mirror
 if [ "$(uname -m)" = "x86_64" ]; then
-    sed -i s/slackware64-15.0/slackware64-current/ $1/etc/slackpkg/slackpkgplus.conf
+    sed -i s/slackware64-15.0/slackware64-current/ $1/etc/slackpkg/mirrors
 else
-    sed -i s/slackware64-15.0/slackware-current/ $1/etc/slackpkg/slackpkgplus.conf
+    sed -i s/slackware64-15.0/slackware-current/ $1/etc/slackpkg/mirrors
 fi
 
 # unneeded, or wont work without dependency anyway
