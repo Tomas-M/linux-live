@@ -101,6 +101,7 @@ rm etc/termcap-BSD
 rm -Rf usr/lib{64,}/python2.7/site-packages
 rm -Rf usr/lib{64,}/gdbus-2.0/codegen/*
 rm -Rf usr/share/icons/Oxygen_*
+rm -Rf usr/share/icons/HighContrast
 rm -Rf usr/share/gir-*
 rm -Rf usr/share/apps/kdm/pics/*
 rm -Rf usr/share/apps/desktoptheme/oxygen
