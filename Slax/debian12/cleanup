@@ -33,7 +33,7 @@ rm -f /var/log/*/*
 rm -f /var/log/*/*/*
 rm -Rf /var/log/journal/*
 rm -f /var/cache/apt/archives/*.deb
-rm -f /var/lib/connman/*
+rm -Rf /var/lib/connman/*
 rm -f /var/cache/apt/*.bin
 rm -f /var/cache/debconf/*-old
 rm -f /var/lib/dhcp/dhclient.leases
