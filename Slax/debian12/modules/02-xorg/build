@@ -12,7 +12,7 @@ apt install --yes --no-install-recommends \
     x11-utils \
     wmctrl \
     xdotool \
-    libdrm-intel1
+    libdrm-intel1 \
     libgl1-mesa-dri \
     libglu1-mesa
 
