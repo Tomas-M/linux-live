@@ -47,6 +47,7 @@ ln -s bin $INITRAMFS/sbin
 
 cp static/busybox $INITRAMFS/bin
 cp static/ncurses-menu $INITRAMFS/bin
+cp static/mc $INITRAMFS/bin
 cp static/eject $INITRAMFS/bin
 cp static/mkfs.xfs.custom $INITRAMFS/bin
 cp static/xfs_growfs $INITRAMFS/bin
