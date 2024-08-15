@@ -60,7 +60,7 @@ fi
 cp -r bootfiles/* $BOOT
 cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
 cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp $VMLINUZ $BOOT/ || exit
+cp -r $VMLINUZ $BOOT/ || exit
 
 # UEFI booting
 mkdir -p $BOOT/EFI/Boot
