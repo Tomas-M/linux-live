@@ -31,7 +31,21 @@ modprobe_everything -v /drivers/net/
 
 # initialize blkid cache file
 init_blkid_cache
-
+                                                                                                                                                      debug_shell
+# If iso is loaded through ventoy, execute ventoy hook script.
+# Creates mapper device: /dev/mapper/ventoy (which is a simlink to /dev/dm-0)
+if [[ -d /ventoy ]]
+then
+    # init_devs must be executed again, otherwise disk devices are not available yet
+    # But these are required for the ventoy disk mount hook
+    . /ventoy/hook/ventoy-hook-lib.sh
+    while [[ $(get_ventoy_disk_name) == "unknown" ]]
+    do
+        init_devs
+    done
+    /ventoy/busybox/sh /ventoy/hook/debian/disk_mount_hook.sh
+fi
+                                                                                                                                                      debug_shell
 # find data dir with filesystem bundles
 DATA="$(find_data 45 "$DATAMNT")"
 check_data_found "$DATA"

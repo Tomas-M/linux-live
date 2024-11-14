@@ -1,0 +1,108 @@
+#! /bin/bash
+
+set -e
+
+# Function to install packages if not installed yet
+function install_package () {
+	if [[ -z `dpkg -l ${1}|grep -E '^ii'` ]]
+	then
+		apt install --yes ${1}
+	fi	
+}
+
+# Check if the script is executed from the bootfiles directory
+if [[ ${PWD/*\/} != "bootfiles" ]]
+then
+	>&2 echo "Error: execute this script from within the bootfiles directory"
+       exit 1 
+fi
+
+# Read config file
+if [[ -e ../config ]]
+then
+	. ../config
+fi
+
+# Ensure that LIVEKITNAME is set, otherwise assing to default value linux
+LVIVEKITNAME=${LIVEKITNAME:="linux"}
+
+
+if [[ -d EFI/BOOT ]] then rm -rf EFI/BOOT; fi
+if [[ -d boot/grub ]] then rm -rf boot/grub; fi
+
+mkdir -p EFI/BOOT
+mkdir -p boot/grub/x86_64-efi
+
+# Ensure that the x86_64 modules are installed
+install_package "grub-efi-amd64-bin"
+
+cp /usr/lib/grub/x86_64-efi/*.mod boot/grub/x86_64-efi/
+
+# Basic grub config included in UEFI boot image
+# Tries to find the cdrom, which should match the value
+# of LIVEKITNAME
+cat << EOF > boot/grub/grub-stub.cfg
+earch --no-floppy --label ${LIVEKITNAME} --set root
+set prefix=(\$root)/boot/grub
+
+configfile /grub.cfg
+EOF
+
+# Generate UEFI boot image with support of the included modules below
+grub-mkimage \
+   -o EFI/BOOT/BOOTX64.EFI \
+   -c boot/grub/grub-stub.cfg \
+   -p /boot/grub \
+   -O x86_64-efi \
+    search iso9660 configfile normal memdisk tar boot linux part_msdos part_gpt \
+    part_apple configfile help loadenv ls reboot chain search_fs_uuid multiboot \
+    fat iso9660 udf ext2 btrfs ntfs reiserfs xfs lvm ata
+
+
+# Generate ESP image, which will contain the the UEFI Boot image
+dd if=/dev/zero of=EFI/BOOT/efiboot.img bs=512 count=2880
+
+# Format the ESP image
+mkfs.msdos -F 12 -n "${LIVEKITNAME^^}" EFI/BOOT/efiboot.img
+
+# Install mtoools, which contain the mmd and mcopy command to direct add
+# directories and files to the ESP image file
+install_package "mtools"
+
+mmd -i EFI/BOOT/efiboot.img ::EFI
+mmd -i EFI/BOOT/efiboot.img ::EFI/BOOT
+mcopy -i EFI/BOOT/efiboot.img  EFI/BOOT/BOOTX64.EFI ::EFI/BOOT/
+
+# Generate grub.cfg
+cat << EOF > boot/grub/grub.cfg
+insmod efi_gop
+insmod efi_uga
+
+insmod gfxterm
+insmod gfxterm_background
+insmod png
+
+insmod all_video
+insmod videotest
+insmod videoinfo
+
+serial --unit 4 --speed 9600
+terminal_output gfxterm
+
+set pager=1
+
+set color_normal=black/black
+set color_highlight=black/cyan
+
+background_image -m stretch /${LIVEKITNAME}/boot/bootlogo.png
+
+menuentry --hotkey=l 'Run Linux' {
+   linux /${LIVEKITNAME}/boot/vmlinuz vga=769 load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 apparmor=0
+   initrd /${LIVEKITNAME}/boot/initrfs.img 
+}
+menuentry --hotkey=p 'Run Linux Debug' {
+   linux /${LIVEKITNAME}/boot/vmlinuz vga=769 load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 apparmor=0 debug
+   initrd /${LIVEKITNAME}/boot/initrfs.img 
+}
+
+EOF
