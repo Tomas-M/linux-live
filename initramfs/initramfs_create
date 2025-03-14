@@ -137,6 +137,7 @@ copy_including_deps /usr/share/terminfo/l/linux
 
 find $INITRAMFS -name "*.ko.gz" -exec gunzip {} \;
 find $INITRAMFS -name "*.ko.xz" -exec xz -d {} \;
+find $INITRAMFS -name "*.zst" -exec zstd -d --rm {} \;
 
 # trim modules.order file. Perhaps we could remove it entirely
 MODULEORDER="$(cd "$INITRAMFS/$LMK/"; find -name "*.ko" | sed -r "s:^./::g" | tr "\n" "|" | sed -r "s:[.]:.:g")"
