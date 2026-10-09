@@ -1,6 +1,0 @@
-[Desktop Entry]
-Exec=connman-gtk-start
-Icon=gnome_network_workgroup
-Name=Net Manager
-Terminal=false
-Type=Application

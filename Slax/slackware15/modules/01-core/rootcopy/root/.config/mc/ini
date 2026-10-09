@@ -1,9 +1,0 @@
-
-[Midnight-Commander]
-use_8th_bit_as_meta=0
-ftpfs_first_cd_then_ls=1
-skip_check_codeset=1
-
-[Misc]
-display_codepage=Other_8_bit
-source_codepage=Other_8_bit

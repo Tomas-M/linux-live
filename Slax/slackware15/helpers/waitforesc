@@ -1,4 +1,0 @@
-#!/bin/bash
-while [ "$readchar" != "" ]; do
-   read -n 1 readchar
-done < /dev/console
