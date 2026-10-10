@@ -1,0 +1,48 @@
+#!/bin/sh
+set -ex
+# Stable releases verified on 2026-10-10.
+KERNELVERSION=7.2.9
+KERNELSHA256=b4c5dfbe51a364a6c7f03869200f88c8e1f77403539005f14b7fc6bc91b8d8ba
+AUFSCOMMIT=3b79c0b65803a7587f97bb79a31b5494336148cf
+AUFSURL=https://github.com/sfjro/aufs-standalone.git
+CWD=$(CDPATH= cd "$(dirname "$0")" && pwd)
+
+apt-get update
+apt-get install -y build-essential bc kmod cpio flex libdw-dev libelf-dev libssl-dev dwarves bison git rsync python3 openssl debhelper fakeroot curl ca-certificates xz-utils patch
+
+# Keep previous builds intact and verify the kernel archive before extracting it.
+cd "$(mktemp -d /usr/src/slax-kernel.XXXXXX)"
+curl -fL "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-$KERNELVERSION.tar.xz" -o "linux-$KERNELVERSION.tar.xz"
+echo "$KERNELSHA256  linux-$KERNELVERSION.tar.xz" | sha256sum -c -
+tar -xf "linux-$KERNELVERSION.tar.xz"
+cd "linux-$KERNELVERSION"
+cp "$CWD/config-x86_64" .config
+
+git init aufs
+git -C aufs remote add origin "$AUFSURL"
+git -C aufs fetch --depth=1 origin "$AUFSCOMMIT"
+git -C aufs checkout --detach FETCH_HEAD
+cp -a aufs/fs .
+cp -a aufs/Documentation/. Documentation/
+cp -a aufs/include/uapi/linux/aufs_type.h include/uapi/linux/
+
+# Retain Slax's loopback and inode patches, and reject mismatched patch context.
+for PATCH in kbuild base mmap standalone loopback; do
+   patch --batch --fuzz=0 -p1 < "aufs/aufs7-$PATCH.patch"
+done
+for PATCH in vfs-ino tmpfs-idr; do
+   patch --batch --fuzz=0 -p1 < "aufs/$PATCH.patch"
+done
+
+# Rebuild every configured module under a distinct release with our own signing key.
+scripts/config --set-str LOCALVERSION '-slax' --disable LOCALVERSION_AUTO \
+   --set-str MODULE_SIG_KEY certs/signing_key.pem --enable MODULE_SIG_ALL \
+   --set-str SYSTEM_TRUSTED_KEYS '' --set-str SYSTEM_REVOCATION_KEYS '' \
+   --module AUFS_FS --enable AUFS_BRANCH_MAX_32767 --disable AUFS_BRANCH_MAX_127 \
+   --enable AUFS_EXPORT --enable AUFS_XATTR --enable AUFS_DIRREN --enable AUFS_SHWH \
+   --enable AUFS_BR_RAMFS --enable AUFS_BR_FUSE --disable AUFS_HNOTIFY --disable AUFS_DEBUG
+make olddefconfig
+make -j4 bindeb-pkg KDEB_PKGVERSION="$KERNELVERSION-slax1"
+
+cd ..
+printf 'You can find the Debian packages in %s\n' "$PWD"

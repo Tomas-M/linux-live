@@ -1,0 +1,128 @@
+#!/bin/sh
+# Serve Slax over DHCP, GRUB PXE, TFTP and HTTP on the selected interface.
+set -e
+
+LIVE=/run/initramfs
+STATE=/var/state/dnsmasq
+FTPROOT="$STATE/root"
+KERNEL=$(uname -r)
+if [ "$(id -u)" != 0 ]; then echo "Run pxe as root." >&2; exit 1; fi
+
+INTERFACE=${1:-$(ip -o -4 addr show scope global | awk 'NR==1 {print $2}')}
+if [ -z "$INTERFACE" ]; then
+   for DEVICE in /sys/class/net/*; do
+      [ "${DEVICE##*/}" = lo ] && continue
+      INTERFACE=${DEVICE##*/}
+      break
+   done
+fi
+ADDRESS=$(ip -o -4 addr show dev "$INTERFACE" | awk 'NR==1 {print $4}')
+if [ -z "$ADDRESS" ]; then
+   OCTETS=$(od -An -N2 -tu2 /dev/urandom)
+   ADDRESS="10.$((OCTETS/256)).$((OCTETS%256)).1/24"
+   ip address add "$ADDRESS" dev "$INTERFACE"
+fi
+ip link set "$INTERFACE" up
+IP=${ADDRESS%/*}
+GW=$(ip -4 route show default dev "$INTERFACE" | awk '/via/ {print $3; exit}')
+if [ -z "$GW" ]; then GW=$IP; echo 1 >/proc/sys/net/ipv4/ip_forward; fi
+RANGE=${IP%.*}
+# Pass the interface's actual mask to the client initrd, including non-/24 LANs.
+BITS=$(( (0xffffffff << (32-${ADDRESS#*/})) & 0xffffffff ))
+MASK="$((BITS>>24&255)).$((BITS>>16&255)).$((BITS>>8&255)).$((BITS&255))"
+
+BOOT=''
+for DIRECTORY in "$LIVE/memory/data/slax" "$LIVE/memory/iso/slax" "$LIVE/memory/toram"; do
+   if [ -f "$DIRECTORY/boot/grub/net/BOOTX64.EFI" ]; then BOOT="$DIRECTORY/boot"; break; fi
+done
+if [ -z "$BOOT" ]; then echo "Cannot find the bundled Slax GRUB network loaders." >&2; exit 1; fi
+BOOT=$(cd "$BOOT" && pwd -P)
+
+# Restart only the servers started here, leaving other dnsmasq/BusyBox users alone.
+for SERVICE in dnsmasq httpd; do
+   FILE="$STATE/pxe-$SERVICE.pid"
+   if [ -r "$FILE" ]; then
+      PID=$(cat "$FILE")
+      if [ -r "/proc/$PID/cmdline" ] && tr '\000' '\n' < "/proc/$PID/cmdline" | grep -qF "$FTPROOT"; then
+         kill "$PID"
+      fi
+      rm -f "$FILE"
+   fi
+done
+mkdir -p "$STATE"
+rm -rf "$FTPROOT"
+mkdir -p "$FTPROOT/tmp"
+
+# Repack the running initrd with wired NIC drivers and their module dependencies.
+cd "$LIVE"
+(
+   find . -path './memory' -prune -o -print
+   find "/lib/modules/$KERNEL/kernel/drivers/net" -path '*/wireless' -prune -o -type f -name '*.ko*' -exec sh -c '
+      for FILE do
+         MODULE=${FILE##*/}
+         modprobe --show-depends "${MODULE%%.ko*}"
+      done
+   ' sh {} + | awk '$1=="insmod" {print $2}' | sort -u
+) | cpio -pmd "$FTPROOT/tmp" 2>/dev/null
+cp /lib/modules/"$KERNEL"/modules.* "$FTPROOT/tmp/lib/modules/$KERNEL/"
+find "$FTPROOT/tmp/lib/modules" -name '*.ko.gz' -exec gunzip -f {} \;
+find "$FTPROOT/tmp/lib/modules" -name '*.ko.xz' -exec xz -df {} \;
+depmod -b "$FTPROOT/tmp" "$KERNEL"
+rm -f "$FTPROOT/tmp/lib/initramfs_escaped"
+cd "$FTPROOT/tmp"
+find . -print | cpio -o -H newc 2>/dev/null | gzip -f --fast >../initrfs.img
+cd /
+rm -rf "$FTPROOT/tmp"
+
+ln -s "$BOOT/vmlinuz" "$FTPROOT/vmlinuz"
+ln -s "$BOOT/grub/unicode.pf2" "$FTPROOT/unicode.pf2"
+mkdir "$FTPROOT/grub"
+ln -s "$BOOT/grub/net" "$FTPROOT/grub/net"
+: > "$FTPROOT/PXEFILELIST"
+find "${BOOT%/boot}" -type f -name '*.sb' | sort -n | while IFS= read -r FILE; do
+   NAME=$(basename "$FILE")
+   ln -s "$FILE" "$FTPROOT/$NAME"
+   printf '%s\n' "$NAME" >> "$FTPROOT/PXEFILELIST"
+done
+printf '%s\n' 'Slax PXE data server. Clients download PXEFILELIST and the listed modules.' > "$FTPROOT/index.html"
+
+# Retain desktop flags, without recursively starting PXE or copying modules twice.
+FLAGS=$(awk '{for (i=1;i<=NF;i++) if ($i ~ /^slax[.]flags=/) {
+   sub(/^slax[.]flags=/,"",$i); count=split($i,flags,","); result=""
+   for (j=1;j<=count;j++) if (flags[j]!="pxe" && flags[j]!="toram") result=result (result ? "," : "") flags[j]
+   if (result!="") print "slax.flags=" result
+}}' /proc/cmdline)
+cat > "$FTPROOT/grub.cfg" <<EOF
+set root=(http,$IP:7529)
+set gfxmode=auto
+set gfxpayload=keep
+if loadfont /unicode.pf2; then
+   if [ "\$grub_platform" = "efi" ]; then insmod efi_gop; else insmod all_video; fi
+   insmod gfxterm
+   terminal_output gfxterm
+fi
+linux /vmlinuz load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 consoleblank=0 quiet loglevel=0 vt.global_cursor_default=0 automount $FLAGS ip=\$net_default_ip:$IP:$GW:$MASK BOOTIF=01-\$net_default_mac
+initrd /initrfs.img
+boot
+EOF
+
+set -- --conf-file= --interface="$INTERFACE" --except-interface=lo --bind-interfaces \
+   --enable-tftp --tftp-root="$FTPROOT" --pid-file="$STATE/pxe-dnsmasq.pid" \
+   --dhcp-leasefile="$STATE/pxe.leases" --log-facility="$STATE/pxe-dnsmasq.log" --log-dhcp \
+   --dhcp-no-override --dhcp-option="3,$GW" --dhcp-range="$RANGE.2,$RANGE.250,$MASK,infinite" \
+   --dhcp-match=set:efi64,option:client-arch,7 --dhcp-match=set:efi64,option:client-arch,9 \
+   --dhcp-boot="tag:efi64,grub/net/BOOTX64.EFI,,$IP"
+if [ -f "$BOOT/grub/net/pxe.0" ]; then
+   set -- "$@" --dhcp-match=set:bios,option:client-arch,0 --dhcp-boot="tag:bios,grub/net/pxe.0,,$IP"
+fi
+
+# Start HTTP before advertising boot files, so arriving clients can load immediately.
+busybox httpd -f -p "$IP:7529" -h "$FTPROOT" </dev/null >"$STATE/pxe-httpd.log" 2>&1 &
+HTTP_PID=$!
+printf '%s\n' "$HTTP_PID" > "$STATE/pxe-httpd.pid"
+trap 'kill "$HTTP_PID" 2>/dev/null' 0
+sleep 1
+kill -0 "$HTTP_PID"
+dnsmasq "$@"
+trap - 0
+echo "Slax GRUB PXE server is ready on $INTERFACE ($IP)."

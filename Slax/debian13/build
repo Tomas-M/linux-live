@@ -1,0 +1,34 @@
+#!/bin/bash
+
+THIS=$(dirname $(readlink -f $0))
+
+# Reject unsupported build hosts before changing the installed system.
+. /etc/os-release
+if [ "$ID" != "debian" ] || [ "$(uname -m)" != "x86_64" ]; then
+   echo "Slax requires amd64 Debian."
+   exit 1
+fi
+
+sed -i -r 's/^LIVEKITNAME.*/LIVEKITNAME="slax"/' $THIS/../../config
+sed -i -r 's/^NETWORK.*/NETWORK=true/' $THIS/../../config
+
+. ./copy
+. ./install
+. ./cleanup
+. ./copy
+
+# now run build script
+SKIPINITRFS=true
+cd ../../
+. ./build
+
+# setup initrd now, to include aufs
+#apt-get update
+#apt-get install aufs-dkms linux-headers-$(uname -r) --yes
+
+cd initramfs
+SPLASH="$THIS/bootsplash"
+. ./initramfs_create
+
+mv -f $INITRAMFS.img $LIVEKITDATA/$LIVEKITNAME/boot/initrfs.img
+cp -vfR $THIS/bootfiles/* $LIVEKITDATA/$LIVEKITNAME/boot/

@@ -1,4 +1,4 @@
-Each directory contains scripts for easier building of minimal OS installation,
+The debian13 directory contains scripts for building a minimal amd64 Debian installation,
 also known as SLAX - Small Live Auxiliary linuX
 
 WARNING:

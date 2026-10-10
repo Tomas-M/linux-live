@@ -1,0 +1,52 @@
+# Center the unscaled logo, with fixed spacing for the menu and help.
+title-text: ""
+desktop-color: "#000000"
+
++ boot_menu {
+   left = "50%-144"
+   top = "50%+100"
+   width = 288
+   height = 64
+   item_font = "Unifont Regular 16"
+   item_color = "#FFFFFF"
+   selected_item_color = "#000000"
+   selected_item_pixmap_style = "selected_*.png"
+   item_height = 16
+   item_spacing = 0
+   item_padding = 0
+   icon_width = 0
+   icon_height = 0
+   item_icon_space = 0
+   scrollbar = false
+}
+
++ label {
+   left = 8
+   top = "100%-32"
+   width = "50%-8"
+   height = 16
+   text = "[Enter] boot"
+   font = "Unifont Regular 16"
+   color = "#60CA00"
+   align = "left"
+}
+
++ label {
+   left = 50%
+   top = "100%-32"
+   width = "50%-8"
+   height = 16
+   text = "[e] cmdline >"
+   font = "Unifont Regular 16"
+   color = "#60CA00"
+   align = "right"
+}
+
+# Put the original bitmap behind the text; its visible logo is centered at (324,198).
++ image {
+   left = "50%-324"
+   top = "50%-198"
+   width = 640
+   height = 480
+   file = "/slax/boot/bootlogo.png"
+}

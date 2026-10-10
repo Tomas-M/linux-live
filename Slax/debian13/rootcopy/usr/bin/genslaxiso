@@ -1,0 +1,89 @@
+#!/bin/sh
+# Recreate a BIOS/UEFI Slax ISO, optionally replacing rootcopy and adding modules.
+set -e
+
+SOURCE=/run/initramfs/memory
+REGEX='^$'
+ROOTCOPY=''
+
+if [ "${1:-}" = "-e" ]; then
+   REGEX="$2"
+   shift 2
+fi
+if [ "${1:-}" = "-r" ]; then
+   ROOTCOPY="$2"
+   shift 2
+fi
+if [ -z "${1:-}" ]; then
+   echo "Usage: $0 [-e exclude_regex] [-r rootcopy_dir] target.iso [module.sb ...]"
+   echo "Example: $0 -e 'firmware|xorg|desktop|apps|chromium' slax_textmode.iso"
+   exit 1
+fi
+TARGET="$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")"
+shift
+
+SLAX=''
+for DIR in "$SOURCE/data/slax" "$SOURCE/iso/slax" "$SOURCE/toram"; do
+   if [ -f "$DIR/boot/grub.cfg" ]; then
+      SLAX="$DIR"
+   fi
+done
+if [ -z "$SLAX" ]; then
+   echo "Cannot find boot/grub.cfg in Slax data." >&2
+   exit 2
+fi
+
+# Encode paths for xorriso's quoted input, preserving quotes, Unicode and newlines.
+graft()
+{
+   LEFT=$(printf '%s.' "$1" | sed 's/=/\\=/g')
+   printf '"'
+   printf '%s=%s' "${LEFT%.}" "$2" | od -An -v -t o1 | awk '{for (i=1;i<=NF;i++) printf "\\%s",$i}'
+   printf '"\n'
+}
+
+TEMP=$(mktemp -d /tmp/slaxiso.XXXXXX)
+trap 'rm -rf "$TEMP"' 0
+XORRISO_PATH_LIST="$TEMP/graft"
+export XORRISO_PATH_LIST
+: > "$XORRISO_PATH_LIST"
+# POSIX read has no NUL delimiter; octal records also preserve trailing newlines.
+(cd "$SLAX"; find . -type f -exec sh -c '
+   for FILE do
+      printf "%s" "$FILE" | od -An -v -t o1 | awk '\''{for (i=1;i<=NF;i++) printf "\\0%s",$i}'\''
+      printf "\n"
+   done
+' sh {} +) > "$TEMP/files"
+while IFS= read -r ENCODED; do
+   FILE=$(printf '%b.' "$ENCODED")
+   FILE=${FILE%.}
+   FILE=${FILE#./}
+   case "$FILE" in changes/*|boot/grub/boot.cat) continue ;; esac
+   if [ "$REGEX" != '^$' ]; then
+      FILTER_PATH=$FILE FILTER_REGEX=$REGEX awk 'BEGIN {exit !(ENVIRON["FILTER_PATH"] ~ ENVIRON["FILTER_REGEX"])}' && continue
+   fi
+   if [ -n "$ROOTCOPY" ]; then
+      case "$FILE" in rootcopy|rootcopy/*) continue ;; esac
+   fi
+   graft "slax/$FILE" "$SLAX/$FILE" >> "$XORRISO_PATH_LIST"
+done < "$TEMP/files"
+
+if [ -n "$ROOTCOPY" ] && [ -d "$ROOTCOPY" ]; then
+   graft slax/rootcopy "$(cd "$ROOTCOPY" && pwd -P)" >> "$XORRISO_PATH_LIST"
+fi
+for MODULE in "$@"; do
+   if [ ! -f "$MODULE" ]; then
+      echo "File does not exist: $MODULE" >&2
+      exit 3
+   fi
+   MODULE="$(cd "$(dirname "$MODULE")" && pwd -P)/$(basename "$MODULE")"
+   graft "slax/modules/$(basename "$MODULE")" "$MODULE" >> "$XORRISO_PATH_LIST"
+done
+
+# The boot directory contains both the El Torito image and the USB EFI loaders.
+mkdir -p "$TEMP/media/slax/boot/grub" "$TEMP/media/slax/modules" "$TEMP/media/slax/changes"
+cp "$SLAX/boot/grub/makeiso.sh" "$SLAX/boot/grub/efi.img" "$TEMP/media/slax/boot/grub/"
+if [ -f "$SLAX/boot/grub/cdboot.img" ]; then
+   cp "$SLAX/boot/grub/cdboot.img" "$TEMP/media/slax/boot/grub/"
+fi
+sh "$TEMP/media/slax/boot/grub/makeiso.sh" "$TARGET"
