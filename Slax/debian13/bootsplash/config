@@ -1,3 +1,6 @@
-# Dimensions of the unscaled Slax logo stored in logo.16, logo.24 and logo.32.
+# Dimensions of the unscaled Slax logo stored in logo.32 (BGRA).
 LOGO_WIDTH=300
 LOGO_HEIGHT=150
+
+# Accent color for the menu and running dots (RGB).
+MENU_COLOR=61ca00

@@ -1,3 +1,8 @@
-#!/bin/bash
-
-(cd rootcopy && cp --parents -afr * /)
+#!/bin/sh
+set -e
+[ -f /build/buildmods ] || { echo "Run Slax's build script instead of copy." >&2; exit 1; }
+# Replace the link itself, without overwriting the time zone file it points to.
+rm -f /etc/localtime
+cp -a /build/rootcopy/. /
+ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
+ln -sf /usr/lib/systemd/system/slax-rmmounts.service /etc/systemd/system/sysinit.target.wants/slax-rmmounts.service

@@ -1,37 +1,23 @@
-#!/bin/bash
+#!/bin/sh
+set -e
+[ -f /build/buildmods ] || { echo "Run Slax's build script instead of install." >&2; exit 1; }
 
-CURRENT="$(ls -1 /boot)"
-
-apt update
-apt upgrade --yes
-
-NEW="$(ls -1 /boot)"
-
-if [ "$CURRENT" != "$NEW" ]; then
-   echo "----------------------------------------------------------------------"
-   echo "It looks like your kernel has been upgraded."
-   echo "You should reboot and restart the build process."
-   echo "----------------------------------------------------------------------"
-   exit
-fi
-
-# if kernel was upgraded, you may need to reboot
-apt-get install --yes --no-install-recommends mc squashfs-tools xorriso mtools grub-pc-bin grub-efi-amd64-bin zip unzip psmisc net-tools \
+apt-get update
+apt-get install --yes --no-install-recommends systemd-sysv udev dbus tzdata locales kmod \
+mc squashfs-tools xorriso mtools grub-pc-bin grub-efi-amd64-bin zip unzip psmisc net-tools \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
 hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
-ntfs-3g rfkill file dnsmasq ntpdate dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman
+ntfs-3g rfkill file dnsmasq ntpsec-ntpdate dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
+/artifacts/kernel.deb
 
 ln -sf bash /bin/sh
+# The old installer-created accounts must now be part of the bootstrapped core.
+useradd -m -g users -s /bin/bash guest
+printf 'root:toor\nguest:guest\n' | chpasswd
 
-apt-get remove --yes vim* debconf-i18n installation-report
-apt-get remove --yes apparmor
-apt-get autoremove --yes
-
-CWD="$(pwd)"
+# Keep only the ACPI scripts, without pulling in another desktop.
 cd /tmp
 apt-get download acpi-support
-dpkg -x acpi-support*.deb /tmp/acpisupport
-cd /tmp/acpisupport
-cp -aR * /
-cp -aR lib/systemd /lib/
-cd "$CWD"
+mkdir acpisupport
+dpkg -x acpi-support*.deb acpisupport
+cp -a acpisupport/. /

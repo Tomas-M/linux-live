@@ -1,0 +1,11 @@
+[Unit]
+Description=Finish the Slax kernel and build Slax after reboot
+Wants=network-online.target
+After=network-online.target ssh.service
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /root/continue-slax-build.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,84 @@
+#!/bin/sh
+set -e
+CWD=$(pwd)
+OUTPUT=/artifacts/03-desktop
+apt-get update
+apt-get build-dep --yes --no-install-recommends fluxbox
+apt-get install --yes --no-install-recommends build-essential dpkg-dev libimlib2-dev libgtk2.0-dev libnotify-dev
+mkdir -p /tmp/fluxbox-rebuild
+cd /tmp/fluxbox-rebuild
+apt-get source fluxbox
+cd fluxbox-*/
+# Keep Debian's binary rebuild version and identify the Slax patch.
+VERSION=$(dpkg-query -W -f='${Version}' fluxbox)
+sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+
+# Build the Debian package with Slax's window and menu changes.
+mkdir -p debian/patches
+cp "$CWD/patches/fluxbox-slax.diff" debian/patches/
+printf 'fluxbox-slax.diff\n' >> debian/patches/series
+cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
+chmod 755 /usr/bin/imlib2-config
+dpkg-buildpackage -b -us -uc
+cp ../fluxbox_*.deb "$OUTPUT/"
+
+# Collect the additional desktop programs into one binary package.
+PACKAGE=$OUTPUT/tools
+mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACKAGE/DEBIAN"
+cd /tmp
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.7.5.tar.gz
+tar -xf xlunch.tar.gz
+cd xlunch-4.7.5
+make
+cp xlunch "$PACKAGE/usr/bin/"
+cp extra/gentriesquick "$PACKAGE/usr/bin/xlunch_genquick"
+cp extra/ghost.png "$PACKAGE/usr/share/icons/hicolor/48x48/apps/xlunch_ghost.png"
+
+cd /tmp
+wget -O systrayiconlauncher.tar.gz https://github.com/Tomas-M/SystrayIconLauncher/archive/master.tar.gz
+tar -xf systrayiconlauncher.tar.gz
+cd SystrayIconLauncher-master
+make
+cp systrayicon "$PACKAGE/usr/bin/"
+
+cd /tmp
+wget -O gtkdialog.tar.gz https://github.com/Tomas-M/GTKdialog/archive/master.tar.gz
+tar -xf gtkdialog.tar.gz
+cd GTKdialog-master
+make
+cp gtkdialog "$PACKAGE/usr/bin/"
+
+cd /tmp
+wget -O cbatticon.tar.gz https://github.com/valr/cbatticon/archive/1.6.10.tar.gz
+tar -xf cbatticon.tar.gz
+cd cbatticon-1.6.10
+sed -i 's/WITH_GTK3 = 1/WITH_GTK3 = 0/' Makefile
+make
+cp cbatticon "$PACKAGE/usr/bin/"
+strip "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon"
+
+# Derive runtime dependencies from the compiled executables, not build dependencies.
+mkdir -p /tmp/slax-desktop-tools/debian
+cd /tmp/slax-desktop-tools
+cat > debian/control <<'EOF'
+Source: slax-desktop-tools
+Section: x11
+Priority: optional
+Maintainer: Slax <build@slax.org>
+
+Package: slax-desktop-tools
+Architecture: any
+Description: Slax desktop launchers and battery indicator
+EOF
+DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon")
+cat > "$PACKAGE/DEBIAN/control" <<EOF
+Package: slax-desktop-tools
+Version: 1
+Architecture: amd64
+Maintainer: Slax <build@slax.org>
+Depends: ${DEPENDS#shlibs:Depends=}
+Description: Slax desktop launchers and battery indicator
+EOF
+dpkg-deb --build --root-owner-group "$PACKAGE" "$OUTPUT/slax-desktop-tools.deb"

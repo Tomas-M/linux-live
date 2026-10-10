@@ -3,3 +3,9 @@
 !start.ps1
 !start.cmd
 !README.txt
+!collect-slax-build.py
+!continue-slax-build.sh
+!slax-autobuild.service
+!configure-system-tmp.sh
+!disable-work-vm-swap.sh
+!enable-slax-autobuild.sh

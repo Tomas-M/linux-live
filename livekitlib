@@ -8,92 +8,49 @@
 # debug and output functions
 # =================================================================
 
-# Stop drawing before an interactive console, or keep the logo at handoff.
+# Keep keyboard input responsive while the boot script waits for devices.
+splash_listen()
+{
+   [ "$SPLASH_LOG" ] || return 0
+   if ! grep -qw quiet /proc/cmdline; then splash_disable; return; fi
+   chvt 1
+   fbmenu --serve /lib/bootsplash "$SPLASH_LOG" &
+   SPLASH_PID=$!
+}
+
+# Stop the renderer before an interactive console, or preserve pixels at handoff.
 splash_stop()
 {
    [ "$SPLASH_LOG" ] || return 0
    if [ "$SPLASH_PID" ]; then
-      kill "$SPLASH_PID" 2>/dev/null
+      if [ "$1" = "keep" ]; then
+         fbmenu --keep
+      else
+         fbmenu --disable || cat "$SPLASH_LOG" >&3
+         fbmenu --stop
+      fi
       wait "$SPLASH_PID" 2>/dev/null
       SPLASH_PID=
    fi
    exec >&3 2>&4
-   if [ "$1" != "keep" ]; then printf '\033[2J\033[H\033[?25h' >/dev/tty1; fi
 }
 
-# Fall back to the console and show the output captured before /proc existed.
+# Restore direct console output; the renderer already displayed captured output.
 splash_disable()
 {
    [ "$SPLASH_LOG" ] || return 0
+   if [ ! "$SPLASH_PID" ]; then cat "$SPLASH_LOG" >&3; fi
    splash_stop
-   cat "$SPLASH_LOG"
    exec 3>&- 4>&-
    SPLASH_LOG=
 }
 
-# Draw prepared pixel data with BusyBox, preserving the firmware video mode.
+# Start graphics without changing video modes; Esc remains disabled for this boot.
 splash_start()
 {
    [ "$SPLASH_LOG" ] || return 0
-   [ "$SPLASH_PID" ] && return 0
-   if [ ! -c /dev/fb0 ] || ! grep -qw quiet /proc/cmdline; then splash_disable; return; fi
-
-   local WIDTH HEIGHT DEPTH BYTES STRIDE BLOCK ROW OFFSET FRAME FRAMES LOGO_WIDTH LOGO_HEIGHT
-   . /lib/bootsplash/config
-   set -- $(fbset | awk '/geometry/ {print $2,$3,$6} /rgba/ {print $2}')
-   case "$3:$4" in
-      16:5/11,6/5,5/0,*|24:8/16,8/8,8/0,*|32:8/16,8/8,8/0,*) ;;
-      *) splash_disable; return ;;
-   esac
-   WIDTH=$1
-   HEIGHT=$2
-   DEPTH=$3
-   BYTES=$((DEPTH/8))
-   # Let the prepared frames determine the animation's cycle length.
-   FRAMES=$(($(wc -c < "/lib/bootsplash/loader.$DEPTH")/(28*4*BYTES)))
-   STRIDE=$(cat /sys/class/graphics/fb0/stride)
-   BLOCK=$BYTES
-   # Some 24-bit framebuffers pad each scanline to a four-byte boundary.
-   if [ "$((STRIDE%BYTES))" -ne 0 ]; then BLOCK=1; fi
-   if [ "$WIDTH" -lt "$LOGO_WIDTH" ] || [ "$((HEIGHT/2+LOGO_HEIGHT/2+29))" -gt "$HEIGHT" ]; then
-      splash_disable
-      return
-   fi
-   if [ "$(cat /sys/class/graphics/fb0/pan)" != "0,0" ]; then splash_disable; return; fi
-
-   exec >>"$SPLASH_LOG" 2>&1
-   chvt 1
-   printf '\033[2J\033[?25l \033[H' >/dev/tty1
-   # Assemble the centered logo in RAM, then update the framebuffer once.
-   dd if=/dev/zero of=/tmp/splash-frame bs="$STRIDE" count="$HEIGHT" status=none
-   ROW=0
-   while [ "$ROW" -lt "$LOGO_HEIGHT" ]; do
-      OFFSET=$(((HEIGHT/2-LOGO_HEIGHT/2+ROW)*STRIDE+(WIDTH/2-LOGO_WIDTH/2)*BYTES))
-      dd if="/lib/bootsplash/logo.$DEPTH" of=/tmp/splash-frame ibs="$((LOGO_WIDTH*BYTES))" obs="$BLOCK" \
-         skip="$ROW" seek="$((OFFSET/BLOCK))" count=1 conv=notrunc status=none
-      ROW=$((ROW+1))
-   done
-   dd if=/tmp/splash-frame of=/dev/fb0 bs="$STRIDE" status=none
-   rm /tmp/splash-frame
-
-   # Finish the current write before stopping, so prompts cannot be overpainted.
-   (
-      trap 'exit 0' TERM
-      FRAME=0
-      while :; do
-         ROW=0
-         while [ "$ROW" -lt 4 ]; do
-            OFFSET=$(((HEIGHT/2+LOGO_HEIGHT/2+25+ROW)*STRIDE+(WIDTH-28)/2*BYTES))
-            dd if="/lib/bootsplash/loader.$DEPTH" of=/dev/fb0 ibs="$((28*BYTES))" obs="$BLOCK" \
-               skip="$((FRAME*4+ROW))" seek="$((OFFSET/BLOCK))" count=1 conv=notrunc status=none
-            ROW=$((ROW+1))
-         done
-         usleep 250000
-         FRAME=$(((FRAME+1)%FRAMES))
-      done
-   ) &
-   SPLASH_PID=$!
-   debug_log "splash_start" "$SPLASH_PID" "$WIDTH" "$HEIGHT" "$DEPTH" "$STRIDE"
+   if [ -e /run/bootsplash.disabled ]; then splash_disable; return; fi
+   fbmenu --start || splash_disable
 }
 
 debug_start()
@@ -730,7 +687,7 @@ find_data()
       ) &
       ASKPID=$!
       sleep 1 # give blkid some chance to finish
-      FROM="$(ncurses-menu -t "Look for /$LIVEKITNAME/ directory on:" -f /tmp/ask.txt -s 2>&1 >/dev/tty1 < /dev/tty1)"
+      FROM="$(fbmenu --menu "Look for /$LIVEKITNAME/ directory on:" /tmp/ask.txt)"
       FROM="$(echo "$FROM" | cut -d : -f 1)/$LIVEKITNAME"
       kill $ASKPID
    fi
@@ -767,28 +724,6 @@ check_data_found()
 }
 
 
-# Get a human readable format of time elapsed since given datetime
-# $1 = date time
-#
-date_diff_since_now()
-{
-   local NOW TIMESTAMP SEC MINS HOURS DAYS
-
-   NOW=$(date '+%s')
-   TIMESTAMP=$(date --date "$1" '+%s')
-   SEC=$(($NOW - $TIMESTAMP))
-   MINS=$(($SEC / 60))
-   HOURS=$(($SEC / 3600))
-   DAYS=$(($SEC / 86400))
-
-   if [ "$DAYS" -gt 0 ]; then echo "$DAYS days" | sed -r "s/^1 days/1 day/";
-   elif [ "$HOURS" -gt 0 ]; then echo "$HOURS hours" | sed -r "s/^1 hours/1 hour/";
-   elif [ "$MINS" -gt 0 ]; then echo "$MINS minutes" | sed -r "s/^1 minutes/1 minute/";
-   else echo "$SEC seconds" | sed -r "s/^1 seconds/1 second/";
-   fi
-}
-
-
 # Restore persistent changes from previous session.
 # Store persistent changes to a directory and keep the directory in a session file,
 # so we know which session was active last time so we can resume it next time
@@ -799,7 +734,7 @@ restore_perch_session()
    debug_log "restore_perch_session" "$*"
 
    local TIMEOUT DEVICE FS OPTIONS MOUNT
-   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST DAYS
+   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST
 
    CHANDIR="$1"
    PERCHDIR="$(cmdline_value perchdir)"
@@ -843,20 +778,16 @@ restore_perch_session()
 
    # ask for session, print msgs to stderr so it is visible
    if [ "$LASTSESSION" != "" -a "$PERCHDIR" = "ask" ]; then
-      ls -1 $CHANDIR | grep -E "^[0-9]+" | while read DIR; do
-         USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed -r "s/[[:space:]].*//")
-         LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M:%S")"
-         DAYS=$(date_diff_since_now "$LASTMOD")
-         echo "$LASTMOD Resume session #$DIR - last access $DAYS ago - using $USAGE" | sed -r "s/(.)\$/ \\1B/"
-      done | sort -r | cut -d " " -f 3- > /tmp/sessions.txt
-
-      PERCHDIR="$(ncurses-menu -t 'Select action:' -o 'Start a new session' -f /tmp/sessions.txt 2>&1 >/dev/tty1 < /dev/tty1)"
-
-      if echo "$PERCHDIR" | grep -q "new"; then
-         PERCHDIR="new"
-      else
-         PERCHDIR="$(echo "$PERCHDIR" | sed -r 's/.*#//' | sed -r 's/[^0-9].*//')"
-      fi
+      printf 'new\tStart a new session\n' > /tmp/sessions.txt
+      ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | while read DIR; do
+         [ -d "$CHANDIR/$DIR" ] || continue
+         USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed 's/[[:space:]].*//')
+         LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M")"
+         printf '%s\t%s\tResume session #%s\t%s  %sB\n' "$LASTMOD" "$DIR" "$DIR" "$LASTMOD" "$USAGE"
+      done | sort -r | cut -f 2- >> /tmp/sessions.txt
+      PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel)" || return 1
+      # Cancellation must not create a session or update last_session.txt.
+      [ "$PERCHDIR" ] || return 1
    fi
 
    # restore name for previous session if empty
@@ -866,7 +797,7 @@ restore_perch_session()
 
    # if last is empty or new/nonexistent is requested, create new
    if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "new" -o ! -d "$CHANDIR/$PERCHDIR" ]; then
-      NEW="$(ls -1 $CHANDIR | egrep '^[0-9]' | sed -r 's/[^0-9].*//' | sort | tail -n 1)"
+      NEW="$(ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
       NEW=$(($NEW + 1))
       mkdir -p "$CHANDIR/$NEW"
       PERCHDIR="$NEW"
@@ -903,7 +834,10 @@ persistent_changes()
       return
    fi
 
-   PERCHDIR=$(restore_perch_session "$CHANGES")
+   if ! PERCHDIR=$(restore_perch_session "$CHANGES"); then
+      echo "* Session selection cancelled; using RAM for changes"
+      return 0
+   fi
 
    # check if changes directory exists and is writable
    touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
@@ -1163,7 +1097,7 @@ fstab_create()
 change_root()
 {
    debug_log "change_root" "$*"
-   splash_stop keep
+   if [ -e /run/bootsplash.disabled ]; then splash_disable; fi
 
    # if we are booting over httpfs, we need to copyup some files so they are
    # accessible on union without any further lookup down, else httpfs locks
@@ -1206,6 +1140,14 @@ change_root()
       cp /var/log/boot.log var/log/boot.log
    fi
    mount -t tmpfs tmpfs run
+   # Let the splash release the initrd and follow startup until a console or X takes over.
+   if [ "$SPLASH_PID" ]; then
+      cp /bin/fbmenu run/fbmenu
+      cp -a /lib/bootsplash run/bootsplash
+      if [ ! -e dev/fb0 ]; then mknod dev/fb0 c 29 0; fi
+      fbmenu --handoff "$1" || splash_disable
+      SPLASH_PID=
+   fi
    mkdir -p run/initramfs
    mount -n -o remount,ro aufs .
    pivot_root . run/initramfs

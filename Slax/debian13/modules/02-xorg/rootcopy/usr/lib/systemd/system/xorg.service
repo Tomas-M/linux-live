@@ -7,4 +7,4 @@ After=systemd-user-sessions.service
 ExecStart=/bin/su --login -c "/usr/bin/Xdetect -- :0 vt7 -ac -nolisten tcp"
 
 [Install]
-[WantedBy]=graphical.target
+WantedBy=graphical.target

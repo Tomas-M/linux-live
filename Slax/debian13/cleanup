@@ -1,9 +1,7 @@
-#!/bin/bash
+#!/bin/sh
+set -e
+[ -f /build/buildmods ] || { echo "Run Slax's build script instead of cleanup." >&2; exit 1; }
 
-for i in $(seq 1 5); do
-killall systemd-journald
-sleep 0.5
-done
 
 rm -f /etc/fstab
 rm -f /etc/mtab
@@ -16,11 +14,10 @@ rm -f /etc/ssh/ssh_host*
 
 rm -f /var/backups/*
 rm -f /var/cache/ldconfig/*
-rm -f /var/cache/debconf/*
+rm -Rf /var/cache/debconf/*
 rm -Rf /var/cache/apparmor/*
 rm -f /var/cache/fontconfig/*
 rm -Rf /var/cache/man/*
-rm -f /var/lib/apt/extended_states
 rm -f /var/lib/systemd/random-seed
 rm -f /var/lib/apt/lists/deb.*
 rm -Rf /root/.local/share/mc
@@ -28,10 +25,7 @@ rm -Rf /root/.cache
 rm -f /root/.wget-hsts
 
 rm -f /var/lib/dpkg/*-old
-rm -f /var/log/*
-rm -f /var/log/*/*
-rm -f /var/log/*/*/*
-rm -Rf /var/log/journal/*
+find /var/log -type f -delete
 rm -f /var/cache/apt/archives/*.deb
 rm -Rf /var/lib/connman/*
 rm -f /var/cache/apt/*.bin
@@ -64,53 +58,47 @@ rm -Rf /usr/share/icons/Adwaita/96x96
 rm -Rf /usr/share/icons/Adwaita/scalable*
 rm -Rf /usr/share/yudit/*
 
-rm /usr/share/applications/compton.desktop
-rm /usr/share/applications/debian-uxterm.desktop
-rm /usr/share/applications/debian-xterm.desktop
-rm /usr/share/applications/htop.desktop
-rm /usr/share/applications/mc.desktop
-rm /usr/share/applications/mcedit.desktop
-rm /usr/share/applications/pcmanfm-desktop-pref.desktop
-rm /usr/share/applications/python2.7.desktop
-rm /usr/share/applications/python3.7.desktop
-rm /usr/share/applications/python3.11.desktop
-rm /usr/share/applications/python3.*.desktop
-rm /usr/share/applications/vim.desktop
-rm /usr/share/applications/SciTE.desktop
-rm /usr/share/applications/org.gnome.Calculator.desktop
-rm /usr/share/applications/panel*.desktop
+rm -f /usr/share/applications/compton.desktop
+rm -f /usr/share/applications/debian-uxterm.desktop
+rm -f /usr/share/applications/debian-xterm.desktop
+rm -f /usr/share/applications/htop.desktop
+rm -f /usr/share/applications/mc.desktop
+rm -f /usr/share/applications/mcedit.desktop
+rm -f /usr/share/applications/pcmanfm-desktop-pref.desktop
+rm -f /usr/share/applications/pcmanfm.desktop
+rm -f /usr/share/applications/lxtask.desktop
+rm -f /usr/share/applications/galculator.desktop
+rm -f /usr/share/applications/python2.7.desktop
+rm -f /usr/share/applications/python3.7.desktop
+rm -f /usr/share/applications/python3.11.desktop
+rm -f /usr/share/applications/python3.*.desktop
+rm -f /usr/share/applications/vim.desktop
+rm -f /usr/share/applications/SciTE.desktop
+rm -f /usr/share/applications/org.gnome.Calculator.desktop
+rm -f /usr/share/applications/panel*.desktop
 
-rm /etc/systemd/system/media-sr0.mount
-rm /etc/systemd/system/multi-user.target.wants/media-sr0.mount
-rm /etc/systemd/system/media-sda1.mount
-rm /etc/systemd/system/multi-user.target.wants/media-sda1.mount
+rm -f /etc/systemd/system/media-sr0.mount
+rm -f /etc/systemd/system/multi-user.target.wants/media-sr0.mount
+rm -f /etc/systemd/system/media-sda1.mount
+rm -f /etc/systemd/system/multi-user.target.wants/media-sda1.mount
 
-rm /etc/.pwd.lock
-rm /etc/console-setup/cached*
-rm /root/.gtk-bookmarks
-
-# newer modules are already available for Debian 11.2
-rm -Rf /usr/lib/modules/5.10.0-10-amd64
-rm -Rf /usr/lib/modules/5.10.0-10-686-pae
-rm -Rf /usr/lib/modules/5.10.0-11-amd64
-rm -Rf /usr/lib/modules/5.10.0-11-686-pae
-rm -Rf /usr/lib/modules/5.10.0-13-amd64
-rm -Rf /usr/lib/modules/5.10.0-13-686-pae
+rm -f /etc/.pwd.lock
+rm -f /etc/console-setup/cached*
+rm -f /root/.gtk-bookmarks
 
 # Unzip gzipped files (man pages), so LZMA can compress 2times better.
 # First we fix symlinks, then uncompress files
 # $1 = search directory
 uncompress_files()
 {
-   local LINK LINE
+   [ -d "$1" ] || return 0
 
-   find "$1" -type l -name "*.gz" | while read LINE; do
-      LINK="$(readlink "$LINE" | sed -r 's/.gz$//')"
-      FILE="$(echo "$LINE" | sed -r 's/.gz$//')"
-      ln -sfn "$LINK" "$FILE"
+   find "$1" -type l -name "*.gz" | while IFS= read -r LINE; do
+      LINK=$(readlink "$LINE")
+      ln -sfn "${LINK%.gz}" "${LINE%.gz}"
       rm -f "$LINE"
    done
-   find "$1" -type f -name "*.gz" | xargs -r gunzip -f
+   find "$1" -type f -name "*.gz" -exec gunzip -f {} +
 }
 
 uncompress_files /etc/alternatives
@@ -120,7 +108,8 @@ uncompress_files /usr/share/man
 # $1 = search directory
 remove_broken_links()
 {
-   find "$1" -type l -exec test ! -e {} \; -print | xargs rm -vf
+   [ -d "$1" ] || return 0
+   find "$1" -type l ! -exec test -e {} \; -delete
 }
 
 remove_broken_links /etc/alternatives

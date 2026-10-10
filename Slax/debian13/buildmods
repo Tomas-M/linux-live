@@ -1,132 +1,112 @@
-#!/bin/bash
-set -x
-EMPTY=/tmp/slax-empty
-UNION=/tmp/slax-union
-SLAXMODSDIR=/tmp/slax-data-540/slax/
+#!/bin/sh
+set -e
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+SUITE=${1:?Usage: buildmods suite workdir kernel.deb media-dir}
+WORK=${2:?}
+IMAGE=${3:?}
+MEDIA=${4:?}
+RUN=$(mktemp -d "$WORK/rootfs.XXXXXX")
+UNION=$RUN/root
+BRANCH=$RUN/branches/01-core
+ARTIFACTS=$RUN/artifacts
+mkdir -p "$UNION" "$BRANCH" "$MEDIA/slax/modules" "$ARTIFACTS" "$WORK/manifests"
 
-umount $UNION 2>/dev/null
-rm -Rf $UNION
-mkdir -p $UNION
-
-umount $EMPTY 2>/dev/null
-rm -Rf $EMPTY
-mkdir -p $EMPTY
-
-# change union target storage to $1
-# work on union mount $2
-#
-union_target_set()
+# Unmount only this build's mounts, including after a failed recipe.
+finish()
 {
-   rm -Rf "$1"
-   mkdir -p "$1"
-   mount -o remount,mod:$(cat /sys/fs/aufs/*/br0 | sed -r "s/=.*//")=ro none "$2" 2>/dev/null
-   mount -o remount,mod:$(cat /sys/fs/aufs/*/br1 | sed -r "s/=.*//")=ro none "$2" 2>/dev/null
-   mount -o remount,add:0:"$1" none "$2"
-}
-
-# remove files which are already installed in $1
-# so the module won't include duplicated files
-# $1 = original files root (source for comparing)
-# $2 = new files root, remove duplicates from here
-#
-function remove_duplicites()
-{
-   find "$2" -noleaf | while read DUPLICATE; do
-      ORIGFILE=$1/"${DUPLICATE:$((${#2}+1))}"
-      if [ "$DUPLICATE" = "$ORIGFILE" ]; then continue; fi
-
-      # if one file is a symlink and the other one is not, don't delete anything
-      if [ -h "$DUPLICATE" -a ! -h "$ORIGFILE" ]; then continue; fi
-      if [ ! -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then continue; fi
-
-      # a symlink pointing to the same location can be removed
-      if [ -h "$DUPLICATE" -a -h "$ORIGFILE" ]; then
-         if [ "$(readlink "$DUPLICATE")" = "$(readlink $ORIGFILE)" ]; then
-            rm -v "$DUPLICATE"
-            rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
-            continue
-         fi
-      fi
-
-      # existing files will be tested for UID and diff'ed
-      if [ ! -d "$DUPLICATE" -a -a "$ORIGFILE" ]; then
-         if [ "$(stat $ORIGFILE | grep Uid)" = "$(stat $DUPLICATE | grep Uid)" ]; then
-            diff --brief "$DUPLICATE" "$ORIGFILE" >/dev/null 2>/dev/null
-            if [ $? = 0 ]; then # is the same, can be removed
-               rm -v "$DUPLICATE"
-               rmdir --ignore-fail-on-non-empty "$(dirname $DUPLICATE)"
-            fi
-         fi
-      fi
-   done
-}
-
-
-# setup union
-modprobe aufs
-mount -t tmpfs tmpfs $EMPTY
-mount -t aufs -o xino="$EMPTY/.xino",br="$EMPTY" none "$UNION"
-
-for i in boot media mnt tmp; do
-   mkdir -p $UNION/$i
-done
-
-mount -t tmpfs tmpfs $UNION/tmp
-
-for i in dev proc run sys; do
-   mkdir -p $UNION/$i
-   mount --rbind /$i $UNION/$i
-done
-
-for i in $(ls -1 $SLAXMODSDIR | fgrep .sb); do
-   mkdir -p /tmp/sb-mount-$i
-   mount -o loop $SLAXMODSDIR/$i /tmp/sb-mount-$i
-   mount -o remount,add:0:"/tmp/sb-mount-$i" none "$UNION"
-done
-
-# install all packages for bundles
-for i in $(ls -1 modules | sort); do
-   union_target_set /tmp/$i "$UNION"
-   cp -a cleanup $UNION && chmod ugo+x $UNION/cleanup
-   mkdir -p $UNION/a/
-   cp -aR ./modules/$i $UNION/a
-   chroot $UNION /a/$i/build
-   chroot $UNION /cleanup
-   rm -Rf $UNION/{a,cleanup}
-
-   if [ "$(echo $i | fgrep -- '-tmp')" != "" ]; then
-      mount -o remount,mod:/tmp/$(echo $i | sed -r 's/-tmp//')=rw "$UNION"
-      mount -o remount,del:/tmp/$i "$UNION"
+   STATUS=$?
+   trap - 0
+   if mountpoint -q "$UNION"; then
+      auplink "$UNION" flush || STATUS=1
+      umount -R "$UNION" || STATUS=1
    fi
+   exit "$STATUS"
+}
+trap finish 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Freeze the previous module and put a fresh writable branch above it.
+new_branch()
+{
+   auplink "$UNION" flush
+   mount -i -t aufs -o "remount,mod=$BRANCH=ro+wh" none "$UNION"
+   BRANCH=$RUN/branches/$1
+   mkdir "$BRANCH"
+   mount -i -t aufs -o "remount,add=0:$BRANCH=rw" none "$UNION"
+}
+
+# Every package operation runs in the target root, with service startup blocked.
+in_root()
+{
+   chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive LC_ALL=C TMPDIR=/tmp /bin/sh -ec \
+      'cd "$1"; shift; exec sh "$@"' sh "$@"
+}
+
+# Directory redirects refer to source inode numbers, which change in SquashFS.
+mount -i -t aufs -o "br=$BRANCH=rw,xino=$RUN/xino,nodirren" none "$UNION"
+debootstrap --variant=minbase --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
+   "$SUITE" "$UNION" http://deb.debian.org/debian
+
+# Build files, caches and runtime mounts never become part of a module.
+for DIR in dev proc sys run tmp boot build artifacts var/cache/apt var/lib/apt/lists; do
+   mkdir -p "$UNION/$DIR"
 done
-
-# mark last branch read-only and add new branch in order to remove some .wh. files
-union_target_set /tmp/empty2 "$UNION"
-
-
-umount -l "$UNION/*"
-umount "$UNION"
-umount "$EMPTY"
-rmdir "$UNION"
-rmdir "$EMPTY"
-
-
-ls -1 modules | sort | fgrep -- '-tmp' | while read DIR; do
-   PREV=$(echo $DIR | sed -r 's/-tmp//')
-   (cd /tmp/$DIR/squashfs-root && cp --parents -afrv * ../../$PREV)
-   rm -Rf /tmp/$DIR
+mount --rbind /dev "$UNION/dev"
+mount -t proc proc "$UNION/proc"
+mount --bind /sys "$UNION/sys"
+mount -t tmpfs tmpfs "$UNION/run"
+for DIR in tmp boot var/cache/apt var/lib/apt/lists; do
+   mkdir -p "$RUN/$DIR"
+   mount --bind "$RUN/$DIR" "$UNION/$DIR"
 done
+# Preserve the standard writable, sticky temporary directory inside the chroot.
+chmod 1777 "$RUN/tmp"
+mount --bind "$THIS" "$UNION/build"
+mount -o remount,bind,ro "$UNION/build"
+mount --bind "$ARTIFACTS" "$UNION/artifacts"
+printf '#!/bin/sh\nexit 101\n' > "$UNION/usr/sbin/policy-rc.d"
+chmod 755 "$UNION/usr/sbin/policy-rc.d"
+cp "$IMAGE" "$ARTIFACTS/kernel.deb"
 
-# remove duplicites
-for i in $(ls -1 modules | fgrep -v -- '-tmp' | sort); do
-   for j in $(ls -1 modules | fgrep -v -- '-tmp' | sort); do
-      if [ "$i" \< "$j" ]; then
-         remove_duplicites /tmp/$i /tmp/$j
-      fi
-   done
-done
+sed "s/trixie/$SUITE/g" "$THIS/rootcopy/etc/apt/sources.list" > "$RUN/sources.list"
+cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
+in_root /build install
+in_root /build copy
+# Use the selected suite after rootcopy has applied the Slax defaults.
+cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
+in_root /build cleanup
+chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/01-core.packages"
 
-# make squashfs images
-for i in $(ls -1 modules | sort); do
-   mksquashfs /tmp/$i /tmp/$i.sb -comp xz -Xbcj x86 -b 1024k -always-use-fragments
+for RECIPE in "$THIS"/modules/*; do
+   NAME=$(basename "$RECIPE")
+   new_branch "$NAME"
+   in_root "/build/modules/$NAME" build
+   if [ -f "$RECIPE/compile" ]; then
+      RUNTIME=$BRANCH
+      new_branch "$NAME-build"
+      mkdir -p "$ARTIFACTS/$NAME"
+      in_root "/build/modules/$NAME" compile
+      auplink "$UNION" flush
+      mount -i -t aufs -o "remount,del=$BRANCH" none "$UNION"
+      rm -rf "$BRANCH"
+      BRANCH=$RUNTIME
+      mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
+      # Replace the stock binaries even when the patched package version is unchanged.
+      chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive TMPDIR=/tmp /bin/sh -ec \
+         'apt-get install -y --no-install-recommends --reinstall /artifacts/"$1"/*.deb' sh "$NAME"
+   fi
+   in_root /build cleanup
+   chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/$NAME.packages"
 done
+auplink "$UNION" flush
+umount -R "$UNION"
+
+# Keep functional whiteouts; omit only AUFS bookkeeping and mounted build data.
+for BRANCH in "$RUN"/branches/*; do
+   mksquashfs "$BRANCH" "$MEDIA/slax/modules/$(basename "$BRANCH").sb" \
+      -noappend -comp xz -Xbcj x86 -b 1024k -always-use-fragments \
+      -e .wh..wh.aufs .wh..wh.plnk .wh..wh.orph boot dev proc sys run tmp build artifacts \
+      var/cache/apt var/lib/apt/lists usr/sbin/policy-rc.d
+done
+printf 'Filesystem branches: %s/branches\n' "$RUN"

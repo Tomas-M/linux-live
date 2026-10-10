@@ -44,7 +44,7 @@
  
 +        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbappselect";
 +
-         FbTk::RefCount<FbTk::Command<void> > cmd(FbTk::CommandParser<void>::instance().parse(cmd_str));
+         FbTk::RefCount<FbTk::Command<void> > cmd(cp.parse(cmd_str));
          if (cmd == 0) // we need a command
              return 0;
 @@ -110,6 +112,9 @@

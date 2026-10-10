@@ -1,43 +1,24 @@
-#!/bin/bash
+#!/bin/sh
+set -e
+apt-get update
+apt-get install --yes --no-install-recommends \
+   xserver-xorg xserver-xorg-video-all xserver-xorg-video-intel \
+   xinit xterm xinput blackbox libxcursor1 breeze-cursor-theme \
+   x11-utils wmctrl xdotool libdrm-intel1 libgl1-mesa-dri libglu1-mesa
 
-apt update
-apt install --yes --no-install-recommends \
-    xserver-xorg xserver-xorg-video-all xserver-xorg-video-intel \
-    xinit \
-    xterm \
-    xinput \
-    blackbox \
-    libxcursor1 \
-    breeze-cursor-theme \
-    x11-utils \
-    wmctrl \
-    xdotool \
-    libdrm-intel1 \
-    libgl1-mesa-dri \
-    libglu1-mesa
-
-# Set setuid bit on xorg binary, so it can be started by guest user
+# Keep the white cursor and allow the guest account to start Xorg.
 chmod u+s /usr/lib/xorg/Xorg
+rm -rf /usr/share/icons/breeze_cursors
+mv /usr/share/icons/Breeze_Light /usr/share/icons/breeze_cursors
+cp -a rootcopy/. /
+# Keep Breeze selected when GTK later registers its Adwaita cursor theme.
+update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/breeze_cursors/cursor.theme 100
+ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service
 
-# use only white cursors. There were some troubles if the other cursors
-# was left behind, installing gtk apps reverted the cursor from white to gray,
-# so we're going to nuke it to leave only Snow cursors active.
-rm -Rf /usr/share/icons/breeze_cursors
-mv /usr/share/icons/Breeze_Snow /usr/share/icons/breeze_cursors
-
-(cd rootcopy && cp --parents -afr * /)
-
-cp ../../cleanup /tmp
-# install x11 server utils, apt-get would add cpp dependency, bullshit!
+# Extract the server utilities without their unnecessary cpp dependency.
 cd /tmp
-apt download x11-xserver-utils
-dpkg -x x11-xserver-utils*.deb /tmp/x11utils
-cd /tmp/x11utils
-cp -aR * /
-
+apt-get download x11-xserver-utils
+mkdir x11utils
+dpkg -x x11-xserver-utils*.deb x11utils
+cp -a x11utils/. /
 update-alternatives --set x-terminal-emulator /usr/bin/xterm
-
-. /tmp/cleanup
-
-savechanges /02-xorg.sb
-

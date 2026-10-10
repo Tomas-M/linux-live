@@ -25,6 +25,7 @@ BUNDLES=$MEMORY/bundles
 header "Live Kit init <http://www.linux-live.org/>"
 
 init_proc_sysfs
+splash_listen
 
 debug_start
                                                                                                                                                        debug_shell
@@ -41,13 +42,11 @@ modprobe_everything -v /drivers/net/
 init_blkid_cache
 
 # find data dir with filesystem bundles
-case "$(cmdline_value from)" in ask) splash_stop ;; esac
 DATA="$(find_data 45 "$DATAMNT")"
 check_data_found "$DATA"
 splash_start
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
-case "$(cmdline_value perchdir)" in ask|/dev/*) splash_stop ;; esac
 persistent_changes "$DATA" "$CHANGES"
 splash_start
                                                                                                                                                       debug_shell

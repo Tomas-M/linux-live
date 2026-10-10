@@ -1,8 +1,24 @@
-The debian13 directory contains scripts for building a minimal amd64 Debian installation,
-also known as SLAX - Small Live Auxiliary linuX
+Slax is built on amd64 Debian. The target system is created with debootstrap;
+package installation and cleanup run inside its AUFS root, not on the host.
 
-WARNING:
+Run as root from the repository:
 
-You should not run this on your system since it auto-installs some packages
-and removes lots of files from your filesystem.
-Use only on freshly installed OS. You have been warned.
+    sh Slax/debian13/build trixie
+
+The first run compiles and installs the pinned Slax kernel. Reboot into that
+kernel and run the same command again to build Slax. The host and Slax use
+the same kernel and modules. AUFS is built into the kernel.
+
+Mount /tmp as tmpfs to build in RAM (20 GB recommended). Kernel compilation
+and the entire Slax build use /tmp. Completed Slax build directories are kept
+for further edits; their paths are printed at the end. Failed Slax builds and
+kernel compilation remove their temporary files. The production kernel has
+no DWARF or BTF debug information.
+
+An optional second argument selects the working directory. The default is
+/var/tmp/slax-build-trixie. Keep it on a Linux filesystem with enough free
+space for the finished kernel packages and ISO. Compiler packages are not
+included in Slax.
+
+The finished slax-amd64.iso (BIOS and UEFI) and package lists in manifests
+are saved to the working directory. A new run reuses the compiled kernel.

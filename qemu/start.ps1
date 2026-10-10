@@ -1,3 +1,8 @@
-Set-Location $PSScriptRoot
-# Keep the guest display visible and restrict SSH forwarding to this computer.
-& "$PSScriptRoot/runtime/qemu-system-x86_64.exe" -name 'Debian work Linux' -machine q35 -accel tcg,thread=multi -cpu qemu64 -smp 4 -m 4096 -drive 'file=debian.qcow2,format=qcow2,if=virtio' -nic 'user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22' -display gtk -vga virtio -boot c
+# Start the Debian work VM with its visible VirtualBox console.
+& 'C:/Program Files/Oracle/VirtualBox/VBoxManage.exe' startvm 'Slax Debian work' --type gui
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+# Collect the finished ISO after the automatic guest build and kernel reboot.
+Start-Process -FilePath (Get-Command python).Source -ArgumentList '-u',"`"$PSScriptRoot/collect-slax-build.py`"" `
+   -WorkingDirectory $PSScriptRoot -WindowStyle Hidden `
+   -RedirectStandardOutput "$PSScriptRoot/slax-build-collector.log" `
+   -RedirectStandardError "$PSScriptRoot/slax-build-collector.errors.log"

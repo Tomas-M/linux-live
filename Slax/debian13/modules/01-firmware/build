@@ -1,7 +1,9 @@
-#!/bin/bash
-
-apt update
-apt install --yes --no-install-recommends \
+#!/bin/sh
+set -e
+apt-get update
+# Preseed the legacy Intel firmware prompt for the unattended build.
+printf 'firmware-ipw2x00 firmware-ipw2x00/license/accepted boolean true\n' | debconf-set-selections
+apt-get install --yes --no-install-recommends \
    firmware-linux-free \
    firmware-atheros \
    firmware-iwlwifi \
@@ -14,7 +16,3 @@ apt install --yes --no-install-recommends \
    firmware-libertas \
    firmware-ti-connectivity \
    firmware-b43-installer
-
-. ../../cleanup
-
-savechanges /01-firmware.sb
