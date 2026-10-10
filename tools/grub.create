@@ -1,0 +1,63 @@
+#!/bin/sh
+# Build unmodified GRUB 2 loaders for the installed firmware platforms.
+set -e
+
+DATA=$(cd "$1" && pwd -P)
+NAME="$2"
+BOOT="$DATA/$NAME/boot"
+mkdir -p "$BOOT/grub/net" "$BOOT/EFI/BOOT"
+cp /usr/share/grub/unicode.pf2 "$BOOT/grub/"
+cat > "$BOOT/grub/grub.cfg" <<EOF
+search --no-floppy --file --set=root /$NAME/boot/grub.cfg
+set prefix=(\$root)/$NAME/boot/grub
+configfile /$NAME/boot/grub.cfg
+EOF
+cat > "$BOOT/grub/net/grub.cfg" <<'EOF'
+if [ -z "$net_default_server" ]; then net_bootp; fi
+configfile (tftp,$net_default_server)/grub.cfg
+EOF
+
+MODULES="part_gpt part_msdos fat iso9660 search search_fs_file normal configfile linux test gfxterm gfxmenu gfxterm_background png font"
+if [ -d /usr/lib/grub/i386-pc ]; then
+   grub-mkstandalone -O i386-pc-eltorito --modules="biosdisk all_video $MODULES" \
+      --install-modules="biosdisk all_video $MODULES" --locales="" --fonts="" --themes="" \
+      -o "$BOOT/grub/cdboot.img" "boot/grub/grub.cfg=$BOOT/grub/grub.cfg"
+   grub-mkstandalone -O i386-pc-pxe -d /usr/lib/grub/i386-pc \
+      --modules="pxe tftp http all_video $MODULES" --install-modules="pxe tftp http all_video $MODULES" \
+      --locales="" --fonts="" --themes="" \
+      -o "$BOOT/grub/net/pxe.0" "boot/grub/grub.cfg=$BOOT/grub/net/grub.cfg"
+fi
+
+FILE=''
+for PLATFORM in /usr/lib/grub/*-efi; do
+   [ -d "$PLATFORM" ] || continue
+   case "$(basename "$PLATFORM")" in
+      x86_64-efi) FILE=BOOTX64.EFI ;;
+      i386-efi) FILE=BOOTIA32.EFI ;;
+      arm64-efi) FILE=BOOTAA64.EFI ;;
+      arm-efi) FILE=BOOTARM.EFI ;;
+      ia64-efi) FILE=BOOTIA64.EFI ;;
+      riscv32-efi) FILE=BOOTRISCV32.EFI ;;
+      riscv64-efi) FILE=BOOTRISCV64.EFI ;;
+      loongarch64-efi) FILE=BOOTLOONGARCH64.EFI ;;
+      *) continue ;;
+   esac
+   grub-mkstandalone -O "$(basename "$PLATFORM")" -d "$PLATFORM" \
+      --modules="efi_gop $MODULES" --install-modules="efi_gop $MODULES" --locales="" --fonts="" --themes="" \
+      -o "$BOOT/EFI/BOOT/$FILE" "boot/grub/grub.cfg=$BOOT/grub/grub.cfg"
+   grub-mkstandalone -O "$(basename "$PLATFORM")" -d "$PLATFORM" \
+      --modules="efinet tftp http efi_gop $MODULES" --install-modules="efinet tftp http efi_gop $MODULES" \
+      --locales="" --fonts="" --themes="" \
+      -o "$BOOT/grub/net/$FILE" "boot/grub/grub.cfg=$BOOT/grub/net/grub.cfg"
+done
+
+if [ -z "$FILE" ]; then
+   echo "Install GRUB EFI modules for the target firmware platform." >&2
+   exit 1
+fi
+
+# El Torito uses a FAT image containing the same EFI files as a USB drive.
+SIZE=$(du -sk "$BOOT/EFI" | cut -f1)
+dd if=/dev/zero of="$BOOT/grub/efi.img" bs=1048576 count="$((SIZE/1024+8))" 2>/dev/null
+mformat -i "$BOOT/grub/efi.img" ::
+mcopy -i "$BOOT/grub/efi.img" -s "$BOOT/EFI" ::/

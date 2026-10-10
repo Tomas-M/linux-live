@@ -1,0 +1,5 @@
+*
+!.gitignore
+!start.ps1
+!start.cmd
+!README.txt

@@ -4,11 +4,8 @@ Supported filesystems
 The Live distro created by Linux Live Kit can be installed
 on the following filesystems:
 
-* iso9660 (CD) ..... using isolinux
-* FAT32 (vfat) ..... using syslinux or extlinux
-* ntfs ............. using syslinux or extlinux
-* ext2/3/4,btrfs ... using extlinux
-* any other fs ..... using lilo
+* ISO9660 (CD) ..... GRUB 2 BIOS El Torito and UEFI FAT El Torito image
+* FAT12/16/32 (USB) .. GRUB 2 BIOS and UEFI removable-media loader in /EFI/BOOT
 
 Most users will install on FAT32 for compatibility
 with the other operating systems (I mean Windows).

@@ -1,17 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 # This is a config file for Linux Live Kit build script.
 # You shouldn't need to change anything expect LIVEKITNAME
 
 # Live Kit Name. Defaults to 'linux';
 # This will be the name of the directory created on your CD/USB, which
-# will contain everything including boot files and such.
+# will contain the system, boot menu and kernel, including boot/EFI/BOOT loaders.
 # For example, Slax changes it to 'slax'
 # Must not contain any spaces.
-# If you change it, you must run ./tools/isolinux.bin.update script
-# in order to update isolinux.bin for CD booting.
-# If you do not need booting from CD (eg you're booting only from USB)
-# then you can ignore recompiling isolinux.bin, just rename LIVEKITNAME
-# and you're done.
+# GRUB paths are generated automatically; no bootloader patching is needed.
 LIVEKITNAME="linux"
 
 # Kernel file, will be copied to your Live Kit

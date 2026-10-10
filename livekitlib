@@ -8,9 +8,99 @@
 # debug and output functions
 # =================================================================
 
+# Stop drawing before an interactive console, or keep the logo at handoff.
+splash_stop()
+{
+   [ "$SPLASH_LOG" ] || return 0
+   if [ "$SPLASH_PID" ]; then
+      kill "$SPLASH_PID" 2>/dev/null
+      wait "$SPLASH_PID" 2>/dev/null
+      SPLASH_PID=
+   fi
+   exec >&3 2>&4
+   if [ "$1" != "keep" ]; then printf '\033[2J\033[H\033[?25h' >/dev/tty1; fi
+}
+
+# Fall back to the console and show the output captured before /proc existed.
+splash_disable()
+{
+   [ "$SPLASH_LOG" ] || return 0
+   splash_stop
+   cat "$SPLASH_LOG"
+   exec 3>&- 4>&-
+   SPLASH_LOG=
+}
+
+# Draw prepared pixel data with BusyBox, preserving the firmware video mode.
+splash_start()
+{
+   [ "$SPLASH_LOG" ] || return 0
+   [ "$SPLASH_PID" ] && return 0
+   if [ ! -c /dev/fb0 ] || ! grep -qw quiet /proc/cmdline; then splash_disable; return; fi
+
+   local WIDTH HEIGHT DEPTH BYTES STRIDE BLOCK ROW OFFSET FRAME FRAMES LOGO_WIDTH LOGO_HEIGHT
+   . /lib/bootsplash/config
+   set -- $(fbset | awk '/geometry/ {print $2,$3,$6} /rgba/ {print $2}')
+   case "$3:$4" in
+      16:5/11,6/5,5/0,*|24:8/16,8/8,8/0,*|32:8/16,8/8,8/0,*) ;;
+      *) splash_disable; return ;;
+   esac
+   WIDTH=$1
+   HEIGHT=$2
+   DEPTH=$3
+   BYTES=$((DEPTH/8))
+   # Let the prepared frames determine the animation's cycle length.
+   FRAMES=$(($(wc -c < "/lib/bootsplash/loader.$DEPTH")/(28*4*BYTES)))
+   STRIDE=$(cat /sys/class/graphics/fb0/stride)
+   BLOCK=$BYTES
+   # Some 24-bit framebuffers pad each scanline to a four-byte boundary.
+   if [ "$((STRIDE%BYTES))" -ne 0 ]; then BLOCK=1; fi
+   if [ "$WIDTH" -lt "$LOGO_WIDTH" ] || [ "$((HEIGHT/2+LOGO_HEIGHT/2+29))" -gt "$HEIGHT" ]; then
+      splash_disable
+      return
+   fi
+   if [ "$(cat /sys/class/graphics/fb0/pan)" != "0,0" ]; then splash_disable; return; fi
+
+   exec >>"$SPLASH_LOG" 2>&1
+   chvt 1
+   printf '\033[2J\033[?25l \033[H' >/dev/tty1
+   # Assemble the centered logo in RAM, then update the framebuffer once.
+   dd if=/dev/zero of=/tmp/splash-frame bs="$STRIDE" count="$HEIGHT" status=none
+   ROW=0
+   while [ "$ROW" -lt "$LOGO_HEIGHT" ]; do
+      OFFSET=$(((HEIGHT/2-LOGO_HEIGHT/2+ROW)*STRIDE+(WIDTH/2-LOGO_WIDTH/2)*BYTES))
+      dd if="/lib/bootsplash/logo.$DEPTH" of=/tmp/splash-frame ibs="$((LOGO_WIDTH*BYTES))" obs="$BLOCK" \
+         skip="$ROW" seek="$((OFFSET/BLOCK))" count=1 conv=notrunc status=none
+      ROW=$((ROW+1))
+   done
+   dd if=/tmp/splash-frame of=/dev/fb0 bs="$STRIDE" status=none
+   rm /tmp/splash-frame
+
+   # Finish the current write before stopping, so prompts cannot be overpainted.
+   (
+      trap 'exit 0' TERM
+      FRAME=0
+      while :; do
+         ROW=0
+         while [ "$ROW" -lt 4 ]; do
+            OFFSET=$(((HEIGHT/2+LOGO_HEIGHT/2+25+ROW)*STRIDE+(WIDTH-28)/2*BYTES))
+            dd if="/lib/bootsplash/loader.$DEPTH" of=/dev/fb0 ibs="$((28*BYTES))" obs="$BLOCK" \
+               skip="$((FRAME*4+ROW))" seek="$((OFFSET/BLOCK))" count=1 conv=notrunc status=none
+            ROW=$((ROW+1))
+         done
+         usleep 250000
+         FRAME=$(((FRAME+1)%FRAMES))
+      done
+   ) &
+   SPLASH_PID=$!
+   debug_log "splash_start" "$SPLASH_PID" "$WIDTH" "$HEIGHT" "$DEPTH" "$STRIDE"
+}
+
 debug_start()
 {
    if grep -q debug /proc/cmdline; then
+      splash_disable
+      echo 7 >/proc/sys/kernel/printk
       DEBUG_IS_ENABLED=1
       set -x
    else
@@ -80,6 +170,7 @@ debug_shell()
 
 fatal()
 {
+   splash_stop
    echolog
    header "Fatal error occured - $1"
    echolog "Something went wrong and we can't continue. This should never happen."
@@ -373,12 +464,20 @@ mount_command()
 network_device()
 {
    debug_log "network_device" "$*"
+   local BOOTIF DEVICE
+   BOOTIF=$(cmdline_value BOOTIF | sed 's/^01-//; s/-/:/g' | tr 'A-F' 'a-f')
+   if [ "$BOOTIF" ]; then
+      # Keep probing until the NIC used by the firmware is available.
+      for DEVICE in /sys/class/net/*; do
+         if [ "$(cat "$DEVICE/address")" = "$BOOTIF" ]; then basename "$DEVICE"; return; fi
+      done
+      return
+   fi
    cat /proc/net/dev | grep : | grep -v lo: | grep -v ip6tnl | cut -d : -f 1 | tr -d " " | head -n 1
 }
 
 
 # Modprobe network kernel modules until a working driver is found.
-# These drivers are (or used to be) probed in Slackware's initrd.
 # The function returns the first device found, yet it doesn't have
 # to be a working one, eg. if the computer has two network interfaces
 # and ethernet cable is plugged only to one of them.
@@ -1064,6 +1163,7 @@ fstab_create()
 change_root()
 {
    debug_log "change_root" "$*"
+   splash_stop keep
 
    # if we are booting over httpfs, we need to copyup some files so they are
    # accessible on union without any further lookup down, else httpfs locks
@@ -1101,9 +1201,15 @@ change_root()
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
    mkdir -p run
+   if [ -f /var/log/boot.log ]; then
+      mkdir -p var/log
+      cp /var/log/boot.log var/log/boot.log
+   fi
    mount -t tmpfs tmpfs run
    mkdir -p run/initramfs
    mount -n -o remount,ro aufs .
    pivot_root . run/initramfs
+   # The system init must not inherit the initrd's saved console descriptors.
+   if [ "$SPLASH_LOG" ]; then exec 3>&- 4>&-; SPLASH_LOG=; fi
    exec $CHROOT . $INIT < dev/console > dev/console 2>&1
 }

@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 # Linux Live Kit version 7
 
 export PATH=.:./tools:../tools:/usr/sbin:/usr/bin:/sbin:/bin:/
 
-CHANGEDIR=$(dirname $(readlink -f $0))
+CHANGEDIR=$(cd "$(dirname "$0")" && pwd -P)
 echo "Changing current directory to $CHANGEDIR"
-cd $CHANGEDIR
+cd "$CHANGEDIR"
 CWD="$(pwd)"
 
 . ./config || exit 1
@@ -28,20 +28,18 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    exit 1
 fi
 
-MKISOFS=$(which mkisofs)
-if [ "$MKISOFS" = "" ]; then
-   MKISOFS=$(which genisoimage)
-fi
-if [ "$MKISOFS" = "" ]; then
-   echo "Cannot find mkisofs or genisoimage, stop"
-   exit 3
-fi
+for TOOL in grub-mkstandalone xorriso mformat mcopy; do
+   if ! command -v "$TOOL" >/dev/null; then
+      echo "Cannot find $TOOL, stop"
+      exit 3
+   fi
+done
 
 # build initramfs image
 if [ "$SKIPINITRFS" = "" ]; then
    echo "Building initramfs image..."
    cd initramfs
-   INITRAMFS=$(./initramfs_create)
+   INITRAMFS=$(./initramfs_create) || exit
    cd ..
 fi
 
@@ -56,17 +54,11 @@ if [ "$INITRAMFS" != "" ]; then
    mv "$INITRAMFS" $BOOT/initrfs.img
 fi
 
-# BIOS / MBR booting
-cp -r bootfiles/* $BOOT
-cat bootfiles/syslinux.cfg | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" > $BOOT/syslinux.cfg
-cat bootfiles/bootinst.bat | sed -r "s:/boot/:/$LIVEKITNAME/boot/:" | sed -r "s:\\\\boot\\\\:\\\\$LIVEKITNAME\\\\boot\\\\:" > $BOOT/bootinst.bat
-cp $VMLINUZ $BOOT/ || exit
-
-# UEFI booting
-mkdir -p $BOOT/EFI/Boot
-cp bootfiles/EFI/Boot/syslinux.efi $BOOT/EFI/Boot/bootx64.efi
-cp bootfiles/EFI/Boot/{ldlinux.e64,menu.c32,libutil.c32,vesamenu.c32,libcom32.c32} $BOOT/EFI/Boot
-cat $BOOT/syslinux.cfg | sed -r "s:/$LIVEKITNAME/boot/vesamenu:vesamenu:" > $BOOT/EFI/Boot/syslinux.cfg
+# Use the same GRUB menu and system paths on CD and USB.
+cp -r bootfiles/* "$BOOT"
+sed "s:/boot/:/$LIVEKITNAME/boot/:g" bootfiles/grub.cfg > "$BOOT/grub.cfg"
+cp "$VMLINUZ" "$BOOT/vmlinuz" || exit
+sh tools/grub.create "$LIVEKITDATA" "$LIVEKITNAME" || exit
 
 # create compressed 01-core.sb
 COREFS=""
@@ -83,12 +75,10 @@ cd "$LIVEKITDATA"
 ARCH=$(uname -m)
 TARGET=/tmp
 
-cat "$CWD/bootinfo.txt" | fgrep -v "#" | sed -r "s/mylinux/$LIVEKITNAME/" | sed -r "s/\$/\x0D/" > readme.txt
+grep -v "#" "$CWD/bootinfo.txt" | sed "s/mylinux/$LIVEKITNAME/; s/\$/$(printf '\r')/" > readme.txt
 
-echo cd $LIVEKITDATA '&&' $MKISOFS -o "$TARGET/$LIVEKITNAME-$ARCH.iso" -v -J -R -D -A "$LIVEKITNAME" -V "$LIVEKITNAME" \
--no-emul-boot -boot-info-table -boot-load-size 4 \
--b "$LIVEKITNAME"/boot/isolinux.bin -c "$LIVEKITNAME"/boot/isolinux.boot . \
-> $TARGET/gen_"$LIVEKITNAME"_iso.sh
+printf '#!/bin/sh\nexec sh "%s/%s/boot/grub/makeiso.sh" "%s/%s-%s.iso"\n' \
+   "$LIVEKITDATA" "$LIVEKITNAME" "$TARGET" "$LIVEKITNAME" "$ARCH" > "$TARGET/gen_${LIVEKITNAME}_iso.sh"
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
 
 echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \

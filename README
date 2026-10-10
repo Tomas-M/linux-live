@@ -23,23 +23,20 @@ Note:
 
 * You may also wish to replace boot graphics in ./bootfiles/bootlogo.png
   (one options is to modify and run the ./tools/bootlogo.update script) 
-  and reorganize isolinux.cfg to fit your needs (when editing the file,
-  keep all paths in /boot/, it will be rellocated during LiveKit creation)
+  and edit ./bootfiles/grub.cfg to fit your needs. Keep paths in /boot/;
+  they will be relocated to /$LIVEKITNAME/boot/ during Live Kit creation.
 
 * Linux Live Kit comes with precompiled static binaries in ./initramfs
   directory. Those may be outdated but will work. You may replace them
   by your own statically linked binaries, if you know how to compile them.  
 
-* If you plan to boot your Live Kit from CD, you need to recompile
-  syslinux.bin else it won't be able to boot your Live Kit from directory
-  LIVEKITNAME. There is a script prepared for you which will handle all
-  of that. Simply go to directory ./tools/ and run isolinux.bin.update ...
-  it will update ./bootfiles/isolinux.bin automatically by downloading
-  isolinux sources, patching them using your actual LIVEKITNAME and
-  recompiling. This step is not needed if you plan to boot from USB only.
+* CD and USB boot with GRUB 2. The build creates BIOS and UEFI loaders
+  using the GRUB modules installed on your system.
+  It also bundles GRUB network loaders in boot/grub/net for PXE servers.
+  Disable Secure Boot when using the generated UEFI loaders.
 
 * If you plan to boot your Live Kit from USB device, you may wish to add
-  the following boot parameter to the end of APPEND section in syslinux.cfg:
+  the following boot parameter to the linux lines in grub.cfg:
      perch
   This parameter activates persistent changes
 
@@ -48,17 +45,29 @@ Note:
   If you are low on RAM, make sure /tmp is a regular on-disk directory.
 
 * When done, run the ./build script to create your Live Kit
-  - it will create ISO and TAR files for you in /tmp
+  - it creates a media tree and scripts to generate ISO and ZIP files in /tmp
   - make sure you have enough free space in /tmp to handle it
   
-* If you want to use the Live Kit on a USB you have to either
-  - use Windows to execute the bootinst.bat file in the $NAME/boot folder
-  - or use Linux to execute the shellscript bootinst.sh in the $NAME/boot folder.
+* For USB boot, copy the /$LIVEKITNAME directory from the ISO to the USB.
+  On Windows, run $LIVEKITNAME/boot/bootinst.bat.
+  On Linux, run sh $LIVEKITNAME/boot/bootinst.bat.
+  The installer requests administrator rights and sets up booting without
+  formatting the drive. Windows XP and later use VBScript; Linux needs GRUB tools.
+  USB installation requires FAT12, FAT16 or FAT32.
+  See DOC/supported_fs.txt for filesystem and disk requirements.
+
+* Slax-specific instructions are in Slax/README.
 
 * You will need the following packages to be installed:
   - squashfs-tools
-  - genisoimage or mkisofs
+  - GRUB 2 tools and modules for the target firmware platforms
+  - xorriso
+  - mtools
   - zip
+
+  Debian package example for BIOS and amd64 UEFI:
+     apt install squashfs-tools grub-pc-bin grub-efi-amd64-bin xorriso mtools zip xz-utils
+  Add grub-efi-ia32-bin if you also need 32-bit x86 UEFI firmware support.
 
 
 Author: Tomas M. <http://www.linux-live.org>

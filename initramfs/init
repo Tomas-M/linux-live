@@ -7,6 +7,13 @@ export PATH=.:/:/usr/sbin:/usr/bin:/sbin:/bin
 . /lib/config
 . /lib/livekitlib
 
+# Capture early output before mounting /proc or switching to the copied root.
+if [ -d /lib/bootsplash ]; then
+   SPLASH_LOG=/var/log/boot.log
+   exec 3>&1 4>&2
+   exec >>"$SPLASH_LOG" 2>&1
+fi
+
 transfer_initramfs
 
 MEMORY=/memory
@@ -23,6 +30,7 @@ debug_start
                                                                                                                                                        debug_shell
 # load some modules manually first, then modprobe everything we have
 init_devs
+splash_start
 init_aufs
 init_zram
 
@@ -33,11 +41,15 @@ modprobe_everything -v /drivers/net/
 init_blkid_cache
 
 # find data dir with filesystem bundles
+case "$(cmdline_value from)" in ask) splash_stop ;; esac
 DATA="$(find_data 45 "$DATAMNT")"
 check_data_found "$DATA"
+splash_start
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
+case "$(cmdline_value perchdir)" in ask|/dev/*) splash_stop ;; esac
 persistent_changes "$DATA" "$CHANGES"
+splash_start
                                                                                                                                                       debug_shell
 # copy to RAM if needed
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
@@ -63,5 +75,6 @@ user_preinit "$DATA" "$UNION"
 header "Live Kit done, starting $LIVEKITNAME"
 change_root "$UNION"
 
+splash_stop
 header "!!ERROR occured, you shouldn't be here.!!"
 /bin/sh
