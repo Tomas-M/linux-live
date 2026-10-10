@@ -10,11 +10,6 @@ apt-get install --yes --no-install-recommends \
 chmod u+s /usr/lib/xorg/Xorg
 rm -rf /usr/share/icons/breeze_cursors
 mv /usr/share/icons/Breeze_Light /usr/share/icons/breeze_cursors
-cp -a rootcopy/. /
-# Keep Breeze selected when GTK later registers its Adwaita cursor theme.
-update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/breeze_cursors/cursor.theme 100
-ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service
-
 # Extract the server utilities without their unnecessary cpp dependency.
 cd /tmp
 apt-get download x11-xserver-utils

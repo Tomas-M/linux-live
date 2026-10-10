@@ -8,6 +8,17 @@ before reporting progress.
 
 - Write all code, comments, documentation and product strings in English,
   even when Tomas speaks Czech. Conversation may stay in Czech.
+- Slax is distributed to many users on different systems. Tomas's local VM
+  is a reproduction environment for a reported bug, not the target environment
+  that a product fix may assume. Every Slax fix must work generally.
+- Fix the underlying problem in the shipped code or configuration. Never make
+  a Slax fix depend on Tomas's computer, VM identity, local paths, addresses,
+  host setup or display settings just to make the local test pass.
+- When a fix needs a hardware or platform condition, detect the affected
+  driver, capability or standard generically. It must apply to every user with
+  that condition and preserve operation on other supported systems.
+- Keep adjustments needed only for the development VM in its local setup or
+  development helpers. Do not ship those adjustments as Slax product fixes.
 - Linux Live Kit is generic: do not restrict it to Debian, amd64 or Slax.
   Its 32-bit binaries and support for other distributions are intentional.
 - Slax currently targets Debian 13 on amd64. Slax recipes and branding belong
@@ -18,6 +29,10 @@ before reporting progress.
   not `03-desktop`. Register its `cursor.theme` with `update-alternatives`
   at priority 100 so GTK's Adwaita entry at priority 90 cannot replace it.
   Software cursor rendering must preserve this theme.
+- Preserve graphics driver autodetection. The generic Xorg OutputClass in
+  `02-xorg/rootcopy/etc/X11/xorg.conf.d/20-software-cursor.conf` uses
+  `SWcursor=true` and `HWcursor=false` because drivers use different option
+  names. It must not contain a `Driver` entry or select a particular GPU.
 - Put identical boot assets in shared `bootfiles`, not in both boot trees.
   Keep only Slax-specific overrides in `Slax/debian13/bootfiles`.
 - Keep shell changes portable and use POSIX syntax where the script uses
@@ -31,6 +46,9 @@ before reporting progress.
   application merely to change one configuration file.
 
 ## Work VM
+
+These settings describe the local development environment. Product changes
+must follow the general Slax repair rules above.
 
 - Use VirtualBox, not QEMU, for the current work VM. The `qemu` directory name
   is historical. Run OS windows visibly (`--type gui`). Only background
@@ -50,10 +68,10 @@ before reporting progress.
 - System `/tmp` is a 20 GB tmpfs. Both kernel and Slax builds use it. Do not
   add separate RAM mounts when ordinary directories under `/tmp` suffice.
 - Swap is permanently disabled, including initramfs resume. Keep it disabled.
-- VMSVGA can accept clicks while its hardware cursor is invisible. Use the
-  `99-vmsvga-cursor.conf` override from Slax's Xorg rootcopy on the work VM
-  as well: match `vmwgfx`, explicitly select `Driver "vmware"`, and set
-  `HWCursor=false`. OutputClass without a Driver prevented Xorg from starting.
+- VMSVGA can accept clicks while its hardware cursor is invisible. Use Slax's
+  generic `20-software-cursor.conf` on the work VM as well. Its OutputClass
+  sets `SWcursor=true` and `HWcursor=false` without selecting any driver or
+  matching a particular GPU. Do not force the `vmware` driver in Slax.
   Activation requires restarting graphics; get approval before ending an
   active desktop session with open applications.
 - Stop only our unneeded test VMs/processes. Leave unrelated VMs untouched.
@@ -85,6 +103,8 @@ before reporting progress.
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
+- Apply core and module `rootcopy` only after cleanup and runtime package
+  installation. Keep setup that depends on copied files in the `copy` phase.
 - Keep functional AUFS whiteouts. Omit only bookkeeping and mounted build
   data when creating SquashFS modules.
 - `auplink flush` is a build-time operation needed before freezing/detaching
@@ -144,7 +164,17 @@ before reporting progress.
   themes or desktop configuration, one VM startup is sufficient.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
   or `-Firmware uefi`. Stop it and allow VirtualBox to release its session
-  before changing firmware. Stop test VMs after verification.
+  before changing firmware. Stop test VMs after verification. Power off VMs
+  running Slax from CD directly with `controlvm ... poweroff`; no clean shutdown
+  is needed. Shut the Debian work VM down normally.
+- Enable the test VM's audio output with the host's default audio driver and
+  an HDA controller. Audio was previously disabled in its local launcher.
+- Enable the test VM's bridged network through the active Ethernet adapter,
+  using an Intel PRO/1000 MT Desktop (`82540EM`) card with its cable connected.
+  The local launcher previously used `nic1=none`, leaving Slax with no network
+  device. Keep this host configuration in the local VM helpers.
+- Slax's `guest` account needs membership in `audio`: Chromium and VLC run
+  under that account and access ALSA directly, without a sound server.
 
 ## Boot and session UI
 
@@ -161,6 +191,10 @@ before reporting progress.
   Slax logo with menu items below it. Avoid frames, tables and extra decoration.
   Keep the boot help/countdown near the bottom across the available display.
   F1 help is deferred; do not add a visible F1 menu entry.
+- Both Slax GRUB themes use `desktop-image: "black.png"`. Keep this tiny black
+  background: using only `desktop-color` caused `null src bitmap` when Enter
+  interrupted the countdown or selected a menu entry. The logo remains a
+  separate unscaled image.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
@@ -173,27 +207,9 @@ before reporting progress.
   splash and reveals the log. Keep a text menu when framebuffer is unavailable
   and verify the graphical layout at 800x600 as well as larger resolutions.
 - Running dots cycle through `.`, `..`, `...`, ` ..`, `  .`, then a blank
-  frame before restarting. Preserve small-screen support.
-
-## Last verified state: 2026-10-10
-
-- Work VM is running `7.2.9-slax`; AUFS is built in, swap is off, `/tmp` is
-  tmpfs. Completed kernel image, headers and libc-dev packages are retained.
-- `qemu/slax-build-trixie/slax-amd64.iso` is complete (522,344,448 bytes,
-  about 499 MiB). Its download was SHA-256 verified. The baseline passed BIOS
-  and UEFI boot to the Fluxbox desktop; later desktop edits use one VM test.
-- The `xorg.service` installation line is `WantedBy=graphical.target`, without
-  brackets around `WantedBy`. It was corrected in source and by repacking
-  only `02-xorg.sb`; the full rebuild was stopped as unnecessary.
-- Module sizes reported by `du -h`: core 135M, firmware 97M, Xorg 58M,
-  desktop 35M, apps 4.9M, Chromium 128M. Cleanup and compiler isolation passed.
-- Local and guest build inputs matched across 641 files. The test VM was
-  stopped; only the work VM remained running. No files were staged or committed.
-- The staging tree of this ISO was already removed before Tomas requested
-  retention. Future successful Slax builds keep their `/tmp/slax-build.*` tree.
-- A retained incremental workspace now exists at `/tmp/slax-repack.9E8hff`;
-  it contains unpacked `02-xorg.sb` and `03-desktop.sb` directories and
-  `media/slax/modules`.
-- The invisible VMSVGA cursor was fixed with `HWCursor=false` in the scoped
-  Xorg override. The work VM's graphics were restarted with Tomas's approval,
-  and the cursor was visibly rendered on its login screen.
+  frame before restarting. Preserve small-screen support. Advance only on a
+  dedicated monotonic one-shot timer, holding each frame for 250 ms; keyboard
+  input and boot requests must not advance the animation. Redraw only the dots.
+- Preserve the animation's frame and live timer across the initramfs/root exec
+  handoff. FD 5 carries the ready acknowledgement; FD 6 carries the timer.
+  Do not repaint the already visible logo or reset the timer during handoff.

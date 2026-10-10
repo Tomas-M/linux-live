@@ -11,8 +11,8 @@ ntfs-3g rfkill file dnsmasq ntpsec-ntpdate dvd+rw-tools usb-modeswitch pm-utils 
 /artifacts/kernel.deb
 
 ln -sf bash /bin/sh
-# The old installer-created accounts must now be part of the bootstrapped core.
-useradd -m -g users -s /bin/bash guest
+# Create the guest account with ALSA access for Chromium and VLC.
+useradd -m -g users -G audio -s /bin/bash guest
 printf 'root:toor\nguest:guest\n' | chpasswd
 
 # Keep only the ACPI scripts, without pulling in another desktop.

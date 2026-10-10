@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+cp -a rootcopy/. /
+# Set ownership after restoring the guest's desktop defaults.
+for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+   mkdir -p "/home/guest/$DIR" "/root/$DIR"
+done
+chown -R guest:users /home/guest

@@ -3,8 +3,3 @@ set -e
 apt-get update
 apt-get install --no-install-recommends --yes fluxbox feh compton volumeicon-alsa \
    murrine-themes libnotify4 libgtk2.0-0 xfce4-panel scrot
-cp -a rootcopy/. /
-for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do
-   mkdir -p "/home/guest/$DIR" "/root/$DIR"
-done
-chown -R guest:users /home/guest

@@ -25,6 +25,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/timerfd.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -35,7 +36,7 @@
 #define DISABLED "/run/bootsplash.disabled"
 struct request { char operation, cancel; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail; };
-static int tty=-1, fb=-1, graphics, disabled, raw, logfd=-1;
+static int tty=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
 static struct termios saved;
 static struct fb_var_screeninfo screen;
 static struct fb_fix_screeninfo layout;
@@ -277,18 +278,26 @@ static void draw_menu(void)
    text(((int)screen.xres-text_width(hint))/2,(int)screen.yres-32,hint,0x888888,0);
 }
 
-/* Animate running dots, then pause with a blank frame before restarting. */
-static void draw_splash(unsigned frame)
+/* Hold every dots frame for 250 ms, independently of keyboard and boot requests. */
+static void draw_dots(unsigned frame)
 {
    static const unsigned masks[]={1,3,7,6,4,0};
    unsigned mask=masks[frame%(sizeof(masks)/sizeof(*masks))];
    int y=((int)screen.yres-logo_height)/2;
-   draw_logo(y);
    for (int row=0;row<4;row++) for (int x=0;x<28;x++) {
       int dot=x/12;
       unsigned color=(dot<3 && x%12<4 && (mask&(1<<dot)))?accent:0;
       pixel(((int)screen.xres-28)/2+x,y+logo_height+25+row,color);
    }
+   struct itimerspec delay={.it_value={.tv_nsec=250000000}};
+   timerfd_settime(animation,0,&delay,NULL);
+}
+
+/* Draw the full splash only when it replaces a menu or first acquires the screen. */
+static void draw_splash(unsigned frame)
+{
+   draw_logo(((int)screen.yres-logo_height)/2);
+   draw_dots(frame);
 }
 
 /* Show captured output immediately, then follow subsequent boot log writes. */
@@ -352,11 +361,13 @@ static void stop_server(int signal_number)
 }
 
 /* Own the tty for the whole initramfs phase, so Esc works during blocking jobs. */
-static int serve(const char *directory, const char *log, int resumed, int ready_fd)
+static int serve(const char *directory, const char *log, int resumed, int ready_fd, unsigned frame)
 {
    signal(SIGTERM,stop_server); signal(SIGINT,stop_server); signal(SIGHUP,stop_server); signal(SIGPIPE,SIG_IGN);
    tty=open("/dev/tty1",O_RDWR|O_NOCTTY);
    if (tty<0 || tcgetattr(tty,&saved)) return 1;
+   animation=ready_fd>=0?6:timerfd_create(CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK);
+   if (animation<0) return 1;
    if (directory) branding(directory);
    if (log) logfd=open(log,O_RDONLY);
    int listener=socket(AF_UNIX,SOCK_STREAM,0), keep=0, keyboard_mode=0, taken=0;
@@ -368,11 +379,13 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
    if (!access(DISABLED,F_OK)) disable_splash();
    else if (resumed) {
       if (open_graphics()) disable_splash();
-      else { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; }
+      else {
+         ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1;
+         if (ready_fd<0) draw_splash(frame);
+      }
    }
    if (resumed && disabled) running=0;
    if (ready_fd>=0) { write_all(ready_fd,"\n",1); close(ready_fd); }
-   unsigned frame=0;
    while (running) {
       if (resumed) {
          struct vt_stat vt;
@@ -383,8 +396,8 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) break;
          if (tcgetattr(tty,&mode) || (raw && (mode.c_lflag&ICANON))) break;
       }
-      struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0}};
-      int ready=poll(events,3,250);
+      struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};
+      int ready=poll(events,4,250);
       if (ready<0 && errno!=EINTR) break;
       if (events[0].revents&POLLIN) {
          int client=accept(listener,NULL,NULL);
@@ -414,9 +427,13 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
                /* The new owner acknowledges only after it has acquired the tty. */
                int null=open("/dev/null",O_RDWR);
                for (int i=0;i<3;i++) dup2(null,i);
-               dup2(client,5);
-               for (int i=3;i<256;i++) if (i!=5) close(i);
-               execl("/run/fbmenu","fbmenu","--resume","/run/bootsplash","/var/log/boot.log","--ready",(char *)NULL);
+               /* Carry the live timer and dots phase through exec without resetting either. */
+               int ticking=fcntl(animation,F_DUPFD,6);
+               dup2(client,5); dup2(ticking,6);
+               for (int i=3;i<256;i++) if (i!=5 && i!=6) close(i);
+               char progress[16];
+               snprintf(progress,sizeof(progress),"%u",frame);
+               execl("/run/fbmenu","fbmenu","--resume","/run/bootsplash","/var/log/boot.log","--ready",progress,(char *)NULL);
                int console=open("/dev/tty1",O_RDWR);
                ioctl(console,KDSETMODE,KD_TEXT);
                _exit(1);
@@ -451,17 +468,21 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
       if (events[1].revents&(POLLHUP|POLLERR)) break;
       if (events[2].revents&POLLHUP) {
          close(menu_client); menu_client=-1;
-         if (graphics) clear_screen(); else keyboard(0);
+         if (graphics) { clear_screen(); draw_splash(frame); } else keyboard(0);
       }
       if (menu_client>=0) { if (load_menu()) draw_menu(); }
-      else if (graphics) draw_splash(frame++);
-      else if (disabled) show_log();
+      if (events[3].revents&POLLIN) {
+         uint64_t expired;
+         if (read(animation,&expired,sizeof(expired))==sizeof(expired) && graphics && menu_client<0)
+            draw_dots(++frame);
+      }
+      if (disabled && menu_client<0) show_log();
    }
    if (!taken) {
       keyboard(0);
       if (!keep) { ioctl(tty,KDSETMODE,KD_TEXT); dprintf(tty,"\033[?25h"); }
    }
-   unlink(SOCKET); close(listener); close(tty);
+   unlink(SOCKET); close(listener); close(tty); close(animation);
    return 0;
 }
 
@@ -478,9 +499,9 @@ static int connect_server(void)
 int main(int argc, char **argv)
 {
    if (argc==4 && (!strcmp(argv[1],"--serve") || !strcmp(argv[1],"--resume")))
-      return serve(argv[2],argv[3],!strcmp(argv[1],"--resume"),-1);
-   if (argc==5 && !strcmp(argv[1],"--resume") && !strcmp(argv[4],"--ready"))
-      return serve(argv[2],argv[3],1,5);
+      return serve(argv[2],argv[3],!strcmp(argv[1],"--resume"),-1,0);
+   if (argc==6 && !strcmp(argv[1],"--resume") && !strcmp(argv[4],"--ready"))
+      return serve(argv[2],argv[3],1,5,strtoul(argv[5],NULL,10));
    int cancel=argc==5 && !strcmp(argv[4],"--cancel");
    if (cancel) argc--;
    struct request request={0};
@@ -504,7 +525,7 @@ int main(int argc, char **argv)
    int fd=connect_server(), child=0;
    if (fd<0 && request.operation=='m') {
       child=fork();
-      if (!child) _exit(serve(NULL,NULL,0,-1));
+      if (!child) _exit(serve(NULL,NULL,0,-1,0));
    }
    for (int i=0;fd<0 && i<50;i++) { usleep(20000); fd=connect_server(); }
    if (fd<0 || write_all(fd,&request,sizeof(request))) return 1;

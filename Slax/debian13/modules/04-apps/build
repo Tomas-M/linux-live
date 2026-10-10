@@ -3,5 +3,4 @@ set -e
 apt-get update
 apt-get install --no-install-recommends --yes galculator pcmanfm lxtask \
    connman-gtk at-spi2-core scite xarchiver xdg-utils
-cp -a rootcopy/. /
 rm -f /usr/share/icons/hicolor/scalable/apps/*

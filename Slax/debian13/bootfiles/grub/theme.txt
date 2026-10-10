@@ -1,6 +1,7 @@
 # Center the unscaled logo, with fixed spacing for the menu and help.
 title-text: ""
-desktop-color: "#000000"
+# A bitmap prevents GRUB's null-bitmap error when leaving the graphics menu.
+desktop-image: "black.png"
 
 + boot_menu {
    left = "50%-144"

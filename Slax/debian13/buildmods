@@ -72,10 +72,10 @@ cp "$IMAGE" "$ARTIFACTS/kernel.deb"
 sed "s/trixie/$SUITE/g" "$THIS/rootcopy/etc/apt/sources.list" > "$RUN/sources.list"
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
 in_root /build install
+in_root /build cleanup
 in_root /build copy
 # Use the selected suite after rootcopy has applied the Slax defaults.
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
-in_root /build cleanup
 chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/01-core.packages"
 
 for RECIPE in "$THIS"/modules/*; do
@@ -97,6 +97,12 @@ for RECIPE in "$THIS"/modules/*; do
          'apt-get install -y --no-install-recommends --reinstall /artifacts/"$1"/*.deb' sh "$NAME"
    fi
    in_root /build cleanup
+   # Restore module defaults only after package installation and cleanup.
+   if [ -f "$RECIPE/copy" ]; then
+      in_root "/build/modules/$NAME" copy
+   elif [ -d "$RECIPE/rootcopy" ]; then
+      chroot "$UNION" cp -a "/build/modules/$NAME/rootcopy/." /
+   fi
    chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/$NAME.packages"
 done
 auplink "$UNION" flush

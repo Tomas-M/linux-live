@@ -1,6 +1,7 @@
 # Preserve the original countdown text and bottom rows without a menu frame.
 title-text: ""
-desktop-color: "#000000"
+# A bitmap prevents GRUB's null-bitmap error when leaving the graphics menu.
+desktop-image: "black.png"
 
 + label {
    id = "__timeout__"
