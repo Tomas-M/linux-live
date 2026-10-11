@@ -1,0 +1,23 @@
+#!/bin/sh
+# Compile our small extension using the installed GRUB platform's own ABI flags.
+set -e
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+SOURCE=$(CDPATH= cd "${1:?Usage: grub-anykey.create grub-source output platform...}" && pwd)
+mkdir -p "${2:?}"
+OUTPUT=$(CDPATH= cd "$2" && pwd)
+shift 2
+WORK=$(mktemp -d /tmp/grub-anykey.XXXXXX)
+for PLATFORM in "$@"; do
+   . "/usr/lib/grub/$PLATFORM/modinfo.sh"
+   mkdir "$WORK/$PLATFORM"
+   cd "$WORK/$PLATFORM"
+   "$SOURCE/configure" --target="$grub_modinfo_target_cpu" --with-platform="$grub_modinfo_platform" \
+      --disable-werror --disable-nls --disable-grub-mount --disable-device-mapper \
+      --disable-liblzma --disable-libzfs --disable-efiemu > configure.log 2>&1 || { tail -30 configure.log; exit 1; }
+   CPPFLAGS=$(printf '%s\n' "$grub_target_cppflags" | sed "s@\\\$(top_srcdir)@$SOURCE@g;s@\\\$(top_builddir)@$PWD@g")
+   mkdir -p "$OUTPUT/$PLATFORM"
+   $grub_target_cc $grub_target_cflags -g0 $CPPFLAGS -I. -DMODULE \
+      -c "$THIS/grub-anykey.c" -o "$OUTPUT/$PLATFORM/anykey.mod"
+   printf 'Built: %s/%s/anykey.mod\n' "$OUTPUT" "$PLATFORM"
+done
+printf 'Compiler workspace: %s\n' "$WORK"

@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+# Keep the copied service file read-only for other users.
+chmod 644 /usr/lib/systemd/system/xorg.service
+
 # Keep Breeze selected when GTK later registers its Adwaita cursor theme.
 update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/breeze_cursors/cursor.theme 100
 ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service

@@ -14,7 +14,8 @@ XTerm*borderColor: black
 XTerm*scrollColor: black
 XTerm*visualBell: true
 XTerm*saveLines: 50000
-XTerm*allowSendEvents: True
+! Allow application mouse tracking; SendEvents would disable it.
+XTerm*allowSendEvents: false
 XTerm*sessionMgt: false
 XTerm*rightScrollBar: true
 XTerm*eightBitInput:  false

@@ -4,5 +4,10 @@ set -e
 # Replace the link itself, without overwriting the time zone file it points to.
 rm -f /etc/localtime
 cp -a /build/rootcopy/. /
+# Copied service files must not be writable by other users.
+for FILE in /build/rootcopy/usr/lib/systemd/system/*.service; do
+   chmod 644 "/usr/lib/systemd/system/$(basename "$FILE")"
+done
+
 ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
 ln -sf /usr/lib/systemd/system/slax-rmmounts.service /etc/systemd/system/sysinit.target.wants/slax-rmmounts.service

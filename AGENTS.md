@@ -1,8 +1,8 @@
 # Project notes
 
 Read these notes before changing build, boot or VM code. Keep them current when
-an agreed workflow changes. The dated status below is a snapshot; verify it
-before reporting progress.
+an agreed workflow changes. Verify the current build and VM state before
+reporting progress.
 
 ## Scope and working rules
 
@@ -33,10 +33,18 @@ before reporting progress.
   `02-xorg/rootcopy/etc/X11/xorg.conf.d/20-software-cursor.conf` uses
   `SWcursor=true` and `HWcursor=false` because drivers use different option
   names. It must not contain a `Driver` entry or select a particular GPU.
+- Keep xterm's `allowSendEvents` disabled. Enabling it disables application
+  mouse tracking, making clicks fail in Midnight Commander and other terminal
+  applications. The setting belongs in `02-xorg/rootcopy/root/.Xresources`.
 - Put identical boot assets in shared `bootfiles`, not in both boot trees.
   Keep only Slax-specific overrides in `Slax/debian13/bootfiles`.
 - Keep shell changes portable and use POSIX syntax where the script uses
   `/bin/sh`. Existing Bash module tools can remain Bash.
+- Match Tomas's surrounding script style: three-space indentation, spaces in
+  arithmetic and expressions, and blank lines between related logical blocks.
+  Inspect nearby code before changing `livekitlib` or other existing scripts.
+  Prefer familiar `if ... then ... fi` blocks and `while true`. Do not introduce
+  `case`, `while :`, or standalone `[ ... ]` guards in newly written shell code.
 - `bootinst.bat` must remain available as `/slax/boot/bootinst.bat`. Preserve
   its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
   requiring PowerShell. Keep Slax's optional text installer logo.
@@ -50,20 +58,28 @@ before reporting progress.
 These settings describe the local development environment. Product changes
 must follow the general Slax repair rules above.
 
-- Use VirtualBox, not QEMU, for the current work VM. The `qemu` directory name
-  is historical. Run OS windows visibly (`--type gui`). Only background
-  collectors/helpers may be hidden.
+- Use VirtualBox for the current work VM. VM files and helpers belong in `VM`.
+  Run OS windows visibly (`--type gui`). Only background collectors/helpers
+  may be hidden.
 - VirtualBox CLI: `C:/Program Files/Oracle/VirtualBox/VBoxManage.exe`.
 - Work VM: `Slax Debian work`, 16 vCPUs, 24 GB RAM, root account, Xfce desktop.
   Slax itself uses Fluxbox; these are separate environments.
-- Active disk: `qemu/virtualbox/debian-work.vdi`. Never remove it when cleaning
+- Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
+- This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
+  freeze its filesystem, save its state, then use `zerofree` from a temporary
+  RAM-only maintenance VM with host I/O caching enabled and the work filesystem
+  unmounted. Detach the disk before `VBoxManage modifymedium --compact`, then
+  resume and thaw the work VM. Do not run fsck or change its filesystem metadata
+  externally while its saved kernel still owns that filesystem.
+- SSH can disconnect during save/resume. If necessary, thaw from the existing
+  guest terminal with `fsfreeze -u /` and restart `networking` if DHCP was lost.
 - Network: bridged through `Realtek PCIe GbE Family Controller #2`.
   Guest address last verified as `10.0.0.48`; this is a DHCP lease.
 - Guest checkout: `/root/linux-live`. Local and guest checkouts are separate;
   transfer relevant changes before building and verify their contents match.
-- SSH uses root and the local `qemu/id_ed25519` key. Host keys are stored in
-  `qemu/known_hosts`. The console password is in `qemu/credentials.txt`.
+- SSH uses root and the local `VM/id_ed25519` key. Host keys are stored in
+  `VM/known_hosts`. The console password is in `VM/credentials.txt`.
   Never copy credentials or private keys into notes, logs or Git.
 - System `/tmp` is a 20 GB tmpfs. Both kernel and Slax builds use it. Do not
   add separate RAM mounts when ordinary directories under `/tmp` suffice.
@@ -105,6 +121,9 @@ must follow the general Slax repair rules above.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
+- Normalize copied systemd service files to mode 644 in their recipes. Set
+  filesystem branch roots to mode 755 before packing: rootcopy may carry
+  group-writable directory modes, which cause AUFS permission warnings.
 - Keep functional AUFS whiteouts. Omit only bookkeeping and mounted build
   data when creating SquashFS modules.
 - `auplink flush` is a build-time operation needed before freezing/detaching
@@ -126,25 +145,25 @@ must follow the general Slax repair rules above.
 
 ## VM automation and incremental changes
 
-- `qemu/start.cmd` opens the visible work VM. `qemu/start.ps1` also starts
+- `VM/start.cmd` opens the visible work VM. `VM/start.ps1` also starts
   `collect-slax-build.py`, which downloads only the completed ISO and verifies
-  its SHA-256 before publishing `qemu/slax-build-trixie/slax-amd64.iso`.
+  its SHA-256 before publishing `VM/slax-build-trixie/slax-amd64.iso`.
 - Guest helper: `/root/continue-slax-build.sh`; service:
   `/etc/systemd/system/slax-autobuild.service`. Their local sources are in
-  `qemu`. The service disables itself after successful completion.
+  `VM`. The service disables itself after successful completion.
 - Clear the old `SHA256SUMS` completion marker before a new automated build.
   Publish it only after the replacement ISO is complete.
 - Stop the build through its systemd service rather than using broad
   `killall`. Stop a stale collector before replacing its output.
-- Local helpers `qemu/guest.py`, `audit-work-copy.py`,
+- Local helpers `VM/guest.py`, `audit-work-copy.py`,
   `repack-xorg-only.sh` and `start-vbox-boot-test.ps1` exist in this workspace
   but are Git-ignored. Do not assume they exist in a fresh clone.
 - `guest.py` runs a local shell file on the guest, or transfers files:
 
   ```text
-  python qemu/guest.py local-script.sh
-  python qemu/guest.py put local-file /root/linux-live/relative-file
-  python qemu/guest.py get /remote/file local-file
+  python VM/guest.py local-script.sh
+  python VM/guest.py put local-file /root/linux-live/relative-file
+  python VM/guest.py get /remote/file local-file
   ```
 
 - For incremental module edits, extract the finished ISO into `/tmp`, unpack
@@ -167,6 +186,13 @@ must follow the general Slax repair rules above.
   before changing firmware. Stop test VMs after verification. Power off VMs
   running Slax from CD directly with `controlvm ... poweroff`; no clean shutdown
   is needed. Shut the Debian work VM down normally.
+- Its disposable session disk is `VM/session-test.vdi`, a dynamic 20 GB VDI
+  with a FAT32 data partition. Sessions are under `/media/sda1/changes` and
+  use dynfilefs with an XFS filesystem inside split `changes.dat` files.
+  The test launcher attaches this existing disk at SATA port 1 and the ISO
+  at port 0. Do not recreate or format the session disk during startup.
+  Keep it separate from `VM/virtualbox/debian-work.vdi`; Tomas plans to
+  delete the session test disk after testing large-session duplication.
 - Enable the test VM's audio output with the host's default audio driver and
   an HDA controller. Audio was previously disabled in its local launcher.
 - Enable the test VM's bridged network through the active Ethernet adapter,
@@ -175,6 +201,20 @@ must follow the general Slax repair rules above.
   device. Keep this host configuration in the local VM helpers.
 - Slax's `guest` account needs membership in `audio`: Chromium and VLC run
   under that account and access ALSA directly, without a sound server.
+- Boot error audit: VMSVGA's `vmwgfx` hypervisor warning and the SSH generator's
+  missing AF_VSOCK CID also occur when resuming without duplication. The copied
+  session reaches the desktop with no failed systemd units. The ALSA restore
+  rule in Debian's unmodified `alsa-utils` 1.2.14-1 has a missing
+  `alsa_restore_std` label. These are separate findings, not failures of
+  session copying. The copied service and module-root permission warnings
+  are fixed in the build recipes.
+- For boot videos, VirtualBox's built-in recording can capture the visible
+  scratch VM from power-on. Stop recording after the desktop appears, then
+  convert its WebM to MP4 with local ffmpeg. Keep the console readable and
+  record Esc revealing the boot log when investigating post-copy errors.
+  Recording must be off by default. After a requested recording, stop the
+  recorder and save the disabled setting. The scratch launcher explicitly
+  disables recording before startup.
 
 ## Boot and session UI
 
@@ -195,13 +235,79 @@ must follow the general Slax repair rules above.
   background: using only `desktop-color` caused `null src bitmap` when Enter
   interrupted the countdown or selected a menu entry. The logo remains a
   separate unscaled image.
+- During the five-second countdown, show only `Press any key` with the timer
+  below the logo. Enter immediately boots the configured default; any other
+  key opens the full menu. Both screens source `grub/entries.cfg` and inherit
+  the same exported default, which need not be the first entry.
+- The full menu has only `[Enter] boot` and `[Tab] cmdline` on the penultimate
+  row. The small `anykey.mod` extension handles countdown keys and maps Tab to
+  GRUB's editor only while the graphical menu owns input. Restore input before
+  the editor or kernel starts and re-arm it when the menu refreshes. Each boot
+  entry also calls `anykey stop`. Its source and build helper are
+  `tools/grub-anykey.c` and `tools/grub-anykey.create`. Compile against the
+  matching GRUB version and platform flags. Keep bundled modules in
+  `Slax/debian13/bootfiles/grub/extra/{i386-pc,x86_64-efi}` so USB boot setup
+  does not remove them when replacing GRUB's standard module directories.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
 - Session selection retains the Slax logo and shows each session's name,
   date and size on one row. Highlight the entire selected row. No frame,
-  arrow-only selection or
-  `1/20` counters. Footer: `Up/Down: select     Enter: confirm     Esc: cancel`.
+  arrow-only selection or `1/20` counters. Footer:
+  `Up/Down: select     Enter: confirm     F4: duplicate     Esc: cancel`.
+- Embed DejaVu Sans Mono at 12 px in fbmenu. Use 28 px row spacing, 16 px
+  horizontal row padding and a 28 px gap below the logo. Center the menu within
+  the available display; keep its width between 480 and 720 px where it fits.
+  Leave an extra 16 px blank line between headings and menu/input content.
+  Anchor the metadata column to the right. The shell formats human-readable
+  session sizes with `%9s`, keeping their right edge aligned and dates fixed.
+  Always use one decimal place, a space and a unit, with KB as the smallest
+  unit (including `0.0 KB`); scale larger values to MB, GB and at most TB.
+  Menu column positions and pixel rendering belong to `draw_menu()` in fbmenu.
+- Numeric session directories remain their identifiers. Store the display name
+  in each directory's `boot/${LIVEKITNAME}_session.txt` (`boot/slax_session.txt`
+  for Slax); create `boot` when saving a new or duplicated session. Show the
+  name without a numeric prefix.
+  Unnamed sessions use `Session #ID`. Empty and duplicate names are allowed.
+  New and duplicated sessions ask for a name using `fbmenu --input` under the
+  logo. Suggest `Initial session` for the first session and the source name
+  for a duplicate. Use `New session name` for new sessions and
+  `Name the duplicated session` for copies. Esc in the name input returns to
+  the session picker without creating a session or updating `last_session.txt`. Only Esc
+  in the session picker cancels persistence. Left/Right move the input caret
+  across UTF-8 characters; Backspace at the beginning does nothing. Prefilled
+  text starts with the caret at its end, without an initial selection or a
+  different input mode. Strip metadata line endings without adding a space or
+  trimming intentional spaces. Compose input changes off screen and update only
+  the field; do not clear/redraw the logo and entire display for each key.
+- The tty decoder waits 100 ms after a single Esc. Double Esc cancels immediately;
+  Alt combinations and unsupported escape sequences are consumed and ignored.
+  Preserve recognized navigation/function keys and complete UTF-8 characters.
+- Slax's session chooser boot entry includes `automount`, like the other
+  persistent boot entries, so session disks remain accessible under `/media`.
+- `fbmenu --menu ... --duplicate` returns `duplicate:ID` on F4. F4 on the new
+  session row returns `new`. Copy an existing session only after its new name
+  is confirmed, stage it in a hidden directory and activate it after the copy
+  succeeds. Preserve source contents, links and permissions; leave the original
+  unchanged. During the copy, show `Duplicating session...` below the logo with
+  the existing animated dots, using `fbmenu --status`. On success, show the final
+  copied MB as boot continues; clear the message on failure. Keep Esc able to
+  reveal the log. Use `cp -a` without verbose filename output; keep copy errors
+  on stderr without corrupting the returned session ID. Check both native
+  storage and FAT-backed session files.
+- During duplication, record `df -Pk` used space on the target filesystem before
+  copying and subtract that baseline from subsequent measurements. Show
+  `Duplicating session... N.N MB` through `fbmenu --status` every five seconds; write
+  progress to stderr only every ten seconds. This includes allocated space for
+  small files and metadata, plus any concurrent writes on the same filesystem.
+  Wait for the monitor's last request, then always measure and print the final
+  total after a successful copy, even if it took less than ten seconds. Leave
+  that total visible in the graphical status as boot continues. Clear the
+  activity on failure. Keep `cp -a`, its exit status and the session ID intact.
+- Dynfilefs's `virtual.dat` is created with XFS. Mount it explicitly with
+  `-t xfs`, including when growing it, to avoid probing it with NTFS and logging
+  misleading signature errors. Native persistent directories still use their
+  own filesystem.
 - Esc in the session picker cancels persistence: no session is created and
   `last_session.txt` is not updated. Elsewhere during boot, Esc dismisses the
   splash and reveals the log. Keep a text menu when framebuffer is unavailable

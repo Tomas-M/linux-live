@@ -734,9 +734,11 @@ restore_perch_session()
    debug_log "restore_perch_session" "$*"
 
    local TIMEOUT DEVICE FS OPTIONS MOUNT
-   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE LAST
+   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE NAME NAMEFILE TITLE SOURCE TEMP COPY_STATUS
+   local COPY_PID PROGRESS_PID COPY_BASE COPY_USED TICKS
 
    CHANDIR="$1"
+   NAMEFILE="${LIVEKITNAME}_session.txt"
    PERCHDIR="$(cmdline_value perchdir)"
 
    # Supported syntax is even like perchdir=/dev/sda1/changes
@@ -773,35 +775,130 @@ restore_perch_session()
       done
    fi
 
+   # Do not ask for a name when the storage cannot save a session.
+   mkdir -p "$CHANDIR" 2>/dev/null || return 1
+   touch "$CHANDIR/.empty" 2>/dev/null || return 1
+   rm -f "$CHANDIR/.empty"
+
    LAST=last_session.txt
-   LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null)
+   LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null || true)
 
-   # ask for session, print msgs to stderr so it is visible
-   if [ "$LASTSESSION" != "" -a "$PERCHDIR" = "ask" ]; then
-      printf 'new\tStart a new session\n' > /tmp/sessions.txt
-      ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | while read DIR; do
-         [ -d "$CHANDIR/$DIR" ] || continue
-         USAGE=$(du -s -h "$CHANDIR/$DIR" 2>/dev/null | sed 's/[[:space:]].*//')
-         LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M")"
-         printf '%s\t%s\tResume session #%s\t%s  %sB\n' "$LASTMOD" "$DIR" "$DIR" "$LASTMOD" "$USAGE"
-      done | sort -r | cut -f 2- >> /tmp/sessions.txt
-      PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel)" || return 1
-      # Cancellation must not create a session or update last_session.txt.
-      [ "$PERCHDIR" ] || return 1
-   fi
+   while true; do
+      # Ask for a session again when naming is cancelled.
+      if [ "$PERCHDIR" = "ask" ]; then
+         printf 'new\tStart a new session\n' > /tmp/sessions.txt
+         ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | while read DIR; do
+            [ -d "$CHANDIR/$DIR" ] || continue
+            # Use at least KB and separate the value from its unit.
+            USAGE=$(du -s -k "$CHANDIR/$DIR" 2>/dev/null | LC_ALL=C awk '{
+               split("KB MB GB TB",units)
+               value=$1; unit=1
+               while (value>=1024 && unit<4) { value/=1024; unit++ }
+               printf "%.1f %s",value,units[unit]
+            }')
+            LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M")"
+            NAME=$(head -n 1 "$CHANDIR/$DIR/boot/$NAMEFILE" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' ')
+            # Right-align human-readable sizes in the monospace metadata column.
+            printf '%s\t%s\t%s\t%s  %9s\n' "$LASTMOD" "$DIR" "${NAME:-Session #$DIR}" "$LASTMOD" "$USAGE"
+         done | sort -r | cut -f 2- >> /tmp/sessions.txt
+         PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel --duplicate)" || return 1
+         # Cancellation must not create a session or update last_session.txt.
+         if [ "$PERCHDIR" = "" ]; then return 1; fi
+      fi
 
-   # restore name for previous session if empty
-   if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "resume" ]; then
-      PERCHDIR="$LASTSESSION"
-   fi
+      # restore name for previous session if empty
+      if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "resume" ]; then
+         PERCHDIR="$LASTSESSION"
+      fi
 
-   # if last is empty or new/nonexistent is requested, create new
-   if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "new" -o ! -d "$CHANDIR/$PERCHDIR" ]; then
-      NEW="$(ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
-      NEW=$(($NEW + 1))
-      mkdir -p "$CHANDIR/$NEW"
-      PERCHDIR="$NEW"
-   fi
+      # F4 copies an existing session before activating the new directory.
+      SOURCE=""
+      if echo "$PERCHDIR" | grep -q '^duplicate:'; then
+         SOURCE=$(echo "$PERCHDIR" | cut -d ':' -f 2-)
+         if [ "$SOURCE" = "" ]; then return 1; fi
+         if echo "$SOURCE" | grep -q '[^0-9]'; then return 1; fi
+         if [ ! -d "$CHANDIR/$SOURCE" ]; then return 1; fi
+         PERCHDIR=new
+      fi
+
+      # if last is empty or new/nonexistent is requested, create new
+      if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "new" -o ! -d "$CHANDIR/$PERCHDIR" ]; then
+         NEW="$(ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
+         NAME=""
+         TITLE='New session name'
+         if [ "$NEW" = "" ]; then NAME='Initial session'; fi
+         if [ "$SOURCE" ]; then
+            NAME=$(head -n 1 "$CHANDIR/$SOURCE/boot/$NAMEFILE" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' ')
+            TITLE='Name the duplicated session'
+         fi
+         NAME="$(fbmenu --input "$TITLE" "$NAME")" || {
+            if [ "$?" != 2 ]; then return 1; fi
+            PERCHDIR=ask
+            continue
+         }
+         NEW=$(($NEW + 1))
+         TEMP=$(mktemp -d "$CHANDIR/.new.XXXXXX") || return 1
+         # Native branches must remain accessible to unprivileged applications.
+         chmod 755 "$TEMP" 2>/dev/null || true
+
+         if [ "$SOURCE" ]; then
+            echo '* Duplicating session...' >&2
+            fbmenu --status 'Duplicating session... 0.0 MB' >/dev/null 2>&1 || true
+
+            # Measure allocated space so completed small files also count.
+            COPY_BASE=$(df -Pk "$TEMP" | awk 'END {print $3}')
+            cp -a "$CHANDIR/$SOURCE/." "$TEMP/" >&2 &
+            COPY_PID=$!
+
+            (
+               TICKS=0
+               while kill -0 "$COPY_PID" 2>/dev/null; do
+                  sleep 1
+                  TICKS=$(($TICKS + 1))
+                  if [ "$TICKS" -ne 5 -a "$TICKS" -ne 10 ]; then continue; fi
+
+                  COPY_USED=$(df -Pk "$TEMP" | awk 'END {print $3}')
+                  USAGE=$(awk 'BEGIN { value=(ARGV[1] - ARGV[2]) / 1024; if (value < 0) value=0; printf "%.1f MB", value }' "$COPY_USED" "$COPY_BASE")
+                  fbmenu --status "Duplicating session... $USAGE" >/dev/null 2>&1 || true
+
+                  if [ "$TICKS" -eq 10 ]; then
+                     printf 'Duplicating session... %s\n' "$USAGE" >&2
+                     TICKS=0
+                  fi
+               done
+            ) &
+            PROGRESS_PID=$!
+
+            if wait "$COPY_PID"; then
+               COPY_STATUS=0
+            else
+               COPY_STATUS=$?
+            fi
+            # Finish the monitor before publishing the final result.
+            wait "$PROGRESS_PID" 2>/dev/null || true
+
+            if [ "$COPY_STATUS" -ne 0 ]; then
+               fbmenu --status '' >/dev/null 2>&1 || true
+               rm -rf "$TEMP"
+               return 1
+            fi
+
+            # Always report the final size, including copies shorter than ten seconds.
+            COPY_USED=$(df -Pk "$TEMP" | awk 'END {print $3}')
+            USAGE=$(awk 'BEGIN { value=(ARGV[1] - ARGV[2]) / 1024; if (value < 0) value=0; printf "%.1f MB", value }' "$COPY_USED" "$COPY_BASE")
+            printf 'Duplicating session... %s\n' "$USAGE" >&2
+            fbmenu --status "Duplicating session... $USAGE" >/dev/null 2>&1 || true
+         fi
+
+         # Create /boot when needed and store metadata before activating the branch.
+         if ! mkdir -p "$TEMP/boot" || ! printf '%s\n' "$NAME" > "$TEMP/boot/$NAMEFILE" || ! mv "$TEMP" "$CHANDIR/$NEW"; then
+            rm -rf "$TEMP"
+            return 1
+         fi
+         PERCHDIR="$NEW"
+      fi
+      break
+   done
 
    # remember current, update timestamp
    echo "$PERCHDIR" > "$CHANDIR/$LAST"
@@ -835,7 +932,7 @@ persistent_changes()
    fi
 
    if ! PERCHDIR=$(restore_perch_session "$CHANGES"); then
-      echo "* Session selection cancelled; using RAM for changes"
+      echo "* Persistent changes disabled; using RAM for changes"
       return 0
    fi
 
@@ -904,14 +1001,14 @@ persistent_changes()
       GROWDIR=/tmp/changes.grow
       echo "- grow if needed"
       mkdir -p "$GROWDIR"
-      mount -o loop "$2/virtual.dat" "$GROWDIR"
+      mount -t xfs -o loop "$2/virtual.dat" "$GROWDIR"
       xfs_growfs "$GROWDIR" >/dev/null
       umount "$GROWDIR"
       rmdir "$GROWDIR"
    fi
 
    echo "- mounting persistent changes"
-   mount -o loop "$2/virtual.dat" "$2"
+   mount -t xfs -o loop "$2/virtual.dat" "$2"
 }
 
 

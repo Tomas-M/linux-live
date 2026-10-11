@@ -9,32 +9,10 @@ desktop-image: "black.png"
    top = "100%-64"
    width = "100%-16"
    height = 16
-   text = "Press Esc for options, automatic boot in %d s ..."
+   text = "Press any key, automatic boot in %d s ..."
    font = "Unifont Regular 16"
    color = "#FFFFFF"
    align = "center"
-}
-
-+ label {
-   left = 8
-   top = "100%-32"
-   width = "50%-8"
-   height = 16
-   text = "[Esc] options"
-   font = "Unifont Regular 16"
-   color = "#60CA00"
-   align = "left"
-}
-
-+ label {
-   left = 50%
-   top = "100%-32"
-   width = "50%-8"
-   height = 16
-   text = "[e] cmdline >"
-   font = "Unifont Regular 16"
-   color = "#60CA00"
-   align = "right"
 }
 
 # GRUB paints components in reverse order, so the original bitmap goes last.

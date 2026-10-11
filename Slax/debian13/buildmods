@@ -110,6 +110,8 @@ umount -R "$UNION"
 
 # Keep functional whiteouts; omit only AUFS bookkeeping and mounted build data.
 for BRANCH in "$RUN"/branches/*; do
+   # Rootcopy must not leave module roots group-writable.
+   chmod 755 "$BRANCH"
    mksquashfs "$BRANCH" "$MEDIA/slax/modules/$(basename "$BRANCH").sb" \
       -noappend -comp xz -Xbcj x86 -b 1024k -always-use-fragments \
       -e .wh..wh.aufs .wh..wh.plnk .wh..wh.orph boot dev proc sys run tmp build artifacts \

@@ -37,7 +37,7 @@ desktop-image: "black.png"
    top = "100%-32"
    width = "50%-8"
    height = 16
-   text = "[e] cmdline >"
+   text = "[Tab] cmdline"
    font = "Unifont Regular 16"
    color = "#60CA00"
    align = "right"
