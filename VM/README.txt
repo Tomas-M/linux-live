@@ -8,7 +8,7 @@ Guest swap is disabled permanently, including initramfs resume.
 
 Account: root
 The console password is stored locally in credentials.txt.
-SSH: ssh -i qemu/id_ed25519 root@10.0.0.48
+SSH: ssh -i VM/id_ed25519 root@10.0.0.48
 Working checkout inside the VM: /root/linux-live
 Use SSH/SFTP to transfer changes between the Windows and Linux checkouts.
 
