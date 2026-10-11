@@ -308,6 +308,19 @@ must follow the general Slax repair rules above.
   `-t xfs`, including when growing it, to avoid probing it with NTFS and logging
   misleading signature errors. Native persistent directories still use their
   own filesystem.
+- Keep dynfilefs's FUSE mount separate from the loopback XFS mount. In
+  `persistent_changes`, FUSE mounts at `$2.dynfilefs` and XFS at `$2`. For the
+  usual live root these are `/memory/changes.dynfilefs` and `/memory/changes`.
+  This prevents shutdown from remounting XFS with the hidden FUSE mount's
+  `user_id` and `group_id` options. The storage format and session files stay
+  unchanged; filesystem creation and growth use the separate `virtual.dat`.
+- Keep HTTP FUSE storage at `$DATAMNT.httpfs` and its loop-mounted data at
+  `$DATAMNT`. Local `from=ISO` uses the separate `/memory/iso` mount; failed
+  searches must unmount the ISO before its source filesystem. Stop after a
+  device mount fails, so retries cannot inspect or stack stale filesystems.
+  Explicit session devices mount at `/memory/persistence`, with a single
+  bind mount of the selected directory at the existing changes path. RAM
+  copying releases its loop device before unmounting the backing filesystem.
 - Esc in the session picker cancels persistence: no session is created and
   `last_session.txt` is not updated. Elsewhere during boot, Esc dismisses the
   splash and reveals the log. Keep a text menu when framebuffer is unavailable

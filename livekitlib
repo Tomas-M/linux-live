@@ -501,7 +501,7 @@ init_network_ip()
 mount_data_http()
 {
    debug_log "mount_data_http" "$*"
-   local CACHE
+   local CACHE HTTPMNT
 
    echo_green_star >&2
    echo "Load data from $1" >&2
@@ -515,9 +515,14 @@ mount_data_http()
 
    if [ "$(network_device)" != "" ]; then
       echo "* Mounting remote file..." >&2
-      mkdir -p "$2"
-      @mount.httpfs2 -r 9999 -t 5 $CACHE -c /dev/null "$1" "$2" -o ro >/dev/null 2>/dev/null
-      mount -o loop "$2"/* "$2" # self mount
+      # Keep the remote file visible below its separate loop-mounted filesystem.
+      HTTPMNT="$2.httpfs"
+      mkdir -p "$2" "$HTTPMNT"
+      if ! @mount.httpfs2 -r 9999 -t 5 $CACHE -c /dev/null "$1" "$HTTPMNT" -o ro >/dev/null 2>/dev/null; then return 1; fi
+      if ! mount -o loop,ro "$HTTPMNT"/* "$2"; then
+         umount "$HTTPMNT" 2>/dev/null
+         return 1
+      fi
       echo "$2/$LIVEKITNAME"
    fi
 }
@@ -593,11 +598,12 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS MOUNT
+   local DEVICE FS FROM OPTIONS MOUNT ISOMNT
 
    mkdir -p "$1"
    blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
+      ISOMNT=""
 
       # supported syntax is even like from=/dev/sr0/livekitname. It is not so much
       # optiomal to put the following block of code here inside the while loop,
@@ -614,12 +620,16 @@ find_data_try()
       OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
 
-      $MOUNT "$DEVICE" "$1" $OPTIONS 2>/dev/null
+      if ! $MOUNT "$DEVICE" "$1" $OPTIONS 2>/dev/null; then continue; fi
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
       if [ -f "$1/$FROM" ]; then
-         mkdir -p "$1/../iso"
-         mount -o loop,ro "$1/$FROM" "$1/../iso" 2>/dev/null
+         ISOMNT="$1/../iso"
+         mkdir -p "$ISOMNT"
+         if ! mount -o loop,ro "$1/$FROM" "$ISOMNT" 2>/dev/null; then
+            umount "$1" 2>/dev/null
+            continue
+         fi
          FROM="../iso/$LIVEKITNAME"
       fi
 
@@ -639,8 +649,8 @@ find_data_try()
          return
       fi
 
-      # unmount twice, since there could be mounted ISO as loop too. If not, it doesn't hurt
-      umount "$1" 2>/dev/null
+      # Release the ISO before its source filesystem, including failed searches.
+      if [ "$ISOMNT" != "" ]; then umount "$ISOMNT" 2>/dev/null; fi
       umount "$1" 2>/dev/null
    done
 }
@@ -733,7 +743,7 @@ restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
-   local TIMEOUT DEVICE FS OPTIONS MOUNT
+   local TIMEOUT DEVICE FS OPTIONS MOUNT DEVROOT
    local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE NAME NAMEFILE TITLE SOURCE TEMP COPY_STATUS
    local COPY_PID PROGRESS_PID COPY_BASE COPY_USED TICKS
 
@@ -750,26 +760,31 @@ restore_perch_session()
       FS="$(device_bestfs "$DEVICE")"
       OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
+      DEVROOT="$MEMORY/persistence"
+      mkdir -p "$DEVROOT"
 
       echo -n "* Waiting for persistent changes on $DEVICE .." >&2
       for TIMEOUT in $(seq 1 20); do
          echo -n "." >&2
          refresh_devs
-         $MOUNT "$DEVICE" "$CHANDIR" $OPTIONS 2>/dev/null
+         $MOUNT "$DEVICE" "$DEVROOT" $OPTIONS 2>/dev/null
          if [ $? -eq 0 ]; then
             if [ "$PERCHDIR" != "" -a "$PERCHDIR" != "/" ]; then
-               mkdir -p "$CHANDIR/$PERCHDIR"
-               $MOUNT --bind "$CHANDIR/$PERCHDIR" "$CHANDIR"
+               mkdir -p "$DEVROOT/$PERCHDIR"
+               $MOUNT --bind "$DEVROOT/$PERCHDIR" "$CHANDIR"
                if [ $? -eq 0 ]; then
                  echo -e "\n" >&2
                  PERCHDIR=ask
                  break
                fi
             else
-              echo -e "\n" >&2
-               PERCHDIR=ask
-               break
+               if $MOUNT --bind "$DEVROOT" "$CHANDIR"; then
+                  echo -e "\n" >&2
+                  PERCHDIR=ask
+                  break
+               fi
             fi
+            umount "$DEVROOT" 2>/dev/null
          fi
          sleep 1
       done
@@ -915,7 +930,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE GROWDIR
+   local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE GROWDIR DYNMNT
 
    CHANGES="$1/$(basename "$2")"
    DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
@@ -991,24 +1006,28 @@ persistent_changes()
 
    # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
    echo "- mounting dynamically enlarged storage"
-   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$2" -p 4000
+
+   # Keep FUSE visible so shutdown uses its own filesystem options.
+   DYNMNT="$2.dynfilefs"
+   mkdir -p "$DYNMNT"
+   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$DYNMNT" -p 4000
    if [ ! "$EXISTS" ]; then
       echo "- creating filesystem"
-      mkfs.xfs.custom "$2/virtual.dat"
+      mkfs.xfs.custom "$DYNMNT/virtual.dat"
    fi
 
    if [ "$PERCHSIZE" -gt 16000 ]; then
       GROWDIR=/tmp/changes.grow
       echo "- grow if needed"
       mkdir -p "$GROWDIR"
-      mount -t xfs -o loop "$2/virtual.dat" "$GROWDIR"
+      mount -t xfs -o loop "$DYNMNT/virtual.dat" "$GROWDIR"
       xfs_growfs "$GROWDIR" >/dev/null
       umount "$GROWDIR"
       rmdir "$GROWDIR"
    fi
 
    echo "- mounting persistent changes"
-   mount -t xfs -o loop "$2/virtual.dat" "$2"
+   mount -t xfs -o loop "$DYNMNT/virtual.dat" "$2"
 }
 
 
@@ -1055,7 +1074,7 @@ copy_to_ram()
 {
    debug_log "copy_to_ram" "$*"
 
-   local MDIR MDEV RAM CHANGES
+   local MDIR MDEV RAM CHANGES LOOP
 
    if grep -vq toram /proc/cmdline; then
       echo "$1"
@@ -1069,13 +1088,15 @@ copy_to_ram()
    echo "$RAM"
 
    MDIR="$(mounted_dir "$1")"
-   MDEV="$(mounted_device "$1")"
-   MDEV="$(losetup $MDEV 2>/dev/null | cut -d " " -f 3)"
-   umount "$MDIR" 2>/dev/null
-
-   if [ "$MDEV" ]; then # iso was mounted here, try to unmount the FS it resides on too
-      MDEV="$(mounted_device "$MDEV")"
-      umount "$MDEV" 2>/dev/null
+   LOOP="$(mounted_device "$1")"
+   # BusyBox prints the backing filename after the device and offset fields.
+   MDEV="$(losetup "$LOOP" 2>/dev/null | sed 's/^[^ ]* [^ ]* //')"
+   if umount "$MDIR" 2>/dev/null; then
+      if [ "$MDEV" ]; then
+         losetup -d "$LOOP" 2>/dev/null
+         MDIR="$(mounted_dir "$MDEV")"
+         umount "$MDIR" 2>/dev/null
+      fi
    fi
 }
 
