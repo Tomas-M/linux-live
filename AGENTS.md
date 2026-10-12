@@ -62,7 +62,8 @@ must follow the general Slax repair rules above.
   Run OS windows visibly (`--type gui`). Only background collectors/helpers
   may be hidden.
 - VirtualBox CLI: `C:/Program Files/Oracle/VirtualBox/VBoxManage.exe`.
-- Work VM: `Slax Debian work`, 16 vCPUs, 24 GB RAM, root account, Xfce desktop.
+- Work VM: `Slax Debian work`, 16 vCPUs, currently 18 GB RAM after reducing host
+  memory pressure, root account, Xfce desktop.
   Slax itself uses Fluxbox; these are separate environments.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
@@ -112,15 +113,41 @@ must follow the general Slax repair rules above.
 
 - This reuses completed kernel packages. If it installs a kernel, reboot and
   run the command again. The optional VM service automates that sequence.
-- `buildmods` creates a minimal Debian with debootstrap inside a private mount
-  namespace and an AUFS union. Each module gets its own filesystem branch.
+- `buildmods` creates a minimal Debian with `debootstrap --variant=minbase`
+  inside a private mount namespace and an AUFS union. Cleanup preserves English
+  man pages and removes info, documentation and most translations. Each module
+  gets its own filesystem branch.
   Service startup inside the chroot is blocked with `policy-rc.d`.
+- ConnMan provides NTP synchronization. Do not install `ntpsec-ntpdate` in core;
+  it pulls in an otherwise unused Python runtime and its dependencies.
+- Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
+  `grub-efi-amd64-bin` and `mtools` only on the build host: UEFI USB setup copies
+  the bundled loader, and ISO recreation reuses the bundled EFI image.
+- Back up completed kernel `.deb` packages and their checksums to
+  `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
+  the build output's `kernel` directory when reinstalling the work VM.
 - Application compilation happens in disposable branches. Copy out the
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
+- Keep selected applet and application icons in their module's `rootcopy`.
+  `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
+  GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
+  `05-chromium`. Put ConnMan's regular tray icons in Adwaita's `16x16/legacy`
+  directory too: GTK may prefer Adwaita's symbolic icons over inherited hicolor
+  artwork even when a normal icon lookup finds the hicolor PNG.
+  Network, volume and battery icons come from Debian's AdwaitaLegacy theme;
+  larger Xarchiver and feh icons are rendered from their original SVG assets.
+- Xarchiver requests a 24 px window icon. Store its original 128 px artwork
+  in the 24 px icon path too; GTK retains its resolution without rebuilding
+  Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
+  handling with `NoDisplay=true`; xlunch must respect that field.
+- Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
+  the tagged upstream release (currently `v4.7.7`); do not carry a duplicate
+  local xlunch patch. Commit the fix and version update separately there,
+  regenerate `docs/usage.txt` from the compiled program and tag the release.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.
@@ -153,6 +180,9 @@ must follow the general Slax repair rules above.
   `VM`. The service disables itself after successful completion.
 - Clear the old `SHA256SUMS` completion marker before a new automated build.
   Publish it only after the replacement ISO is complete.
+- Before replacing a local ISO, detach it from the stopped test VM and check
+  whether Windows also mounted that specific ISO. Dismount that image if needed;
+  a Windows CD mount can keep the file locked after VirtualBox releases it.
 - Stop the build through its systemd service rather than using broad
   `killall`. Stop a stale collector before replacing its output.
 - Local helpers `VM/guest.py`, `audit-work-copy.py`,

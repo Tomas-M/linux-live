@@ -3,11 +3,12 @@ set -e
 [ -f /build/buildmods ] || { echo "Run Slax's build script instead of install." >&2; exit 1; }
 
 apt-get update
-apt-get install --yes --no-install-recommends systemd-sysv udev dbus tzdata locales kmod \
-mc squashfs-tools xorriso mtools grub-pc-bin grub-efi-amd64-bin zip unzip psmisc net-tools \
+# ConnMan handles NTP; EFI images and mtools are only needed on the build host.
+apt-get install --yes --no-install-recommends systemd-sysv udev dbus login passwd tzdata locales kmod \
+mc squashfs-tools xorriso grub2-common grub-pc-bin zip unzip psmisc net-tools \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
 hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
-ntfs-3g rfkill file dnsmasq ntpsec-ntpdate dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
+ntfs-3g rfkill file dnsmasq dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
 /artifacts/kernel.deb
 
 ln -sf bash /bin/sh

@@ -46,7 +46,7 @@ in_root()
 # Directory redirects refer to source inode numbers, which change in SquashFS.
 mount -i -t aufs -o "br=$BRANCH=rw,xino=$RUN/xino,nodirren" none "$UNION"
 debootstrap --variant=minbase --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
-   "$SUITE" "$UNION" http://deb.debian.org/debian
+   "$SUITE" "$UNION" https://deb.debian.org/debian
 
 # Build files, caches and runtime mounts never become part of a module.
 for DIR in dev proc sys run tmp boot build artifacts var/cache/apt var/lib/apt/lists; do

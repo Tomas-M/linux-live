@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+# Refresh the final cache after cleanup and icons restored by earlier modules.
+gtk-update-icon-cache -f /usr/share/icons/Adwaita
+gtk-update-icon-cache -f /usr/share/icons/hicolor

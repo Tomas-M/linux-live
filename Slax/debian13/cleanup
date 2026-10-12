@@ -68,6 +68,7 @@ rm -f /usr/share/applications/pcmanfm-desktop-pref.desktop
 rm -f /usr/share/applications/pcmanfm.desktop
 rm -f /usr/share/applications/lxtask.desktop
 rm -f /usr/share/applications/galculator.desktop
+rm -f /usr/share/applications/connman-gtk.desktop
 rm -f /usr/share/applications/python2.7.desktop
 rm -f /usr/share/applications/python3.7.desktop
 rm -f /usr/share/applications/python3.11.desktop
