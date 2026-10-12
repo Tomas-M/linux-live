@@ -13,7 +13,7 @@ COMMAND=$(
          --button "/usr/share/icons/hicolor/48x48/apps/org.xfce.panel.applicationsmenu.png;/usr/share/icons/hicolor/48x48/apps/org.xfce.panel.applicationsmenu-hi.png;2;-2;" \
          --button "/usr/share/icons/locolor/104x52/ui/slax-menu-bg.png;;0;-0;" \
          --voidclickterminate --iconpadding 40 --textpadding 10 \
-         --leastmargin 6 --hidemissing --iconsize 64 \
+         --leastmargin 6 --nostretchrows --hidemissing --iconsize 64 \
          --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
          --outputonly --input $TEMPCONF
 )
