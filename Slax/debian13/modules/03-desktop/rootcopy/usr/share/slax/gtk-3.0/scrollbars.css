@@ -1,0 +1,19 @@
+/* Blend scrollbar tracks into the white document area. */
+scrollbar, scrollbar:backdrop, scrollbar contents, scrollbar trough, .scrollbars-junction, scrolledwindow junction { background: #ffffff; border: 0; box-shadow: none; }
+scrollbar slider { background-image: none; border: 0; border-radius: 4px; box-shadow: none; margin: 3px; min-width: 8px; min-height: 8px; }
+
+/* Keep horizontal scrolling available without drawing attention to it. */
+scrollbar.horizontal { -GtkScrollbar-has-backward-stepper: false; -GtkScrollbar-has-forward-stepper: false; }
+scrollbar.horizontal slider, scrollbar.horizontal slider:backdrop { background-color: #e8e8e8; }
+scrollbar.horizontal slider:hover { background-color: #dddddd; }
+scrollbar.horizontal slider:active { background-color: #cccccc; }
+
+/* Use Chromium's gray thumb and one arrow at each end of the vertical track. */
+scrollbar.vertical { -GtkScrollbar-has-backward-stepper: true; -GtkScrollbar-has-forward-stepper: true; }
+scrollbar.vertical slider, scrollbar.vertical slider:backdrop { background-color: #8b8b8b; }
+scrollbar.vertical slider:hover { background-color: #777777; }
+scrollbar.vertical slider:active { background-color: #666666; }
+scrollbar.vertical button { background: #ffffff; border: 0; border-radius: 0; box-shadow: none; color: #8b8b8b; margin: 0; padding: 0; min-width: 14px; min-height: 14px; }
+scrollbar.vertical button:hover { background-color: #f2f2f2; color: #666666; }
+scrollbar.vertical button.up { -gtk-icon-source: url("scroll-up.svg"); }
+scrollbar.vertical button.down { -gtk-icon-source: url("scroll-down.svg"); }

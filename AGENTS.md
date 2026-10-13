@@ -145,11 +145,27 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v4.8.0`); do not carry a duplicate
+  the tagged upstream release (currently `v4.8.1`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
 - Slax's `fbappselect` uses xlunch's `--nostretchrows`: vertical gaps stay at
   `--leastvmargin` (defaulting to `--leastmargin`) instead of filling the screen.
+- xlunch keeps each fitted label and its measured width until the cell width
+  changes. Repeated Imlib2 measurements shifted `Terminal` by one pixel on hover;
+  partial redraws must preserve label geometry, including for the first entry.
+- The Fluxbox patch also fixes `Menu::updateMenu()`: child windows and backing
+  pixmaps use the recomputed menu width, so changing column count cannot clip
+  the resolution list. Verify both columns at 800x600 and the menu at 1024x768.
+  Fluxbox's SIGUSR1 restarts it with exec, preserving its PID, Xorg and applications;
+  SIGUSR2 reloads configuration. Do not confuse these signals.
+- GTK 3 scrollbar overrides live in
+  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/scrollbars.css`: white tracks and
+  junctions, a faint horizontal thumb, and Chromium-gray vertical thumbs with
+  triangular arrows. Root, guest and `/etc/skel` import this shared file through
+  `.config/gtk-3.0/gtk.css`. Preserve the selected GTK theme and its dark variant;
+  replacing it with a light-only theme also changes the taskbar. Keep the CSS
+  and its tiny SVG arrows in rootcopy, applied after cleanup. Breeze defaults
+  remain in `02-xorg/rootcopy/etc/gtk-3.0/settings.ini`.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.

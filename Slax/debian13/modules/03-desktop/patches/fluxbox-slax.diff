@@ -95,3 +95,23 @@
      case FbTk::FbDrawable::LEFT:
          // start at the tip
          pts[0].x = (width / 2) - (ax / 2); pts[0].y = height / 2;
+--- a/src/FbTk/Menu.cc
++++ b/src/FbTk/Menu.cc
+@@ -397,7 +397,6 @@
+     unsigned int iw = 1;
+     int th = theme()->titleHeight();
+     int tbw = m_title.win.borderWidth();
+-    int w = static_cast<int>(width());
+     size_t l = m_items.size();
+     size_t i;
+
+@@ -472,6 +471,9 @@
+
+     if (!isVisible())
+         return;
++
++    // Child windows and pixmaps must use the newly computed menu width.
++    int w = static_cast<int>(new_width);
+
+     if (m_frame.win.alpha() != alpha())
+         m_frame.win.setAlpha(alpha());

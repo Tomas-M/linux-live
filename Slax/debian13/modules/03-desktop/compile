@@ -26,9 +26,9 @@ cp ../fluxbox_*.deb "$OUTPUT/"
 PACKAGE=$OUTPUT/tools
 mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACKAGE/DEBIAN"
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.8.0.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v4.8.1.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-4.8.0
+cd xlunch-4.8.1
 make
 cp xlunch "$PACKAGE/usr/bin/"
 cp extra/gentriesquick "$PACKAGE/usr/bin/xlunch_genquick"
