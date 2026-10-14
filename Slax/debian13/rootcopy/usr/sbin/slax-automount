@@ -14,6 +14,11 @@
 
 PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
 
+# A transient systemd service receives the device metadata from the udev rule.
+ACTION=$1
+DEVNAME=$2
+ID_FS_TYPE=$3
+
 BAS="$(basename "$DEVNAME")"
 UNIT="media-$BAS.mount"
 MNT="/media/$BAS"

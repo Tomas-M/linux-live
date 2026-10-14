@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Archiver
-Comment=A GTK+2 only archive manager
+Comment=Create, open and extract compressed files and archives
 GenericName=Archive manager
 Exec=xarchiver %f
 Icon=xarchiver

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Text Editor
+Comment=Write and edit text files, scripts and source code
+Exec=scite %f
+Icon=Sci48M
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;GTK;

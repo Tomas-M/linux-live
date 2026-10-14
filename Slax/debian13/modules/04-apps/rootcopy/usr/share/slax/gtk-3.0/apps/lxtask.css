@@ -1,0 +1,5 @@
+/* Make resource indicators legible and give process rows more space. */
+progressbar { padding: 4px 0; }
+progressbar text { color: @theme_fg_color; margin-bottom: 4px; }
+progressbar.horizontal trough, progressbar.horizontal trough progress { min-height: 6px; border-radius: 3px; }
+treeview { -GtkTreeView-vertical-separator: 4; }

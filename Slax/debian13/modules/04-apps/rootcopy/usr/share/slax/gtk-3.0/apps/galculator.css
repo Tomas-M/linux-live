@@ -1,0 +1,2 @@
+/* Add space around the calculator keys while keeping a compact grid. */
+button { padding: 5px 8px; margin: 1px; border-radius: 4px; }

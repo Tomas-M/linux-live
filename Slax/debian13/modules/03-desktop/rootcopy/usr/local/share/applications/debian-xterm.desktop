@@ -1,6 +1,8 @@
 [Desktop Entry]
 Icon=terminal
 Name=Terminal
+Comment=Run shell commands, scripts and system tools
 Exec=xterm -ls
 Terminal=false
 Type=Application
+Categories=System;TerminalEmulator;

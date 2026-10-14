@@ -3,3 +3,11 @@ set -e
 # Refresh the final cache after cleanup and icons restored by earlier modules.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor
+
+# Prepare launcher snapshots after all application metadata and icons are installed.
+unset XDG_DATA_HOME XDG_DATA_DIRS XDG_CURRENT_DESKTOP XDG_CACHE_HOME
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOME=/root xlunch --ui-config /etc/xlunch/focus.ini --rebuild-cache
+HOME=/home/guest xlunch --ui-config /etc/xlunch/focus.ini --rebuild-cache
+chown -R guest: /home/guest/.cache

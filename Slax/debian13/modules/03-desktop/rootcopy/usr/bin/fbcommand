@@ -1,0 +1,40 @@
+#!/bin/sh
+
+COMMAND=$1
+PROGRAM=$2
+NAME=${PROGRAM##*/}
+DEPENDENCIES=$(ldd "$PROGRAM" 2>/dev/null)
+
+fbstartupnotify
+
+# Desktop entries are launched by gio; this handles commands without an icon.
+GUI=false
+if printf '%s\n' "$DEPENDENCIES" | grep -Eq 'libX11|libwayland-client'; then
+   GUI=true
+fi
+if [ "$NAME" = chromium ] || [ "$NAME" = wicd-manager ] || [ "$NAME" = fbliveapp ]; then
+   GUI=true
+fi
+if [ "$GUI" = true ]; then
+   exec /bin/sh -c "$COMMAND"
+fi
+
+# Interactive terminal programs do not need an extra wait after they finish.
+WAIT=true
+if printf '%s\n' "$DEPENDENCIES" | grep -q libncurses; then
+   WAIT=false
+fi
+if [ "$NAME" = man ] || [ "$NAME" = mc ]; then
+   WAIT=false
+fi
+
+exec xterm -ls -e bash --login -c '
+   printf "%s@%s:%s# %s\n" "$USER" "$HOSTNAME" "$PWD" "$1"
+   eval "$1"
+   task_status=$?
+   if [ "$2" = true ]; then
+      printf "\n--------------------------------------------------\nCommand finished. Press any key to close window..."
+      read -n 1 -s -r
+   fi
+   exit "$task_status"
+' fbcommand "$COMMAND" "$WAIT"

@@ -1,0 +1,146 @@
+Slax desktop application categories: changes and build instructions
+Verified on 2026-10-13 against the running Slax and the linux-live sources.
+
+The category fixes below are included in the Focus v5.0.0 Slax ISO. The later
+desktop relocation to /usr/local/share/applications is a source change and still
+requires rebuilding the ISO. The Categories field
+controls menu membership; four entries omitted it, and feh used the nonstandard
+ImageViewer category. Application commands, icons, names and visibility flags
+have been preserved.
+
+SOURCE CHANGES ALREADY APPLIED
+
+All paths below are relative to the linux-live repository root. Each Categories
+line belongs to the main [Desktop Entry] group.
+
+1. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/debian-xterm.desktop
+   Added: Categories=System;TerminalEmulator;
+   Expected menu: System.
+
+2. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/galculator.desktop
+   Added: Categories=Utility;Calculator;
+   Expected menu: Accessories.
+
+3. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/connman-gtk.desktop
+   Added: Categories=Network;Settings;HardwareSettings;GTK;
+   Expected menus: Internet and System (the latter includes Settings).
+   ConnMan GTK configures connections; its upstream entry also uses Settings
+   and HardwareSettings. Slax's Exec=connman-gtk-start and icon are unchanged.
+
+4. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/SciTE.desktop
+   Added: Categories=Utility;TextEditor;GTK;
+   Expected menu: Accessories, matching Slax's general-purpose Text Editor role.
+   Exec=scite %f and Icon=Sci48M are unchanged.
+
+5. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/feh.desktop
+   Replaced Categories=ImageViewer; with Categories=Graphics;Viewer;
+   NoDisplay=true is preserved. Slax deliberately retains this entry for MIME
+   handling and icon lookup while hiding it from application menus. Categorizing
+   it does not make it visible. Do not change NoDisplay as part of this fix.
+
+ALREADY VALID ENTRIES
+
+These files need no category changes. Their paths also begin with
+Slax/debian13/modules/:
+
+- 04-apps/rootcopy/usr/local/share/applications/pcmanfm.desktop:
+  Categories=System;FileTools;FileManager;Utility;Core;GTK;
+  File Manager belongs to both System and Accessories because it declares both
+  main categories. Keep this metadata; All apps still contains it once.
+
+- 03-desktop/rootcopy/usr/local/share/applications/chromium.desktop:
+  Categories=Network;WebBrowser;
+  Web Browser belongs to Internet. Keep the existing fbliveapp command.
+
+- 04-apps/rootcopy/usr/local/share/applications/xarchiver.desktop:
+  Categories=GTK;Archiving;Utility;
+  Archiver belongs to Accessories.
+
+- 04-apps/rootcopy/usr/local/share/applications/lxtask.desktop:
+  Categories=GTK;System;Monitor;
+  Task Manager belongs to System.
+
+Category names are case-sensitive. Desktop-entry lists use semicolons with a
+trailing semicolon. Preserve Exec, Icon, localized names, Terminal, MimeType,
+visibility flags and the canonical desktop file IDs. Add categories to [Desktop Entry], not
+a [Desktop Action ...] group.
+
+XLUNCH PROFILE MAPPING
+
+The Focus example in the xlunch repository and the running Slax preview profile
+include Accessories. Utility has its own group and is no longer in group.system.
+INI category lists use commas, unlike the semicolon lists in desktop files:
+
+[group.system]
+label=System
+categories=System,Settings
+
+[group.utility]
+label=Accessories
+icon=./focus-icons/wrench-symbolic.svg
+categories=Utility
+
+[group.internet]
+label=Internet
+categories=Network
+
+[group.graphics]
+label=Graphics
+categories=Graphics
+
+Include utility in [groups] order, for example immediately before system.
+Keep groups.show_empty=false. Assign groups from Categories without special
+rules for filenames, translated application names or executable names.
+
+EXPECTED RESULT WITH THE CURRENT SLAX APPLICATION SET
+
+All apps: 8 visible applications.
+Internet: Net Manager, Web Browser (2).
+Accessories: Archiver, Calculator, File Manager, Text Editor (4).
+System: File Manager, Net Manager, Task Manager, Terminal (4).
+Other: no visible applications.
+Graphics: no visible applications while feh has NoDisplay=true; its empty group
+stays hidden. File Manager and Net Manager each appearing in two groups is
+intentional, not a second catalog entry. Favorites and the Text Editor MIME
+associations now use the canonical package desktop IDs.
+
+GETTING THE SOURCE FIX INTO THE ISO
+
+Synchronize the rootcopy changes to the build checkout. Slax's nine customized
+entries belong under /usr/local/share/applications with the original package
+filenames, including the case-sensitive SciTE.desktop and debian-xterm.desktop.
+Retain the package entries under /usr/share/applications. XDG precedence selects
+the Slax override once and preserves its command when APT updates the original.
+
+For an existing build, remove the former Slax entries from /usr/share/applications
+and restore any package desktop originals deleted by the old cleanup. Apply the
+new rootcopy files, including the updated Favorites and MIME defaults. Repack
+03-desktop, 04-apps and 05-chromium, then recreate the ISO using the repository's
+incremental-build workflow. A fresh build retains the originals automatically.
+Runtime changes alone do not update an existing ISO.
+
+Follow linux-live/AGENTS.md and preserve unrelated in-progress changes. This
+category repair does not require a new kernel, a full Debian rebuild, icon image
+edits or application command changes. Focus integration/releasing xlunch is a
+separate step; do not add Focus CLI flags to an older xlunch release that does
+not support them.
+
+Validate changed desktop files with desktop-file-validate where available,
+inspect Categories/NoDisplay inside the repacked modules, then open the launcher
+with the profile above and check menu membership. Relaunch xlunch after changing
+files: the native catalog is read at startup. Check feh remains hidden and File
+Manager occurs only once in All apps.
+
+STANDARDS AND UPSTREAM REFERENCES
+
+Main categories and multiple-menu membership:
+https://specifications.freedesktop.org/menu/latest/category-registry.html
+
+TerminalEmulator, Calculator, TextEditor, HardwareSettings and Viewer:
+https://specifications.freedesktop.org/menu/latest/additional-category-registry.html
+
+Categories and NoDisplay fields:
+https://specifications.freedesktop.org/desktop-entry/latest/recognized-keys.html
+
+ConnMan GTK's upstream desktop entry:
+https://raw.githubusercontent.com/jgke/connman-gtk/master/data/connman-gtk.desktop.in

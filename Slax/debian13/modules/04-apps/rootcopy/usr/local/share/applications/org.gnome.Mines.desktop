@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Mines
+Exec=fbinstall slax-gnome-mines "Mines is not installed." "gnome-mines" "/usr/games/gnome-mines"
+X-Xlunch-Executable=/usr/games/gnome-mines
+Icon=slax-gnome-mines
+Terminal=false
+StartupNotify=true
+Comment=Clear hidden mines from a minefield
+Categories=GNOME;GTK;Game;LogicGame;
+Keywords=minesweeper;

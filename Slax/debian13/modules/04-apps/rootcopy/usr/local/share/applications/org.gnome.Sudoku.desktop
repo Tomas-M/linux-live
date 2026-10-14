@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sudoku
+Exec=fbinstall slax-gnome-sudoku "Sudoku is not installed." "gnome-sudoku" "/usr/games/gnome-sudoku"
+X-Xlunch-Executable=/usr/games/gnome-sudoku
+Icon=slax-gnome-sudoku
+Terminal=false
+StartupNotify=true
+Comment=Test yourself in the classic puzzle
+Categories=GNOME;GTK;Game;LogicGame;
+Keywords=magic;square;

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Drawing
+Exec=fbinstall slax-drawing "Drawing is not installed." "drawing" "drawing" %U
+X-Xlunch-Executable=drawing
+Icon=slax-drawing
+Terminal=false
+StartupNotify=true
+Comment=Simple drawing utility
+Categories=Graphics;GNOME;GTK;
+MimeType=image/png;image/bmp;image/jpeg;
+Keywords=Paint;Sketch;Pencil;

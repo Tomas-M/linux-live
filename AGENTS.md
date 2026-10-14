@@ -129,9 +129,29 @@ must follow the general Slax repair rules above.
 - Application compilation happens in disposable branches. Copy out the
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
+- `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
+  `slax-desktop-tools`. Use `fbinstall [--user guest] ICON TEXT "PACKAGE..."
+  "COMMAND [ARGS...]" [ARGS...]`. Available commands start before GTK or APT.
+  APT first computes the net unpacked size including dependencies. Above 10 MB,
+  the same window shows the application icon and OK/Cancel; smaller installs
+  proceed automatically. File and URL arguments stay separate from command quoting.
+  It uses existing package lists, refreshes once if a package cannot be resolved
+  or an archive returns HTTP 404, and installs without recommends. It launches
+  the command only on success. APT's status fd supplies download and installation
+  percentages; updating and preparation pulse. Command arguments use quoting
+  without an implicit shell.
+  Installation errors show a scrollable APT log and an OK button.
+  Keep installer, confirmation and error windows centered when their contents
+  change size, using `GTK_WIN_POS_CENTER_ALWAYS` and `GDK_GRAVITY_CENTER` so
+  the window-manager frame is included in the centered position.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
+- Keep Slax application desktop overrides in their module's
+  `rootcopy/usr/local/share/applications`, with the exact Debian desktop filename
+  (including case). Preserve the package's `/usr/share/applications` original:
+  XDG directory precedence keeps one launcher and retains Slax's command after
+  APT upgrades. Update Favorites and MIME associations when changing desktop IDs.
 - Keep selected applet and application icons in their module's `rootcopy`.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
@@ -145,11 +165,54 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v4.8.1`); do not carry a duplicate
+  the tagged upstream release (currently `v5.4.0`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
-- Slax's `fbappselect` uses xlunch's `--nostretchrows`: vertical gaps stay at
-  `--leastvmargin` (defaulting to `--leastmargin`) instead of filling the screen.
+- xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
+  (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
+  background refresh must stop before launching a selection. `05-chromium/copy`
+  prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
+  entries and icons are present. Match the runtime profile, locale, PATH and
+  XDG environment; refresh the final module cache after changing these inputs.
+- Slax's Focus footer uses `align=grid` and `bottom_margin=0`. This places
+  the help 28 px lower than the shared margin and gives the icon grid the same
+  additional height while leaving the bottom-left close button unobstructed.
+  Its grid uses `fade_height=64` for clipped tiles at both viewport edges;
+  each fade shrinks away at the beginning or end of the list.
+- Keep `slax-rmmounts.service` active after its oneshot cleanup with
+  `RemainAfterExit=yes`. Transient automount services otherwise pull in sysinit
+  again and repeatedly rerun the cleanup until systemd's start limit is hit.
+- Slax's `fbappselect` starts xlunch with `/etc/xlunch/focus.ini` by default.
+  Keep Slax branding, Session commands and terminal/GUI command routing in its
+  profile and `fbcommand`; xlunch itself must remain distribution-independent.
+- Optional installer desktop entries declare `X-Xlunch-Executable` with their
+  actual command or absolute executable path. Slax's Focus profile uses
+  `grid.uninstalled_icon_transparency=50` and `grid.installed_first=true`.
+  Available apps come first; missing apps have transparent icons until hover.
+  Keep labels and help text unchanged. Availability is derived from the
+  executable even with cached metadata; do not persist installation status.
+  Its footer uses `align=grid`, leaving the lower left corner for the close button.
+  Capture the live 52 px panel launcher with scrot before opening xlunch, so the
+  close button preserves its actual icon, theme and background; remove the
+  temporary image after xlunch closes. Do not substitute a power icon there.
+  `fblogout` and `logout.dsv` remain available for the Fluxbox Exit / Logout entry.
+  Desktop entries launch through `fbstartupnotify gio launch`; `fbinstall`
+  uses the same notifier when starting an available or newly installed command.
+  xlunch's `launcher_args` is a comma-separated argument list (`gio,launch`).
+  Restore the busy cursor after a new window or a 30-second timeout.
+- Optional application launchers and their single 128 px icons live in `04-apps`
+  rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
+  against clean Slax, without recommends; every entry is below 500 MB.
+  Keep canonical Debian desktop IDs and MIME declarations in `/usr/local/share`
+  and refresh its desktop database after rootcopy. Remove the desktop and its
+  `slax-*.png` icon to remove an uninstalled application from the catalog.
+  `fbliveapp` runs guest applications with separate D-Bus sessions and grants
+  X11 access only to that local user. VLC and selected Internet applications
+  use `fbinstall --user guest`. Set `LANG=C.UTF-8` in `02-xorg`'s `/etc/locale.conf`;
+  Debian 13 redirects `/etc/default/locale` to this canonical file at boot.
+- The automount udev rule queues a transient systemd service with `--no-block`.
+  Pass ACTION, DEVNAME and ID_FS_TYPE as arguments to `slax-automount`; do not
+  mount synchronously inside udev, which blocks GParted's `udevadm settle`.
 - xlunch keeps each fitted label and its measured width until the cell width
   changes. Repeated Imlib2 measurements shifted `Terminal` by one pixel on hover;
   partial redraws must preserve label geometry, including for the first entry.
@@ -166,6 +229,23 @@ must follow the general Slax repair rules above.
   replacing it with a light-only theme also changes the taskbar. Keep the CSS
   and its tiny SVG arrows in rootcopy, applied after cleanup. Breeze defaults
   remain in `02-xorg/rootcopy/etc/gtk-3.0/settings.ini`.
+- Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
+  The small `04-apps/gtk-app-style.c` GTK module loads only the stylesheet named
+  for the running program. Compile it in the disposable build branch, install
+  it in `04-apps/copy` after cleanup and enable it there. Keep native themes,
+  application commands and launchers unchanged; styles must work from xlunch,
+  Fluxbox and the terminal without leaking a theme environment to child apps.
+- Keep the panel's `icon-size` automatic so xlunch retains its launcher size.
+  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` shrinks only tasklist
+  icons to 75 percent, leaving space above and below them. Import this scoped
+  stylesheet for root, guest and new users alongside the scrollbar styles.
+- Compton must exclude `argb && window_type != 'dock'` from its shadows at
+  desktop startup and after resolution changes. GTK windows and popovers draw
+  their own shadows inside transparent bounds; another rectangular shadow
+  creates an unwanted outline. Preserve the panel shadow and opaque windows.
+- PCManFM uses the opened folder's icon in the tasklist. Its restored
+  `folder.png` assets in `04-apps` are shifted down one pixel inside their
+  unchanged transparent canvas; preserve the artwork without scaling or clipping.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.

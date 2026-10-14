@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Pidgin
+Exec=fbinstall --user guest slax-pidgin "Pidgin is not installed." "pidgin" "pidgin"
+X-Xlunch-Executable=pidgin
+Icon=slax-pidgin
+Terminal=false
+StartupNotify=true
+GenericName=Internet Messenger
+Comment=Chat over IM.  Supports XMPP, IRC, and more
+Categories=GTK;Network;InstantMessaging;
+Keywords=chat;talk;im;message;bonjour;gadu-gadu;irc;groupwise;jabber;sametime;silc;simple;xmpp;zephyr

@@ -1,0 +1,5 @@
+/* The main window's final box contains the status labels and activity LED. */
+window:not(.dialog) > box > box:last-child { padding: 4px 8px; }
+window:not(.dialog) > box > box:last-child frame > border { border: 0; }
+window:not(.dialog) > box > box:last-child frame label { padding: 2px 6px; }
+toolbar { padding: 4px 6px; }

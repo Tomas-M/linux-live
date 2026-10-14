@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Task Manager
-Comment=Manage running processes
+Comment=Monitor CPU and memory usage and manage running processes
 GenericName=Process manager
 Keywords=task;kill;suspend;processor;memory;monitoring;performance;
 Exec=lxtask

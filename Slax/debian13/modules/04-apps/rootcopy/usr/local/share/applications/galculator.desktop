@@ -1,6 +1,8 @@
 [Desktop Entry]
 Name=Calculator
+Comment=Perform basic, scientific and programmer calculations
 Exec=galculator
 Icon=calculator
 Terminal=false
 Type=Application
+Categories=Utility;Calculator;

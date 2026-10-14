@@ -1,0 +1,8 @@
+[Desktop Entry]
+Exec=connman-gtk-start
+Icon=gnome_network_workgroup
+Name=Net Manager
+Comment=Connect to wired or Wi-Fi networks and configure connections
+Terminal=false
+Type=Application
+Categories=Network;Settings;HardwareSettings;GTK;

@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+chmod 755 /usr/bin/fbcommand /usr/bin/fbappselect /usr/bin/fbliveapp /usr/bin/fblogout /usr/bin/fbstartupnotify
+update-desktop-database /usr/local/share/applications
 # Refresh icon lookup after cleanup and the restored icons.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor

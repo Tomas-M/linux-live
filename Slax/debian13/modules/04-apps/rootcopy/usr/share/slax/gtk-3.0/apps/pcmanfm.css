@@ -1,0 +1,8 @@
+/* Give both status columns breathing room without inset frames. */
+statusbar frame > border { border: 0; }
+statusbar frame label { padding: 2px 8px; }
+toolbar { padding: 6px 8px; }
+
+/* Separate path components and keep their buttons compact. */
+toolbar viewport button { margin: 2px 3px; padding: 2px 6px; min-height: 20px; }
+toolbar viewport button:first-child { margin-left: 0; }

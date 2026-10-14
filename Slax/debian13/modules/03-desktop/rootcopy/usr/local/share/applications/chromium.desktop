@@ -2,6 +2,7 @@
 Version=1.0
 Name=Web Browser
 GenericName=Web Browser
+Comment=Browse websites and use web applications with Chromium
 Exec=fbliveapp chromium --no-default-browser-check %U
 Terminal=false
 X-MultipleArgs=false

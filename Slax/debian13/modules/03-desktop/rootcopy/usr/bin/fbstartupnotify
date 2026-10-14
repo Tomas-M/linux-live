@@ -8,16 +8,24 @@ if [ "$1" = "false" ]; then
    exit
 fi
 
-# Set cursor to wait. As soon as new window is detected, change cursor back
+# Restore the cursor when a window appears, or after 30 seconds without one.
 xsetroot -xcf $CURSORSDIR/left_ptr_watch $SIZE
 export WINDOWS="$(wmctrl -l)"
 
 (
    sleep 0.2
-   until diff <(echo "$WINDOWS") <(wmctrl -l) | egrep -q "^[>]"; do
+   DEADLINE=$((SECONDS + 30))
+   while [ "$SECONDS" -lt "$DEADLINE" ]; do
+      if diff <(echo "$WINDOWS") <(wmctrl -l) | grep -q "^[>]"; then
+         break
+      fi
       sleep 0.5
    done
    xsetroot -xcf $CURSORSDIR/left_ptr $SIZE
 ) &
+
+if [ "$#" -gt 0 ]; then
+   exec "$@"
+fi
 
 exit 0

@@ -16,3 +16,7 @@ cp "$CWD/patches/pcmanfm-slax.diff" debian/patches/
 printf 'pcmanfm-slax.diff\n' >> debian/patches/series
 dpkg-buildpackage -b -us -uc
 cp ../pcmanfm_*.deb /artifacts/04-apps/
+
+# Load application CSS without replacing GTK themes or wrapping application commands.
+cc -Os -shared -fPIC -s -o /artifacts/04-apps/libslax-app-style.so \
+   "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)

@@ -60,21 +60,15 @@ rm -Rf /usr/share/yudit/*
 
 rm -f /usr/share/applications/compton.desktop
 rm -f /usr/share/applications/debian-uxterm.desktop
-rm -f /usr/share/applications/debian-xterm.desktop
 rm -f /usr/share/applications/htop.desktop
 rm -f /usr/share/applications/mc.desktop
 rm -f /usr/share/applications/mcedit.desktop
 rm -f /usr/share/applications/pcmanfm-desktop-pref.desktop
-rm -f /usr/share/applications/pcmanfm.desktop
-rm -f /usr/share/applications/lxtask.desktop
-rm -f /usr/share/applications/galculator.desktop
-rm -f /usr/share/applications/connman-gtk.desktop
 rm -f /usr/share/applications/python2.7.desktop
 rm -f /usr/share/applications/python3.7.desktop
 rm -f /usr/share/applications/python3.11.desktop
 rm -f /usr/share/applications/python3.*.desktop
 rm -f /usr/share/applications/vim.desktop
-rm -f /usr/share/applications/SciTE.desktop
 rm -f /usr/share/applications/org.gnome.Calculator.desktop
 rm -f /usr/share/applications/panel*.desktop
 

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Firefox ESR
+Exec=fbinstall --user guest slax-firefox-esr "Firefox ESR is not installed." "firefox-esr" "firefox-esr" %u
+X-Xlunch-Executable=firefox-esr
+Icon=slax-firefox-esr
+Terminal=false
+StartupNotify=true
+GenericName=Web Browser
+Comment=Browse the World Wide Web
+Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;application/rss+xml;application/rdf+xml;image/gif;image/jpeg;image/png;x-scheme-handler/http;x-scheme-handler/https;
+StartupWMClass=firefox-esr

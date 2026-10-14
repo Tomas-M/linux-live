@@ -1,0 +1,2 @@
+/* Shrink window icons without changing the launcher or notification icons. */
+.xfce4-panel .tasklist image { -gtk-icon-transform: scale(0.75); }

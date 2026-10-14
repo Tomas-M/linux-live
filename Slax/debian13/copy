@@ -8,6 +8,8 @@ cp -a /build/rootcopy/. /
 for FILE in /build/rootcopy/usr/lib/systemd/system/*.service; do
    chmod 644 "/usr/lib/systemd/system/$(basename "$FILE")"
 done
+chmod 644 /usr/lib/udev/rules.d/90-slax-automount.rules
+chmod 755 /usr/sbin/slax-automount
 
 ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
 ln -sf /usr/lib/systemd/system/slax-rmmounts.service /etc/systemd/system/sysinit.target.wants/slax-rmmounts.service

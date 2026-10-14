@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Remmina
+Exec=fbinstall slax-remmina "Remmina is not installed." "remmina remmina-plugin-rdp remmina-plugin-vnc" "remmina-file-wrapper" %U
+X-Xlunch-Executable=remmina-file-wrapper
+Icon=slax-remmina
+Terminal=false
+StartupNotify=true
+GenericName=Remote Desktop Client
+Comment=Connect to remote desktops
+Categories=GTK;GNOME;X-GNOME-NetworkSettings;Network;
+MimeType=x-scheme-handler/rdp;x-scheme-handler/spice;x-scheme-handler/vnc;x-scheme-handler/ssh;x-scheme-handler/remmina;application/x-remmina;
+Keywords=remote desktop;rdp;vnc;ssh;spice;
+StartupWMClass=org.remmina.Remmina

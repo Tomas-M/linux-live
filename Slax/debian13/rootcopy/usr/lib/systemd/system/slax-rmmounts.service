@@ -5,6 +5,7 @@ Before=systemd-udevd.service
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/sbin/slax-cleanup-automount
 
 [Install]

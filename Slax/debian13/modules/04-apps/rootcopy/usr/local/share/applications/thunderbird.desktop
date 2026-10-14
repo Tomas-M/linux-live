@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Thunderbird
+Exec=fbinstall --user guest slax-thunderbird "Thunderbird is not installed." "thunderbird" "thunderbird" %u
+X-Xlunch-Executable=thunderbird
+Icon=slax-thunderbird
+Terminal=false
+StartupNotify=true
+GenericName=Mail Client
+Comment=Read/Write Mail/News with Thunderbird
+Categories=Network;Email;News;GTK;
+MimeType=message/rfc822;text/calendar;text/vcard;text/x-vcard;x-scheme-handler/mailto;x-scheme-handler/mid;x-scheme-handler/news;x-scheme-handler/webcal;x-scheme-handler/webcals;
+Keywords=EMail;E-mail;Contact;Addressbook;News;
+StartupWMClass=thunderbird-default
