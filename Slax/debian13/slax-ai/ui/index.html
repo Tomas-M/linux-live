@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <title>Slax AI</title>
+   <link rel="icon" href="/icon.svg" type="image/svg+xml">
+   <link rel="stylesheet" href="app.css">
+   <script src="app.js" defer></script>
+</head>
+<body>
+   <svg class="symbols" xmlns="http://www.w3.org/2000/svg"><symbol id="spark" viewBox="0 0 24 24"><path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4Z"/></symbol><symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="arrow" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></symbol><symbol id="chat" viewBox="0 0 24 24"><path d="M5 5h14v11H9l-4 4Z"/></symbol><symbol id="settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></symbol><symbol id="terminal" viewBox="0 0 24 24"><path d="m5 7 5 5-5 5M13 17h6"/></symbol></svg>
+   <aside class="sidebar">
+      <a class="brand" href="/"><span class="brand-mark"><svg><use href="#spark"/></svg></span><span>slax<span class="brand-ai"> AI</span></span></a>
+      <button id="new-chat" class="new-chat"><svg><use href="#plus"/></svg>New chat<span>↗</span></button>
+      <div class="nav-label">YOUR CHATS</div>
+      <nav id="history" aria-label="Chat history"></nav>
+      <div class="sidebar-bottom">
+         <div class="wallet"><div><span class="wallet-dot"></span>AI credits</div><strong id="credit-balance">—</strong><button id="add-credits">Add credits <span>↗</span></button></div>
+         <button id="account-button" class="account-button"><span class="avatar">S</span><span><strong id="account-name">Your Slax AI account</strong><small id="account-description">Sign in to get started</small></span><span>⋯</span></button>
+      </div>
+   </aside>
+   <main>
+      <header class="topbar"><div><span class="online-dot"></span><span id="connection-label">Local agent</span><span class="local-badge">ON YOUR COMPUTER</span></div><button id="settings-button" class="icon-button" aria-label="Settings"><svg><use href="#settings"/></svg></button></header>
+      <section id="welcome" class="welcome">
+         <div class="hero-mark"><svg><use href="#spark"/></svg></div>
+         <div class="eyebrow">A HELPING HAND, BUILT INTO SLAX</div>
+         <h1>Your computer.<br><span>A little more capable.</span></h1>
+         <p>Fix a problem, find a file, or make something new.<br>Describe what you need. We will work through it together.</p>
+         <div class="suggestions">
+            <button data-prompt="Inspect this computer using read-only diagnostics. Explain anything that needs attention. Do not change anything."><span class="suggestion-icon">✧</span><strong>Check this computer</strong><small>A quick, read-only health check</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Help me locate and safely back up my files. Start by inspecting disks and mounted filesystems. Ask which data I want before copying anything."><span class="suggestion-icon">▱</span><strong>Find my files</strong><small>Locate your data and plan a backup</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Help me configure Slax. Ask what I want to change and check whether changes will persist after reboot."><span class="suggestion-icon">⌘</span><strong>Make Slax yours</strong><small>Get help with settings and software</small><span class="suggestion-arrow">↗</span></button>
+         </div>
+      </section>
+      <section id="conversation" class="conversation" aria-label="Conversation" hidden></section>
+      <footer class="composer-area">
+         <div id="activity" class="activity" role="status"></div>
+         <form id="composer" class="composer">
+            <label class="sr-only" for="message">Message Slax AI</label>
+            <textarea id="message" placeholder="Ask Slax AI anything about this computer…" rows="2" maxlength="16000"></textarea>
+            <div class="composer-bottom"><button id="workspace-button" type="button" class="workspace-button"><svg><use href="#terminal"/></svg><span id="workspace-label">/root</span><span id="permission-label"></span></button><div><button id="stop" type="button" class="stop" hidden>■ Stop</button><button type="submit" class="send" aria-label="Send message" disabled><svg><use href="#arrow"/></svg></button></div></div>
+         </form>
+         <div class="composer-note"><span>Changes and commands need your approval.</span><span id="model-label">Slax AI</span></div>
+      </footer>
+   </main>
+   <dialog id="account-dialog">
+      <button class="close-dialog" aria-label="Close">×</button>
+      <div class="modal-mark"><svg><use href="#spark"/></svg></div><h2 id="auth-title">Welcome to Slax AI</h2><p id="auth-description">Sign in to your account. Chats are saved locally; selected context is sent to your Slax AI server and its AI provider.</p>
+      <form id="auth-form">
+         <label id="email-label">Email<input id="email" type="email" autocomplete="email" required></label>
+         <label id="password-label">Password<input id="password" type="password" minlength="12" maxlength="1024" autocomplete="current-password" required><small>At least 12 characters</small></label>
+         <label id="code-label" hidden>Email code<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+         <div id="auth-error" class="form-error" role="alert"></div><button id="auth-submit" class="primary">Sign in</button>
+      </form>
+      <button id="auth-switch" class="text-button">New here? Create an account</button><button id="forgot-password" class="text-button">Forgot password?</button><button id="resend-code" class="text-button" hidden>Send a new verification code</button>
+      <div id="signed-in" hidden><p id="signed-email"></p><button id="refresh-account" class="primary">Refresh credits</button><button id="sign-out" class="text-button">Sign out</button></div>
+   </dialog>
+   <dialog id="settings-dialog"><button class="close-dialog" aria-label="Close">×</button><h2>Settings</h2><p>The agent runs locally. AI requests go to your Slax AI server.</p><form id="settings-form"><label>Server address<input id="backend-url" type="url" placeholder="https://ai.example.com" required></label><label>Workspace for new chats<input id="workspace" value="/root" required></label><p class="subtle">Files can be read only inside this workspace. Approved shell commands run with the local agent's permissions. Chat history may disappear on reboot unless Slax changes are persistent.</p><div id="settings-error" class="form-error"></div><button class="primary">Save settings</button></form></dialog>
+   <dialog id="credits-dialog"><button class="close-dialog" aria-label="Close">×</button><h2>A little more room to work</h2><p>100 AI credits = $1. Credits are used as the agent works. There is no automatic renewal.</p><div class="credit-packages"><button data-cents="100"><strong>100</strong><span>credits</span><small>$1</small></button><button data-cents="500"><strong>500</strong><span>credits</span><small>$5</small></button><button data-cents="1000"><strong>1,000</strong><span>credits</span><small>$10</small></button></div><p id="checkout-note" class="subtle"></p><div id="checkout-error" class="form-error"></div><button id="credits-refresh" class="text-button">Already paid? Refresh credits</button></dialog>
+   <div id="toast" role="status" hidden></div>
+</body>
+</html>
