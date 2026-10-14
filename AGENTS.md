@@ -62,8 +62,7 @@ must follow the general Slax repair rules above.
   Run OS windows visibly (`--type gui`). Only background collectors/helpers
   may be hidden.
 - VirtualBox CLI: `C:/Program Files/Oracle/VirtualBox/VBoxManage.exe`.
-- Work VM: `Slax Debian work`, 16 vCPUs, currently 18 GB RAM after reducing host
-  memory pressure, root account, Xfce desktop.
+- Work VM: `Slax Debian work`, 16 vCPUs, 24 GB RAM, root account, Xfce desktop.
   Slax itself uses Fluxbox; these are separate environments.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
@@ -388,6 +387,13 @@ must follow the general Slax repair rules above.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
+- Keep tty1's getty ordered after `xorg.service`, whose `ExecStartPost` waits
+  for X client connections. `Xdetect` must pass the service's display and VT
+  arguments to `startx`. Try native hardware autodetection first; if startup
+  fails, run `Xorg -configure` and retry. Do not probe before the first start.
+- When Xorg switches away from tty1, fbmenu must preserve its graphics and
+  pixels instead of restoring text and a blinking cursor. Getty restores tty1
+  after X is ready, or after the graphics startup has failed.
 - Session selection retains the Slax logo and shows each session's name,
   date and size on one row. Highlight the entire selected row. No frame,
   arrow-only selection or `1/20` counters. Footer:

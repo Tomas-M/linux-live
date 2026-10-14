@@ -535,7 +535,8 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          int current_mode=keyboard_mode;
          ioctl(tty,KDGKBMODE,&current_mode);
          if (current_mode!=keyboard_mode && (current_mode==K_RAW || current_mode==K_MEDIUMRAW || current_mode==K_OFF)) { taken=1; break; }
-         if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) break;
+         /* Leave inactive splash pixels intact; getty restores text when X is ready. */
+         if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) { keep=graphics; break; }
          if (tcgetattr(tty,&mode) || (raw && (mode.c_lflag&ICANON))) break;
       }
       struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};

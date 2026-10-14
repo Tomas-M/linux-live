@@ -5,6 +5,8 @@ After=systemd-user-sessions.service
 
 [Service]
 ExecStart=/bin/su --login -c "/usr/bin/Xdetect -- :0 vt7 -ac -nolisten tcp"
+# Release ordered console units only after X accepts client connections.
+ExecStartPost=/bin/sh -c 'while true; do if /usr/bin/xdpyinfo -display :0 >/dev/null 2>&1; then exit 0; fi; if ! kill -0 ${MAINPID} 2>/dev/null; then exit 1; fi; sleep 0.1; done'
 
 [Install]
 WantedBy=graphical.target

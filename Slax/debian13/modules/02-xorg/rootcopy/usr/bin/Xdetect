@@ -1,21 +1,10 @@
-#!/bin/bash
+#!/bin/sh
 
-CONF=/etc/X11/xorg.conf.d/01-xautodetected.conf
-
-rm $CONF
-/usr/bin/Xorg -configure 2>/dev/null
-mv -f /root/xorg.conf.new $CONF
-
-TIME=$(date +%s)
-echo $TIME
-
-/usr/bin/startx
-
-END=$(date +%s)
-
-# if X ended within 10 seconds, there was probably something wrong
-# remove the autodetected config and try without it
-if [ $(($END - $TIME)) -lt 10 ]; then
-   rm -f $CONF
-   /usr/bin/startx
+# Try native autodetection first; generate a configuration only after startup fails.
+if /usr/bin/startx "$@"; then
+   exit 0
 fi
+
+/usr/bin/Xorg -configure
+mv -f /root/xorg.conf.new /etc/X11/xorg.conf.d/01-xautodetected.conf
+exec /usr/bin/startx "$@"
