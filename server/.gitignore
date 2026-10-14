@@ -1,0 +1,6 @@
+.env
+data/
+*.sqlite*
+*.server.lock
+target/
+dist/

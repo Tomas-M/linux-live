@@ -83,6 +83,11 @@ must follow the general Slax repair rules above.
   Never copy credentials or private keys into notes, logs or Git.
 - System `/tmp` is a 20 GB tmpfs. Both kernel and Slax builds use it. Do not
   add separate RAM mounts when ordinary directories under `/tmp` suffice.
+- Free tmpfs by deleting unneeded, inactive build/test workspaces. Do not
+  archive or move them to persistent storage unless explicitly requested;
+  building in RAM is intended to avoid unnecessary disk writes. Moving
+  temporary data to disk grows the dynamic VDI, and deleting it afterward
+  does not shrink that host file; recovering the space requires compaction.
 - Swap is permanently disabled, including initramfs resume. Keep it disabled.
 - VMSVGA can accept clicks while its hardware cursor is invisible. Use Slax's
   generic `20-software-cursor.conf` on the work VM as well. Its OutputClass
@@ -241,7 +246,8 @@ must follow the general Slax repair rules above.
 - Compton must exclude `argb && window_type != 'dock'` from its shadows at
   desktop startup and after resolution changes. GTK windows and popovers draw
   their own shadows inside transparent bounds; another rectangular shadow
-  creates an unwanted outline. Preserve the panel shadow and opaque windows.
+  creates an unwanted outline. Preserve the panel shadow and keep Chromium
+  fully opaque with `--opacity-rule '100:class_g="Chromium"'` in both commands.
 - PCManFM uses the opened folder's icon in the tasklist. Its restored
   `folder.png` assets in `04-apps` are shifted down one pixel inside their
   unchanged transparent canvas; preserve the artwork without scaling or clipping.
@@ -268,6 +274,20 @@ must follow the general Slax repair rules above.
   sources and objects. Retained Slax files in tmpfs disappear on reboot.
 
 ## VM automation and incremental changes
+
+- Slax AI sources live in `Slax/debian13/slax-ai`; its runtime module is `06-ai`.
+  Build the pinned Rust executable statically for `x86_64-unknown-linux-musl`.
+  Rust, Cargo, Python, Node.js and OpenSSL must not become Slax AI runtime dependencies.
+  Its embedded UI opens in the existing Chromium through `fbliveapp` when run as root.
+  The `06-ai/copy` phase refreshes xlunch snapshots after adding its launcher.
+- Slax AI's complete Rust/SQLite backend is in `server`. Build its pinned musl
+  executable with bundled SQLite and Rustls; no language or OpenSSL runtime is needed.
+  It supports HTTP behind Apache and native HTTPS with certificate reload on SIGHUP.
+  Provider keys, SMTP credentials and payment secrets stay there, never in the client or ISO.
+  Provider adapters normalize model output; the Rust client owns the local tool loop.
+  Keep billing authoritative on the server, with reservations and idempotent settlement.
+  Introductory credits require email verification and are granted once per account.
+  Use synthetic fixtures for tests without live provider or payment credentials.
 
 - `VM/start.cmd` opens the visible work VM. `VM/start.ps1` also starts
   `collect-slax-build.py`, which downloads only the completed ISO and verifies

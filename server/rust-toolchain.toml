@@ -1,0 +1,4 @@
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+targets = ["x86_64-unknown-linux-musl"]
