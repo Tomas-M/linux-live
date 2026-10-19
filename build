@@ -15,7 +15,7 @@ CWD="$(pwd)"
 allow_only_root
 
 # check for xz
-if [ "$(xz --help 2>&1 | grep -i "Compress")" = "" ]; then
+if [ "$(mksquashfs -help-section compression 2>&1 | grep "xz")" = "" ]; then
    echo "xz not found or cannot compress"
    echo "you may consider installing xz-tools package"
    exit 1
