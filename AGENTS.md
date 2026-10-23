@@ -275,19 +275,11 @@ must follow the general Slax repair rules above.
 
 ## VM automation and incremental changes
 
-- Slax AI sources live in `Slax/debian13/slax-ai`; its runtime module is `06-ai`.
-  Build the pinned Rust executable statically for `x86_64-unknown-linux-musl`.
-  Rust, Cargo, Python, Node.js and OpenSSL must not become Slax AI runtime dependencies.
-  Its embedded UI opens in the existing Chromium through `fbliveapp` when run as root.
-  The `06-ai/copy` phase refreshes xlunch snapshots after adding its launcher.
-- Slax AI's complete Rust/SQLite backend is in `server`. Build its pinned musl
-  executable with bundled SQLite and Rustls; no language or OpenSSL runtime is needed.
-  It supports HTTP behind Apache and native HTTPS with certificate reload on SIGHUP.
-  Provider keys, SMTP credentials and payment secrets stay there, never in the client or ISO.
-  Provider adapters normalize model output; the Rust client owns the local tool loop.
-  Keep billing authoritative on the server, with reservations and idempotent settlement.
-  Introductory credits require email verification and are granted once per account.
-  Use synthetic fixtures for tests without live provider or payment credentials.
+- Slax AI is a separate project in the sibling `../slax-ai` checkout:
+  `client` contains the local Rust agent and embedded browser UI; `server`
+  contains the remote Rust/SQLite backend. Its development rules live there.
+  Slax build integration is deferred; no AI module is currently included in
+  the build recipes. Keep the server and its credentials outside the ISO.
 
 - `VM/start.cmd` opens the visible work VM. `VM/start.ps1` also starts
   `collect-slax-build.py`, which downloads only the completed ISO and verifies
