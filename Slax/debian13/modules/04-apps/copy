@@ -3,7 +3,7 @@ set -e
 cp -a rootcopy/. /
 update-desktop-database /usr/local/share/applications
 
-# Install the GTK loader after cleanup; it applies CSS only to the named applications.
+# Install the GTK module after cleanup; its adjustments are scoped to named applications.
 mkdir -p /usr/lib/x86_64-linux-gnu/gtk-3.0/modules
 cp /artifacts/04-apps/libslax-app-style.so /usr/lib/x86_64-linux-gnu/gtk-3.0/modules/
 printf 'gtk-modules=slax-app-style\n' >> /etc/gtk-3.0/settings.ini

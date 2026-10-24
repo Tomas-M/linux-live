@@ -1,22 +1,8 @@
 #!/bin/sh
 set -e
-CWD=$(pwd)
 apt-get update
-apt-get build-dep --yes --no-install-recommends pcmanfm
-mkdir -p /tmp/pcmanfm-rebuild
-cd /tmp/pcmanfm-rebuild
-apt-get source pcmanfm
-cd pcmanfm-*/
-# Keep Debian's binary rebuild version and identify the Slax patch.
-VERSION=$(dpkg-query -W -f='${Version}' pcmanfm)
-sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
-# Keep the Slax patch in the Debian package instead of copying an untracked binary.
-mkdir -p debian/patches
-cp "$CWD/patches/pcmanfm-slax.diff" debian/patches/
-printf 'pcmanfm-slax.diff\n' >> debian/patches/series
-dpkg-buildpackage -b -us -uc
-cp ../pcmanfm_*.deb /artifacts/04-apps/
+apt-get install --yes --no-install-recommends build-essential pkg-config libgtk-3-dev
 
-# Load application CSS without replacing GTK themes or wrapping application commands.
+# Apply Slax's UI adjustments while keeping the stock Debian applications.
 cc -Os -shared -fPIC -s -o /artifacts/04-apps/libslax-app-style.so \
-   "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)
+   gtk-app-style.c $(pkg-config --cflags --libs gtk+-3.0)

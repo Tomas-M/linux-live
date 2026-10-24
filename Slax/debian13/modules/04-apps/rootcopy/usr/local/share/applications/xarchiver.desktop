@@ -1,6 +1,6 @@
 [Desktop Entry]
 Version=1.0
-Name=Archiver
+Name=X Archiver
 Comment=Create, open and extract compressed files and archives
 GenericName=Archive manager
 Exec=xarchiver %f

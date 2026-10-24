@@ -2,11 +2,12 @@
 # MB = 1,000,000 bytes of net unpacked package data, including dependencies; no recommends.
 # Each row is resolved independently. APT estimates package data, not filesystem allocation or future user data.
 # Remove the desktop and icon listed below to remove an uninstalled application from the catalog.
+# Task Manager was measured separately on 2026-10-24 after removing its base package.
 Application	Packages	Unpacked MB	Desktop file	Icon file
 Drawing	drawing	32.5	com.github.maoschanz.drawing.desktop	slax-drawing.png
 VLC	vlc	199.3	vlc.desktop	slax-vlc.png
-Remmina	remmina remmina-plugin-rdp remmina-plugin-vnc	133.2	org.remmina.Remmina.desktop	slax-remmina.png
-Pidgin	pidgin	124.6	pidgin.desktop	slax-pidgin.png
+Remote Desktop	remmina remmina-plugin-rdp remmina-plugin-vnc	133.2	org.remmina.Remmina.desktop	slax-remmina.png
 GParted	gparted	21.1	gparted.desktop	slax-gparted.png
 Mines	gnome-mines	36.2	org.gnome.Mines.desktop	slax-gnome-mines.png
 Sudoku	gnome-sudoku	36.9	org.gnome.Sudoku.desktop	slax-gnome-sudoku.png
+Task Manager	lxtask	0.5	lxtask.desktop	utilities-system-monitor.png

@@ -218,6 +218,10 @@ must follow the general Slax repair rules above.
   X11 access only to that local user. VLC and selected Internet applications
   use `fbinstall --user guest`. Set `LANG=C.UTF-8` in `02-xorg`'s `/etc/locale.conf`;
   Debian 13 redirects `/etc/default/locale` to this canonical file at boot.
+- Keep LXTask optional: its Task Manager launcher installs `lxtask` through
+  `fbinstall`. Display Xarchiver as `X Archiver` and Remmina as `Remote Desktop`.
+  Hide Favorites with `navigation.favorites.visible=false` in Slax's Focus profile;
+  keep All apps, the application categories and Session available.
 - The automount udev rule queues a transient systemd service with `--no-block`.
   Pass ACTION, DEVNAME and ID_FS_TYPE as arguments to `slax-automount`; do not
   mount synchronously inside udev, which blocks GParted's `udevadm settle`.
@@ -243,6 +247,9 @@ must follow the general Slax repair rules above.
   it in `04-apps/copy` after cleanup and enable it there. Keep native themes,
   application commands and launchers unchanged; styles must work from xlunch,
   Fluxbox and the terminal without leaking a theme environment to child apps.
+- Keep PCManFM's standard Debian package. The GTK module hides its root warning
+  and adjacent separator when the main toolbar is realized, identifying the
+  stock warning icon without translated text. Do not rebuild PCManFM for this.
 - Keep the panel's `icon-size` automatic so xlunch retains its launcher size.
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` shrinks only tasklist
   icons to 75 percent, leaving space above and below them. Import this scoped
@@ -326,9 +333,11 @@ must follow the general Slax repair rules above.
   themes or desktop configuration, one VM startup is sufficient.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
   or `-Firmware uefi`. Stop it and allow VirtualBox to release its session
-  before changing firmware. Stop test VMs after verification. Power off VMs
-  running Slax from CD directly with `controlvm ... poweroff`; no clean shutdown
-  is needed. Shut the Debian work VM down normally.
+  before changing firmware. Stop test VMs after verification. Use Slax's normal
+  shutdown whenever persistence or automount can have writable disks mounted,
+  even when booting from CD. `sync` does not replace unmounting. Use VirtualBox
+  `controlvm ... poweroff` only when no writable filesystems remain mounted.
+  Shut the Debian work VM down normally.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
   Slax. To test sessions on the separate FAT32 disk while booting from CD,
