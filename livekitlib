@@ -734,22 +734,119 @@ check_data_found()
 }
 
 
+# Format KiB as a size or free/total pair, sharing the total's unit up to TB.
+perch_size()
+{
+   LC_ALL=C awk 'BEGIN {
+      split("KB MB GB TB",units)
+      free=ARGV[1]; value=ARGV[ARGC-1]; unit=1
+      while (value>=1024 && unit<4) { free/=1024; value/=1024; unit++ }
+      if (ARGC==3) printf "%.1f/",free
+      printf "%.1f %s",value,units[unit]
+   }' "$@"
+}
+
+
+# List sessions with sortable dates and optional disk-qualified menu values.
+perch_session_rows()
+{
+   local DIR NAME LASTMOD USAGE
+
+   ls -1 "$1" 2>/dev/null | grep -E '^[0-9]+$' | while read DIR; do
+      if [ ! -d "$1/$DIR" ]; then continue; fi
+      USAGE=$(perch_size "$(du -s -k "$1/$DIR" 2>/dev/null | awk '{print $1}')")
+      LASTMOD="$(date -r "$1/$DIR" "+%Y-%m-%d %H:%M")"
+      NAME=$(head -n 1 "$1/$DIR/boot/${LIVEKITNAME}_session.txt" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' ')
+      printf '%s\t%s%s\t%s\t%s%s  %9s\n' "$LASTMOD" "${2:-}" "$DIR" "${NAME:-Session #$DIR}" "${3:+$3  }" "$LASTMOD" "$USAGE"
+   done
+}
+
+
+# Choose a session across writable filesystems and return its full path.
+select_perch_session()
+{
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED
+
+   SCAN=$(mktemp -d "$MEMORY/session-disks.XXXXXX") || return 1
+   BOOTDEVICE=$(mounted_device "$1")
+   BOOTDIR=$(mounted_dir "$1")
+   printf 'new\tStart a new session\n' > "$SCAN/sessions.txt"
+   touch "$SCAN/disks.txt"
+   refresh_devs
+   blkid | sort | cut -d: -f 1 | grep -E -v '/loop|/ram|/zram' | while IFS= read -r DEVICE; do
+      FS=$(device_bestfs "$DEVICE")
+      if [ "$FS" = "" -o "$FS" = swap ]; then continue; fi
+      DIR=$(mktemp -d "$SCAN/disk.XXXXXX") || exit 1
+      if ! $(mount_command "$FS") "$DEVICE" "$DIR" $(fs_options "$FS") 2>/dev/null; then continue; fi
+      if ! awk -v dir="$DIR" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
+         umount "$DIR" >&2
+         continue
+      fi
+
+      CHANDIR="$DIR/$LIVEKITNAME/changes"
+      if [ "$DEVICE" = "$BOOTDEVICE" ]; then CHANDIR="$DIR/${1#"$BOOTDIR/"}"; fi
+      LABEL=$(blkid -s LABEL -o value "$DEVICE" | tr -d '\r\n' | tr '\000-\037\177' ' ')
+      FREE=$(perch_size $(df -Pk "$DIR" | awk 'END {print $4, $2}'))
+      printf '%s/new\t%s (%s)\t%s  %s free\n' "$CHANDIR" "$DEVICE" "${LABEL:-No label}" "$FS" "$FREE" >> "$SCAN/disks.txt"
+      perch_session_rows "$CHANDIR" "$CHANDIR/" "$(basename "$DEVICE")"
+   done | sort -r | cut -f 2- >> "$SCAN/sessions.txt"
+
+   CHOICE="${2:-}"
+   SELECTED=""
+   while true; do
+      if [ "$CHOICE" != new ]; then
+         CHOICE=$(fbmenu --menu 'Select session' "$SCAN/sessions.txt" --cancel --duplicate) || break
+      fi
+      if [ "$CHOICE" = "" ]; then break; fi
+      if [ "$CHOICE" = new ]; then
+         TITLE='Select disk for new session'
+         if [ ! -s "$SCAN/disks.txt" ]; then TITLE='No writable disks found'; fi
+         CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel) || break
+         if [ "$CHOICE" = "" ]; then continue; fi
+      fi
+
+      CHANDIR=${CHOICE#duplicate:}
+      CHANDIR=${CHANDIR%/*}
+      SESSION=${CHOICE##*/}
+      if [ "${CHOICE#duplicate:}" != "$CHOICE" ]; then SESSION="duplicate:$SESSION"; fi
+      if SESSION=$(restore_perch_session "$CHANDIR" "$SESSION"); then
+         DIR=$(mounted_dir "$CHANDIR")
+         mkdir -p "$MEMORY/persistence"
+         mount -o move "$DIR" "$MEMORY/persistence" || break
+         SELECTED="$MEMORY/persistence/${CHANDIR#"$DIR/"}/$SESSION"
+         break
+      fi
+      CHOICE=""
+   done
+
+   # The selected mount was moved out; release the remaining scan mounts.
+   for DIR in "$SCAN"/disk.*; do
+      if mountpoint -q "$DIR" 2>/dev/null; then umount "$DIR" >&2; fi
+   done
+   rm -f "$SCAN/disks.txt" "$SCAN/sessions.txt"
+   rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
+   if [ "$SELECTED" = "" ]; then return 1; fi
+   echo "$SELECTED"
+}
+
+
 # Restore persistent changes from previous session.
 # Store persistent changes to a directory and keep the directory in a session file,
 # so we know which session was active last time so we can resume it next time
 # $1 = changes directory
+# $2 = optional selection from the all-disks picker; name cancellation returns 2
 #
 restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
    local TIMEOUT DEVICE FS OPTIONS MOUNT DEVROOT
-   local CHANDIR PERCHDIR FILE LAST LASTMOD LASTSESSION NEW DIR USAGE NAME NAMEFILE TITLE SOURCE TEMP COPY_STATUS
+   local CHANDIR PERCHDIR FILE LAST LASTSESSION NEW USAGE NAME NAMEFILE TITLE SOURCE TEMP COPY_STATUS
    local COPY_PID PROGRESS_PID COPY_BASE COPY_USED TICKS
 
    CHANDIR="$1"
    NAMEFILE="${LIVEKITNAME}_session.txt"
-   PERCHDIR="$(cmdline_value perchdir)"
+   PERCHDIR="${2:-$(cmdline_value perchdir)}"
 
    # Supported syntax is even like perchdir=/dev/sda1/changes
    # In this case, perchdir is mounted over $CHANDIR and is set to ask
@@ -791,9 +888,11 @@ restore_perch_session()
    fi
 
    # Do not ask for a name when the storage cannot save a session.
-   mkdir -p "$CHANDIR" 2>/dev/null || return 1
-   touch "$CHANDIR/.empty" 2>/dev/null || return 1
-   rm -f "$CHANDIR/.empty"
+   if [ "${2:-}" = "" ]; then
+      mkdir -p "$CHANDIR" 2>/dev/null || return 1
+      touch "$CHANDIR/.empty" 2>/dev/null || return 1
+      rm -f "$CHANDIR/.empty"
+   fi
 
    LAST=last_session.txt
    LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null || true)
@@ -802,20 +901,7 @@ restore_perch_session()
       # Ask for a session again when naming is cancelled.
       if [ "$PERCHDIR" = "ask" ]; then
          printf 'new\tStart a new session\n' > /tmp/sessions.txt
-         ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | while read DIR; do
-            [ -d "$CHANDIR/$DIR" ] || continue
-            # Use at least KB and separate the value from its unit.
-            USAGE=$(du -s -k "$CHANDIR/$DIR" 2>/dev/null | LC_ALL=C awk '{
-               split("KB MB GB TB",units)
-               value=$1; unit=1
-               while (value>=1024 && unit<4) { value/=1024; unit++ }
-               printf "%.1f %s",value,units[unit]
-            }')
-            LASTMOD="$(date -r "$CHANDIR/$DIR" "+%Y-%m-%d %H:%M")"
-            NAME=$(head -n 1 "$CHANDIR/$DIR/boot/$NAMEFILE" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' ')
-            # Right-align human-readable sizes in the monospace metadata column.
-            printf '%s\t%s\t%s\t%s  %9s\n' "$LASTMOD" "$DIR" "${NAME:-Session #$DIR}" "$LASTMOD" "$USAGE"
-         done | sort -r | cut -f 2- >> /tmp/sessions.txt
+         perch_session_rows "$CHANDIR" | sort -r | cut -f 2- >> /tmp/sessions.txt
          PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel --duplicate)" || return 1
          # Cancellation must not create a session or update last_session.txt.
          if [ "$PERCHDIR" = "" ]; then return 1; fi
@@ -838,7 +924,7 @@ restore_perch_session()
 
       # if last is empty or new/nonexistent is requested, create new
       if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "new" -o ! -d "$CHANDIR/$PERCHDIR" ]; then
-         NEW="$(ls -1 "$CHANDIR" | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
+         NEW="$(ls -1 "$CHANDIR" 2>/dev/null | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
          NAME=""
          TITLE='New session name'
          if [ "$NEW" = "" ]; then NAME='Initial session'; fi
@@ -848,10 +934,12 @@ restore_perch_session()
          fi
          NAME="$(fbmenu --input "$TITLE" "$NAME")" || {
             if [ "$?" != 2 ]; then return 1; fi
+            if [ "${2:-}" != "" ]; then return 2; fi
             PERCHDIR=ask
             continue
          }
          NEW=$(($NEW + 1))
+         mkdir -p "$CHANDIR" || return 1
          TEMP=$(mktemp -d "$CHANDIR/.new.XXXXXX") || return 1
          # Native branches must remain accessible to unprivileged applications.
          chmod 755 "$TEMP" 2>/dev/null || true
@@ -933,9 +1021,6 @@ persistent_changes()
    local CHANGES T1 T2 EXISTS DEVICE PERCHDIR PERCHSIZE PERCHFILE GROWDIR DYNMNT
 
    CHANGES="$1/$(basename "$2")"
-   DEVICE="$(df $1 | tail -n 1 | cut -d " " -f 1)"
-   T1="$CHANGES/.empty"
-   T2="$T1"2
 
    # Setup the directory anyway, it will be used in all cases
    mkdir -p "$2"
@@ -946,10 +1031,22 @@ persistent_changes()
       return
    fi
 
-   if ! PERCHDIR=$(restore_perch_session "$CHANGES"); then
+   PERCHDIR=$(cmdline_value perchdir)
+   if [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
+      CHANGES=$(select_perch_session "$CHANGES" "$PERCHDIR") || CHANGES=""
+      PERCHDIR=${CHANGES##*/}
+      CHANGES=${CHANGES%/*}
+   else
+      PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
+   fi
+   if [ "$PERCHDIR" = "" ]; then
       echo "* Persistent changes disabled; using RAM for changes"
       return 0
    fi
+
+   DEVICE=$(mounted_device "$CHANGES")
+   T1="$CHANGES/.empty"
+   T2="$T1"2
 
    # check if changes directory exists and is writable
    touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
