@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Remmina
+Name=Remote Desktop
 Exec=fbinstall slax-remmina "Remmina is not installed." "remmina remmina-plugin-rdp remmina-plugin-vnc" "remmina-file-wrapper" %U
 X-Xlunch-Executable=remmina-file-wrapper
 Icon=slax-remmina

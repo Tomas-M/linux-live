@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 apt-get update
-apt-get install --no-install-recommends --yes galculator pcmanfm lxtask \
+apt-get install --no-install-recommends --yes galculator pcmanfm \
    connman-gtk at-spi2-core scite xarchiver xdg-utils
 rm -f /usr/share/icons/hicolor/scalable/apps/*

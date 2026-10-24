@@ -92,9 +92,10 @@ for RECIPE in "$THIS"/modules/*; do
       rm -rf "$BRANCH"
       BRANCH=$RUNTIME
       mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
-      # Replace the stock binaries even when the patched package version is unchanged.
+      # Install any compiled packages; other artifacts are installed by the copy phase.
       chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive TMPDIR=/tmp /bin/sh -ec \
-         'apt-get install -y --no-install-recommends --reinstall /artifacts/"$1"/*.deb' sh "$NAME"
+         'set -- /artifacts/"$1"/*.deb
+          if [ -f "$1" ]; then apt-get install -y --no-install-recommends --reinstall "$@"; fi' sh "$NAME"
    fi
    in_root /build cleanup
    # Restore module defaults only after package installation and cleanup.

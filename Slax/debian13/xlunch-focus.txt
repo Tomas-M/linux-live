@@ -22,7 +22,9 @@ The header uses Slax's original clover icon and white DejaVu Sans Bold Slax text
 rootcopy/usr/share/icons/hicolor/128x128/apps/slax.png, copied unchanged from
 https://www.slax.org/images/clover-round.png. header.caption is empty and
 heading.show_count=false hides application and Session counts above the grid.
-The Session divider matches the Favorites divider with no extra margin.
+Favorites is hidden with navigation.favorites.visible=false. The sidebar shows
+All apps followed by categories, with a divider after All apps.
+The Session divider uses the same style with no extra margin.
 Sidebar and Session hover use a transparent fill and the same white outline as
 keyboard focus. Only the selected navigation item receives the translucent fill.
 
