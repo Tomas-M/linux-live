@@ -444,6 +444,19 @@ must follow the general Slax repair rules above.
   Preserve recognized navigation/function keys and complete UTF-8 characters.
 - Slax's session chooser boot entry includes `automount`, like the other
   persistent boot entries, so session disks remain accessible under `/media`.
+- `perchdir=ask` lists sessions from `/$LIVEKITNAME/changes` on all detected
+  writable filesystems, preserving a custom boot-data directory on the boot
+  filesystem. Show the device beside each session to disambiguate names.
+  New sessions, including `perchdir=new`, first ask for a writable partition,
+  showing its device, label, filesystem and free/total space even without sessions.
+  Format both sizes in the same unit, for example `54.3/64.0 GB free`.
+  Disk and name cancellation return to the session picker; only cancelling
+  that picker disables persistence. Create directories only after the name is
+  confirmed. Keep this flow in `livekitlib`; `fbmenu` remains a generic menu.
+  Release unselected scan mounts and retain the chosen disk at
+  `/memory/persistence`. Duplication stays on the source disk. Automatic
+  `perchdir=resume` still uses the boot medium; explicit device paths stay scoped
+  to their selected directory. Never format or repartition a discovery target.
 - `fbmenu --menu ... --duplicate` returns `duplicate:ID` on F4. F4 on the new
   session row returns `new`. Copy an existing session only after its new name
   is confirmed, stage it in a hidden directory and activate it after the copy

@@ -12,9 +12,14 @@
 
  * perchdir=[resume|new|ask|device]: All changes you make to Slax can be
    saved to a writable media. By default, the directory /slax/changes is
-   used for this purpose if you run Slax from flash drive or disk. To save
-   Slax changes to a different disk, or when running Slax from CD, use
-   perchdir=/dev/writable_device/path
+   used for this purpose if you run Slax from flash drive or disk.
+
+   perchdir=ask lists sessions from /slax/changes on all writable disks.
+   Creating a new session asks which disk to use, including disks without
+   sessions.
+
+   perchdir=resume uses the last session on the boot medium. To select a
+   specific storage directory, use perchdir=/dev/writable_device/path
 
  * perchsize=[size_MB]: When stored on non-linux filesystem such as FAT32,
    sessions are limited to maximum size of 16GB. You can increase the limit

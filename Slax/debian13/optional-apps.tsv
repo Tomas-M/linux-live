@@ -5,10 +5,6 @@
 Application	Packages	Unpacked MB	Desktop file	Icon file
 Drawing	drawing	32.5	com.github.maoschanz.drawing.desktop	slax-drawing.png
 VLC	vlc	199.3	vlc.desktop	slax-vlc.png
-AbiWord	abiword	111.9	abiword.desktop	slax-abiword.png
-Gnumeric	gnumeric	36.2	org.gnumeric.gnumeric.desktop	slax-gnumeric.png
-Firefox ESR	firefox-esr	312.6	firefox-esr.desktop	slax-firefox-esr.png
-Thunderbird	thunderbird	293.2	thunderbird.desktop	slax-thunderbird.png
 Remmina	remmina remmina-plugin-rdp remmina-plugin-vnc	133.2	org.remmina.Remmina.desktop	slax-remmina.png
 Pidgin	pidgin	124.6	pidgin.desktop	slax-pidgin.png
 GParted	gparted	21.1	gparted.desktop	slax-gparted.png
