@@ -124,6 +124,10 @@ must follow the general Slax repair rules above.
   Service startup inside the chroot is blocked with `policy-rc.d`.
 - ConnMan provides NTP synchronization. Do not install `ntpsec-ntpdate` in core;
   it pulls in an otherwise unused Python runtime and its dependencies.
+- Keep `01-firmware` focused on getting users online over Wi-Fi or Ethernet,
+  including MediaTek/Ralink and Atheros USB adapters. Do not add dedicated
+  graphics or audio firmware packages to the base image; users can install
+  those after connecting. Keep small legacy network packages for compatibility.
 - Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
   `grub-efi-amd64-bin` and `mtools` only on the build host: UEFI USB setup copies
   the bundled loader, and ISO recreation reuses the bundled EFI image.

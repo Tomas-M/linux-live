@@ -3,13 +3,18 @@ set -e
 apt-get update
 # Preseed the legacy Intel firmware prompt for the unattended build.
 printf 'firmware-ipw2x00 firmware-ipw2x00/license/accepted boolean true\n' | debconf-set-selections
+# Include network firmware so users can download support for other devices.
 apt-get install --yes --no-install-recommends \
    firmware-linux-free \
    firmware-atheros \
+   firmware-ath9k-htc \
+   firmware-carl9170 \
    firmware-iwlwifi \
+   firmware-mediatek \
    firmware-zd1211 \
    firmware-realtek \
    firmware-bnx2 \
+   firmware-bnx2x \
    firmware-brcm80211 \
    firmware-cavium \
    firmware-ipw2x00 \
