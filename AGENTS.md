@@ -173,9 +173,11 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.4.0`); do not carry a duplicate
+  the tagged upstream release (currently `v5.5.1`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
+  xlunch inherits the desktop cursor; do not create or assign application
+  cursors for its grid, search field or buttons.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection. `05-chromium/copy`
@@ -254,6 +256,12 @@ must follow the general Slax repair rules above.
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` shrinks only tasklist
   icons to 75 percent, leaving space above and below them. Import this scoped
   stylesheet for root, guest and new users alongside the scrollbar styles.
+- Start the panel and Compton on a near-black (`#010101`) root pixmap, then
+  show the wallpaper after the panel's initial redraw. Keep its 84 percent
+  opacity. The Slax theme uses `background: unset`; `none` restores the last
+  background at startup. `fbscreensize` runs `sh ~/.fehbg` to restore the image
+  and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
+  so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
 - Compton must exclude `argb && window_type != 'dock'` from its shadows at
   desktop startup and after resolution changes. GTK windows and popovers draw
   their own shadows inside transparent bounds; another rectangular shadow
@@ -345,18 +353,12 @@ must follow the general Slax repair rules above.
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
   Slax. To test sessions on the separate FAT32 disk while booting from CD,
   append `perchdir=/dev/sda1/changes` in GRUB's command-line editor.
-- Its disposable session disk is `VM/session-test.vdi`, a dynamic 20 GB VDI
-  with a FAT32 data partition. Sessions are under `/media/sda1/changes` and
-  use dynfilefs with an XFS filesystem inside split `changes.dat` files.
-  The test launcher attaches this existing disk at SATA port 1 and the ISO
-  at port 0. Do not recreate or format the session disk during startup.
-  Keep it separate from `VM/virtualbox/debian-work.vdi`; Tomas plans to
-  delete the session test disk after testing large-session duplication.
-- Keep the FAT32 session disk attached during Slax tests and after VM restarts.
-  Boot the ordinary current distribution ISO. Do not create a separate local
-  test ISO or add VM-specific arguments to the distribution boot configuration.
-  Use the existing GRUB command-line editor when a test needs an external
-  session target such as `perchdir=/dev/sda1/changes`.
+- The scratch VM boots the current distribution ISO at SATA port 0 without
+  a hard disk. Attach separate disposable media explicitly for persistence
+  tests; the launcher must not create or format disks. Never use the work
+  VM's disk for those tests. Do not create a separate local test ISO or add
+  VM-specific arguments to the distribution boot configuration. Use GRUB's
+  command-line editor for an external target such as `perchdir=/dev/sda1/changes`.
 - Enable the test VM's audio output with the host's default audio driver and
   an HDA controller. Audio was previously disabled in its local launcher.
 - Enable the test VM's bridged network through the active Ethernet adapter,

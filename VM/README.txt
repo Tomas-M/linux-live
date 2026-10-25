@@ -25,3 +25,7 @@ to /etc/systemd/system, then run enable-slax-autobuild.sh.
 The active VM disk is virtualbox/debian-work.vdi. Shut Debian down normally
 before closing VirtualBox or backing up its disk. VM files and credentials
 stay local and are excluded from Git.
+
+The local start-vbox-boot-test.ps1 helper starts the Slax boot test VM
+from the current ISO without a hard disk. Attach disposable test media
+explicitly when testing persistent sessions; never use the work VM disk.

@@ -25,7 +25,7 @@ for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; d
 done
 
 # set background color and big wait mouse cursor
-xsetroot -solid '#111111'
+fbsetroot -solid '#010101'
 xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
 
 # disable screen blanking
@@ -53,38 +53,6 @@ if [ $? -eq 0 ]; then
     fbautostart &
 fi
 
-# We need to postpone compton after fluxbox starts, else it won't set
-# the transparency of toolbar properly... So we check the fehbg file,
-# which is created by fluxbox at the phase when it sets background.
-# Once the file exist, fluxbox-toolbar is already started
-
-SIGNAL1=~/.fehbg
-SIGNAL2=~/.fehbg2
-
-rm -f $SIGNAL1 2>/dev/null
-rm -f $SIGNAL2 2>/dev/null
-
-(
-   while [ ! -e $SIGNAL1 ]; do
-      sleep 0.1
-   done
-   touch $SIGNAL2
-
-   # Transparent application windows draw their own shadows; keep the panel shadow.
-   exec compton --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --opacity-rule '100:class_g="Chromium"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped' --shadow-exclude "argb && window_type != 'dock'"
-) &
-
-# We wait after background is set and compton is started
-(
-   while [ ! -e $SIGNAL2 ]; do
-      sleep 0.1
-   done
-
-   rm -f $SIGNAL2
-
-   exec volumeicon
-) &
-
 # gen screen resolutions to fluxbox menu
 xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 | sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
@@ -110,6 +78,14 @@ xfce4-panel --disable-wm-check --sm-client-disable &
       sleep 0.1
    done
    xprop -id $(wmctrl -l | grep xfce4-panel | cut -d " " -f 1) -format _NET_WM_STRUT 32c -set _NET_WM_STRUT "0,0,0,52"
+
+   # Transparent application windows draw their own shadows; keep the panel shadow.
+   compton -b --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --opacity-rule '100:class_g="Chromium"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped' --shadow-exclude "argb && window_type != 'dock'"
+   volumeicon &
+
+   # Finish the panel's initial redraw on black before showing the wallpaper.
+   sleep 1
+   fbsetbg -f /usr/share/wallpapers/slax_wallpaper.jpg
 ) &
 
 # And last but not least we start fluxbox.

@@ -9,6 +9,9 @@ if [ "$2" = "-n" ]; then
    exit
 fi
 
+# Restore the image and scaling mode without fbsetbg's DISPLAY-specific lookup.
+sh ~/.fehbg
+
 while [ "$(ps -ef | grep compton | grep -v grep)" != "" ]; do
    killall compton
    sleep 0.1
