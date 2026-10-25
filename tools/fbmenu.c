@@ -10,6 +10,7 @@
  * Add --duplicate to return duplicate:VALUE on F4 (the value new stays new).
  * --input TITLE [DEFAULT] edits UTF-8 text; Esc returns status 2, Enter accepts empty.
  * --status TEXT shows a boot activity below the logo; empty text clears it.
+ * --pause/--continue bracket driver loading; overlapping pauses are counted.
  * One process owns both rendering and keyboard input; clients use a local socket.
  */
 #define _GNU_SOURCE
@@ -504,20 +505,36 @@ static void stop_server(int signal_number)
    running=0;
 }
 
-/* Resume drawing only after the native driver replaces the released framebuffer. */
-static void resume_graphics(unsigned frame)
+/* Release display memory before a driver replaces the framebuffer. */
+static void pause_graphics(unsigned frame)
+{
+   if (pixels) { draw_dots(frame,1); munmap(pixels,layout.smem_len); }
+   pixels=NULL; graphics=0;
+   if (fb>=0) close(fb);
+   fb=-1;
+}
+
+/* Uncoordinated loaders must replace the firmware framebuffer before we reopen it. */
+static void resume_graphics(unsigned frame, int wait_for_driver)
 {
    if (pixels) return;
-   FILE *file=fopen("/sys/class/graphics/fb0/name","r");
-   if (!file) return;
-   char name[18]={0};
-   fgets(name,sizeof(name),file); fclose(file);
-   name[strcspn(name,"\r\n")]=0;
-   if (!name[0] || !strncmp(name,layout.id,sizeof(layout.id))) return;
+   if (wait_for_driver) {
+      FILE *file=fopen("/sys/class/graphics/fb0/name","r");
+      if (!file) return;
+      char name[18]={0};
+      fgets(name,sizeof(name),file); fclose(file);
+      name[strcspn(name,"\r\n")]=0;
+      if (!name[0] || !strncmp(name,layout.id,sizeof(layout.id))) return;
+   }
    if (fb>=0) close(fb);
    if (open_graphics()) return;
    ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1;
-   clear_screen(); draw_splash(frame);
+   /* fbcon skips mode setup while our VT is graphical; activate the driver's mode. */
+   struct fb_var_screeninfo mode=screen;
+   mode.activate=FB_ACTIVATE_NOW|FB_ACTIVATE_FORCE;
+   ioctl(fb,FBIOPUT_VSCREENINFO,&mode);
+   clear_screen();
+   if (menu_client>=0) draw_menu(); else draw_splash(frame);
 }
 
 /* Own the tty for the whole initramfs phase, so Esc works during blocking jobs. */
@@ -532,6 +549,8 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
    if (directory) branding(directory);
    if (log) logfd=open(log,O_RDONLY);
    int listener=socket(AF_UNIX,SOCK_STREAM,0), keep=0, keyboard_mode=0, taken=0;
+   unsigned pauses=0;
+   int coordinated=resumed && !access("/usr/libexec/fbmenu-driver",X_OK);
    ioctl(tty,KDGKBMODE,&keyboard_mode);
    struct sockaddr_un address={.sun_family=AF_UNIX,.sun_path=SOCKET};
    unlink(SOCKET);
@@ -550,11 +569,8 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
    struct vt_mode vt_mode={.mode=VT_PROCESS,.relsig=SIGUSR1,.acqsig=SIGUSR1};
    if (resumed && graphics) {
       ioctl(tty,VT_SETMODE,&vt_mode);
-      /* Remove frozen dots while drawing is paused for the driver handoff. */
-      draw_dots(frame,1);
-      /* Keep the image, but release firmware resources before native drivers load. */
-      munmap(pixels,layout.smem_len); pixels=NULL; graphics=0;
-      close(fb); fb=-1;
+      /* A cooperating loader releases the framebuffer only when it needs to. */
+      if (!coordinated) pause_graphics(frame);
    }
    if (ready_fd>=0) { write_all(ready_fd,"\n",1); close(ready_fd); }
    while (running) {
@@ -571,7 +587,7 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          if (tcgetattr(tty,&mode)) break;
          /* Init may reset termios without taking the display away from us. */
          if (raw && (mode.c_lflag&ICANON)) keyboard(1);
-         if (!disabled) resume_graphics(frame);
+         if (!disabled && !pauses) resume_graphics(frame,!coordinated);
       }
       struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};
       int ready=poll(events,4,250);
@@ -586,10 +602,12 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
             received+=n;
          }
          if (received==sizeof(request)) {
+            if (request.operation=='a') { pauses++; pause_graphics(frame); }
+            if (request.operation=='c' && pauses) pauses--;
             if ((request.operation=='m' || request.operation=='i') && menu_client<0) {
                menu=request; menu_time=(struct timespec){0}; menu_client=client;
                keyboard(1);
-               if (!disabled && !open_graphics()) { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; }
+               if (!disabled && !pauses && !open_graphics()) { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; }
                if (menu.operation=='i') {
                   snprintf(input,sizeof(input),"%s",menu.file);
                   input_cursor=strlen(input);
@@ -623,7 +641,7 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
                ioctl(console,KDSETMODE,KD_TEXT);
                _exit(1);
             }
-            if (request.operation=='s' && !disabled && !graphics) {
+            if (request.operation=='s' && !disabled && !graphics && !pauses) {
                if (open_graphics()) disable_splash();
                else { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; keyboard(1); clear_screen(); draw_splash(frame); }
             }
@@ -730,16 +748,18 @@ int main(int argc, char **argv)
       request.operation='r'; snprintf(request.file,sizeof(request.file),"%s",argv[2]);
    } else if (argc==2) {
       if (!strcmp(argv[1],"--start")) request.operation='s';
+      if (!strcmp(argv[1],"--pause")) request.operation='a';
+      if (!strcmp(argv[1],"--continue")) request.operation='c';
       if (!strcmp(argv[1],"--disable")) request.operation='d';
       if (!strcmp(argv[1],"--stop")) request.operation='q';
       if (!strcmp(argv[1],"--keep")) request.operation='h';
    }
    if (!request.operation) {
-      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --menu TITLE FILE [--cancel] [--duplicate] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start | --disable | --stop | --keep\n");
+      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --menu TITLE FILE [--cancel] [--duplicate] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start | --pause | --continue | --disable | --stop | --keep\n");
       return 1;
    }
    int fd=connect_server(), child=0;
-   if (fd<0 && request.operation=='p') return 1;
+   if (fd<0 && (request.operation=='p' || request.operation=='a' || request.operation=='c')) return 1;
    if (fd<0 && (request.operation=='m' || request.operation=='i')) {
       child=fork();
       if (!child) _exit(serve(NULL,NULL,0,-1,0));

@@ -3,7 +3,18 @@ set -e
 cp -a rootcopy/. /
 # Keep the copied service file read-only for other users.
 chmod 644 /usr/lib/systemd/system/xorg.service /etc/systemd/system/getty@tty1.service.d/xorg.conf /etc/systemd/system/getty@.service.d/framebuffer.conf
-chmod 755 /usr/bin/Xdetect /usr/libexec/slax-fbcon-palette
+chmod 755 /usr/bin/Xdetect /usr/libexec/slax-fbcon-palette /usr/libexec/fbmenu-driver
+
+# Preserve Debian's other driver rules while coordinating the boot splash.
+mkdir -p /etc/udev/rules.d
+sed '/^ENV{MODALIAS}==/ {
+i\
+ENV{MODALIAS}=="?*", TEST=="/run/fbmenu.sock", PROGRAM="/usr/libexec/fbmenu-driver --check $env{MODALIAS}", RUN+="/usr/libexec/fbmenu-driver $env{MODALIAS}", GOTO="fbmenu_driver_done"
+a\
+LABEL="fbmenu_driver_done"
+}' /usr/lib/udev/rules.d/80-drivers.rules > /etc/udev/rules.d/80-drivers.rules
+grep -q '/usr/libexec/fbmenu-driver' /etc/udev/rules.d/80-drivers.rules
+chmod 644 /etc/udev/rules.d/80-drivers.rules
 
 # Keep Breeze selected when GTK later registers its Adwaita cursor theme.
 update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/breeze_cursors/cursor.theme 100
