@@ -6,4 +6,5 @@ for COLOR in red grn blu; do
    read PALETTE < "/sys/module/vt/parameters/default_$COLOR"
    printf '1,%s\n' "${PALETTE#*,}" > "/sys/module/vt/parameters/default_$COLOR"
 done
-printf '\033]R' > "/dev/$1"
+# Restore the palette and show the login cursor hidden during graphical boot.
+printf '\033]R\033[?25h' > "/dev/$1"
