@@ -423,12 +423,17 @@ must follow the general Slax repair rules above.
   pixels instead of restoring text and a blinking cursor. Getty restores tty1
   after X is ready, or after the graphics startup has failed.
   Use the VT_PROCESS release handshake; canonical input alone does not mean
-  getty has taken over, because init resets termios too. Release the firmware
-  framebuffer mapping before acknowledging the root handoff, then resume drawing
-  when the framebuffer name changes. Holding the old mapping can prevent the
-  native driver from reserving its display memory.
-  Clear the dots before releasing that mapping; show only the logo while drawing
-  is paused, then restart the animation when the new framebuffer is available.
+  getty has taken over, because init resets termios too. Slax's optional
+  `/usr/libexec/fbmenu-driver` keeps animation running until graphics modules load.
+  `02-xorg/copy` derives an override of Debian's `80-drivers.rules`, preserving
+  other rules and the normal loader for non-graphics modules. Identify graphics
+  through module dependency paths, not specific GPU names. Bracket loading with
+  `fbmenu --pause` / `--continue`; count overlapping loads and resume on errors.
+  Release the firmware mapping before loading drivers so it cannot pin display
+  memory. Clear the dots during this pause. Without the optional helper, release
+  at root handoff and wait for the framebuffer name to change before reopening.
+  After reopening, activate the driver's reported mode with FB_ACTIVATE_FORCE:
+  fbcon skips mode setup while the VT is graphical. Do not select a resolution.
 - The getty drop-in runs `slax-fbcon-palette` on all text consoles, using
   near-black (#010101) instead of zero-filled black. This avoids the stale
   desktop pixels observed with vmwgfx without patching or recompiling the kernel.
