@@ -265,6 +265,9 @@ must follow the general Slax repair rules above.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.
+  In `03-desktop/copy`, set all commands from `rootcopy/usr/bin` to mode 755;
+  checkout permissions alone cannot guarantee that helpers such as
+  `fbscreensize` remain executable.
 - Keep functional AUFS whiteouts. Omit only bookkeeping and mounted build
   data when creating SquashFS modules.
 - `auplink flush` is a build-time operation needed before freezing/detaching
@@ -419,6 +422,10 @@ must follow the general Slax repair rules above.
 - When Xorg switches away from tty1, fbmenu must preserve its graphics and
   pixels instead of restoring text and a blinking cursor. Getty restores tty1
   after X is ready, or after the graphics startup has failed.
+- The getty drop-in runs `slax-fbcon-palette` on all text consoles, using
+  near-black (#010101) instead of zero-filled black. This avoids the stale
+  desktop pixels observed with vmwgfx without patching or recompiling the kernel.
+  Apply this palette globally, without restricting the driver or pixel format.
 - Session selection retains the Slax logo and shows each session's name,
   date and size on one row. Highlight the entire selected row. No frame,
   arrow-only selection or `1/20` counters. Footer:
