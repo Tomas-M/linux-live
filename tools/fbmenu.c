@@ -57,7 +57,7 @@ static char input[1024];
 static char activity[128];
 static size_t input_cursor;
 static struct timespec menu_time;
-static volatile sig_atomic_t running=1;
+static volatile sig_atomic_t running=1, released;
 
 /* Finish a message even when a signal interrupts a local socket or tty write. */
 static int write_all(int fd, const void *data, size_t size)
@@ -385,16 +385,17 @@ static void draw_menu(void)
 }
 
 /* Hold every dots frame for 250 ms, independently of keyboard and boot requests. */
-static void draw_dots(unsigned frame)
+static void draw_dots(unsigned frame, int clear)
 {
    static const unsigned masks[]={1,3,7,6,4,0};
-   unsigned mask=masks[frame%(sizeof(masks)/sizeof(*masks))];
+   unsigned mask=clear?0:masks[frame%(sizeof(masks)/sizeof(*masks))];
    int y=((int)screen.yres-logo_height)/2;
    for (int row=0;row<4;row++) for (int x=0;x<28;x++) {
       int dot=x/12;
       unsigned color=(dot<3 && x%12<4 && (mask&(1<<dot)))?accent:0;
       pixel(((int)screen.xres-28)/2+x,y+logo_height+25+row,color);
    }
+   if (clear) return;
    struct itimerspec delay={.it_value={.tv_nsec=250000000}};
    timerfd_settime(animation,0,&delay,NULL);
 }
@@ -411,7 +412,7 @@ static void draw_status(void)
 static void draw_splash(unsigned frame)
 {
    draw_logo(((int)screen.yres-logo_height)/2);
-   draw_dots(frame);
+   draw_dots(frame,0);
    draw_status();
 }
 
@@ -499,13 +500,31 @@ static int key(void)
 /* Exit cleanly if initramfs shutdown or an interrupted client stops the server. */
 static void stop_server(int signal_number)
 {
-   (void)signal_number; running=0;
+   if (signal_number==SIGUSR1) released=1;
+   running=0;
+}
+
+/* Resume drawing only after the native driver replaces the released framebuffer. */
+static void resume_graphics(unsigned frame)
+{
+   if (pixels) return;
+   FILE *file=fopen("/sys/class/graphics/fb0/name","r");
+   if (!file) return;
+   char name[18]={0};
+   fgets(name,sizeof(name),file); fclose(file);
+   name[strcspn(name,"\r\n")]=0;
+   if (!name[0] || !strncmp(name,layout.id,sizeof(layout.id))) return;
+   if (fb>=0) close(fb);
+   if (open_graphics()) return;
+   ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1;
+   clear_screen(); draw_splash(frame);
 }
 
 /* Own the tty for the whole initramfs phase, so Esc works during blocking jobs. */
 static int serve(const char *directory, const char *log, int resumed, int ready_fd, unsigned frame)
 {
    signal(SIGTERM,stop_server); signal(SIGINT,stop_server); signal(SIGHUP,stop_server); signal(SIGPIPE,SIG_IGN);
+   signal(SIGUSR1,stop_server);
    tty=open("/dev/tty1",O_RDWR|O_NOCTTY);
    if (tty<0 || tcgetattr(tty,&saved)) return 1;
    animation=ready_fd>=0?6:timerfd_create(CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK);
@@ -527,6 +546,16 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
       }
    }
    if (resumed && disabled) running=0;
+   /* Allow X to request the VT while the splash still owns graphics mode. */
+   struct vt_mode vt_mode={.mode=VT_PROCESS,.relsig=SIGUSR1,.acqsig=SIGUSR1};
+   if (resumed && graphics) {
+      ioctl(tty,VT_SETMODE,&vt_mode);
+      /* Remove frozen dots while drawing is paused for the driver handoff. */
+      draw_dots(frame,1);
+      /* Keep the image, but release firmware resources before native drivers load. */
+      munmap(pixels,layout.smem_len); pixels=NULL; graphics=0;
+      close(fb); fb=-1;
+   }
    if (ready_fd>=0) { write_all(ready_fd,"\n",1); close(ready_fd); }
    while (running) {
       if (resumed) {
@@ -536,8 +565,13 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          ioctl(tty,KDGKBMODE,&current_mode);
          if (current_mode!=keyboard_mode && (current_mode==K_RAW || current_mode==K_MEDIUMRAW || current_mode==K_OFF)) { taken=1; break; }
          /* Leave inactive splash pixels intact; getty restores text when X is ready. */
-         if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) { keep=graphics; break; }
-         if (tcgetattr(tty,&mode) || (raw && (mode.c_lflag&ICANON))) break;
+         if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) { keep=!disabled; break; }
+         int display_mode=KD_GRAPHICS;
+         if (!ioctl(tty,KDGETMODE,&display_mode) && display_mode==KD_TEXT) break;
+         if (tcgetattr(tty,&mode)) break;
+         /* Init may reset termios without taking the display away from us. */
+         if (raw && (mode.c_lflag&ICANON)) keyboard(1);
+         if (!disabled) resume_graphics(frame);
       }
       struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};
       int ready=poll(events,4,250);
@@ -633,13 +667,19 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
       if (events[3].revents&POLLIN) {
          uint64_t expired;
          if (read(animation,&expired,sizeof(expired))==sizeof(expired) && graphics && menu_client<0)
-            draw_dots(++frame);
+            draw_dots(++frame,0);
       }
       if (disabled && menu_client<0) show_log();
    }
+   if (released) keep=!disabled;
    if (!taken) {
       keyboard(0);
       if (!keep) { ioctl(tty,KDSETMODE,KD_TEXT); dprintf(tty,"\033[?25h"); }
+      if (resumed) {
+         if (released) ioctl(tty,VT_RELDISP,1);
+         vt_mode.mode=VT_AUTO;
+         ioctl(tty,VT_SETMODE,&vt_mode);
+      }
    }
    unlink(SOCKET); close(listener); close(tty); close(animation);
    return 0;

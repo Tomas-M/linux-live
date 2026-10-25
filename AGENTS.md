@@ -422,10 +422,18 @@ must follow the general Slax repair rules above.
 - When Xorg switches away from tty1, fbmenu must preserve its graphics and
   pixels instead of restoring text and a blinking cursor. Getty restores tty1
   after X is ready, or after the graphics startup has failed.
+  Use the VT_PROCESS release handshake; canonical input alone does not mean
+  getty has taken over, because init resets termios too. Release the firmware
+  framebuffer mapping before acknowledging the root handoff, then resume drawing
+  when the framebuffer name changes. Holding the old mapping can prevent the
+  native driver from reserving its display memory.
+  Clear the dots before releasing that mapping; show only the logo while drawing
+  is paused, then restart the animation when the new framebuffer is available.
 - The getty drop-in runs `slax-fbcon-palette` on all text consoles, using
   near-black (#010101) instead of zero-filled black. This avoids the stale
   desktop pixels observed with vmwgfx without patching or recompiling the kernel.
   Apply this palette globally, without restricting the driver or pixel format.
+  Restore the visible login cursor there too; the boot configuration hides it.
 - Session selection retains the Slax logo and shows each session's name,
   date and size on one row. Highlight the entire selected row. No frame,
   arrow-only selection or `1/20` counters. Footer:
