@@ -173,7 +173,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.5.1`); do not carry a duplicate
+  the tagged upstream release (currently `v5.5.2`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   xlunch inherits the desktop cursor; do not create or assign application
@@ -195,6 +195,11 @@ must follow the general Slax repair rules above.
 - Slax's `fbappselect` starts xlunch with `/etc/xlunch/focus.ini` by default.
   Keep Slax branding, Session commands and terminal/GUI command routing in its
   profile and `fbcommand`; xlunch itself must remain distribution-independent.
+- The xlunch header shows only `/etc/xlunch/slax_text.png`, with empty text
+  and caption. Keep `icon_size=140` for the wordmark's native 140x49 size;
+  12 px padding aligns its canvas with the sidebar items. The header follows
+  the image's aspect ratio. Do not restore
+  the old round clover icon or a separate Slax text label.
 - Optional installer desktop entries declare `X-Xlunch-Executable` with their
   actual command or absolute executable path. Slax's Focus profile uses
   `grid.uninstalled_icon_transparency=50` and `grid.installed_first=true`.
