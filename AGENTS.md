@@ -23,13 +23,15 @@ reporting progress.
   Its 32-bit binaries and support for other distributions are intentional.
 - Slax currently targets Debian 13 on amd64. Slax recipes and branding belong
   under `Slax/debian13`; reusable functionality belongs in Live Kit.
-- Slax must use Breeze cursors. The installed white variant is Breeze Light
-  under `/usr/share/icons/breeze_cursors`; select it for X11 and GTK and in
-  the default cursor theme. All cursor configuration belongs in `02-xorg`,
-  not `03-desktop`. Register its `cursor.theme` with `update-alternatives`
-  at priority 100 so GTK's Adwaita entry at priority 90 cannot replace it.
-  Use size 24 for both X11 and GTK. Software cursor rendering must preserve
-  this theme and size.
+- Slax uses the bundled Windows Modern Light cursor theme at size 32 for X11
+  and GTK. Its converted Xcursor files and MIT license live in `02-xorg/rootcopy`;
+  do not download or convert them during a build. `02-xorg/cursor-aliases` lists
+  symlinks created by `copy`. Preserve the original blue wait and progress
+  animations, including their premultiplied alpha and timing.
+  Do not install Breeze. Keep cursor defaults in `02-xorg` and register the
+  bundled `cursor.theme` with update-alternatives at priority 100, above
+  Adwaita's 90. Desktop startup uses the named watch cursor from these defaults.
+  Software cursor rendering must preserve the selected theme and size.
 - Preserve graphics driver autodetection. The generic Xorg OutputClass in
   `02-xorg/rootcopy/etc/X11/xorg.conf.d/20-software-cursor.conf` uses
   `SWcursor=true` and `HWcursor=false` because drivers use different option
@@ -227,7 +229,7 @@ must follow the general Slax repair rules above.
   and Fluxbox pass the actual command and arguments to the same compiled helper.
   Its on-demand monitor follows startup notification IDs, matching application
   windows and a 30-second timeout independently for concurrent launches.
-  Show Breeze's themed wait animation beside the pointer in an input-transparent
+  Show the selected theme's wait animation beside the pointer in an input-transparent
   overlay. Never replace the application's cursor or grab pointer input.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
 - Optional application launchers and their single 128 px icons live in `04-apps`
@@ -262,7 +264,7 @@ must follow the general Slax repair rules above.
   triangular arrows. Root, guest and `/etc/skel` import this shared file through
   `.config/gtk-3.0/gtk.css`. Preserve the selected GTK theme and its dark variant;
   replacing it with a light-only theme also changes the taskbar. Keep the CSS
-  and its tiny SVG arrows in rootcopy, applied after cleanup. Breeze defaults
+  and its tiny SVG arrows in rootcopy, applied after cleanup. Cursor defaults
   remain in `02-xorg/rootcopy/etc/gtk-3.0/settings.ini`.
 - Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
   The small `04-apps/gtk-app-style.c` GTK module loads only the stylesheet named

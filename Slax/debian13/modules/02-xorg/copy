@@ -16,6 +16,13 @@ LABEL="fbmenu_driver_done"
 grep -q '/usr/libexec/fbmenu-driver' /etc/udev/rules.d/80-drivers.rules
 chmod 644 /etc/udev/rules.d/80-drivers.rules
 
-# Keep Breeze selected when GTK later registers its Adwaita cursor theme.
-update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/breeze_cursors/cursor.theme 100
+# Share each cursor bitmap across its X11 and toolkit names.
+while read -r CURSOR ALIASES; do
+   for ALIAS in $ALIASES; do
+      ln -sf "$CURSOR" "/usr/share/icons/Windows-Modern-Light/cursors/$ALIAS"
+   done
+done < cursor-aliases
+
+# Keep Slax's bundled theme selected when GTK later registers Adwaita.
+update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/Windows-Modern-Light/cursor.theme 100
 ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service

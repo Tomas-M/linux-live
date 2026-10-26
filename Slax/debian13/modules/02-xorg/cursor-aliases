@@ -1,0 +1,15 @@
+crosshair cell cross cross_reverse diamond_cross plus tcross
+default 1081e37283d90000800003c07f3ef6bf 3085a0e285430894940527032f8b26df 6407b0e94181790501fd1e167b474872 640fb0e74195791501fd1ed57b41487f X_cursor a2a266d0498c3104214a47bd64ab0fc8 alias arrow b66166c04f8c3109214a4fbd64a50fc8 bottom_tee center_ptr color-picker context-menu copy dnd-copy dnd-link dot_box_mask dotbox down-arrow draft_large draft_small draped_box grab icon left-arrow left_ptr left_tee link openhand pirate right-arrow right_ptr right_tee sb_down_arrow sb_left_arrow sb_right_arrow target top_left_arrow top_tee vertical-text wayland-cursor x-cursor zoom-in zoom-out
+fleur 4498f0e0c1937ffe01fd06f973665830 9081237383d90e509aa00f00170e968f all-scroll closedhand dnd-ask dnd-move dnd-none fcf21c00b30f7e3f83fe0dfd12e71cff grabbing move size_all
+help 5c6cd98b3f3ebcb1f9c7f1c204630408 d9ce0ab605698f320427677b458ad60b left_ptr_help question_arrow whats_this
+not-allowed 03b6e0fcb3499374a867c041f52298f0 circle crossed_circle dnd-no-drop forbidden no-drop
+pencil draft
+pointer 9d800788f1b08800ae810202380a0822 e29285e634086352946a0e7090d73106 hand hand1 hand2 pointing_hand
+progress 00000000000000020006000e7e9ffc3f 08e8e1c95fe2fc01f976f1e063a24ccd 3ecb610c1bf2410f44200f48c40d3599 half-busy left_ptr_watch
+size_bdiag bottom_left_corner fcf1c3c7cd4491d801f1e1c78f100000 fd_double_arrow ll_angle ne-resize nesw-resize size-bdiag sw-resize top_right_corner ur_angle
+size_fdiag bd_double_arrow bottom_right_corner c7088f0f3e6c8088236ef8e1e3e70000 lr_angle nw-resize nwse-resize se-resize size-fdiag top_left_corner ul_angle
+size_hor 028006030e0e7ebffc7f7070c0600140 14fef782d02440884392942c11205230 col-resize e-resize ew-resize h_double_arrow left_side right_side sb_h_double_arrow size-hor split_h w-resize
+size_ver 00008160000006810000408080010102 2870a09082c103050810ffdffffe0204 bottom_side double_arrow n-resize ns-resize row-resize s-resize sb_v_double_arrow size-ver split_v top_side v_double_arrow
+text ibeam xterm
+up-arrow sb_up_arrow
+wait watch

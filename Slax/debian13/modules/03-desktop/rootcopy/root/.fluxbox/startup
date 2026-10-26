@@ -24,9 +24,9 @@ for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; d
    fi
 done
 
-# set background color and big wait mouse cursor
+# Set the background and use the cursor theme and size selected by Xresources.
 fbsetroot -solid '#010101'
-xsetroot -xcf /usr/share/icons/breeze_cursors/cursors/watch 37
+xsetroot -cursor_name watch
 
 # disable screen blanking
 xset s off

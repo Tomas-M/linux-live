@@ -47,8 +47,9 @@ cover applications that do not support startup notification.
 The monitor displays the theme's animated wait artwork beside the system pointer.
 Its transparent overlay does not accept focus or pointer input. It leaves the
 native cursor unchanged over desktop, application windows and launcher controls.
-Clickable xlunch controls use the system Breeze hand; other areas inherit the
-desktop cursor. X11 and GTK both select the 24 px theme size in 02-xorg.
+Clickable xlunch controls use the system-themed hand; other areas inherit the
+desktop cursor. X11 and GTK select the bundled Windows Modern Light theme at
+32 px in 02-xorg, including its original blue wait and progress animations.
 Slax desktop overrides live in each module's rootcopy/usr/local/share/applications
 using the package's original desktop filename. XDG gives them precedence over
 the retained /usr/share/applications files, so APT upgrades do not create a second
