@@ -227,6 +227,8 @@ must follow the general Slax repair rules above.
   uses the same notifier when starting an available or newly installed command.
   xlunch's `launcher_args` is a comma-separated argument list (`gio,launch`).
   Restore the busy cursor after a new window or a 30-second timeout.
+  `fbstartupnotify` reads `XCURSOR_SIZE` or the X11 `Xcursor.size` resource for
+  both busy and restored cursors; never hardcode a separate size in the notifier.
 - Optional application launchers and their single 128 px icons live in `04-apps`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
   against clean Slax, without recommends; every entry is below 500 MB.
