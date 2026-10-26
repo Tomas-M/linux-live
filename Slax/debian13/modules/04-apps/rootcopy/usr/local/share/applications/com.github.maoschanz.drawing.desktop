@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Drawing
-Exec=fbinstall slax-drawing "Drawing is not installed." "drawing" "drawing" %U
+Exec=fbinstall slax-drawing "Drawing" "drawing" "drawing" %U
 X-Xlunch-Executable=drawing
 Icon=slax-drawing
 Terminal=false

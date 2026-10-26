@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=VLC
-Exec=fbinstall --user guest slax-vlc "VLC is not installed." "vlc" "vlc --started-from-file" %U
+Name=Video Player
+Exec=fbinstall --user guest slax-vlc "Video Player" "vlc" "vlc --started-from-file" %U
 X-Xlunch-Executable=vlc
 Icon=slax-vlc
 Terminal=false

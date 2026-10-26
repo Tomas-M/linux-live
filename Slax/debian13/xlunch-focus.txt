@@ -6,10 +6,15 @@ The grid uses fade_height=64 to fade clipped icons, labels and highlights into
 the wallpaper at both edges. Fades shrink away at the beginning and end of the list.
 
 The Slax profile is modules/03-desktop/rootcopy/etc/xlunch/focus.ini.
-grid.uninstalled_icon_transparency=50 dims icons with unavailable installer
-targets, and grid.installed_first=true puts available apps first. Both groups
-keep their original order. Hover restores the full icon without moving it.
-Labels and help text remain unchanged. Optional desktop entries declare their
+grid.uninstalled_icon_opacity=100 preserves every icon's original opacity,
+and grid.installed_first=true puts available apps first. Both groups keep their
+original order. Missing apps show the 24 px grid.install_icon arrow in the tile's
+upper-right corner, inset by grid.install_icon_padding=12. With
+grid.install_icon_hover_only=false and grid.install_icon_opacity=30, the arrow
+remains visible at 30 percent opacity outside hover or keyboard focus; active
+tiles show it fully opaque. The SVG is white with crisp pixel edges, two detached
+bars above its shaft and no outline, circle or tray. Help text remains unchanged.
+Optional desktop entries declare their
 actual executable with X-Xlunch-Executable; availability is checked from that
 command even when the catalog was loaded from cache.
 groups.order follows the alphabetical order of displayed category labels.
@@ -36,6 +41,8 @@ fbappselect directly starts xlunch with this profile. Desktop entries launch
 through fbstartupnotify and gio, using the same busy cursor as Fluxbox.
 fbinstall starts the notifier again when launching the installed application.
 The notifier restores the cursor after a window appears or after 30 seconds.
+Clickable xlunch controls use the system Breeze hand; other areas inherit the
+desktop cursor. X11 and GTK both select the 24 px theme size in 02-xorg.
 Slax desktop overrides live in each module's rootcopy/usr/local/share/applications
 using the package's original desktop filename. XDG gives them precedence over
 the retained /usr/share/applications files, so APT upgrades do not create a second
@@ -52,7 +59,7 @@ generic xlunch interface icons and logo and validates the Slax INI with the
 compiled binary before packaging. These files belong to the xlunch release,
 not to a copied local C patch inside Slax.
 
-03-desktop/compile downloads the published xlunch v5.5.2 release. The profile
+03-desktop/compile downloads the published xlunch v5.8.0 release. The profile
 validation prevents an incompatible executable from being packaged.
 
 For an incremental rebuild, replace the executable and assets in 03-desktop,

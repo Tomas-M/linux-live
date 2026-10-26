@@ -6,6 +6,7 @@
 
 ! Use Breeze for X11 application cursors.
 Xcursor.theme: breeze_cursors
+Xcursor.size: 24
 
 XTerm*foreground: white
 XTerm*background: rgb:22/22/22
