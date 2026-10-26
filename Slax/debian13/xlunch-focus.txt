@@ -18,9 +18,10 @@ and hover as application categories. Slax's original action images are scaled
 by the shared renderer. It replaces applications in the main viewport. All labels, icon
 paths, action order and commands are configuration; xlunch has no Slax actions.
 
-The header uses Slax's original clover icon and white DejaVu Sans Bold Slax text. The icon is
-rootcopy/usr/share/icons/hicolor/128x128/apps/slax.png, copied unchanged from
-https://www.slax.org/images/clover-round.png. header.caption is empty and
+The header uses only the transparent Slax wordmark at
+rootcopy/etc/xlunch/slax_text.png. header.text and header.caption are empty;
+icon_size=140 preserves the wordmark's native 140x49 size, and padding=12 aligns
+its canvas with the sidebar items. xlunch adjusts the header height to the image.
 heading.show_count=false hides application and Session counts above the grid.
 Favorites is hidden with navigation.favorites.visible=false. The sidebar shows
 All apps followed by categories, with a divider after All apps.
@@ -51,7 +52,7 @@ generic xlunch interface icons and logo and validates the Slax INI with the
 compiled binary before packaging. These files belong to the xlunch release,
 not to a copied local C patch inside Slax.
 
-03-desktop/compile downloads the published xlunch v5.4.0 release. The profile
+03-desktop/compile downloads the published xlunch v5.5.2 release. The profile
 validation prevents an incompatible executable from being packaged.
 
 For an incremental rebuild, replace the executable and assets in 03-desktop,
