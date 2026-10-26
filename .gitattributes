@@ -1,2 +1,3 @@
 bootfiles/bootinst.bat text eol=crlf
 Slax/debian13/bootfiles/bootlogo.txt text eol=crlf
+Slax/debian13/modules/02-xorg/cursor-aliases text eol=lf
