@@ -253,7 +253,14 @@ must follow the general Slax repair rules above.
 - xlunch keeps each fitted label and its measured width until the cell width
   changes. Repeated Imlib2 measurements shifted `Terminal` by one pixel on hover;
   partial redraws must preserve label geometry, including for the first entry.
-- The Fluxbox patch also fixes `Menu::updateMenu()`: child windows and backing
+- The Fluxbox patch shows themed resize cursors on all four borders and corners.
+  Hover and dragging share border hit testing; restore the inherited cursor when
+  leaving the frame, and do not advertise resizing on fixed-size or shaded windows.
+  Frame pointer motion without a pressed button must not invoke drag bindings.
+  Resize the frame and clients continuously during a drag, without an outline.
+  Use root pointer coordinates and the initial frame geometry to avoid drift;
+  preserve application size hints, including character-cell increments.
+  The patch also fixes `Menu::updateMenu()`: child windows and backing
   pixmaps use the recomputed menu width, so changing column count cannot clip
   the resolution list. Verify both columns at 800x600 and the menu at 1024x768.
   Fluxbox's SIGUSR1 restarts it with exec, preserving its PID, Xorg and applications;

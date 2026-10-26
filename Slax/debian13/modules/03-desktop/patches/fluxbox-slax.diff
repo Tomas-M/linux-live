@@ -1,29 +1,310 @@
---- a/src/Window.cc	2013-02-13 05:04:05.000000000 -0500
-+++ b/src/Window.cc	2017-11-05 17:31:37.516503305 -0500
-@@ -2745,6 +2745,14 @@
+--- a/src/Window.cc
++++ b/src/Window.cc
+@@ -2370,6 +2370,13 @@
+
+ void FluxboxWindow::motionNotifyEvent(XMotionEvent &me) {
+
++    // Hover must not run Move bindings with a previously pressed button.
++    if (!(me.state & (Button1Mask | Button2Mask | Button3Mask | Button4Mask | Button5Mask))) {
++        if (me.window == frame().window())
++            updateBorderCursor(me.x, me.y);
++        return;
++    }
++
+     if (isMoving() && me.window == parent()) {
+         me.window = frame().window().window();
+     }
+@@ -2480,42 +2487,48 @@
+         // end if moving
+     } else if (resizing) {
+
++        // Use the latest contiguous motion without skipping a button release.
++        XEvent next;
++        while (XPending(display)) {
++            XPeekEvent(display, &next);
++            if (next.type != MotionNotify || next.xmotion.window != me.window)
++                break;
++            XNextEvent(display, &next);
++            me = next.xmotion;
++        }
++
+         int old_resize_x = m_last_resize_x;
+         int old_resize_y = m_last_resize_y;
+         int old_resize_w = m_last_resize_w;
+         int old_resize_h = m_last_resize_h;
+
+-        int dx = me.x - m_button_grab_x;
+-        int dy = me.y - m_button_grab_y;
++        // Root coordinates and initial geometry remain stable as the frame moves.
++        int dx = me.x_root - m_button_grab_x;
++        int dy = me.y_root - m_button_grab_y;
+
+         if (m_resize_corner == LEFTTOP || m_resize_corner == LEFTBOTTOM ||
+                 m_resize_corner == LEFT) {
+-            m_last_resize_w = frame().width() - dx;
+-            m_last_resize_x = frame().x() + dx;
++            m_last_resize_w = m_resize_start_w - dx;
++            m_last_resize_x = m_resize_start_x + dx;
+         }
+         if (m_resize_corner == LEFTTOP || m_resize_corner == RIGHTTOP ||
+                 m_resize_corner == TOP) {
+-            m_last_resize_h = frame().height() - dy;
+-            m_last_resize_y = frame().y() + dy;
++            m_last_resize_h = m_resize_start_h - dy;
++            m_last_resize_y = m_resize_start_y + dy;
+         }
+         if (m_resize_corner == LEFTBOTTOM || m_resize_corner == BOTTOM ||
+                 m_resize_corner == RIGHTBOTTOM)
+-            m_last_resize_h = frame().height() + dy;
++            m_last_resize_h = m_resize_start_h + dy;
+         if (m_resize_corner == RIGHTBOTTOM || m_resize_corner == RIGHTTOP ||
+                 m_resize_corner == RIGHT)
+-            m_last_resize_w = frame().width() + dx;
++            m_last_resize_w = m_resize_start_w + dx;
+         if (m_resize_corner == CENTER) {
+-            // dx or dy must be at least 2
+-            if (abs(dx) >= 2 || abs(dy) >= 2) {
+-                // take max and make it even
+-                int diff = 2 * (max(dx, dy) / 2);
+-
+-                m_last_resize_h =  frame().height() + diff;
+-
+-                m_last_resize_w = frame().width() + diff;
+-                m_last_resize_x = frame().x() - diff/2;
+-                m_last_resize_y = frame().y() - diff/2;
+-            }
++            // Keep the center fixed and allow returning to the initial size.
++            int diff = 2 * (max(dx, dy) / 2);
++            m_last_resize_h = m_resize_start_h + diff;
++            m_last_resize_w = m_resize_start_w + diff;
++            m_last_resize_x = m_resize_start_x - diff/2;
++            m_last_resize_y = m_resize_start_y - diff/2;
+         }
+
+         fixSize();
+@@ -2526,18 +2539,8 @@
+                 old_resize_w != m_last_resize_w ||
+                 old_resize_h != m_last_resize_h ) {
+
+-            // draw over old rect
+-            parent().drawRectangle(screen().rootTheme()->opGC(),
+-                    old_resize_x, old_resize_y,
+-                    old_resize_w - 1 + 2 * frame().window().borderWidth(),
+-                    old_resize_h - 1 + 2 * frame().window().borderWidth());
+-
+-            // draw resize rectangle
+-            parent().drawRectangle(screen().rootTheme()->opGC(),
+-                    m_last_resize_x, m_last_resize_y,
+-                    m_last_resize_w - 1 + 2 * frame().window().borderWidth(),
+-                    m_last_resize_h - 1 + 2 * frame().window().borderWidth());
+-
++            moveResize(m_last_resize_x, m_last_resize_y,
++                       m_last_resize_w, m_last_resize_h);
+         }
+     } else if (m_attaching_tab != 0) {
+         //
+@@ -2569,6 +2572,9 @@
+         !isVisible()) {
+         return;
+     }
++
++    if (ev.window == frame().window())
++        updateBorderCursor(ev.x, ev.y);
+
+     if (ev.window == frame().window())
+         Fluxbox::instance()->keys()->doAction(ev.type, ev.state, 0,
+@@ -2611,6 +2617,10 @@
+ }
+
+ void FluxboxWindow::leaveNotifyEvent(XCrossingEvent &ev) {
++
++    // Reset before entering a child, which may inherit the frame's cursor.
++    if (ev.window == frame().window())
++        frame().window().setCursor(None);
+
+     // ignore grab activates, or if we're not visible
+     if (ev.mode == NotifyGrab || ev.mode == NotifyUngrab ||
+@@ -2738,15 +2748,22 @@
+         return;
+     }
+
+-    if ((isMaximized() || isFullscreen()) && screen().getMaxDisableMove())
+-        return;
+-
+     // save first event point
+     m_last_resize_x = x;
+     m_last_resize_y = y;
      m_button_grab_x = x - frame().x() - frame().window().borderWidth();
      m_button_grab_y = y - frame().y() - frame().window().borderWidth();
- 
-+    // If mouse clicked on the border, start window resize instead of move
-+    if (m_button_grab_x <= 0 || m_button_grab_x >= (int)frame().window().width()
-+        || m_button_grab_y >= (int)frame().window().height() ) {
-+        ReferenceCorner dir = getResizeDirection(m_button_grab_x,m_button_grab_y,EDGEORCORNERRESIZE,frame().window().borderWidth(),frame().window().borderWidth());
+
++    // Use the same border regions for the hover cursor and resizing.
++    ReferenceCorner dir = getBorderResizeDirection(m_button_grab_x, m_button_grab_y);
++    if (dir != CENTER) {
 +        startResizing(m_button_grab_x, m_button_grab_y, dir);
 +        return;
 +    }
 +
++    if ((isMaximized() || isFullscreen()) && screen().getMaxDisableMove())
++        return;
++
      moving = true;
- 
+
      Fluxbox *fluxbox = Fluxbox::instance();
-@@ -2752,7 +2760,7 @@
+@@ -2754,7 +2771,7 @@
      // freely map and unmap the window we're moving.
      grabPointer(screen().rootWindow().window(), False, ButtonMotionMask |
                  ButtonReleaseMask, GrabModeAsync, GrabModeAsync,
 -                screen().rootWindow().window(), frame().theme()->moveCursor(), CurrentTime);
 +                screen().rootWindow().window(), None, CurrentTime);
- 
+
      if (menu().isVisible())
          menu().hide();
+@@ -3018,6 +3035,36 @@
+     return RIGHTBOTTOM;
+ }
+
++// CENTER means that this point is not an enabled resize border.
++FluxboxWindow::ReferenceCorner FluxboxWindow::getBorderResizeDirection(int x, int y) const {
++    if (!isResizable() || isShaded() || Fluxbox::instance()->getIgnoreBorder())
++        return CENTER;
++    if ((isMaximized() || isFullscreen()) && screen().getMaxDisableResize())
++        return CENTER;
++    if (x >= 0 && x < (int)frame().width() && y >= 0 && y < (int)frame().height())
++        return CENTER;
++    int border = frame().window().borderWidth();
++    return getResizeDirection(x, y, EDGEORCORNERRESIZE, border, border);
++}
++
++// Reuse the active theme's directional cursors for both hover and the grab.
++Cursor FluxboxWindow::getResizeCursor(ReferenceCorner dir) const {
++    if (dir == LEFTTOP) return frame().theme()->upperLeftAngleCursor();
++    if (dir == RIGHTTOP) return frame().theme()->upperRightAngleCursor();
++    if (dir == RIGHTBOTTOM) return frame().theme()->lowerRightAngleCursor();
++    if (dir == LEFTBOTTOM) return frame().theme()->lowerLeftAngleCursor();
++    if (dir == LEFT) return frame().theme()->leftSideCursor();
++    if (dir == RIGHT) return frame().theme()->rightSideCursor();
++    if (dir == TOP) return frame().theme()->topSideCursor();
++    if (dir == BOTTOM) return frame().theme()->bottomSideCursor();
++    return None;
++}
++
++// X coordinates are relative to the inside of the frame's outer border.
++void FluxboxWindow::updateBorderCursor(int x, int y) {
++    frame().window().setCursor(getResizeCursor(getBorderResizeDirection(x, y)));
++}
++
+ void FluxboxWindow::startResizing(int x, int y, ReferenceCorner dir) {
+
+     if (isResizing())
+@@ -3035,42 +3082,26 @@
+
+     disableMaximization();
+
+-    const Cursor& cursor = (m_resize_corner == LEFTTOP) ? frame().theme()->upperLeftAngleCursor() :
+-                           (m_resize_corner == RIGHTTOP) ? frame().theme()->upperRightAngleCursor() :
+-                           (m_resize_corner == RIGHTBOTTOM) ? frame().theme()->lowerRightAngleCursor() :
+-                           (m_resize_corner == LEFT) ? frame().theme()->leftSideCursor() :
+-                           (m_resize_corner == RIGHT) ? frame().theme()->rightSideCursor() :
+-                           (m_resize_corner == TOP) ? frame().theme()->topSideCursor() :
+-                           (m_resize_corner == BOTTOM) ? frame().theme()->bottomSideCursor() :
+-                                                            frame().theme()->lowerLeftAngleCursor();
++    Cursor cursor = getResizeCursor(dir == CENTER ? LEFTBOTTOM : dir);
+
+     grabPointer(fbWindow().window(),
+                 false, ButtonMotionMask | ButtonReleaseMask,
+                 GrabModeAsync, GrabModeAsync, None, cursor, CurrentTime);
+
+-    m_button_grab_x = x;
+-    m_button_grab_y = y;
+-    m_last_resize_x = frame().x();
+-    m_last_resize_y = frame().y();
+-    m_last_resize_w = frame().width();
+-    m_last_resize_h = frame().height();
++    m_button_grab_x = x + frame().x() + frame().window().borderWidth();
++    m_button_grab_y = y + frame().y() + frame().window().borderWidth();
++    m_resize_start_x = m_last_resize_x = frame().x();
++    m_resize_start_y = m_last_resize_y = frame().y();
++    m_resize_start_w = m_last_resize_w = frame().width();
++    m_resize_start_h = m_last_resize_h = frame().height();
+
+     fixSize();
+     frame().displaySize(m_last_resize_w, m_last_resize_h);
+
+-    parent().drawRectangle(screen().rootTheme()->opGC(),
+-                       m_last_resize_x, m_last_resize_y,
+-                       m_last_resize_w - 1 + 2 * frame().window().borderWidth(),
+-                       m_last_resize_h - 1 + 2 * frame().window().borderWidth());
+ }
+
+ void FluxboxWindow::stopResizing(bool interrupted) {
+     resizing = false;
+-
+-    parent().drawRectangle(screen().rootTheme()->opGC(),
+-                           m_last_resize_x, m_last_resize_y,
+-                           m_last_resize_w - 1 + 2 * frame().window().borderWidth(),
+-                           m_last_resize_h - 1 + 2 * frame().window().borderWidth());
+
+     screen().hideGeometry();
+
+@@ -3357,12 +3388,12 @@
+     // move X if necessary
+     if (m_resize_corner == LEFTTOP || m_resize_corner == LEFTBOTTOM ||
+         m_resize_corner == LEFT) {
+-        m_last_resize_x = frame().x() + frame().width() - m_last_resize_w;
++        m_last_resize_x = m_resize_start_x + m_resize_start_w - m_last_resize_w;
+     }
+
+     if (m_resize_corner == LEFTTOP || m_resize_corner == RIGHTTOP ||
+         m_resize_corner == TOP) {
+-        m_last_resize_y = frame().y() + frame().height() - m_last_resize_h;
++        m_last_resize_y = m_resize_start_y + m_resize_start_h - m_last_resize_h;
+     }
+ }
+
+--- a/src/Window.hh
++++ b/src/Window.hh
+@@ -467,6 +467,12 @@
+     bool oplock; ///< Used to help stop transient loops occurring by locking a window during certain operations
+
+ private:
++    /// Share border hit testing and themed cursors between hover and dragging.
++    ReferenceCorner getBorderResizeDirection(int x, int y) const;
++    Cursor getResizeCursor(ReferenceCorner dir) const;
++    /// Update only the frame cursor; client windows retain their own cursors.
++    void updateBorderCursor(int x, int y);
++
+     /// signal callback for title changes by clients
+     void setTitle(const std::string &title, Focusable &client);
+
+@@ -544,6 +550,8 @@
+     int m_last_resize_x, m_last_resize_y; // handles last button press event for resize
+     int m_last_move_x, m_last_move_y; // handles last pos for non opaque moving
+     int m_last_resize_h, m_last_resize_w; // handles height/width for resize "window"
++    int m_resize_start_x, m_resize_start_y; // fixed geometry while live resizing
++    int m_resize_start_w, m_resize_start_h;
+     int m_last_pressed_button;
+
+     unsigned int m_workspace_number;
+--- a/src/FbWinFrame.cc
++++ b/src/FbWinFrame.cc
+@@ -113,7 +113,7 @@
+     m_theme(theme),
+     m_imagectrl(screen.imageControl()),
+     m_state(state),
+-    m_window(theme->screenNum(), state.x, state.y, state.width, state.height, s_mask, true, false,
++    m_window(theme->screenNum(), state.x, state.y, state.width, state.height, s_mask | PointerMotionMask, true, false,
+         client_depth, InputOutput,
+         (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().visual() : CopyFromParent),
+         (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().colormap() : CopyFromParent)),
+@@ -640,7 +640,7 @@
+     win.reparent(m_window, clientArea().x(), clientArea().y());
+
+     m_window.setEventMask(ButtonPressMask | ButtonReleaseMask |
+-                          ButtonMotionMask | EnterWindowMask |
++                          ButtonMotionMask | PointerMotionMask | EnterWindowMask |
+                           LeaveWindowMask | SubstructureRedirectMask);
+
+     XFlush(win.display());
 --- a/src/FbTk/FbDrawable.hh
 +++ b/src/FbTk/FbDrawable.hh
 @@ -52,7 +52,8 @@ public:
