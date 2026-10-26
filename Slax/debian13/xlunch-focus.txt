@@ -38,9 +38,15 @@ The three configured commands play Slax's existing shutdown sound and then
 log out with killall Xorg, restart with reboot, or shut down with poweroff.
 fblogout and logout.dsv remain available for Fluxbox's Exit / Logout entry.
 fbappselect directly starts xlunch with this profile. Desktop entries launch
-through fbstartupnotify and gio, using the same busy cursor as Fluxbox.
-fbinstall starts the notifier again when launching the installed application.
-The notifier restores the cursor after a window appears or after 30 seconds.
+through fbstartupnotify --desktop, using GIO's desktop-file launch API.
+Fluxbox and fbinstall pass commands and their arguments to the same helper.
+An on-demand monitor tracks each startup ID independently, ending feedback on
+completion, a matching window, failure or a 30-second timeout. Process ancestry
+also matches windows launched through shell and guest-user wrappers; class hints
+cover applications that do not support startup notification.
+The monitor displays the theme's animated wait artwork beside the system pointer.
+Its transparent overlay does not accept focus or pointer input. It leaves the
+native cursor unchanged over desktop, application windows and launcher controls.
 Clickable xlunch controls use the system Breeze hand; other areas inherit the
 desktop cursor. X11 and GTK both select the 24 px theme size in 02-xorg.
 Slax desktop overrides live in each module's rootcopy/usr/local/share/applications
@@ -54,7 +60,8 @@ prefers an application with that executable. Otherwise fbcommand runs GUI
 commands directly and console commands in xterm, retaining output until a key
 is pressed; interactive ncurses programs close normally when they finish.
 
-03-desktop/build includes libglib2.0-bin for gio. 03-desktop/compile packages the
+03-desktop/compile builds fbstartupnotify against GTK2, GIO, libstartup-notification
+and Xcursor, with runtime dependencies derived by dpkg-shlibdeps. It packages the
 generic xlunch interface icons and logo and validates the Slax INI with the
 compiled binary before packaging. These files belong to the xlunch release,
 not to a copied local C patch inside Slax.

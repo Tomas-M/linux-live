@@ -4,7 +4,7 @@ if pgrep -x connman-gtk; then
 
    if wmctrl -l | grep -i "Network Settings" ; then
       wmctrl -a "Network Settings"
-      fbstartupnotify false
+      fbstartupnotify --complete
    else
       gtkdialog -t "Already running" -m "The Network Manager is already running.
 To access its window, double-click the icon that resembles two
