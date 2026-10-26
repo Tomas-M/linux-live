@@ -231,6 +231,10 @@ must follow the general Slax repair rules above.
   windows and a 30-second timeout independently for concurrent launches.
   Show the selected theme's wait animation beside the pointer in an input-transparent
   overlay. Never replace the application's cursor or grab pointer input.
+  Follow XI2 raw motion during launches, including application grabs; keep the timer
+  for animation, pointer warps and displays without XI2. Flush moves immediately.
+  Exclude `Fbstartupnotify` from Compton fading at startup and after resolution changes:
+  fading an unmapped indicator leaves a stationary spinner after the application opens.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
 - Optional application launchers and their single 128 px icons live in `04-apps`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
