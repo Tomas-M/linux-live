@@ -1,5 +1,5 @@
 /* Application startup feedback, without replacing or grabbing the pointer.
- * Build: cc -Os -s -o fbstartupnotify fbstartupnotify.c $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11)
+ * Build: cc -Os -s -o fbstartupnotify fbstartupnotify.c $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xi)
  * Usage: fbstartupnotify COMMAND [ARGS...] | --desktop FILE [FILES...] | --monitor | --complete
  */
 #define SN_API_NOT_YET_FROZEN
@@ -9,6 +9,7 @@
 #include <libsn/sn.h>
 #include <X11/Xatom.h>
 #include <X11/Xcursor/Xcursor.h>
+#include <X11/extensions/XInput2.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -31,6 +32,7 @@ static GtkWidget *overlay;
 static XcursorImages *animation;
 static guint timer, frame;
 static gint64 next_frame, next_check;
+static int input_opcode;
 static Atom clients_atom, active_atom, startup_atom, pid_atom, leader_atom;
 
 /* libsn and window inspection share GDK's scoped handling of disappearing windows. */
@@ -171,12 +173,43 @@ static void shape_overlay(void)
     gdk_region_destroy(empty);
 }
 
-/* Work only during launches: move smoothly, advance themed frames and check readiness. */
+/* Listen only during launches; raw motion also arrives while another client has a grab. */
+static void select_motion(gboolean enabled)
+{
+    if (!input_opcode) return;
+    unsigned char bits[XIMaskLen(XI_RawMotion)]={0};
+    if (enabled) XISetMask(bits, XI_RawMotion);
+    XIEventMask mask={XIAllMasterDevices, sizeof(bits), bits};
+    XISelectEvents(display, root, &mask, 1);
+}
+
+/* Follow input events immediately instead of waiting for the animation timer. */
+static void follow_pointer(void)
+{
+    int x, y;
+    GdkScreen *screen;
+    gdk_display_get_pointer(gdk_display_get_default(), &screen, &x, &y, NULL);
+    GdkRectangle bounds;
+    gdk_screen_get_monitor_geometry(screen, gdk_screen_get_monitor_at_point(screen, x, y), &bounds);
+    XcursorImage *image=animation->images[frame];
+    int offset=MAX(8, XcursorGetDefaultSize(display)/3);
+    if (x+offset+(int)image->width > bounds.x+bounds.width) x-=offset+image->width;
+    else x+=offset;
+    if (y+offset+(int)image->height > bounds.y+bounds.height) y-=offset+image->height;
+    else y+=offset;
+    gtk_window_move(GTK_WINDOW(overlay), MAX(bounds.x, x), MAX(bounds.y, y));
+    gtk_widget_show(overlay);
+    gdk_window_raise(overlay->window);
+    gdk_flush();
+}
+
+/* Advance the animation and readiness checks; polling also covers pointer warps and older X servers. */
 static gboolean tick(gpointer data)
 {
     if (!pending)
     {
         gtk_widget_hide(overlay);
+        select_motion(FALSE);
         timer=0;
         return FALSE;
     }
@@ -223,20 +256,7 @@ static gboolean tick(gpointer data)
         shape_overlay();
         gtk_widget_queue_draw(overlay);
     }
-    int x, y;
-    GdkScreen *screen;
-    gdk_display_get_pointer(gdk_display_get_default(), &screen, &x, &y, NULL);
-    GdkRectangle bounds;
-    gdk_screen_get_monitor_geometry(screen, gdk_screen_get_monitor_at_point(screen, x, y), &bounds);
-    XcursorImage *image=animation->images[frame];
-    int offset=MAX(8, XcursorGetDefaultSize(display)/3);
-    if (x+offset+(int)image->width > bounds.x+bounds.width) x-=offset+image->width;
-    else x+=offset;
-    if (y+offset+(int)image->height > bounds.y+bounds.height) y-=offset+image->height;
-    else y+=offset;
-    gtk_window_move(GTK_WINDOW(overlay), MAX(bounds.x, x), MAX(bounds.y, y));
-    gtk_widget_show(overlay);
-    gdk_window_raise(overlay->window);
+    follow_pointer();
     return TRUE;
 }
 
@@ -268,7 +288,11 @@ static void notification(SnMonitorEvent *event, void *data)
         for (gulong i=0; i < count; i++) g_hash_table_add(item->windows, (gpointer)windows[i]);
         if (windows) XFree(windows);
         pending=g_list_append(pending, item);
-        if (!timer) timer=g_timeout_add(16, tick, NULL);
+        if (!timer)
+        {
+            select_motion(TRUE);
+            timer=g_timeout_add(16, tick, NULL);
+        }
     }
     if (type == SN_MONITOR_EVENT_COMPLETED || type == SN_MONITOR_EVENT_CANCELED)
         for (GList *node=pending; node; node=node->next)
@@ -286,6 +310,9 @@ static void notification(SnMonitorEvent *event, void *data)
 /* Feed startup broadcasts into libsn without consuming GTK's other X events. */
 static GdkFilterReturn filter(GdkXEvent *event, GdkEvent *translated, gpointer data)
 {
+    XEvent *xevent=event;
+    if (pending && xevent->type == GenericEvent && xevent->xcookie.extension == input_opcode)
+        if (xevent->xcookie.evtype == XI_RawMotion) follow_pointer();
     sn_display_process_event(sn_display, event);
     return GDK_FILTER_CONTINUE;
 }
@@ -293,6 +320,9 @@ static GdkFilterReturn filter(GdkXEvent *event, GdkEvent *translated, gpointer d
 /* One monitor owns the display selection; racing launches cannot create duplicates. */
 static void monitor(Atom selection)
 {
+    int event, error, major=2, minor=1;
+    if (!XQueryExtension(display, "XInputExtension", &input_opcode, &event, &error) ||
+            XIQueryVersion(display, &major, &minor) != Success) input_opcode=0;
     overlay=gtk_window_new(GTK_WINDOW_POPUP);
     gtk_window_set_title(GTK_WINDOW(overlay), "Application startup");
     gtk_window_set_wmclass(GTK_WINDOW(overlay), "fbstartupnotify", "Fbstartupnotify");
