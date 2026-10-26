@@ -528,6 +528,11 @@ must follow the general Slax repair rules above.
   Explicit session devices mount at `/memory/persistence`, with a single
   bind mount of the selected directory at the existing changes path. RAM
   copying releases its loop device before unmounting the backing filesystem.
+- Shutdown keeps optical media attached in virtual machines, detected from
+  the CPU hypervisor flag, virtual-machine DMI identifiers or sysfs hypervisor
+  information. Keep this check in the initramfs shutdown script without runtime
+  package dependencies. Physical CD/DVD boots retain eject and tray closing;
+  filesystem unmounting must run in both cases.
 - Esc in the session picker cancels persistence: no session is created and
   `last_session.txt` is not updated. Elsewhere during boot, Esc dismisses the
   splash and reveals the log. Keep a text menu when framebuffer is unavailable
