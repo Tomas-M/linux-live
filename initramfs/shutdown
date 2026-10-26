@@ -55,6 +55,14 @@ done
 # remember from which device we are started, so we can eject it later
 DEVICE="$(cat /proc/mounts | grep /memory/data | grep /dev/ | cut -d " " -f 1)"
 
+# Keep virtual optical media attached; DMI also catches VMs hiding the CPU flag.
+if grep -qw hypervisor /proc/cpuinfo ||
+   grep -Eiq '^(KVM|QEMU|VMware|VMW|innotek GmbH|VirtualBox|Xen|Bochs|Parallels|BHYVE|Hyper-V|Virtual Machine)' \
+      /sys/class/dmi/id/sys_vendor /sys/class/dmi/id/product_name 2>/dev/null ||
+   [ -e /sys/hypervisor/type ]; then
+   DEVICE=""
+fi
+
 debug_log "- going through several cycles of umounts to clear everything left"
 for i in 1 2 3 4; do
   for d in $(ls -1 /move 2>/dev/null | sort); do
