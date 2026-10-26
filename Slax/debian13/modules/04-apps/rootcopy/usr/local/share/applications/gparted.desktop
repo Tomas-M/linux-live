@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=GParted
-Exec=fbinstall slax-gparted "GParted is not installed." "gparted" "/usr/sbin/gparted" %f
+Name=Partition Manager
+Exec=fbinstall slax-gparted "Partition Manager" "gparted" "/usr/sbin/gparted" %f
 X-Xlunch-Executable=/usr/sbin/gparted
 Icon=slax-gparted
 Terminal=false

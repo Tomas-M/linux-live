@@ -27,9 +27,9 @@ PACKAGE=$OUTPUT/tools
 mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACKAGE/DEBIAN"
 cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cflags --libs gtk+-2.0)
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.5.2.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.8.0.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.5.2
+cd xlunch-5.8.0
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"

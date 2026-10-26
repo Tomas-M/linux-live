@@ -28,7 +28,8 @@ reporting progress.
   the default cursor theme. All cursor configuration belongs in `02-xorg`,
   not `03-desktop`. Register its `cursor.theme` with `update-alternatives`
   at priority 100 so GTK's Adwaita entry at priority 90 cannot replace it.
-  Software cursor rendering must preserve this theme.
+  Use size 24 for both X11 and GTK. Software cursor rendering must preserve
+  this theme and size.
 - Preserve graphics driver autodetection. The generic Xorg OutputClass in
   `02-xorg/rootcopy/etc/X11/xorg.conf.d/20-software-cursor.conf` uses
   `SWcursor=true` and `HWcursor=false` because drivers use different option
@@ -138,18 +139,20 @@ must follow the general Slax repair rules above.
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
-  `slax-desktop-tools`. Use `fbinstall [--user guest] ICON TEXT "PACKAGE..."
+  `slax-desktop-tools`. Use `fbinstall [--user guest] ICON NAME "PACKAGE..."
   "COMMAND [ARGS...]" [ARGS...]`. Available commands start before GTK or APT.
-  APT first computes the net unpacked size including dependencies. Above 10 MB,
-  the same window shows the application icon and OK/Cancel; smaller installs
-  proceed automatically. File and URL arguments stay separate from command quoting.
+  Missing applications install immediately, without a size threshold or confirmation.
+  Launchers pass the application name; the installer supplies the shared explanation
+  that it will be downloaded, installed and opened automatically.
+  Run APT directly rather than a separate size calculation or simulated installation.
+  File and URL arguments stay separate from command quoting.
   It uses existing package lists, refreshes once if a package cannot be resolved
   or an archive returns HTTP 404, and installs without recommends. It launches
   the command only on success. APT's status fd supplies download and installation
   percentages; updating and preparation pulse. Command arguments use quoting
   without an implicit shell.
   Installation errors show a scrollable APT log and an OK button.
-  Keep installer, confirmation and error windows centered when their contents
+  Keep installer and error windows centered when their contents
   change size, using `GTK_WIN_POS_CENTER_ALWAYS` and `GDK_GRAVITY_CENTER` so
   the window-manager frame is included in the centered position.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
@@ -173,11 +176,12 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.5.2`); do not carry a duplicate
+  the tagged upstream release (currently `v5.8.0`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
-  xlunch inherits the desktop cursor; do not create or assign application
-  cursors for its grid, search field or buttons.
+  xlunch uses libXcursor to load the system-themed hand for clickable controls,
+  respecting the configured theme and size. Other areas inherit the desktop
+  cursor; do not restore fixed-size X font cursors.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection. `05-chromium/copy`
@@ -202,9 +206,17 @@ must follow the general Slax repair rules above.
   the old round clover icon or a separate Slax text label.
 - Optional installer desktop entries declare `X-Xlunch-Executable` with their
   actual command or absolute executable path. Slax's Focus profile uses
-  `grid.uninstalled_icon_transparency=50` and `grid.installed_first=true`.
-  Available apps come first; missing apps have transparent icons until hover.
-  Keep labels and help text unchanged. Availability is derived from the
+  `grid.uninstalled_icon_opacity=100` and `grid.installed_first=true`.
+  Available apps come first; every icon retains its original opacity. Missing
+  apps show the 24 px `grid.install_icon` arrow.
+  Place it in the tile's upper-right corner, with `grid.install_icon_padding=12`.
+  `grid.install_icon_hover_only=false` and `grid.install_icon_opacity=30` show
+  it at 30 percent opacity without hover, and fully opaque on hover or keyboard
+  focus. Focus opacity values run from 0 (invisible) to 100 (opaque). Keep these
+  settings configurable, independently of grid padding and the classic interface.
+  Use a standalone down arrow with two detached bars above its shaft, without
+  a circle or tray; use white artwork with crisp pixel edges and no outline.
+  Keep help text unchanged. Availability is derived from the
   executable even with cached metadata; do not persist installation status.
   Its footer uses `align=grid`, leaving the lower left corner for the close button.
   Capture the live 52 px panel launcher with scrot before opening xlunch, so the
@@ -227,6 +239,7 @@ must follow the general Slax repair rules above.
   Debian 13 redirects `/etc/default/locale` to this canonical file at boot.
 - Keep LXTask optional: its Task Manager launcher installs `lxtask` through
   `fbinstall`. Display Xarchiver as `X Archiver` and Remmina as `Remote Desktop`.
+  Display GParted as `Partition Manager` and VLC as `Video Player`.
   Hide Favorites with `navigation.favorites.visible=false` in Slax's Focus profile;
   keep All apps, the application categories and Session available.
 - The automount udev rule queues a transient systemd service with `--no-block`.

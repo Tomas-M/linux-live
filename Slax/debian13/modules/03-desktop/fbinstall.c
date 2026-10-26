@@ -1,5 +1,5 @@
 /* Build: cc -Os -s -o fbinstall fbinstall.c $(pkg-config --cflags --libs gtk+-2.0)
- * Usage: fbinstall [--user guest] ICON TEXT "PACKAGE..." "COMMAND [ARGUMENT...]" [ARGUMENT...]
+ * Usage: fbinstall [--user guest] ICON NAME "PACKAGE..." "COMMAND [ARGUMENT...]" [ARGUMENT...]
  * Commands use shell quoting for arguments, but are executed without a shell.
  */
 #include <gtk/gtk.h>
@@ -7,15 +7,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/wait.h>
 
 static GtkWidget *window, *progress, *status_label;
 static gchar **packages, **command;
 static GString *output;
-static enum { PLAN, UPDATE, INSTALL } phase=PLAN;
-static gboolean updated, guest, size_known;
-static gdouble installed_mb;
-static gint result=1;
+static enum { INSTALL, UPDATE } phase=INSTALL;
+static gboolean updated, guest;
 static guint pulse_timer;
 static struct { GIOChannel *channel; guint watch; } pipes[3];
 
@@ -104,24 +101,6 @@ static gboolean read_output(GIOChannel *channel, GIOCondition condition, gpointe
         }
         else
         {
-            /* APT reports the net unpacked size, including its resolved dependencies. */
-            if (phase==PLAN && g_str_has_prefix(line, "After this operation, "))
-            {
-                gchar unit[4];
-                gdouble size;
-                if (sscanf(line, "After this operation, %lf %3s", &size, unit)==2)
-                {
-                    const gchar *units[]={"B", "kB", "MB", "GB", "TB"};
-                    gdouble multiplier=0.000001;
-                    for (guint i=0; i<G_N_ELEMENTS(units); i++, multiplier*=1000)
-                        if (g_str_equal(unit, units[i]))
-                        {
-                            installed_mb=strstr(line, "will be freed") ? 0 : size*multiplier;
-                            size_known=TRUE;
-                            break;
-                        }
-                }
-            }
             g_string_append_len(output, line, length);
             if (output->len>65536) g_string_erase(output, 0, output->len-65536);
         }
@@ -150,10 +129,7 @@ static void apt_finished(GPid pid, gint status, gpointer data)
     if (pulse_timer) g_source_remove(pulse_timer);
     pulse_timer=0;
     gboolean success=g_spawn_check_wait_status(status, &error);
-    /* --assume-no exits with 1 after a successful plan, without downloading or installing. */
-    gboolean refused=WIFEXITED(status) && WEXITSTATUS(status)==1 && strstr(output->str, "Abort.");
-    gboolean planned=phase==PLAN && size_known && refused;
-    if (!success && !planned)
+    if (!success)
     {
         /* APT decides whether its existing lists can resolve and fetch the packages. */
         if (phase!=UPDATE && !updated)
@@ -178,33 +154,7 @@ static void apt_finished(GPid pid, gint status, gpointer data)
     if (phase==UPDATE)
     {
         updated=TRUE;
-        phase=PLAN;
-        start_apt(NULL);
-        return;
-    }
-    if (phase==PLAN)
-    {
-        if (installed_mb>10)
-        {
-            gtk_window_set_title(GTK_WINDOW(window), "Confirm installation");
-            gchar *text=g_strdup_printf("This will add %.1f MB of unpacked data to the system, including all required dependencies.\n\nDownload and install it now?", installed_mb);
-            gtk_label_set_text(GTK_LABEL(status_label), text);
-            g_free(text);
-            gtk_widget_hide(progress);
-            gtk_widget_show(gtk_dialog_get_action_area(GTK_DIALOG(window)));
-            gtk_dialog_set_default_response(GTK_DIALOG(window), GTK_RESPONSE_OK);
-            gint response=gtk_dialog_run(GTK_DIALOG(window));
-            if (response!=GTK_RESPONSE_OK)
-            {
-                result=0;
-                gtk_main_quit();
-                return;
-            }
-        }
         phase=INSTALL;
-        gtk_window_set_title(GTK_WINDOW(window), "Installing software");
-        gtk_widget_hide(gtk_dialog_get_action_area(GTK_DIALOG(window)));
-        gtk_widget_show(progress);
         start_apt(NULL);
         return;
     }
@@ -230,9 +180,9 @@ static gboolean start_apt(gpointer data)
     environment=g_environ_setenv(environment, "DEBIAN_FRONTEND", "noninteractive", TRUE);
     environment=g_environ_setenv(environment, "LC_ALL", "C.UTF-8", TRUE);
     for (guint i=0; common[i]; i++) g_ptr_array_add(arguments, common[i]);
-    g_ptr_array_add(arguments, phase==PLAN ? "-q" : "-qq");
-    g_ptr_array_add(arguments, phase==PLAN ? "--assume-no" : "-y");
-    if (phase!=UPDATE)
+    g_ptr_array_add(arguments, "-qq");
+    g_ptr_array_add(arguments, "-y");
+    if (phase==INSTALL)
     {
         g_ptr_array_add(arguments, "--no-remove");
         g_ptr_array_add(arguments, "install");
@@ -246,21 +196,10 @@ static gboolean start_apt(gpointer data)
         g_ptr_array_add(arguments, "update");
     }
     g_ptr_array_add(arguments, NULL);
-    if (phase==PLAN)
-    {
-        size_known=FALSE;
-        installed_mb=0;
-    }
     g_string_truncate(output, 0);
     gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(progress), 0);
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(progress), phase==UPDATE ? "Updating package lists..." : "Preparing installation...");
-    if (phase==INSTALL)
-    {
-        gchar *text=g_strdup_printf("Unpacked size including dependencies: %.1f MB", installed_mb);
-        gtk_label_set_text(GTK_LABEL(status_label), text);
-        g_free(text);
-    }
-    else gtk_label_set_text(GTK_LABEL(status_label), "Please wait...");
+    gtk_label_set_text(GTK_LABEL(status_label), "Please wait...");
     if (pipe(status_pipe)!=0)
     {
         show_error(g_strerror(errno));
@@ -311,7 +250,7 @@ int main(int argc, char **argv)
     }
     if (argc<5)
     {
-        fprintf(stderr, "Usage: fbinstall [--user guest] ICON TEXT \"PACKAGE...\" \"COMMAND [ARGUMENT...]\" [ARGUMENT...]\n");
+        fprintf(stderr, "Usage: fbinstall [--user guest] ICON NAME \"PACKAGE...\" \"COMMAND [ARGUMENT...]\" [ARGUMENT...]\n");
         return 2;
     }
     g_set_prgname("fbinstall");
@@ -354,9 +293,8 @@ int main(int argc, char **argv)
     }
     window=gtk_dialog_new();
     gtk_dialog_set_has_separator(GTK_DIALOG(window), FALSE);
-    gtk_dialog_add_buttons(GTK_DIALOG(window), GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL, GTK_STOCK_OK, GTK_RESPONSE_OK, NULL);
     gtk_window_set_title(GTK_WINDOW(window), "Installing software");
-    /* Keep the window frame centered when confirmation and progress change its size. */
+    /* Keep the window frame centered as progress text changes its size. */
     gtk_window_set_gravity(GTK_WINDOW(window), GDK_GRAVITY_CENTER);
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
@@ -366,7 +304,9 @@ int main(int argc, char **argv)
     GtkWidget *box=gtk_vbox_new(FALSE, 12);
     GtkWidget *header=gtk_hbox_new(FALSE, 16);
     GtkWidget *image=gtk_image_new_from_pixbuf(icon);
-    GtkWidget *label=gtk_label_new(argv[2]);
+    gchar *message=g_strdup_printf("%s will be downloaded and installed, then opened automatically.", argv[2]);
+    GtkWidget *label=gtk_label_new(message);
+    g_free(message);
     g_object_unref(icon);
     gtk_widget_set_size_request(image, 64, 64);
     gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
@@ -389,5 +329,5 @@ int main(int argc, char **argv)
     gtk_widget_hide(gtk_dialog_get_action_area(GTK_DIALOG(window)));
     g_idle_add(start_apt, NULL);
     gtk_main();
-    return result;
+    return 1;
 }
