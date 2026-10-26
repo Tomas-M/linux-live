@@ -1,7 +1,7 @@
 #!/bin/bash
 
 CURSORSDIR=/usr/share/icons/breeze_cursors/cursors/
-SIZE=16
+SIZE=24
 
 if [ "$1" = "false" ]; then
    xsetroot -xcf $CURSORSDIR/left_ptr $SIZE
