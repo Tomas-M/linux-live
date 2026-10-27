@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+chmod 755 /usr/bin/connman-gtk-start
 update-desktop-database /usr/local/share/applications
 
 # Install the GTK module after cleanup; its adjustments are scoped to named applications.

@@ -24,5 +24,6 @@ while read -r CURSOR ALIASES; do
 done < cursor-aliases
 
 # Keep Slax's bundled theme selected when GTK later registers Adwaita.
+mkdir -p /usr/share/icons/default
 update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/Windows-Modern-Light/cursor.theme 100
 ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service
