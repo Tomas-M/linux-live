@@ -4,6 +4,7 @@ OUTPUT=$(xrandr 2>/dev/null | grep -iv disconnected | grep -i 'connected' | head
 MODE=$1
 
 xrandr --output $OUTPUT --mode $MODE -s $MODE
+fbvboxpointer
 
 if [ "$2" = "-n" ]; then
    exit

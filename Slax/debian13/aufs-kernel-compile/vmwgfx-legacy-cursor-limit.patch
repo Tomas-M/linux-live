@@ -1,0 +1,13 @@
+--- a/drivers/gpu/drm/vmwgfx/vmwgfx_cursor_plane.c
++++ b/drivers/gpu/drm/vmwgfx/vmwgfx_cursor_plane.c
+@@ -748,6 +748,10 @@
+ 		u32 cursor_max_dim =
+ 			vmw_read(vmw, SVGA_REG_CURSOR_MAX_DIMENSION);
+ 
++		/* Older hosts lack the MOB cursor limit register; retain the 64px limit. */
++		if (!cursor_max_dim && update_type == VMW_CURSOR_UPDATE_GB_ONLY)
++			cursor_max_dim = VMW_CURSOR_SNOOP_WIDTH;
++
+ 		if (new_state->crtc_w > cursor_max_dim ||
+ 		    new_state->crtc_h > cursor_max_dim) {
+ 			drm_warn(&vmw->drm,

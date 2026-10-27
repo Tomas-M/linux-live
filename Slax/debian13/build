@@ -17,7 +17,7 @@ WORK=$(CDPATH= cd "${2:-/var/tmp/slax-build-$SUITE}" && pwd)
 # Keep simultaneous builds from sharing output files.
 exec 9>"$WORK/build.lock"
 flock -n 9 || { echo "Another build is using $WORK." >&2; exit 1; }
-IMAGE=$WORK/kernel/linux-image-${KERNELRELEASE}_${KERNELVERSION}-slax_amd64.deb
+IMAGE=$WORK/kernel/linux-image-${KERNELRELEASE}_${KERNELPACKAGEVERSION}_amd64.deb
 
 # Prepare the host kernel first, then continue with the same command after reboot.
 if [ ! -f "$IMAGE" ] || [ "$(uname -r)" != "$KERNELRELEASE" ]; then
@@ -41,7 +41,7 @@ trap 'exit 143' TERM
 git clone https://git.code.sf.net/p/aufs/aufs-util "$BUILD/aufs-util"
 git -C "$BUILD/aufs-util" checkout --detach "$AUFSUTILCOMMIT"
 # Use packaged UAPI headers because the kernel build tree is discarded.
-dpkg-deb -x "$WORK/kernel/linux-libc-dev_${KERNELVERSION}-slax_amd64.deb" "$BUILD/kernel-headers"
+dpkg-deb -x "$WORK/kernel/linux-libc-dev_${KERNELPACKAGEVERSION}_amd64.deb" "$BUILD/kernel-headers"
 make -C "$BUILD/aufs-util" CPPFLAGS="-I$BUILD/kernel-headers/usr/include -I$BUILD/kernel-headers/usr/include/x86_64-linux-gnu" auplink
 PATH=$BUILD/aufs-util:$PATH
 export PATH

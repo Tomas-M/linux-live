@@ -31,11 +31,18 @@ reporting progress.
   Do not install Breeze. Keep cursor defaults in `02-xorg` and register the
   bundled `cursor.theme` with update-alternatives at priority 100, above
   Adwaita's 90. Desktop startup uses the named watch cursor from these defaults.
-  Software cursor rendering must preserve the selected theme and size.
-- Preserve graphics driver autodetection. The generic Xorg OutputClass in
-  `02-xorg/rootcopy/etc/X11/xorg.conf.d/20-software-cursor.conf` uses
-  `SWcursor=true` and `HWcursor=false` because drivers use different option
-  names. It must not contain a `Driver` entry or select a particular GPU.
+- `fbvboxpointer` reads the active vboxguest absolute-pointer position before
+  showing the startup cursor and after resolution changes. Xorg otherwise starts
+  at the screen center and jumps to the host position on the first input event.
+  Query the driver's standard interface and integration capability flags; do not
+  assume a VM name, screen size or local pointer position. Other systems and
+  relative input are unaffected. Do not synthesize clicks or change mouse modes.
+- Preserve graphics driver and cursor autodetection; do not force software
+  cursors or a particular GPU driver. The kernel recipe applies
+  `vmwgfx-legacy-cursor-limit.patch`: guest-backed cursors on older SVGA hosts
+  retain their 64px limit when the newer cursor-MOB limit register is absent.
+  Keep MOB cursor validation unchanged. This fixes invisible hardware cursors
+  without the software rendering that caused cursor clipping in VirtualBox.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `02-xorg/rootcopy/root/.Xresources`.
@@ -92,18 +99,19 @@ must follow the general Slax repair rules above.
   temporary data to disk grows the dynamic VDI, and deleting it afterward
   does not shrink that host file; recovering the space requires compaction.
 - Swap is permanently disabled, including initramfs resume. Keep it disabled.
-- VMSVGA can accept clicks while its hardware cursor is invisible. Use Slax's
-  generic `20-software-cursor.conf` on the work VM as well. Its OutputClass
-  sets `SWcursor=true` and `HWcursor=false` without selecting any driver or
-  matching a particular GPU. Do not force the `vmware` driver in Slax.
-  Activation requires restarting graphics; get approval before ending an
-  active desktop session with open applications.
+- The work VM may still have the old vmwgfx module loaded and a local software
+  cursor override. Remove that override when activating the corrected module;
+  do not ship it in Slax. Get approval before restarting an active work desktop
+  session with open applications.
 - Stop only our unneeded test VMs/processes. Leave unrelated VMs untouched.
 
 ## Kernel and full Slax build
 
 - Version pins and hashes live in `Slax/debian13/aufs-kernel-compile/versions`.
   Read that file rather than assuming a version is still the latest.
+- `KERNELPACKAGEVERSION` distinguishes patched kernel packages from stale cached
+  builds without changing the kernel ABI release. Advance it when kernel patches
+  change, and keep image, headers and libc-dev package versions together.
 - AUFS is built into the custom Slax kernel. Compile and install this kernel
   on the build host, reboot into it, then build Slax with matching modules.
 - The production configuration excludes DWARF, BTF and other auxiliary debug

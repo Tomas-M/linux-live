@@ -27,6 +27,9 @@ tar -xf "linux-$KERNELVERSION.tar.xz" --strip-components=1
 rm "linux-$KERNELVERSION.tar.xz"
 cp "$CWD/config-x86_64" .config
 
+# Older SVGA hosts do not report the newer cursor-MOB size limit.
+patch --batch --fuzz=0 -p1 < "$CWD/vmwgfx-legacy-cursor-limit.patch"
+
 git init aufs
 git -C aufs remote add origin "$AUFSURL"
 git -C aufs fetch --depth=1 origin "$AUFSCOMMIT"
@@ -57,7 +60,7 @@ scripts/config --disable DEBUG_INFO --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
    --disable DEBUG_INFO_BTF --disable DEBUG_INFO_BTF_MODULES --disable GDB_SCRIPTS
 make olddefconfig
 
-make -j"$(getconf _NPROCESSORS_ONLN)" bindeb-pkg KDEB_PKGVERSION="$KERNELVERSION-slax"
+make -j"$(getconf _NPROCESSORS_ONLN)" bindeb-pkg KDEB_PKGVERSION="$KERNELPACKAGEVERSION"
 
 mkdir -p "$OUTPUT"
 cp "$BUILD"/*.deb "$OUTPUT/"

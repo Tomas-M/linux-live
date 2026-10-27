@@ -27,6 +27,7 @@ PACKAGE=$OUTPUT/tools
 mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACKAGE/DEBIAN"
 cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cflags --libs gtk+-2.0)
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xi)
+cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cd /tmp
 wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.8.0.tar.gz
 tar -xf xlunch.tar.gz
@@ -79,7 +80,7 @@ Architecture: any
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
 DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
-   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify")
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer")
 cat > "$PACKAGE/DEBIAN/control" <<EOF
 Package: slax-desktop-tools
 Version: 1
