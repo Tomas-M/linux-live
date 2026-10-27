@@ -3,7 +3,7 @@ set -e
 CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
-apt-get build-dep --yes --no-install-recommends fluxbox
+apt-get build-dep --yes --no-install-recommends fluxbox picom
 apt-get install --yes --no-install-recommends build-essential dpkg-dev libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
@@ -21,6 +21,19 @@ cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config
 dpkg-buildpackage -b -us -uc
 cp ../fluxbox_*.deb "$OUTPUT/"
+
+# Keep smooth upper corners available without requiring OpenGL.
+mkdir -p /tmp/picom-rebuild
+cd /tmp/picom-rebuild
+apt-get source picom
+cd picom-*/
+VERSION=$(dpkg-query -W -f='${Version}' picom)
+sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+mkdir -p debian/patches
+cp "$CWD/patches/picom-top-corners.diff" debian/patches/
+printf 'picom-top-corners.diff\n' >> debian/patches/series
+dpkg-buildpackage -b -us -uc
+cp ../picom_*.deb "$OUTPUT/"
 
 # Collect the additional desktop programs into one binary package.
 PACKAGE=$OUTPUT/tools

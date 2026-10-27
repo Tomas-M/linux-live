@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
 apt-get update
-apt-get install --no-install-recommends --yes fluxbox feh compton volumeicon-alsa \
+apt-get install --no-install-recommends --yes fluxbox feh picom volumeicon-alsa \
    murrine-themes libnotify4 libgtk2.0-0 librsvg2-common libglib2.0-bin desktop-file-utils xfce4-panel scrot

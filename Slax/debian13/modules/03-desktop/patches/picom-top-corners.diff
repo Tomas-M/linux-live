@@ -1,0 +1,99 @@
+--- a/src/config.h
++++ b/src/config.h
+@@ -401,6 +401,8 @@
+ 	double max_brightness;
+ 	// Radius of rounded window corners
+ 	int corner_radius;
++	/// Round only the upper corners in the XRender backend.
++	bool xrender_round_top_only;
+ 	/// Rounded corners blacklist. A linked list of conditions.
+ 	struct list_node rounded_corners_blacklist;
+ 	/// Rounded corner rules. A linked list of conditions.
+--- a/src/config.c
++++ b/src/config.c
+@@ -676,6 +676,7 @@
+ 	    .shadow_clip_list = NULL,
+
+ 	    .corner_radius = 0,
++	    .xrender_round_top_only = false,
+
+ 	    .fade_in_step = 0.028,
+ 	    .fade_out_step = 0.03,
+--- a/src/config_libconfig.c
++++ b/src/config_libconfig.c
+@@ -827,6 +827,7 @@
+ 	}
+ 	// --corner-radius
+ 	config_lookup_int(&cfg, "corner-radius", &opt->corner_radius);
++	lcfg_lookup_bool(&cfg, "xrender-round-top-only", &opt->xrender_round_top_only);
+
+ 	if (lcfg_lookup_bool(&cfg, "no-frame-pacing", &bval)) {
+ 		opt->frame_pacing = !bval;
+--- a/src/backend/xrender/xrender.c
++++ b/src/backend/xrender/xrender.c
+@@ -83,6 +83,7 @@
+ 	xcb_xfixes_region_t present_region;
+ 	/// If vsync is enabled and supported by the current system
+ 	bool vsync;
++	bool round_top_only;
+ } xrender_data;
+
+ struct xrender_blur_context {
+@@ -117,7 +118,7 @@
+ /// rendered in it.
+ struct xrender_rounded_rectangle_cache *
+ xrender_make_rounded_corner_cache(struct x_connection *c, xcb_render_picture_t src,
+-                                  int width, int height, int corner_radius) {
++                                  int width, int height, int corner_radius, bool top_only) {
+ 	auto picture = x_create_picture_with_standard(c, width, height,
+ 	                                              XCB_PICT_STANDARD_ARGB_32, 0, NULL);
+ 	if (picture == XCB_NONE) {
+@@ -129,6 +130,10 @@
+ 	if (inner_height < 0) {
+ 		cap_height = height / 2;
+ 		inner_height = 0;
++	}
++	// Extend the straight middle to the bottom edge instead of drawing a lower cap.
++	if (top_only) {
++		inner_height = height - cap_height;
+ 	}
+ 	auto points = ccalloc(cap_height * 4 + 4, xcb_render_pointfix_t);
+ 	int point_count = 0;
+@@ -254,7 +259,7 @@
+ 		if (inner->rounded_rectangle == NULL) {
+ 			inner->rounded_rectangle = xrender_make_rounded_corner_cache(
+ 			    xd->base.c, xd->white_pixel, inner->size.width,
+-			    inner->size.height, (int)mask->corner_radius);
++			    inner->size.height, (int)mask->corner_radius, xd->round_top_only);
+ 		}
+ 		xcb_render_composite(xd->base.c->c, XCB_RENDER_PICT_OP_IN_REVERSE,
+ 		                     inner->rounded_rectangle->p, XCB_NONE, ret,
+@@ -324,7 +329,7 @@
+ 		if (inner->rounded_rectangle == NULL) {
+ 			inner->rounded_rectangle = xrender_make_rounded_corner_cache(
+ 			    xd->base.c, xd->white_pixel, inner->size.width,
+-			    inner->size.height, (int)args->corner_radius);
++			    inner->size.height, (int)args->corner_radius, xd->round_top_only);
+ 		}
+ 	}
+
+@@ -907,6 +912,7 @@
+ 	    XCB_RENDER_CP_SUBWINDOW_MODE, &pa);
+
+ 	xd->vsync = ps->o.vsync;
++	xd->round_top_only = ps->o.xrender_round_top_only;
+ 	if (ps->present_exists) {
+ 		auto eid = x_new_id(&ps->c);
+ 		auto e =
+--- a/picom.sample.conf
++++ b/picom.sample.conf
+@@ -95,6 +95,9 @@
+ #
+ # Default: 0 (disabled)
+ corner-radius = 0
++
++# XRender only: keep the bottom corners square when rounding windows.
++xrender-round-top-only = false;
+
+ #################################
+ #            Blur               #

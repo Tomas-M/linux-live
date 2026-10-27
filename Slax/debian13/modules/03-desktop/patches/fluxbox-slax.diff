@@ -1,6 +1,24 @@
 --- a/src/Window.cc
 +++ b/src/Window.cc
-@@ -2370,6 +2370,13 @@
+@@ -979,6 +979,8 @@
+         titleSig().emit(title().logical(), *this);
+         frame().setFocusTitle(title());
+         frame().setShapingClient(&client, false);
++        // Refresh client-specific EWMH states when switching tabs.
++        m_statesig.emit(*this);
+     }
+     return ret;
+ }
+@@ -1782,6 +1784,8 @@
+         notifyFocusChanged();
+         if (m_client)
+             m_client->notifyFocusChanged();
++        // Publish the decoration focus state to clients such as GTK windows.
++        m_statesig.emit(*this);
+         Fluxbox::instance()->keys()->doAction(focus ? FocusIn : FocusOut, 0, 0,
+                                               Keys::ON_WINDOW, m_client);
+     }
+@@ -2370,6 +2374,13 @@
 
  void FluxboxWindow::motionNotifyEvent(XMotionEvent &me) {
 
@@ -14,7 +32,7 @@
      if (isMoving() && me.window == parent()) {
          me.window = frame().window().window();
      }
-@@ -2480,42 +2487,48 @@
+@@ -2480,42 +2491,48 @@
          // end if moving
      } else if (resizing) {
 
@@ -82,7 +100,7 @@
          }
 
          fixSize();
-@@ -2526,18 +2539,8 @@
+@@ -2526,18 +2543,8 @@
                  old_resize_w != m_last_resize_w ||
                  old_resize_h != m_last_resize_h ) {
 
@@ -103,7 +121,7 @@
          }
      } else if (m_attaching_tab != 0) {
          //
-@@ -2569,6 +2572,9 @@
+@@ -2569,6 +2576,9 @@
          !isVisible()) {
          return;
      }
@@ -113,7 +131,7 @@
 
      if (ev.window == frame().window())
          Fluxbox::instance()->keys()->doAction(ev.type, ev.state, 0,
-@@ -2611,6 +2617,10 @@
+@@ -2611,6 +2621,10 @@
  }
 
  void FluxboxWindow::leaveNotifyEvent(XCrossingEvent &ev) {
@@ -124,7 +142,7 @@
 
      // ignore grab activates, or if we're not visible
      if (ev.mode == NotifyGrab || ev.mode == NotifyUngrab ||
-@@ -2738,15 +2748,22 @@
+@@ -2738,15 +2752,22 @@
          return;
      }
 
@@ -150,7 +168,7 @@
      moving = true;
 
      Fluxbox *fluxbox = Fluxbox::instance();
-@@ -2754,7 +2771,7 @@
+@@ -2754,7 +2775,7 @@
      // freely map and unmap the window we're moving.
      grabPointer(screen().rootWindow().window(), False, ButtonMotionMask |
                  ButtonReleaseMask, GrabModeAsync, GrabModeAsync,
@@ -159,7 +177,7 @@
 
      if (menu().isVisible())
          menu().hide();
-@@ -3018,6 +3035,36 @@
+@@ -3018,6 +3039,36 @@
      return RIGHTBOTTOM;
  }
 
@@ -196,7 +214,7 @@
  void FluxboxWindow::startResizing(int x, int y, ReferenceCorner dir) {
 
      if (isResizing())
-@@ -3035,42 +3082,26 @@
+@@ -3035,42 +3086,26 @@
 
      disableMaximization();
 
@@ -246,7 +264,7 @@
 
      screen().hideGeometry();
 
-@@ -3357,12 +3388,12 @@
+@@ -3357,12 +3392,12 @@
      // move X if necessary
      if (m_resize_corner == LEFTTOP || m_resize_corner == LEFTBOTTOM ||
          m_resize_corner == LEFT) {
@@ -296,7 +314,17 @@
          client_depth, InputOutput,
          (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().visual() : CopyFromParent),
          (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().colormap() : CopyFromParent)),
-@@ -640,7 +640,7 @@
+@@ -505,6 +505,9 @@
+     }
+
+     moveResize(new_x, new_y, new_w, new_h);
++    // State can change without resizing, for example with restrictive size hints.
++    m_shape.setPlaces(getShape());
++    m_shape.update();
+     frameExtentSig().emit();
+ }
+
+@@ -640,7 +643,7 @@
      win.reparent(m_window, clientArea().x(), clientArea().y());
 
      m_window.setEventMask(ButtonPressMask | ButtonReleaseMask |
@@ -305,6 +333,16 @@
                            LeaveWindowMask | SubstructureRedirectMask);
 
      XFlush(win.display());
+@@ -1301,6 +1304,9 @@
+ }
+
+ int FbWinFrame::getShape() const {
++    // Maximized and fullscreen frames meet the screen edges without cutouts.
++    if (m_state.isMaximized() || m_state.fullscreen)
++        return 0;
+     int shape = theme()->shapePlace();
+     if (!m_state.useTitlebar())
+         shape &= ~(FbTk::Shape::TOPRIGHT|FbTk::Shape::TOPLEFT);
 --- a/src/FbTk/FbDrawable.hh
 +++ b/src/FbTk/FbDrawable.hh
 @@ -52,7 +52,8 @@ public:
@@ -315,14 +353,14 @@
 +        DOWN,
 +        MENU
      };
- 
+
      // x, y, width and height define a space within which we're drawing a triangle
 --- a/src/ToolFactory.cc	2013-02-13 05:04:05.000000000 -0500
 +++ b/src/ToolFactory.cc	2017-10-31 12:11:20.000000000 -0400
 @@ -101,6 +101,8 @@
              cmd_str += " (workspace=[current])";
          }
- 
+
 +        if (name.find("menu") != std::string::npos) cmd_str = "Exec fbappselect";
 +
          FbTk::RefCount<FbTk::Command<void> > cmd(cp.parse(cmd_str));
@@ -331,7 +369,7 @@
 @@ -110,6 +112,9 @@
          if (name.find("prev") != std::string::npos)
              arrow_type = FbTk::FbDrawable::LEFT;
- 
+
 +        if (name.find("menu") != std::string::npos)
 +        arrow_type = FbTk::FbDrawable::MENU;
 +
@@ -343,15 +381,15 @@
 @@ -96,7 +96,7 @@
      if (drawable() == 0 || gc == 0 || width == 0 || height == 0)
          return;
- 
+
 -    XPoint pts[3];
 +    XPoint pts[4];
- 
+
      if (scale < 100) scale = 100; // not bigger than the space allowed
      else if (scale > 10000) scale = 10000; // not too small...
 @@ -115,6 +115,26 @@
      }
- 
+
      switch (type) {
 +    case FbTk::FbDrawable::MENU:
 +    {
@@ -396,3 +434,210 @@
 
      if (m_frame.win.alpha() != alpha())
          m_frame.win.setAlpha(alpha());
+--- a/src/Ewmh.cc
++++ b/src/Ewmh.cc
+@@ -356,6 +356,7 @@
+         wm_state_below = XInternAtom(disp, "_NET_WM_STATE_BELOW", False);
+         wm_state_modal = XInternAtom(disp, "_NET_WM_STATE_MODAL", False);
+         wm_state_demands_attention = XInternAtom(disp, "_NET_WM_STATE_DEMANDS_ATTENTION", False);
++        wm_state_focused = XInternAtom(disp, "_NET_WM_STATE_FOCUSED", False);
+
+         // allowed actions
+         wm_allowed_actions = XInternAtom(disp, "_NET_WM_ALLOWED_ACTIONS", False);
+@@ -432,6 +433,7 @@
+          wm_state_above,
+          wm_state_modal,
+          wm_state_demands_attention,
++         wm_state_focused,
+
+          // allowed actions
+          wm_allowed_actions,
+@@ -540,6 +542,7 @@
+         m_net->wm_state_below,
+         m_net->wm_state_above,
+         m_net->wm_state_demands_attention,
++        m_net->wm_state_focused,
+
+         // window type
+         m_net->wm_window_type,
+@@ -999,6 +1002,8 @@
+         unsigned char *data = 0;
+
+         // set client-specific state
++        if ((*it)->isFocused())
++            client_state.push_back(m_net->wm_state_focused);
+         if ((*it)->isStateModal())
+             client_state.push_back(m_net->wm_state_modal);
+         if (Fluxbox::instance()->attentionHandler().isDemandingAttention(**it))
+--- a/src/WinButton.hh
++++ b/src/WinButton.hh
+@@ -57,19 +57,21 @@
+     /// override for drawing
+     void exposeEvent(XExposeEvent &event);
+     void buttonReleaseEvent(XButtonEvent &event);
++    void enterNotifyEvent(XCrossingEvent &event);
++    void leaveNotifyEvent(XCrossingEvent &event);
+     void setBackgroundPixmap(Pixmap pm);
+     void setPressedPixmap(Pixmap pm);
+     void setBackgroundColor(const FbTk::Color &color);
+     void setPressedColor(const FbTk::Color &color);
+
+-    Pixmap getBackgroundPixmap() const { return getPixmap(m_theme); }
++    Pixmap getBackgroundPixmap() const { return getPixmap(m_theme, m_hovered); }
+     Pixmap getPressedPixmap() const { return getPixmap(m_pressed_theme); }
+     /// override for redrawing
+     void clear();
+     void updateAll();
+ private:
+     void drawType();
+-    Pixmap getPixmap(const FbTk::ThemeProxy<WinButtonTheme> &) const;
++    Pixmap getPixmap(const FbTk::ThemeProxy<WinButtonTheme> &, bool hover = false) const;
+     Type m_type; ///< the button type
+     FluxboxWindow &m_listen_to;
+     FbTk::ThemeProxy<WinButtonTheme> &m_theme, &m_pressed_theme;
+@@ -78,6 +80,7 @@
+     FbTk::FbPixmap m_icon_mask;
+
+     bool overrode_bg, overrode_pressed;
++    bool m_hovered;
+ };
+
+ #endif // WINBUTTON_HH
+--- a/src/WinButton.cc
++++ b/src/WinButton.cc
+@@ -43,7 +43,7 @@
+     m_type(buttontype), m_listen_to(listen_to),
+     m_theme(theme), m_pressed_theme(pressed),
+     m_icon_pixmap(0), m_icon_mask(0),
+-    overrode_bg(false), overrode_pressed(false) {
++    overrode_bg(false), overrode_pressed(false), m_hovered(false) {
+
+     join(theme.reconfigSig(), FbTk::MemFun(*this, &WinButton::updateAll));
+
+@@ -61,6 +61,20 @@
+     WindowCmd<void>::setWindow(&m_listen_to);
+     FbTk::Button::buttonReleaseEvent(event);
+     WindowCmd<void>::setClient(old);
++}
++
++// Hover has its own theme artwork; keep the pressed image until release.
++void WinButton::enterNotifyEvent(XCrossingEvent &event) {
++    m_hovered = true;
++    if (!pressed())
++        updateAll();
++}
++
++// Restore the normal image when the pointer leaves the button.
++void WinButton::leaveNotifyEvent(XCrossingEvent &event) {
++    m_hovered = false;
++    if (!pressed())
++        updateAll();
+ }
+
+ // when someone else tries to set the background, we may override it
+@@ -114,11 +128,20 @@
+     }
+ }
+
+-Pixmap WinButton::getPixmap(const FbTk::ThemeProxy<WinButtonTheme> &theme) const {
++Pixmap WinButton::getPixmap(const FbTk::ThemeProxy<WinButtonTheme> &theme, bool hover) const {
+     switch(m_type) {
+     case MAXIMIZE:
++        if (m_listen_to.isMaximized() && theme->restorePixmap().pixmap().drawable()) {
++            if (hover && theme->restoreHoverPixmap().pixmap().drawable())
++                return theme->restoreHoverPixmap().pixmap().drawable();
++            return theme->restorePixmap().pixmap().drawable();
++        }
++        if (hover && theme->maximizeHoverPixmap().pixmap().drawable())
++            return theme->maximizeHoverPixmap().pixmap().drawable();
+         return theme->maximizePixmap().pixmap().drawable();
+     case MINIMIZE:
++        if (hover && theme->iconifyHoverPixmap().pixmap().drawable())
++            return theme->iconifyHoverPixmap().pixmap().drawable();
+         return theme->iconifyPixmap().pixmap().drawable();
+     case STICK:
+         if (m_listen_to.isStuck())
+@@ -126,6 +149,8 @@
+         else
+             return theme->stickPixmap().pixmap().drawable();
+     case CLOSE:
++        if (hover && theme->closeHoverPixmap().pixmap().drawable())
++            return theme->closeHoverPixmap().pixmap().drawable();
+         return theme->closePixmap().pixmap().drawable();
+     case SHADE:
+         if (m_listen_to.isShaded())
+@@ -298,14 +323,13 @@
+
+     }
+
+-    // pressed_pixmap isn't stateful in any current buttons, so no need
+-    // to potentially override that. Just make sure background pm is ok
++    // Refresh the current normal or hovered artwork.
+     Pixmap my_pm = getBackgroundPixmap();
+     if (my_pm != None)
+         setBackgroundPixmap(my_pm);
+
+-    // incorrect, pressed_pixmap is stateful in shade, so we'll do oneoff for now
+-    if (m_type == SHADE || m_type == STICK) {
++    // These buttons also change their pressed artwork with the window state.
++    if (m_type == SHADE || m_type == STICK || m_type == MAXIMIZE) {
+         Pixmap p_pm = getPressedPixmap();
+         if (p_pm != None)
+             setPressedPixmap(p_pm);
+--- a/src/WinButtonTheme.hh
++++ b/src/WinButtonTheme.hh
+@@ -74,6 +74,13 @@
+     const FbTk::PixmapWithMask &rightHalfPixmap() const { return *m_righthalf_pm; }
+
+
++    // Optional hover artwork uses the same focused/unfocused theme proxy.
++    const FbTk::PixmapWithMask &closeHoverPixmap() const { return *m_close_hover_pm; }
++    const FbTk::PixmapWithMask &restorePixmap() const { return *m_restore_pm; }
++    const FbTk::PixmapWithMask &restoreHoverPixmap() const { return *m_restore_hover_pm; }
++    const FbTk::PixmapWithMask &maximizeHoverPixmap() const { return *m_maximize_hover_pm; }
++    const FbTk::PixmapWithMask &iconifyHoverPixmap() const { return *m_iconify_hover_pm; }
++
+     virtual FbTk::Signal<> &reconfigSig() { return FbTk::Theme::reconfigSig(); }
+
+     virtual WinButtonTheme &operator *() { return *this; }
+@@ -85,6 +92,9 @@
+             m_iconify_pm, m_shade_pm, m_unshade_pm, m_menuicon_pm, m_title_pm,
+             m_stick_pm, m_stuck_pm, m_lefthalf_pm, m_righthalf_pm;
+
++    FbTk::ThemeItem<FbTk::PixmapWithMask> m_close_hover_pm, m_maximize_hover_pm,
++            m_iconify_hover_pm, m_restore_pm, m_restore_hover_pm;
++
+     FbTk::ThemeProxy<FbWinFrameTheme> &m_frame_theme;
+ };
+
+--- a/src/WinButtonTheme.cc
++++ b/src/WinButtonTheme.cc
+@@ -56,6 +56,16 @@
+                "Window.LHalf" + altextra + ".Pixmap"),
+     m_righthalf_pm(*this, "window.rhalf" + extra + ".pixmap",
+                "Window.RHalf" + altextra + ".Pixmap"),
++    m_close_hover_pm(*this, "window.close" + extra + ".hover.pixmap",
++                    "Window.Close" + altextra + ".Hover.Pixmap"),
++    m_maximize_hover_pm(*this, "window.maximize" + extra + ".hover.pixmap",
++                       "Window.Maximize" + altextra + ".Hover.Pixmap"),
++    m_iconify_hover_pm(*this, "window.iconify" + extra + ".hover.pixmap",
++                      "Window.Iconify" + altextra + ".Hover.Pixmap"),
++    m_restore_pm(*this, "window.restore" + extra + ".pixmap",
++                 "Window.Restore" + altextra + ".Pixmap"),
++    m_restore_hover_pm(*this, "window.restore" + extra + ".hover.pixmap",
++                       "Window.Restore" + altextra + ".Hover.Pixmap"),
+     m_frame_theme(frame_theme) {
+
+     FbTk::ThemeManager::instance().loadTheme(*this);
+@@ -78,6 +88,11 @@
+
+     // scale all pixmaps
+     m_close_pm->scale(size, size);
++    m_close_hover_pm->scale(size, size);
++    m_restore_pm->scale(size, size);
++    m_restore_hover_pm->scale(size, size);
++    m_maximize_hover_pm->scale(size, size);
++    m_iconify_hover_pm->scale(size, size);
+     m_maximize_pm->scale(size, size);
+     m_menuicon_pm->scale(size, size);
+     m_iconify_pm->scale(size, size);

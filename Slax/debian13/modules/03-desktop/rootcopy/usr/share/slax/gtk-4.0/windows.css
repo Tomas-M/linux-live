@@ -1,0 +1,18 @@
+/* Round only the upper corners without recoloring application contents. */
+window { --window-radius: 8px; border-radius: 8px 8px 0 0; --headerbar-bg-color: #d3e3fd; --headerbar-backdrop-color: #dde3e9; }
+window > .titlebar, window headerbar { border-radius: 4px 4px 0 0; }
+window headerbar { background-color: #d3e3fd; color: #333338; }
+window:backdrop headerbar { background-color: #dde3e9; }
+window.csd, window.solid-csd { border: 4px solid #d3e3fd; box-shadow: none; }
+window.csd:backdrop, window.solid-csd:backdrop { border-color: #dde3e9; }
+window.solid-csd { padding: 0; }
+window.maximized, window.fullscreen { --window-radius: 0px; border-radius: 0; border-width: 0; }
+window.maximized headerbar, window.fullscreen headerbar { border-radius: 0; }
+
+/* Use Chromium-like symbols with a circular hover and pressed background. */
+windowcontrols { border-spacing: 0; }
+windowcontrols > button { min-width: 0; min-height: 0; padding: 2px; border: 0; margin: 0; box-shadow: none; color: #5f6368; }
+windowcontrols > button, windowcontrols > button:hover, windowcontrols > button:active { background: none; }
+windowcontrols > button > image { min-width: 16px; min-height: 16px; padding: 6px; border-radius: 50%; background: transparent; }
+windowcontrols > button:hover > image { background: rgba(95, 99, 104, 0.12); }
+windowcontrols > button:active > image { background: rgba(95, 99, 104, 0.24); }
