@@ -4,6 +4,7 @@
  */
 #include <gtk/gtk.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -12,11 +13,43 @@ static GtkWidget *window, *progress, *status_label;
 static gchar **packages, **command;
 static GString *output;
 static enum { INSTALL, UPDATE } phase=INSTALL;
-static gboolean updated, guest;
+static gboolean updated, guest, cancelled;
+static GPid apt_child;
 static guint pulse_timer;
 static struct { GIOChannel *channel; guint watch; } pipes[3];
 
 static gboolean start_apt(gpointer data);
+
+/* Keep APT, dpkg and package scripts in one cancellable process group. */
+static void setup_apt(gpointer data)
+{
+    (void)data;
+    setpgid(0, 0);
+}
+
+/* Stop package processes that did not respond to the initial termination request. */
+static gboolean kill_apt(gpointer data)
+{
+    (void)data;
+    if (apt_child) kill(-apt_child, SIGKILL);
+    return FALSE;
+}
+
+/* Closing the installer cancels every installation phase, including preparation. */
+static gboolean cancel_install(GtkWidget *widget, GdkEvent *event, gpointer data)
+{
+    (void)event;
+    (void)data;
+    cancelled=TRUE;
+    gtk_widget_hide(widget);
+    if (apt_child)
+    {
+        kill(-apt_child, SIGTERM);
+        g_timeout_add(1000, kill_apt, NULL);
+    }
+    else gtk_main_quit();
+    return TRUE;
+}
 
 /* Show startup feedback, preserving file arguments and the selected application user. */
 static void launch_command(void)
@@ -116,6 +149,7 @@ static void apt_finished(GPid pid, gint status, gpointer data)
 {
     GError *error=NULL;
     (void)data;
+    if (cancelled) kill(-pid, SIGKILL);
     for (guint i=0; i<G_N_ELEMENTS(pipes); i++)
     {
         if (pipes[i].watch) g_source_remove(pipes[i].watch);
@@ -126,8 +160,14 @@ static void apt_finished(GPid pid, gint status, gpointer data)
         pipes[i].channel=NULL;
     }
     g_spawn_close_pid(pid);
+    apt_child=0;
     if (pulse_timer) g_source_remove(pulse_timer);
     pulse_timer=0;
+    if (cancelled)
+    {
+        gtk_main_quit();
+        return;
+    }
     gboolean success=g_spawn_check_wait_status(status, &error);
     if (!success)
     {
@@ -208,7 +248,7 @@ static gboolean start_apt(gpointer data)
     else
     {
         gboolean started=g_spawn_async_with_pipes_and_fds(NULL, (const gchar *const *)arguments->pdata,
-            (const gchar *const *)environment, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL,
+            (const gchar *const *)environment, G_SPAWN_DO_NOT_REAP_CHILD, setup_apt, NULL,
             -1, -1, -1, &status_pipe[1], &target, 1, &child, NULL, &fds[0], &fds[1], &error);
         close(status_pipe[1]);
         if (!started)
@@ -220,6 +260,7 @@ static gboolean start_apt(gpointer data)
         }
         else
         {
+            apt_child=child;
             fds[2]=status_pipe[0];
             for (guint i=0; i<G_N_ELEMENTS(pipes); i++)
             {
@@ -237,7 +278,7 @@ static gboolean start_apt(gpointer data)
     return FALSE;
 }
 
-/* Create the GTK2 installer window; package configuration must finish before it can close. */
+/* Create the GTK2 installer window and start installation without confirmation. */
 int main(int argc, char **argv)
 {
     GError *error=NULL;
@@ -298,13 +339,12 @@ int main(int argc, char **argv)
     gtk_window_set_gravity(GTK_WINDOW(window), GDK_GRAVITY_CENTER);
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-    gtk_window_set_deletable(GTK_WINDOW(window), FALSE);
     gtk_window_set_icon(GTK_WINDOW(window), icon);
-    g_signal_connect(window, "delete-event", G_CALLBACK(gtk_true), NULL);
+    g_signal_connect(window, "delete-event", G_CALLBACK(cancel_install), NULL);
     GtkWidget *box=gtk_vbox_new(FALSE, 12);
     GtkWidget *header=gtk_hbox_new(FALSE, 16);
     GtkWidget *image=gtk_image_new_from_pixbuf(icon);
-    gchar *message=g_strdup_printf("%s will be downloaded and installed, then opened automatically.", argv[2]);
+    gchar *message=g_strdup_printf("%s will be downloaded and installed, please wait...", argv[2]);
     GtkWidget *label=gtk_label_new(message);
     g_free(message);
     g_object_unref(icon);

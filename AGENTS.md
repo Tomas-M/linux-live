@@ -152,12 +152,18 @@ must follow the general Slax repair rules above.
 - Application compilation happens in disposable branches. Copy out the
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
+  Apply newly registered Fluxbox patches with `quilt push -a` before
+  building; an extracted Debian source can retain a preparation marker that
+  makes dpkg-source skip newly appended patches.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
   `slax-desktop-tools`. Use `fbinstall [--user guest] ICON NAME "PACKAGE..."
   "COMMAND [ARGS...]" [ARGS...]`. Available commands start before GTK or APT.
   Missing applications install immediately, without a size threshold or confirmation.
   Launchers pass the application name; the installer supplies the shared explanation
-  that it will be downloaded, installed and opened automatically.
+  that it will be downloaded and installed, followed by "please wait...".
+  Closing the installer cancels preparation, downloads or installation. Terminate
+  its APT process group, including dpkg and package scripts, and force termination
+  after one second if needed. Cancellation must not retry or launch the application.
   Run APT directly rather than a separate size calculation or simulated installation.
   File and URL arguments stay separate from command quoting.
   It uses existing package lists, refreshes once if a package cannot be resolved
@@ -306,6 +312,12 @@ must follow the general Slax repair rules above.
   The patch also fixes `Menu::updateMenu()`: child windows and backing
   pixmaps use the recomputed menu width, so changing column count cannot clip
   the resolution list. Verify both columns at 800x600 and the menu at 1024x768.
+  Give the title-bar context menu the `fluxbox-window-menu` role so it stays
+  square; regular `fluxbox-menu` windows retain Picom's rounded upper corners.
+  Slax defaults to the patched `RandomPlacement` policy. Place the full frame
+  and external tabs inside the selected monitor's work area, respecting panel
+  struts. Oversized windows keep their upper-left corner accessible. Preserve
+  explicit application positions and dialog placement handled before this policy.
   Fluxbox's SIGUSR1 restarts it with exec, preserving its PID, Xorg and applications;
   SIGUSR2 reloads configuration. Do not confuse these signals.
 - GTK 3 scrollbar overrides live in
@@ -362,9 +374,10 @@ must follow the general Slax repair rules above.
   windows in and out, and shadow normal/dialog/dock windows. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
-- PCManFM uses the opened folder's icon in the tasklist. Keep its restored
-  `folder.png` assets in `04-apps` consistent with the selected File Manager
-  artwork, including the Adwaita and gnome theme paths used by native windows.
+- PCManFM uses the opened folder's icon in the tasklist. Preserve the original
+  `folder.png` artwork in `04-apps`, including the Adwaita and gnome theme paths.
+  Keep the selected File Manager artwork for `slax-file-manager` and
+  `system-file-manager`; do not alias it to the generic `folder` icon.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.
