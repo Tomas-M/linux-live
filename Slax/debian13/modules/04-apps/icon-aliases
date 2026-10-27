@@ -1,7 +1,6 @@
 calculator slax-calculator
 galculator slax-calculator
 system-file-manager slax-file-manager
-folder slax-file-manager
 connman-gtk slax-net-manager
 gnome_network_workgroup slax-net-manager
 preferences-system-network slax-net-manager
