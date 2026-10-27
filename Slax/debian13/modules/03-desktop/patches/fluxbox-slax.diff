@@ -665,3 +665,81 @@
  }
 
  void FbWindow::setBorderWidth(unsigned int size) {
+--- a/src/Screen.cc
++++ b/src/Screen.cc
+@@ -347,6 +347,8 @@
+     m_current_workspace = m_workspaces_list.front();
+
+     m_windowmenu.reset(MenuCreator::createMenu("", *this));
++    // Identify the title-bar context menu separately for compositor styling.
++    m_windowmenu->fbwindow().setWindowRole("fluxbox-window-menu");
+     m_windowmenu->setInternalMenu();
+     m_windowmenu->setReloadHelper(new FbTk::AutoReloadHelper());
+     m_windowmenu->reloadHelper()->setReloadCmd(FbTk::RefCount<FbTk::Command<void> >(new FbTk::SimpleCommand<BScreen>(*this, &BScreen::rereadWindowMenu)));
+--- a/src/ScreenPlacement.hh
++++ b/src/ScreenPlacement.hh
+@@ -48,6 +48,7 @@
+         COLMINOVERLAPPLACEMENT,
+         ROWMINOVERLAPPLACEMENT,
+         CASCADEPLACEMENT,
+-        UNDERMOUSEPLACEMENT
++        UNDERMOUSEPLACEMENT,
++        RANDOMPLACEMENT
+     };
+
+--- a/src/ScreenPlacement.cc
++++ b/src/ScreenPlacement.cc
+@@ -34,6 +34,8 @@
+
+ #include <iostream>
+ #include <exception>
++#include <algorithm>
++#include <random>
+ #ifdef HAVE_CSTRING
+   #include <cstring>
+ #else
+@@ -83,6 +85,9 @@
+         case UNDERMOUSEPLACEMENT:
+             m_strategy.reset(new UnderMousePlacement());
+             break;
++        case RANDOMPLACEMENT:
++            m_strategy.reset(0);
++            break;
+         }
+     }
+
+@@ -96,6 +101,17 @@
+     place_x = head_left;
+     place_y = head_top;
+
++    if (*m_placement_policy == RANDOMPLACEMENT) {
++        // Fit the complete frame and external tabs inside this monitor's work area.
++        static std::mt19937 random(std::random_device{}());
++        int width = win.normalWidth() + win.fbWindow().borderWidth()*2 + win.widthOffset();
++        int height = win.normalHeight() + win.fbWindow().borderWidth()*2 + win.heightOffset();
++        place_x += win.xOffset() + std::uniform_int_distribution<int>(0, std::max(0, head_right - head_left - width))(random);
++        place_y += win.yOffset() + std::uniform_int_distribution<int>(0, std::max(0, head_bot - head_top - height))(random);
++        // Oversized windows keep their upper-left corner and title bar accessible.
++        return true;
++    }
++
+     bool placed = false;
+     try {
+         placed = m_strategy->placeWindow(win, head, place_x, place_y);
+@@ -196,5 +212,7 @@
+     case ScreenPlacement::CASCADEPLACEMENT:
+         return "CascadePlacement";
++    case ScreenPlacement::RANDOMPLACEMENT:
++        return "RandomPlacement";
+     }
+
+     return "RowSmartPlacement";
+@@ -214,6 +232,8 @@
+         *(*this) = ScreenPlacement::UNDERMOUSEPLACEMENT;
+     else if (strcasecmp("CascadePlacement", str) == 0)
+         *(*this) = ScreenPlacement::CASCADEPLACEMENT;
++    else if (strcasecmp("RandomPlacement", str) == 0)
++        *(*this) = ScreenPlacement::RANDOMPLACEMENT;
+     else
+         setDefaultValue();
+ }

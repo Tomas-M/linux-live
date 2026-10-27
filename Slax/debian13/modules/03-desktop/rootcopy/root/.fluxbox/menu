@@ -8,7 +8,7 @@
    [exec] (Run) { fbappselect }
    [separator]
    [workspaces] (Workspaces                ...)
-   [submenu] (Screen resolution       ...) {}
+   [submenu] (Screen resolution        ...) {}
       [include] (~/.fluxbox/menu_resolution)
    [end]
    [submenu] (Keyboard layout          ...) {}

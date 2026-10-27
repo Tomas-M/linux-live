@@ -55,7 +55,7 @@ session.screen0.edgeSnapThreshold:	10
 session.screen0.showwindowposition:	false
 session.screen0.defaultDeco:	NORMAL
 session.screen0.menuDelay:	200
-session.screen0.windowPlacement:	RowMinOverlapPlacement
+session.screen0.windowPlacement:	RandomPlacement
 session.screen0.focusSameHead:	false
 session.screen0.workspacewarping:	false
 session.keyFile:	~/.fluxbox/keys
