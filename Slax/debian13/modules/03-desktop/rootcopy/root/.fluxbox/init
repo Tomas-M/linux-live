@@ -19,7 +19,7 @@ session.screen0.toolbar.placement:	BottomCenter
 session.screen0.toolbar.layer:	Dock
 session.screen0.toolbar.height:	0
 session.screen0.toolbar.onhead:	1
-session.screen0.tabs.usePixmap:	true
+session.screen0.tabs.usePixmap:	false
 session.screen0.tabs.maxOver:	true
 session.screen0.tabs.intitlebar:	true
 session.screen0.window.focus.alpha:	255

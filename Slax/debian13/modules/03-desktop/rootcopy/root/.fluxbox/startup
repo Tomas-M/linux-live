@@ -33,8 +33,8 @@ xsetroot -cursor_name watch
 xset s off
 xset -dpms
 
-# preload compton and fluxbox to cache
-(compton --help; fluxbox --help; xfce4-panel --help) >/dev/null 2>&1
+# preload picom and fluxbox to cache
+(picom --help; fluxbox --help; xfce4-panel --help) >/dev/null 2>&1
 
 # Keep black screen for first second while the sound plays.
 # This slows startup a little, but it is nicer effect.
@@ -80,8 +80,7 @@ xfce4-panel --disable-wm-check --sm-client-disable &
    done
    xprop -id $(wmctrl -l | grep xfce4-panel | cut -d " " -f 1) -format _NET_WM_STRUT 32c -set _NET_WM_STRUT "0,0,0,52"
 
-   # Transparent application windows draw their own shadows; keep the panel shadow.
-   compton -b --sw-opti -e 0.9 --shadow-exclude 'class_g="xlunch-windowed"' --fade-exclude 'role*="fluxbox-toolbar"' --opacity-rule '70:role*="fluxbox-toolbar"' --opacity-rule '100:class_g="Chromium"' --no-fading-destroyed-argb -D 5 -c -f -l -2 -t -2 -r 0 -o 1 -z --shadow-exclude 'bounding_shaped' --shadow-exclude "argb && window_type != 'dock'"
+   picom -b --config /etc/picom.conf
    volumeicon &
 
    # Finish the panel's initial redraw on black before showing the wallpaper.

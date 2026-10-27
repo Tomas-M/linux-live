@@ -281,6 +281,15 @@ must follow the general Slax repair rules above.
   Resize the frame and clients continuously during a drag, without an outline.
   Use root pointer coordinates and the initial frame geometry to avoid drift;
   preserve application size hints, including character-cell increments.
+  Advertise `_NET_WM_STATE_FOCUSED` and publish it for the focused client,
+  including focus loss and tab switches. GTK4 otherwise treats all windows
+  as active and never applies its inactive decoration colors.
+  Window buttons support optional `.hover.pixmap` and `.unfocus.hover.pixmap`
+  resources, with distinct pressed artwork. `window.restore` supplies the
+  maximize button's artwork on maximized windows. Hover must clear on leave,
+  including a cancelled click, and preserve the current focus palette.
+  Disable the theme's corner cutouts on fully maximized and fullscreen frames.
+  Refresh the shape on state changes even when the geometry stays unchanged.
   The patch also fixes `Menu::updateMenu()`: child windows and backing
   pixmaps use the recomputed menu width, so changing column count cannot clip
   the resolution list. Verify both columns at 800x600 and the menu at 1024x768.
@@ -294,6 +303,18 @@ must follow the general Slax repair rules above.
   replacing it with a light-only theme also changes the taskbar. Keep the CSS
   and its tiny SVG arrows in rootcopy, applied after cleanup. Cursor defaults
   remain in `02-xorg/rootcopy/etc/gtk-3.0/settings.ini`.
+- Match window frames to Chromium's light palette: focused `#d3e3fd`, inactive
+  `#dde3e9`, 8 px upper corners, square lower corners and 4 px borders. Keep Fluxbox titles compact at
+  28 px and leave application content themes unchanged. Shared GTK 3/4 rules
+  are in `03-desktop/rootcopy/usr/share/slax/gtk-{3,4}.0/windows.css`, imported
+  by root, guest and `/etc/skel`. Hide borders and use square corners on
+  maximized/fullscreen GTK windows. Keep Fluxbox's `window.roundCorners` empty;
+  Picom supplies the antialiased mask instead of Fluxbox's binary shape cutouts.
+  Window buttons use bare gray symbols, with circles only on hover/press.
+  The four Adwaita symbolic window icons and Fluxbox's 22 px button pixmaps
+  belong to `03-desktop/rootcopy`; refresh the icon cache after copying them.
+  Enable `gtk-dialogs-use-header` in GTK 3 and GTK 4 settings so native file
+  dialogs retain the same header style. No XSettings daemon is needed.
 - Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
   The small `04-apps/gtk-app-style.c` GTK module loads only the stylesheet named
   for the running program. Compile it in the disposable build branch, install
@@ -307,17 +328,21 @@ must follow the general Slax repair rules above.
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` shrinks only tasklist
   icons to 75 percent, leaving space above and below them. Import this scoped
   stylesheet for root, guest and new users alongside the scrollbar styles.
-- Start the panel and Compton on a near-black (`#010101`) root pixmap, then
+- Start the panel and Picom on a near-black (`#010101`) root pixmap, then
   show the wallpaper after the panel's initial redraw. Keep its 84 percent
   opacity. The Slax theme uses `background: unset`; `none` restores the last
   background at startup. `fbscreensize` runs `sh ~/.fehbg` to restore the image
   and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
   so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
-- Compton must exclude `argb && window_type != 'dock'` from its shadows at
-  desktop startup and after resolution changes. GTK windows and popovers draw
-  their own shadows inside transparent bounds; another rectangular shadow
-  creates an unwanted outline. Preserve the panel shadow and keep Chromium
-  fully opaque with `--opacity-rule '100:class_g="Chromium"'` in both commands.
+- Picom replaces Compton and uses `/etc/picom.conf` at startup and after
+  resolution changes. Build its Debian package with `picom-top-corners.diff`;
+  `xrender-round-top-only` preserves square lower corners in XRender masks.
+  Use XRender without OpenGL shaders and repaint full frames to avoid stale
+  translucent pixels. Round server-decorated windows only; GTK CSS and Chromium
+  supply their own corners. Keep frames and Chromium opaque, fade normal/dialog
+  windows in and out, and shadow normal/dialog/dock windows. Fully maximized and
+  fullscreen windows have neither corner masks nor shadows. Preserve panel
+  transparency and remove Picom's desktop/autostart launchers during cleanup.
 - PCManFM uses the opened folder's icon in the tasklist. Its restored
   `folder.png` assets in `04-apps` are shifted down one pixel inside their
   unchanged transparent canvas; preserve the artwork without scaling or clipping.
