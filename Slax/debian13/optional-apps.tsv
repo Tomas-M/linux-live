@@ -3,6 +3,7 @@
 # Each row is resolved independently. APT estimates package data, not filesystem allocation or future user data.
 # Remove the desktop and icon listed below to remove an uninstalled application from the catalog.
 # Task Manager was measured separately on 2026-10-24 after removing its base package.
+# Xfburn and Document Scanner were measured separately on 2026-10-27.
 Application	Packages	Unpacked MB	Desktop file	Icon file
 Drawing	drawing	32.5	com.github.maoschanz.drawing.desktop	slax-drawing.png
 VLC	vlc	199.3	vlc.desktop	slax-vlc.png
@@ -11,3 +12,5 @@ GParted	gparted	21.1	gparted.desktop	slax-gparted.png
 Mines	gnome-mines	36.2	org.gnome.Mines.desktop	slax-gnome-mines.png
 Sudoku	gnome-sudoku	36.9	org.gnome.Sudoku.desktop	slax-gnome-sudoku.png
 Task Manager	lxtask	0.5	lxtask.desktop	utilities-system-monitor.png
+Xfburn	xfburn gstreamer1.0-plugins-base	39.7	xfburn.desktop	slax-xfburn.png
+Document Scanner	simple-scan	164.0	simple-scan.desktop	slax-simple-scan.png

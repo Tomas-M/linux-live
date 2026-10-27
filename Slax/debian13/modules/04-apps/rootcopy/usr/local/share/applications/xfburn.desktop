@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=CD/DVD Burner
+Exec=fbinstall slax-xfburn "Xfburn" "xfburn gstreamer1.0-plugins-base" "xfburn"
+X-Xlunch-Executable=xfburn
+Icon=slax-xfburn
+Terminal=false
+StartupNotify=true
+GenericName=Disk Burning
+Comment=CD and DVD burning application
+Categories=X-XFCE;GTK;DiscBurning;Archiving;AudioVideo;Utility;
+MimeType=application/x-cd-image;x-content/audio-cdda;x-content/blank-cd;
