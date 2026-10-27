@@ -1,6 +1,6 @@
 [Desktop Entry]
 Exec=connman-gtk-start
-Icon=gnome_network_workgroup
+Icon=slax-net-manager
 Name=Net Manager
 Comment=Connect to wired or Wi-Fi networks and configure connections
 Terminal=false

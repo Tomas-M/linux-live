@@ -23,7 +23,7 @@ XTerm*eightBitInput:  false
 XTerm*faceName:fixed:size=11
 XTerm*boldFont:fixed:size=11
 XTerm*activeIcon: true
-XTerm*iconPixmap: /usr/share/icons/locolor/32x32/apps/xterm.xbm
+XTerm*iconHint: /usr/share/pixmaps/xterm-color_48x48.xpm
 XTerm*fullscreen: never
 
 Xft.antialias:  true

@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+# Publish the same artwork under the icon names requested by application windows.
+while read NAME ICON; do
+   for SIZE in 16 22 24 32 48 64 96 128; do
+      DIR=/usr/local/share/icons/hicolor/${SIZE}x${SIZE}/apps
+      mkdir -p "$DIR"
+      cp "/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/$ICON.png" "$DIR/$NAME.png"
+   done
+done < icon-aliases
+# Xarchiver requests 24 px but accepts the original resolution for its window icon.
+cp /usr/share/icons/hicolor/128x128/apps/slax-xarchiver.png /usr/local/share/icons/hicolor/24x24/apps/xarchiver.png
 chmod 755 /usr/bin/connman-gtk-start
 update-desktop-database /usr/local/share/applications
 
@@ -12,3 +22,4 @@ printf 'gtk-modules=slax-app-style\n' >> /etc/gtk-3.0/settings.ini
 # Include restored application and network icons in GTK's lookup cache.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor
+gtk-update-icon-cache -f /usr/local/share/icons/hicolor
