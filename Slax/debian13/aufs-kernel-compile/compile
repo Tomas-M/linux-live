@@ -29,6 +29,7 @@ cp "$CWD/config-x86_64" .config
 
 # Older SVGA hosts do not report the newer cursor-MOB size limit.
 patch --batch --fuzz=0 -p1 < "$CWD/vmwgfx-legacy-cursor-limit.patch"
+patch --batch --fuzz=0 -p1 < "$CWD/vmwgfx-legacy-cursor-hotspot.patch"
 
 git init aufs
 git -C aufs remote add origin "$AUFSURL"

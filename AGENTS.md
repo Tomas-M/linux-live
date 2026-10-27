@@ -43,6 +43,10 @@ reporting progress.
   retain their 64px limit when the newer cursor-MOB limit register is absent.
   Keep MOB cursor validation unchanged. This fixes invisible hardware cursors
   without the software rendering that caused cursor clipping in VirtualBox.
+  `vmwgfx-legacy-cursor-hotspot.patch` also includes Xorg's legacy cursor-bypass
+  hotspot in guest-backed cursor images, matching the position calculation.
+  Keep theme hotspots and Fluxbox border cursors unchanged; the driver must pass
+  the actual hotspot to the host instead of shifting the artwork.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `02-xorg/rootcopy/root/.Xresources`.
