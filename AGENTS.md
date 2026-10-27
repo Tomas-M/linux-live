@@ -290,6 +290,10 @@ must follow the general Slax repair rules above.
   including a cancelled click, and preserve the current focus palette.
   Disable the theme's corner cutouts on fully maximized and fullscreen frames.
   Refresh the shape on state changes even when the geometry stays unchanged.
+  Set the opaque alpha byte on 32-bit ARGB window borders; theme RGB pixels
+  otherwise produce incorrect colors around server-decorated GTK4 windows.
+  Keep the frame background pixmap `None` so destroying a client preserves its
+  last pixels for compositor fade-out instead of replacing them with white.
   The patch also fixes `Menu::updateMenu()`: child windows and backing
   pixmaps use the recomputed menu width, so changing column count cannot clip
   the resolution list. Verify both columns at 800x600 and the menu at 1024x768.
@@ -315,6 +319,11 @@ must follow the general Slax repair rules above.
   belong to `03-desktop/rootcopy`; refresh the icon cache after copying them.
   Enable `gtk-dialogs-use-header` in GTK 3 and GTK 4 settings so native file
   dialogs retain the same header style. No XSettings daemon is needed.
+- GTK 3/4 file choosers default to 800 by 500 pixels through
+  `03-desktop/rootcopy/usr/share/glib-2.0/schemas/90-slax-filechooser.gschema.override`.
+  Compile schemas in `03-desktop/copy` after rootcopy. Keep this a system default;
+  users can resize dialogs and GTK remembers their choice. Do not ship a binary
+  user dconf database with unrelated preferences.
 - Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
   The small `04-apps/gtk-app-style.c` GTK module loads only the stylesheet named
   for the running program. Compile it in the disposable build branch, install
@@ -338,8 +347,9 @@ must follow the general Slax repair rules above.
   resolution changes. Build its Debian package with `picom-top-corners.diff`;
   `xrender-round-top-only` preserves square lower corners in XRender masks.
   Use XRender without OpenGL shaders and repaint full frames to avoid stale
-  translucent pixels. Round server-decorated windows only; GTK CSS and Chromium
-  supply their own corners. Keep frames and Chromium opaque, fade normal/dialog
+  translucent pixels. Round WM frames and opaque normal/dialog windows; opaque
+  client-decorated GTK windows cannot draw transparent corners themselves.
+  ARGB client-decorated windows retain their own corners. Keep frames and Chromium opaque, fade normal/dialog
   windows in and out, and shadow normal/dialog/dock windows. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.

@@ -8,6 +8,8 @@ done
 chmod 755 /root/.xinitrc /root/.fluxbox/startup
 # Keep native dialog headerbars consistent with other GTK windows.
 printf '\ngtk-dialogs-use-header=true\n' >> /etc/gtk-3.0/settings.ini
+# Apply the shared GTK file chooser defaults after restoring schema overrides.
+glib-compile-schemas /usr/share/glib-2.0/schemas
 update-desktop-database /usr/local/share/applications
 # Refresh icon lookup after cleanup and the restored icons.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
