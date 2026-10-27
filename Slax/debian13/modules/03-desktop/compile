@@ -4,7 +4,7 @@ CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
 apt-get build-dep --yes --no-install-recommends fluxbox
-apt-get install --yes --no-install-recommends build-essential dpkg-dev libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxi-dev
+apt-get install --yes --no-install-recommends build-essential dpkg-dev libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
 apt-get source fluxbox
@@ -26,7 +26,7 @@ cp ../fluxbox_*.deb "$OUTPUT/"
 PACKAGE=$OUTPUT/tools
 mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACKAGE/DEBIAN"
 cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cflags --libs gtk+-2.0)
-cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xi)
+cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cd /tmp
 wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.8.0.tar.gz

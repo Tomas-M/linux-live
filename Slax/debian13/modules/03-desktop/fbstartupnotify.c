@@ -1,5 +1,5 @@
-/* Application startup feedback, without replacing or grabbing the pointer.
- * Build: cc -Os -s -o fbstartupnotify fbstartupnotify.c $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xi)
+/* Application startup feedback using the native themed progress cursor.
+ * Build: cc -Os -s -o fbstartupnotify fbstartupnotify.c $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
  * Usage: fbstartupnotify COMMAND [ARGS...] | --desktop FILE [FILES...] | --monitor | --complete
  */
 #define SN_API_NOT_YET_FROZEN
@@ -9,7 +9,9 @@
 #include <libsn/sn.h>
 #include <X11/Xatom.h>
 #include <X11/Xcursor/Xcursor.h>
-#include <X11/extensions/XInput2.h>
+#include <X11/extensions/Xfixes.h>
+#include <glib-unix.h>
+#include <signal.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -28,11 +30,11 @@ static GList *pending;
 static SnLauncherContext *launch;
 static int child_status;
 static gboolean monitor_mode;
-static GtkWidget *overlay;
-static XcursorImages *animation;
-static guint timer, frame;
-static gint64 next_frame, next_check;
-static int input_opcode;
+static const char *arrow_names[]={"default", "left_ptr", "arrow", "top_left_arrow"};
+static Cursor busy_cursors[G_N_ELEMENTS(arrow_names)];
+static guint timer;
+static int fixes_event;
+static Atom monitor_selection;
 static Atom clients_atom, active_atom, startup_atom, pid_atom, leader_atom;
 
 /* libsn and window inspection share GDK's scoped handling of disappearing windows. */
@@ -134,129 +136,72 @@ static int match_window(Pending *item, Window window, Window active)
     return match;
 }
 
-/* Paint the theme's original animated wait artwork, separate from the real cursor. */
-static gboolean draw(GtkWidget *widget, GdkEventExpose *event, gpointer data)
+/* Only ordinary arrows become busy; text, links, resize and custom cursors stay intact. */
+static void set_feedback(gboolean busy)
 {
-    XcursorImage *image=animation->images[frame];
-    cairo_t *cr=gdk_cairo_create(widget->window);
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-    cairo_set_source_rgba(cr, 0, 0, 0, 0);
-    cairo_paint(cr);
-    cairo_surface_t *surface=cairo_image_surface_create_for_data((guchar *)image->pixels,
-        CAIRO_FORMAT_ARGB32, image->width, image->height, image->width*4);
-    cairo_set_source_surface(cr, surface, 0, 0);
-    cairo_paint(cr);
-    cairo_surface_destroy(surface);
-    cairo_destroy(cr);
-    return TRUE;
-}
-
-/* Keep transparent pixels transparent even while the compositor is being restarted. */
-static void shape_overlay(void)
-{
-    GdkRegion *shape=NULL, *empty=gdk_region_new();
-    if (!gdk_screen_is_composited(gtk_widget_get_screen(overlay)))
+    for (guint i=0; i < G_N_ELEMENTS(arrow_names); i++)
     {
-        shape=gdk_region_new();
-        XcursorImage *image=animation->images[frame];
-        for (guint y=0; y < image->height; y++)
-            for (guint x=0; x < image->width; x++)
-                if (image->pixels[y*image->width+x] >> 24)
-                {
-                    GdkRectangle pixel={x, y, 1, 1};
-                    gdk_region_union_with_rect(shape, &pixel);
-                }
+        gchar *name=g_strconcat("_SLAX_STARTUP_", arrow_names[i], NULL);
+        if (busy)
+        {
+            busy_cursors[i]=XcursorLibraryLoadCursor(display, "progress");
+            XFixesSetCursorName(display, busy_cursors[i], name);
+            XFixesChangeCursorByName(display, busy_cursors[i], arrow_names[i]);
+        }
+        else
+        {
+            Cursor normal=XcursorLibraryLoadCursor(display, arrow_names[i]);
+            XFixesChangeCursorByName(display, normal, name);
+            XFreeCursor(display, normal);
+            if (busy_cursors[i]) XFreeCursor(display, busy_cursors[i]);
+            busy_cursors[i]=None;
+        }
+        g_free(name);
     }
-    gdk_window_shape_combine_region(overlay->window, shape, 0, 0);
-    gdk_window_input_shape_combine_region(overlay->window, empty, 0, 0);
-    if (shape) gdk_region_destroy(shape);
-    gdk_region_destroy(empty);
+    XFlush(display);
 }
 
-/* Listen only during launches; raw motion also arrives while another client has a grab. */
-static void select_motion(gboolean enabled)
-{
-    if (!input_opcode) return;
-    unsigned char bits[XIMaskLen(XI_RawMotion)]={0};
-    if (enabled) XISetMask(bits, XI_RawMotion);
-    XIEventMask mask={XIAllMasterDevices, sizeof(bits), bits};
-    XISelectEvents(display, root, &mask, 1);
-}
-
-/* Follow input events immediately instead of waiting for the animation timer. */
-static void follow_pointer(void)
-{
-    int x, y;
-    GdkScreen *screen;
-    gdk_display_get_pointer(gdk_display_get_default(), &screen, &x, &y, NULL);
-    GdkRectangle bounds;
-    gdk_screen_get_monitor_geometry(screen, gdk_screen_get_monitor_at_point(screen, x, y), &bounds);
-    XcursorImage *image=animation->images[frame];
-    int offset=MAX(8, XcursorGetDefaultSize(display)/3);
-    if (x+offset+(int)image->width > bounds.x+bounds.width) x-=offset+image->width;
-    else x+=offset;
-    if (y+offset+(int)image->height > bounds.y+bounds.height) y-=offset+image->height;
-    else y+=offset;
-    gtk_window_move(GTK_WINDOW(overlay), MAX(bounds.x, x), MAX(bounds.y, y));
-    gtk_widget_show(overlay);
-    gdk_window_raise(overlay->window);
-    gdk_flush();
-}
-
-/* Advance the animation and readiness checks; polling also covers pointer warps and older X servers. */
+/* Check readiness independently of the cursor animation, which runs in the X server. */
 static gboolean tick(gpointer data)
 {
     if (!pending)
     {
-        gtk_widget_hide(overlay);
-        select_motion(FALSE);
+        set_feedback(FALSE);
         timer=0;
         return FALSE;
     }
     gint64 now=g_get_monotonic_time();
-    if (now >= next_check)
+    gdk_error_trap_push();
+    gulong count;
+    Window *windows=(Window *)property(root, clients_atom, XA_WINDOW, 32, &count);
+    Window active=number(root, active_atom, XA_WINDOW);
+    GHashTable *ready=g_hash_table_new(g_direct_hash, g_direct_equal);
+    /* Assign each new window to its strongest match, never to several launches. */
+    for (gulong i=0; i < count; i++)
     {
-        gdk_error_trap_push();
-        gulong count;
-        Window *windows=(Window *)property(root, clients_atom, XA_WINDOW, 32, &count);
-        Window active=number(root, active_atom, XA_WINDOW);
-        GHashTable *ready=g_hash_table_new(g_direct_hash, g_direct_equal);
-        /* Assign each new window to its strongest match, never to several launches. */
-        for (gulong i=0; i < count; i++)
-        {
-            Pending *best=NULL;
-            int score=0;
-            for (GList *node=pending; node; node=node->next)
-            {
-                Pending *item=node->data;
-                if (g_hash_table_contains(ready, item)) continue;
-                int candidate=match_window(item, windows[i], active);
-                if (candidate > score) { best=item; score=candidate; }
-            }
-            if (best) g_hash_table_add(ready, best);
-        }
+        Pending *best=NULL;
+        int score=0;
         for (GList *node=pending; node; node=node->next)
         {
             Pending *item=node->data;
-            if (now >= item->deadline || g_hash_table_contains(ready, item))
-                sn_startup_sequence_complete(item->sequence);
-            for (gulong i=0; i < count; i++) g_hash_table_add(item->windows, (gpointer)windows[i]);
-            item->active=active;
+            if (g_hash_table_contains(ready, item)) continue;
+            int candidate=match_window(item, windows[i], active);
+            if (candidate > score) { best=item; score=candidate; }
         }
-        g_hash_table_destroy(ready);
-        if (windows) XFree(windows);
-        pop_error(sn_display, display);
-        next_check=now+100000;
+        if (best) g_hash_table_add(ready, best);
     }
-
-    if (now >= next_frame)
+    for (GList *node=pending; node; node=node->next)
     {
-        frame=(frame+1)%animation->nimage;
-        next_frame=now+MAX(16, animation->images[frame]->delay)*1000;
-        shape_overlay();
-        gtk_widget_queue_draw(overlay);
+        Pending *item=node->data;
+        if (now >= item->deadline || g_hash_table_contains(ready, item))
+            sn_startup_sequence_complete(item->sequence);
+        for (gulong i=0; i < count; i++) g_hash_table_add(item->windows, (gpointer)windows[i]);
+        item->active=active;
     }
-    follow_pointer();
+    g_hash_table_destroy(ready);
+    if (windows) XFree(windows);
+    pop_error(sn_display, display);
+
     return TRUE;
 }
 
@@ -290,8 +235,8 @@ static void notification(SnMonitorEvent *event, void *data)
         pending=g_list_append(pending, item);
         if (!timer)
         {
-            select_motion(TRUE);
-            timer=g_timeout_add(16, tick, NULL);
+            set_feedback(TRUE);
+            timer=g_timeout_add(100, tick, NULL);
         }
     }
     if (type == SN_MONITOR_EVENT_COMPLETED || type == SN_MONITOR_EVENT_CANCELED)
@@ -311,37 +256,51 @@ static void notification(SnMonitorEvent *event, void *data)
 static GdkFilterReturn filter(GdkXEvent *event, GdkEvent *translated, gpointer data)
 {
     XEvent *xevent=event;
-    if (pending && xevent->type == GenericEvent && xevent->xcookie.extension == input_opcode)
-        if (xevent->xcookie.evtype == XI_RawMotion) follow_pointer();
+    if (monitor_mode && pending && xevent->type == fixes_event+XFixesCursorNotify)
+    {
+        XFixesCursorNotifyEvent *cursor=(XFixesCursorNotifyEvent *)xevent;
+        for (guint i=0; i < G_N_ELEMENTS(arrow_names); i++)
+            if (cursor->cursor_name == XInternAtom(display, arrow_names[i], False))
+                XFixesChangeCursorByName(display, busy_cursors[i], arrow_names[i]);
+        XFlush(display);
+    }
+    /* Launchers restore arrows if the monitor crashes before completing their sequences. */
+    if (!monitor_mode && xevent->type == fixes_event+XFixesSelectionNotify)
+    {
+        XFixesSelectionNotifyEvent *selection=(XFixesSelectionNotifyEvent *)xevent;
+        if (selection->selection == monitor_selection && selection->owner == None &&
+                XGetSelectionOwner(display, monitor_selection) == None) set_feedback(FALSE);
+    }
     sn_display_process_event(sn_display, event);
     return GDK_FILTER_CONTINUE;
 }
 
-/* One monitor owns the display selection; racing launches cannot create duplicates. */
+/* Restore native arrows on an ordinary monitor shutdown. */
+static gboolean stop_monitor(gpointer data)
+{
+    gtk_main_quit();
+    return G_SOURCE_REMOVE;
+}
+
+/* One unmapped owner window prevents racing launches from creating duplicate monitors. */
 static void monitor(Atom selection)
 {
-    int event, error, major=2, minor=1;
-    if (!XQueryExtension(display, "XInputExtension", &input_opcode, &event, &error) ||
-            XIQueryVersion(display, &major, &minor) != Success) input_opcode=0;
-    overlay=gtk_window_new(GTK_WINDOW_POPUP);
-    gtk_window_set_title(GTK_WINDOW(overlay), "Application startup");
-    gtk_window_set_wmclass(GTK_WINDOW(overlay), "fbstartupnotify", "Fbstartupnotify");
-    gtk_window_set_accept_focus(GTK_WINDOW(overlay), FALSE);
-    gtk_widget_set_app_paintable(overlay, TRUE);
-    GdkColormap *rgba=gdk_screen_get_rgba_colormap(gdk_screen_get_default());
-    if (rgba) gtk_widget_set_colormap(overlay, rgba);
-    animation=XcursorLibraryLoadImages("wait", XcursorGetTheme(display), XcursorGetDefaultSize(display));
-    if (!animation) g_error("Cannot load the cursor theme's wait animation");
-    gtk_widget_set_size_request(overlay, animation->images[0]->width, animation->images[0]->height);
-    gtk_widget_realize(overlay);
-    shape_overlay();
-    g_signal_connect(overlay, "expose-event", G_CALLBACK(draw), NULL);
+    Window window=XCreateSimpleWindow(display, root, 0, 0, 1, 1, 0, 0, 0);
     XGrabServer(display);
     gboolean owner=XGetSelectionOwner(display, selection) == None;
-    if (owner) XSetSelectionOwner(display, selection, GDK_WINDOW_XID(overlay->window), CurrentTime);
+    if (owner) XSetSelectionOwner(display, selection, window, CurrentTime);
     XUngrabServer(display);
+    if (owner)
+    {
+        set_feedback(FALSE);
+        XFixesSelectCursorInput(display, root, XFixesDisplayCursorNotifyMask);
+        g_unix_signal_add(SIGTERM, stop_monitor, NULL);
+        g_unix_signal_add(SIGINT, stop_monitor, NULL);
+        gtk_main();
+        set_feedback(FALSE);
+    }
+    XDestroyWindow(display, window);
     XFlush(display);
-    if (owner) gtk_main();
 }
 
 /* Each launcher owns its sequence until readiness, failure or the bounded timeout. */
@@ -451,8 +410,12 @@ int main(int argc, char **argv)
     gdk_window_set_events(gdk_get_default_root_window(),
         gdk_window_get_events(gdk_get_default_root_window()) | GDK_PROPERTY_CHANGE_MASK);
     gdk_window_add_filter(NULL, filter, NULL);
-    Atom selection=XInternAtom(display, "_SLAX_STARTUP_MONITOR", False);
+    int fixes_error;
+    if (!XFixesQueryExtension(display, &fixes_event, &fixes_error)) return 1;
+    Atom selection=monitor_selection=XInternAtom(display, "_SLAX_STARTUP_MONITOR", False);
     if (monitor_mode) { monitor(selection); return 0; }
+    XFixesSelectSelectionInput(display, root, selection,
+        XFixesSelectionWindowDestroyNotifyMask | XFixesSelectionClientCloseNotifyMask);
 
     if (XGetSelectionOwner(display, selection) == None)
     {

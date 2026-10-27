@@ -237,12 +237,12 @@ must follow the general Slax repair rules above.
   and Fluxbox pass the actual command and arguments to the same compiled helper.
   Its on-demand monitor follows startup notification IDs, matching application
   windows and a 30-second timeout independently for concurrent launches.
-  Show the selected theme's wait animation beside the pointer in an input-transparent
-  overlay. Never replace the application's cursor or grab pointer input.
-  Follow XI2 raw motion during launches, including application grabs; keep the timer
-  for animation, pointer warps and displays without XI2. Flush moves immediately.
-  Exclude `Fbstartupnotify` from Compton fading at startup and after resolution changes:
-  fading an unmapped indicator leaves a stationary spinner after the application opens.
+  During launches, replace ordinary named arrows with the theme's native animated
+  `progress` cursor through XFixes. Text, hand, resize and custom cursors stay intact;
+  feedback may disappear over those areas. Do not use a moving overlay or grab input.
+  The X server animates and moves the combined arrow and spinner together. Track newly
+  displayed arrows, restore their themed names when all launches finish, and restore
+  them on monitor shutdown. Launchers also restore arrows if the monitor disconnects.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
 - Optional application launchers and their single 128 px icons live in `04-apps`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
