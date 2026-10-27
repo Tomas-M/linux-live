@@ -26,6 +26,7 @@ done
 
 # Set the background and use the cursor theme and size selected by Xresources.
 fbsetroot -solid '#010101'
+fbvboxpointer
 xsetroot -cursor_name watch
 
 # disable screen blanking
