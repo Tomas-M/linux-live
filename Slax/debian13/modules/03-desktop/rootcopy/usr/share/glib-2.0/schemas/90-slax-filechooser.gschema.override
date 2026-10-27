@@ -1,0 +1,5 @@
+[org.gtk.Settings.FileChooser]
+window-size=(800, 500)
+
+[org.gtk.gtk4.Settings.FileChooser]
+window-size=(800, 500)

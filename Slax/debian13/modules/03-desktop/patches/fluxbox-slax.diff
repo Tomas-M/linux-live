@@ -314,7 +314,16 @@
          client_depth, InputOutput,
          (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().visual() : CopyFromParent),
          (client_depth == screen.rootWindow().maxDepth() ? screen.rootWindow().colormap() : CopyFromParent)),
-@@ -505,6 +505,9 @@
+@@ -148,6 +148,8 @@
+     m_button_size(1),
+     m_shape(m_window, theme->shapePlace()) {
+
++    // Keep the last client pixels intact for compositor close animations.
++    XSetWindowBackgroundPixmap(FbTk::App::instance()->display(), m_window.window(), None);
+     init();
+ }
+
+@@ -505,6 +507,9 @@
      }
 
      moveResize(new_x, new_y, new_w, new_h);
@@ -324,7 +333,7 @@
      frameExtentSig().emit();
  }
 
-@@ -640,7 +643,7 @@
+@@ -640,7 +645,7 @@
      win.reparent(m_window, clientArea().x(), clientArea().y());
 
      m_window.setEventMask(ButtonPressMask | ButtonReleaseMask |
@@ -333,7 +342,7 @@
                            LeaveWindowMask | SubstructureRedirectMask);
 
      XFlush(win.display());
-@@ -1301,6 +1304,9 @@
+@@ -1301,6 +1306,9 @@
  }
 
  int FbWinFrame::getShape() const {
@@ -641,3 +650,18 @@
      m_maximize_pm->scale(size, size);
      m_menuicon_pm->scale(size, size);
      m_iconify_pm->scale(size, size);
+--- a/src/FbTk/FbWindow.cc
++++ b/src/FbTk/FbWindow.cc
+@@ -251,8 +251,11 @@
+ }
+
+ void FbWindow::setBorderColor(const FbTk::Color &border_color) {
+-    XSetWindowBorder(display(), m_window, border_color.pixel());
+     m_border_color = border_color.pixel();
++    // RGB theme colors need an opaque alpha channel on ARGB windows.
++    if (depth() == 32)
++        m_border_color |= 0xff000000UL;
++    XSetWindowBorder(display(), m_window, m_border_color);
+ }
+
+ void FbWindow::setBorderWidth(unsigned int size) {
