@@ -1,5 +1,5 @@
 [Desktop Entry]
-Icon=terminal
+Icon=slax-terminal
 Name=Terminal
 Comment=Run shell commands, scripts and system tools
 Exec=xterm -ls

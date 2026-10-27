@@ -178,14 +178,21 @@ must follow the general Slax repair rules above.
   XDG directory precedence keeps one launcher and retains Slax's command after
   APT upgrades. Update Favorites and MIME associations when changing desktop IDs.
 - Keep selected applet and application icons in their module's `rootcopy`.
+  Selected application launcher artwork uses distinct `slax-*` names in
+  hicolor's `apps` directories, bundled at 16, 22, 24, 32, 48, 64, 96 and 128 px.
+  Native application icon names are listed in each module's `icon-aliases`;
+  `copy` installs those PNGs under `/usr/local/share/icons/hicolor` so APT cannot
+  replace them. Refresh this local icon cache through the final module too.
+  SciTE reads `/usr/share/pixmaps/Sci48M.png`; xterm uses its bundled XPM through
+  `XTerm*iconHint`. Keep Chromium, Session action icons and status tray icons unchanged.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
   `05-chromium`. Put ConnMan's regular tray icons in Adwaita's `16x16/legacy`
   directory too: GTK may prefer Adwaita's symbolic icons over inherited hicolor
   artwork even when a normal icon lookup finds the hicolor PNG.
-  Network, volume and battery icons come from Debian's AdwaitaLegacy theme;
-  larger Xarchiver and feh icons are rendered from their original SVG assets.
-- Xarchiver requests a 24 px window icon. Store its original 128 px artwork
+  Network, volume and battery status icons come from Debian's AdwaitaLegacy
+  theme; larger feh icons are rendered from their original SVG assets.
+- Xarchiver requests a 24 px window icon. Store its selected 128 px artwork
   in the 24 px icon path too; GTK retains its resolution without rebuilding
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
@@ -255,7 +262,7 @@ must follow the general Slax repair rules above.
   A shared WM_CLIENT_LEADER can retain an old startup ID, so it must not prevent
   matching new windows from an already running application by process or class.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
-- Optional application launchers and their single 128 px icons live in `04-apps`
+- Optional application launchers and their bundled icon sizes live in `04-apps`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
   against clean Slax, without recommends; every entry is below 500 MB.
   Keep canonical Debian desktop IDs and MIME declarations in `/usr/local/share`
@@ -355,9 +362,9 @@ must follow the general Slax repair rules above.
   windows in and out, and shadow normal/dialog/dock windows. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
-- PCManFM uses the opened folder's icon in the tasklist. Its restored
-  `folder.png` assets in `04-apps` are shifted down one pixel inside their
-  unchanged transparent canvas; preserve the artwork without scaling or clipping.
+- PCManFM uses the opened folder's icon in the tasklist. Keep its restored
+  `folder.png` assets in `04-apps` consistent with the selected File Manager
+  artwork, including the Adwaita and gnome theme paths used by native windows.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.

@@ -1,6 +1,15 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+# Native names under /usr/local keep application installs from replacing Slax's artwork.
+while read NAME ICON; do
+   for SIZE in 16 22 24 32 48 64 96 128; do
+      DIR=/usr/local/share/icons/hicolor/${SIZE}x${SIZE}/apps
+      mkdir -p "$DIR"
+      cp "/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/$ICON.png" "$DIR/$NAME.png"
+   done
+done < icon-aliases
+cp /usr/share/icons/hicolor/index.theme /usr/local/share/icons/hicolor/
 # All shipped helper commands must be executable regardless of checkout permissions.
 for FILE in rootcopy/usr/bin/*; do
    chmod 755 "/usr/bin/$(basename "$FILE")"
@@ -14,6 +23,7 @@ update-desktop-database /usr/local/share/applications
 # Refresh icon lookup after cleanup and the restored icons.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor
+gtk-update-icon-cache -f /usr/local/share/icons/hicolor
 
 # Set ownership after restoring the guest's desktop defaults.
 for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do
