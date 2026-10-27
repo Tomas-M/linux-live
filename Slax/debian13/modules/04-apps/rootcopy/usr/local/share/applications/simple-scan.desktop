@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Document Scanner
+Exec=fbinstall slax-simple-scan "Document Scanner" "simple-scan" "simple-scan"
+X-Xlunch-Executable=simple-scan
+Icon=slax-simple-scan
+Terminal=false
+StartupNotify=true
+Comment=Make a digital copy of your photos and documents
+Categories=GNOME;GTK;Graphics;Scanning;
+Keywords=scan;scanner;flatbed;adf;

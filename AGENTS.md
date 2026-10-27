@@ -202,6 +202,8 @@ must follow the general Slax repair rules above.
   prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
   entries and icons are present. Match the runtime profile, locale, PATH and
   XDG environment; refresh the final module cache after changing these inputs.
+  Incremental icon changes must also refresh the final GTK icon cache in
+  `05-chromium`: its cache overrides caches from earlier modules.
 - Slax's Focus footer uses `align=grid` and `bottom_margin=0`. This places
   the help 28 px lower than the shared margin and gives the icon grid the same
   additional height while leaving the bottom-left close button unobstructed.
