@@ -94,6 +94,7 @@ static int match_window(Pending *item, Window window, Window active)
     const char *id=sn_startup_sequence_get_id(item->sequence);
     gulong count;
     char *window_id=(char *)property(window, startup_atom, XInternAtom(display, "UTF8_STRING", False), 8, &count);
+    gboolean leader_id=!window_id;
     if (!window_id)
     {
         Window leader=number(window, leader_atom, XA_WINDOW);
@@ -104,10 +105,11 @@ static int match_window(Pending *item, Window window, Window active)
     if (window_id) XFree(window_id);
     if (match) return 3;
     gboolean activated=g_hash_table_contains(item->windows, (gpointer)window) && window == active && active != item->active;
-    if (other_id && !activated) return FALSE;
+    /* A shared leader can retain the startup ID of the application's first window. */
+    if (other_id && !activated && !leader_id) return FALSE;
 
     int parent=0;
-    if (sscanf(id, "fbstartupnotify-%d/", &parent) == 1)
+    if (sscanf(id, "fbstartupnotify-%d", &parent) == 1)
     {
         char *host=(char *)property(window, XA_WM_CLIENT_MACHINE, XA_STRING, 8, &count);
         gboolean local=!host || !strcmp(host, g_get_host_name());
@@ -222,14 +224,23 @@ static void notification(SnMonitorEvent *event, void *data)
     }
     if (type == SN_MONITOR_EVENT_INITIATED)
     {
+        /* Our launchers publish their baseline before the application can create windows. */
+        Window snapshot=root;
+        sscanf(id, "fbstartupnotify-%*d-%lx/", &snapshot);
+        gdk_error_trap_push();
+        Window active=number(snapshot, active_atom, XA_WINDOW);
+        gulong count;
+        Window *windows=(Window *)property(snapshot, clients_atom, XA_WINDOW, 32, &count);
+        XSync(display, False);
+        int error=gdk_error_trap_pop();
+        if (error) { if (windows) XFree(windows); return; }
+
         Pending *item=g_new0(Pending, 1);
         item->sequence=sequence;
         sn_startup_sequence_ref(sequence);
         item->deadline=g_get_monotonic_time()+30*G_USEC_PER_SEC;
         item->windows=g_hash_table_new(g_direct_hash, g_direct_equal);
-        item->active=number(root, active_atom, XA_WINDOW);
-        gulong count;
-        Window *windows=(Window *)property(root, clients_atom, XA_WINDOW, 32, &count);
+        item->active=active;
         for (gulong i=0; i < count; i++) g_hash_table_add(item->windows, (gpointer)windows[i]);
         if (windows) XFree(windows);
         pending=g_list_append(pending, item);
@@ -312,7 +323,15 @@ static SnLauncherContext *begin(const char *name, const char *binary, const char
     sn_launcher_context_set_name(context, name);
     sn_launcher_context_set_binary_name(context, binary);
     if (wmclass) sn_launcher_context_set_wmclass(context, wmclass);
-    gchar *launcher=g_strdup_printf("fbstartupnotify-%d", getpid());
+    /* Keep the pre-launch snapshot on this X connection until its launcher exits. */
+    Window snapshot=XCreateSimpleWindow(display, root, 0, 0, 1, 1, 0, 0, 0);
+    gulong count;
+    guchar *windows=property(root, clients_atom, XA_WINDOW, 32, &count);
+    XChangeProperty(display, snapshot, clients_atom, XA_WINDOW, 32, PropModeReplace, windows, count);
+    if (windows) XFree(windows);
+    Window active=number(root, active_atom, XA_WINDOW);
+    XChangeProperty(display, snapshot, active_atom, XA_WINDOW, 32, PropModeReplace, (guchar *)&active, 1);
+    gchar *launcher=g_strdup_printf("fbstartupnotify-%d-%lx", getpid(), snapshot);
     Time time=gdk_x11_get_server_time(gdk_get_default_root_window());
     sn_launcher_context_initiate(context, launcher, binary, time);
     g_free(launcher);

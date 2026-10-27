@@ -247,6 +247,11 @@ must follow the general Slax repair rules above.
   The X server animates and moves the combined arrow and spinner together. Track newly
   displayed arrows, restore their themed names when all launches finish, and restore
   them on monitor shutdown. Launchers also restore arrows if the monitor disconnects.
+  Capture the initial client list and active window in the launcher before spawning
+  the application; publish them on an unmapped X window identified by its startup ID.
+  The monitor must not take a later snapshot that already includes the new window.
+  A shared WM_CLIENT_LEADER can retain an old startup ID, so it must not prevent
+  matching new windows from an already running application by process or class.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
 - Optional application launchers and their single 128 px icons live in `04-apps`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
