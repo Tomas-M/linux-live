@@ -5,6 +5,7 @@ cp -a rootcopy/. /
 for FILE in rootcopy/usr/bin/*; do
    chmod 755 "/usr/bin/$(basename "$FILE")"
 done
+chmod 755 /root/.xinitrc /root/.fluxbox/startup
 update-desktop-database /usr/local/share/applications
 # Refresh icon lookup after cleanup and the restored icons.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
