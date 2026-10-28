@@ -9,3 +9,7 @@ onlyDisplayVisible=true
 previewMaxWidth=215
 previewMaxHeight=150
 previewSleep=250
+# Wait before switching an open preview to another taskbar icon (milliseconds).
+previewSwitchDelay=250
+# Wait before the first window highlight; adjacent highlighted previews switch immediately.
+previewPeekDelay=250

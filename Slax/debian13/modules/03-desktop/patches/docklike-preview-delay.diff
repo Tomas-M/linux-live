@@ -1,0 +1,280 @@
+Description: Configure initial peek and group switch delays, keeping click toggles deterministic
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -148,10 +148,14 @@
+ 			me->mLeaveTimeout.stop();
+ 			if (me->mPreviewSuppressed)
+ 				return false;
+-			if (GroupMenu::isOpen())
++			if (me->mGroupMenu.mVisible)
+ 				me->onMouseEnter();
+ 			else
++			{
++				// Allow diagonal travel across neighboring icons to the current preview.
++				me->mMenuShowTimeout.mDuration = GroupMenu::isOpen() ? Settings::previewSwitchDelay.get() : 90;
+ 				me->mMenuShowTimeout.start();
++			}
+ 
+ 			if (Settings::showPreviews)
+ 				me->mWindows.forEach([](GroupWindow* w) -> void {
+@@ -763,8 +767,24 @@
+ 
+ void Group::onMouseLeave()
+ {
+-	if (!mGroupMenu.mMouseHover)
++	if (!pointerInside() && mGroupMenu.getPointerDistance() > 0)
+ 		mGroupMenu.hide(true);
++}
++
++// Ignore synthetic crossings and stale hide timers while the pointer is on the icon.
++bool Group::pointerInside()
++{
++	GdkRectangle point = {0, 0, 1, 1}, area;
++	gdk_device_get_position(Plugin::mPointer, nullptr, &point.x, &point.y);
++	GtkWidget* window = gtk_widget_get_toplevel(mButton);
++	int left, top;
++	gdk_window_get_origin(gtk_widget_get_window(window), &left, &top);
++	gtk_widget_translate_coordinates(mButton, window, 0, 0, &area.x, &area.y);
++	area.x += left;
++	area.y += top;
++	area.width = gtk_widget_get_allocated_width(mButton);
++	area.height = gtk_widget_get_allocated_height(mButton);
++	return gdk_rectangle_intersect(&area, &point, nullptr);
+ }
+ 
+ void Group::setMouseLeaveTimeout()
+@@ -892,6 +912,7 @@
+ 			dismissPreviews(true);
+ 		else
+ 		{
++			mLeaveTimeout.stop();
+ 			mMenuShowTimeout.stop();
+ 			mGroupMenu.mPopupIdle.stop();
+ 			mPreviewSuppressed = false;
+@@ -911,7 +932,7 @@
+ // Dismiss a selection and suppress hover reopening until the pointer leaves its icon.
+ void Group::dismissPreviews(bool animated)
+ {
+-	mPreviewSuppressed = gtk_style_context_has_class(gtk_widget_get_style_context(mButton), "hover_group");
++	mPreviewSuppressed = pointerInside();
+ 	mMenuShowTimeout.stop();
+ 	mGroupMenu.mPopupIdle.stop();
+ 	mGroupMenu.hide(animated);
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -74,6 +74,7 @@
+ 	void dismissPreviews(bool animated = false);
+ 	void onMouseEnter();
+ 	void onMouseLeave();
++	bool pointerInside();
+ 	void setMouseLeaveTimeout();
+ 	bool onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time);
+ 	void onDragLeave(const GdkDragContext* context, guint time);
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -159,7 +159,10 @@
+ 	void hide(bool animated = false)
+ 	{
+ 		if (menu)
++		{
+ 			menu->mPopupIdle.stop();
++			menu->mGroup->mLeaveTimeout.stop();
++		}
+ 		if (animated)
+ 		{
+ 			if (!menu || targetOpacity == 0)
+@@ -228,6 +231,7 @@
+ 			menu->mGroup->mLeaveTimeout.stop();
+ 		}
+ 		menu = next;
++		menu->mGroup->mLeaveTimeout.stop();
+ 		menu->mVisible = true;
+ 		std::vector<bool> used(old.size(), false);
+ 		std::vector<int> matches;
+@@ -261,6 +265,7 @@
+ 		for (unsigned index = 0; index < next->mItems.size(); ++index)
+ 		{
+ 			GroupMenuItem* item = next->mItems[index];
++			item->peek(false);
+ 			item->updateLabel();
+ 			item->updateIcon();
+ 			item->updatePreview();
+@@ -522,7 +527,7 @@
+ 	return std::max(dx, dy);
+ }
+ 
+-// Adjacent taskbar icons switch an already visible popup without a new delay.
++// Keep the shared popup alive while a group switch or closing animation is pending.
+ bool GroupMenu::isOpen()
+ {
+ 	return previewPopup.menu != nullptr;
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -80,6 +80,13 @@
+ 	if (Settings::previewSleep)
+ 		sleepMS = Settings::previewSleep;
+ 
++	mPeekTimeout.setup(Settings::previewPeekDelay, [this]() {
++		if (pointerInsidePeek())
++			peek(true);
++		return false;
++	});
++	// Dispatch adjacent card enters before ending an already active peek sequence.
++	mPeekLeaveIdle.setup([this]() { peek(false); return false; });
+ 	mPreviewTimeout.setup(sleepMS, [this]() {
+ 		updatePreview();
+ 		return true;
+@@ -106,7 +113,14 @@
+ 			if (event->state & GDK_BUTTON1_MASK)
+ 				me->mGroupWindow->activate(event->time);
+ 			else
+-				me->peek(true);
++			{
++				me->updatePeekArea();
++				me->mPeekLeaveIdle.stop();
++				if (peekItem)
++					me->peek(true);
++				else
++					me->mPeekTimeout.start();
++			}
+ 			Help::Gtk::cssClassAdd(widget, "hover_menu_item");
+ 			gtk_widget_queue_draw(widget);
+ 			return true;
+@@ -119,7 +133,11 @@
+ 				return true;
+ 			if (peekItem == me && me->pointerInsidePeek())
+ 				return true;
+-			me->peek(false);
++			me->mPeekTimeout.stop();
++			if (peekItem == me)
++				me->mPeekLeaveIdle.start();
++			else
++				me->peek(false);
+ 			Help::Gtk::cssClassRemove(widget, "hover_menu_item");
+ 			gtk_widget_queue_draw(widget);
+ 			gtk_widget_queue_draw(me->mGroupWindow->mGroup->mButton);
+@@ -236,6 +254,13 @@
+ // Stop on real window changes; child crossings must not restart a cancelled hover.
+ void GroupMenuItem::cancelPeek()
+ {
++	Xfw::mGroupWindows.forEach([](std::pair<XfwWindow*, std::shared_ptr<GroupWindow>> window) {
++		GroupMenuItem* item = window.second->mGroupMenuItem;
++		if (item->mPeekTimeout.mTimeoutId)
++			item->mPeekBlocked = true;
++		item->mPeekTimeout.stop();
++		item->mPeekLeaveIdle.stop();
++	});
+ 	if (!peekItem)
+ 		return;
+ 	peekItem->mPeekBlocked = true;
+@@ -250,9 +275,28 @@
+ 	return gdk_rectangle_intersect(&mPeekArea, &pointer, nullptr);
+ }
+ 
++// Preserve the root hit area through pending delays and synthetic crossings.
++void GroupMenuItem::updatePeekArea()
++{
++	GtkWidget* widget = GTK_WIDGET(mItem);
++	GtkWidget* window = gtk_widget_get_toplevel(widget);
++	int left, top;
++	gdk_window_get_origin(gtk_widget_get_window(window), &left, &top);
++	gtk_widget_translate_coordinates(widget, window, 0, 0, &mPeekArea.x, &mPeekArea.y);
++	mPeekArea.x += left;
++	mPeekArea.y += top;
++	mPeekArea.width = gtk_widget_get_allocated_width(widget);
++	mPeekArea.height = gtk_widget_get_allocated_height(widget);
++}
++
+ // Ask Fluxbox for a reversible raise while Picom dims the other application frames.
+ void GroupMenuItem::peek(bool show)
+ {
++	if (!show)
++	{
++		mPeekTimeout.stop();
++		mPeekLeaveIdle.stop();
++	}
+ #ifdef ENABLE_X11
+ 	// Only physical movement outside the cancelled card may rearm its effect.
+ 	if (mPeekBlocked && !pointerInsidePeek())
+@@ -289,15 +333,7 @@
+ 	if (show)
+ 	{
+ 		// Keep the original root rectangle through restacking and popup relayouts.
+-		GtkWidget* widget = GTK_WIDGET(mItem);
+-		GtkWidget* window = gtk_widget_get_toplevel(widget);
+-		int left, top;
+-		gdk_window_get_origin(gtk_widget_get_window(window), &left, &top);
+-		gtk_widget_translate_coordinates(widget, window, 0, 0, &mPeekArea.x, &mPeekArea.y);
+-		mPeekArea.x += left;
+-		mPeekArea.y += top;
+-		mPeekArea.width = gtk_widget_get_allocated_width(widget);
+-		mPeekArea.height = gtk_widget_get_allocated_height(widget);
++		updatePeekArea();
+ 		gulong dim = 1;
+ 		for (GList* node = xfw_screen_get_windows(Xfw::mXfwScreen); node != nullptr; node = node->next)
+ 		{
+--- a/src/GroupMenuItem.hpp
++++ b/src/GroupMenuItem.hpp
+@@ -30,6 +30,7 @@
+ 	void updatePreview();
+ 	void peek(bool show);
+ 	bool pointerInsidePeek();
++	void updatePeekArea();
+ 	static void cancelPeek();
+ 	void drawPreview(cairo_t* cr, int width, int height);
+ 	cairo_surface_t* snapshotPreview();
+@@ -52,6 +53,8 @@
+ 	GdkRectangle mPeekArea;
+ 
+ 	Help::Gtk::Timeout mPreviewTimeout;
++	Help::Gtk::Timeout mPeekTimeout;
++	Help::Gtk::Idle mPeekLeaveIdle;
+ };
+ 
+ #endif // GROUP_MENU_ITEM_HPP
+--- a/src/Settings.cpp
++++ b/src/Settings.cpp
+@@ -41,6 +41,8 @@
+ 	State<int> previewMaxWidth;
+ 	State<int> previewMaxHeight;
+ 	State<int> previewSleep;
++	State<int> previewSwitchDelay;
++	State<int> previewPeekDelay;
+ 
+ 	void init()
+ 	{
+@@ -263,6 +265,21 @@
+ 				saveFile();
+ 			});
+ 
++		// Zero keeps immediate switching; the default grace period is 250 ms.
++		int delay = g_key_file_has_key(file, "user", "previewSwitchDelay", nullptr)
++			? std::max(0, g_key_file_get_integer(file, "user", "previewSwitchDelay", nullptr)) : 250;
++		previewSwitchDelay.setup(delay, [](int value) {
++			g_key_file_set_integer(mFile.get(), "user", "previewSwitchDelay", value);
++			saveFile();
++		});
++
++		int peekDelay = g_key_file_has_key(file, "user", "previewPeekDelay", nullptr)
++			? std::max(0, g_key_file_get_integer(file, "user", "previewPeekDelay", nullptr)) : 250;
++		previewPeekDelay.setup(peekDelay, [](int value) {
++			g_key_file_set_integer(mFile.get(), "user", "previewPeekDelay", value);
++			saveFile();
++		});
++
+ 		previewSleep.setup(g_key_file_get_integer(file, "user", "previewSleep", nullptr),
+ 			[](int _previewSleep) -> void {
+ 				g_key_file_set_integer(mFile.get(), "user", "previewSleep", _previewSleep);
+--- a/src/Settings.hpp
++++ b/src/Settings.hpp
+@@ -57,6 +57,8 @@
+ 	extern State<int> previewMaxWidth;
+ 	extern State<int> previewMaxHeight;
+ 	extern State<int> previewSleep;
++	extern State<int> previewSwitchDelay;
++	extern State<int> previewPeekDelay;
+ }; // namespace Settings
+ 
+ #endif // SETTINGS_HPP

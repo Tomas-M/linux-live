@@ -360,10 +360,22 @@ must follow the general Slax repair rules above.
   ratios (defaults 215 and 150). Thumbnail widths determine cards and long titles
   are ellipsized. Do not use `previewScale`.
   `docklike-preview-animation.diff` shares one native popup between application
-  groups. Change titles and icons immediately, crossfade thumbnail images and
-  animate the frame's geometry for 180 ms on GTK's frame clock. Added cards slide
+  groups. Once a group is selected, change titles and icons immediately,
+  crossfade thumbnail images and animate the frame's geometry for 180 ms on
+  GTK's frame clock. Added cards slide
   in and fade; removed cards become noninteractive fading snapshots. Retarget
   rapid switches from the currently displayed images and geometry.
+  `docklike-preview-delay.diff` waits `previewSwitchDelay` milliseconds before
+  switching an open popup to another icon (default 250; zero is immediate).
+  Cancel the pending switch on icon leave so crossing a neighbor on the way to
+  the current preview keeps that preview. Preserve the initial 90 ms hover delay
+  and immediate click actions.
+  Its `previewPeekDelay` waits before the first dim/raise effect (default 250 ms).
+  Transfer an active peek to adjacent cards immediately by deferring leave until
+  input events have been dispatched. Cancel both pending and active effects on
+  real window changes, hiding and destruction. Determine icon/popup hover from
+  root coordinates before hiding; synthetic crossing events and stale leave
+  timers must not cancel a grouped click or an adjacent-icon switch.
   `docklike-taskbar-click.diff` dismisses single-window previews on activation
   or minimization and suppresses hover reopening until the pointer leaves the
   taskbar icon. Multi-window primary clicks only toggle previews. Thumbnail
@@ -384,9 +396,19 @@ must follow the general Slax repair rules above.
   between the title row and thumbnail. Include both side margins in card widths.
   `docklike-preview-peek.diff` sets a temporary `_SLAX_PREVIEW_DIM` property on
   other clients while a visible window's preview is hovered. Picom dims those
-  application windows, retaining focus, stacking and minimization. Remove the
+  application windows, retaining focus and minimization. Remove the
   properties on leave, click, menu hide and item destruction. Minimized previews
   do not trigger the effect. Preserve the panel and preview popup's normal opacity.
+  `fluxbox-preview.diff` advertises `_FLUXBOX_WINDOW_PREVIEW` and temporarily
+  raises the hovered frame within its layer, preserving the logical stack.
+  `docklike-preview-raise.diff` requests this only on supporting window managers.
+  Restore the current logical order on leave; real raises, cycling and newly
+  inserted windows supersede the temporary raise. Cancel dimming on window
+  opening/closing, focus changes, minimization and workspace changes. Do not
+  restart a cancelled hover until the pointer actually leaves the card's saved
+  root rectangle; restacking can synthesize normal crossing events. Handle
+  focus notifications that precede window registration without inserting null
+  entries into the window store.
   Its defaults live in `03-desktop/rootcopy/root/.config/xfce4/panel/docklike-2.rc`.
   Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
   set only Docklike's icons to 32 px. Its native indicator uses blue for the

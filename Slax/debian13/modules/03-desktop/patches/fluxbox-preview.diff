@@ -1,0 +1,128 @@
+Description: Expose a temporary panel preview raise without changing logical stacking
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/FbTk/Layer.cc
++++ b/src/FbTk/Layer.cc
+@@ -92,6 +92,8 @@
+     std::vector<Layer*>::const_iterator l;
+     for (l = layers.begin(); l != layers.end(); ++l) {
+         extract_windows_to_stack((*l)->itemList(), 0, stack);
++        (*l)->m_needs_restack = false;
++        (*l)->m_preview = 0;
+     }
+ 
+     if (!stack.empty())
+@@ -99,7 +101,7 @@
+ }
+ 
+ Layer::Layer(MultLayers &manager, int layernum):
+-    m_manager(manager), m_layernum(layernum), m_needs_restack(false) {
++    m_manager(manager), m_layernum(layernum), m_needs_restack(false), m_preview(0) {
+ }
+ 
+ Layer::~Layer() {
+@@ -110,6 +112,7 @@
+     if (m_manager.isUpdatable()) {
+         ::restack(itemList(), 0);
+         m_needs_restack = false;
++        m_preview = 0;
+     }
+ }
+ 
+@@ -197,6 +200,8 @@
+     for (; it != it_end; ++it) {
+         if (*it == &item) {
+             itemList().erase(it);
++            if (m_preview == &item)
++                restack();
+             break;
+         }
+     }
+@@ -228,6 +233,8 @@
+ }
+ 
+ void Layer::tempRaise(LayerItem &item) {
++    // A real window-cycle action supersedes any temporary panel preview.
++    m_preview = 0;
+     // assume it is already in this layer
+ 
+     if (!m_needs_restack && &item == itemList().front())
+@@ -247,6 +254,17 @@
+         stackBelowItem(item, m_manager.getLowestItemAboveLayer(m_layernum));
+ 
+     m_needs_restack = true;
++}
++
++// Reuse the current logical order, and never undo a subsequent raise or cycle.
++void Layer::preview(LayerItem &item, bool show) {
++    if (show) {
++        tempRaise(item);
++        if (m_needs_restack)
++            m_preview = &item;
++    } else if (m_preview == &item) {
++        restack();
++    }
+ }
+ 
+ void Layer::lower(LayerItem &item) {
+--- a/src/FbTk/Layer.hh
++++ b/src/FbTk/Layer.hh
+@@ -62,6 +62,7 @@
+ 
+     // raise it, but don't make it permanent (i.e. restack will revert)
+     void tempRaise(LayerItem &item);
++    void preview(LayerItem &item, bool show);
+ 
+     // send to next layer up
+     void raiseLayer(LayerItem &item);
+@@ -77,6 +78,7 @@
+     MultLayers &m_manager;
+     int m_layernum;
+     bool m_needs_restack;
++    LayerItem *m_preview;
+     ItemList m_items;
+ };
+ 
+--- a/src/Ewmh.cc
++++ b/src/Ewmh.cc
+@@ -321,6 +321,7 @@
+         close_window = XInternAtom(disp, "_NET_CLOSE_WINDOW", False);
+         moveresize_window = XInternAtom(disp, "_NET_MOVERESIZE_WINDOW", False);
+         restack_window = XInternAtom(disp, "_NET_RESTACK_WINDOW", False);
++        window_preview = XInternAtom(disp, "_FLUXBOX_WINDOW_PREVIEW", False);
+         request_frame_extents = XInternAtom(disp,
+                 "_NET_REQUEST_FRAME_EXTENTS", False);
+ 
+@@ -397,6 +398,7 @@
+          virtual_roots,
+          moveresize_window,
+          restack_window,
++         window_preview,
+          request_frame_extents;
+ 
+     // root window messages
+@@ -574,6 +576,7 @@
+         m_net->moveresize_window,
+         m_net->workarea,
+         m_net->restack_window,
++        m_net->window_preview,
+         m_net->request_frame_extents,
+ 
+         m_net->wm_moveresize,
+@@ -1172,6 +1175,16 @@
+         int win_gravity=ce.data.l[0] & 0xFF;
+         winclient->fbwindow()->moveResizeForClient(x, y, width, height,
+             win_gravity, winclient->old_bw);
++        return true;
++    } else if (ce.message_type == m_net->window_preview) {
++        // Preview a visible frame without activating or deiconifying its client.
++        if (winclient && winclient->fbwindow()) {
++            FluxboxWindow &win = *winclient->fbwindow();
++            if (!ce.data.l[0] || win.isVisible()) {
++                FbTk::LayerItem &item = win.layerItem();
++                item.getLayer().preview(item, ce.data.l[0] != 0);
++            }
++        }
+         return true;
+     } else if (ce.message_type == m_net->restack_window) {
+ 

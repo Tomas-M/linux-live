@@ -1,0 +1,240 @@
+Description: Reversibly raise hovered previews and cancel peeking on real window changes
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -12,6 +12,8 @@
+ #endif
+ 
+ #include "GroupMenuItem.hpp"
++
++static GroupMenuItem* peekItem = nullptr;
+ 
+ static GtkTargetEntry entries[1] = {{(gchar*)"any", 0, 0}};
+ 
+@@ -99,6 +101,8 @@
+ 
+ 	g_signal_connect(G_OBJECT(mItem), "enter-notify-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, GroupMenuItem* me) {
++			if (event->mode != GDK_CROSSING_NORMAL || event->detail == GDK_NOTIFY_INFERIOR)
++				return true;
+ 			if (event->state & GDK_BUTTON1_MASK)
+ 				me->mGroupWindow->activate(event->time);
+ 			else
+@@ -111,7 +115,9 @@
+ 
+ 	g_signal_connect(G_OBJECT(mItem), "leave-notify-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, GroupMenuItem* me) {
+-			if (event->detail == GDK_NOTIFY_INFERIOR)
++			if (event->mode != GDK_CROSSING_NORMAL || event->detail == GDK_NOTIFY_INFERIOR)
++				return true;
++			if (peekItem == me && me->pointerInsidePeek())
+ 				return true;
+ 			me->peek(false);
+ 			Help::Gtk::cssClassRemove(widget, "hover_menu_item");
+@@ -227,24 +233,71 @@
+ #endif
+ }
+ 
+-// Dim other clients through Picom without changing focus, stacking or minimization.
++// Stop on real window changes; child crossings must not restart a cancelled hover.
++void GroupMenuItem::cancelPeek()
++{
++	if (!peekItem)
++		return;
++	peekItem->mPeekBlocked = true;
++	peekItem->peek(false);
++}
++
++// Window changes can synthesize crossings without moving the physical pointer.
++bool GroupMenuItem::pointerInsidePeek()
++{
++	GdkRectangle pointer = {0, 0, 1, 1};
++	gdk_device_get_position(Plugin::mPointer, nullptr, &pointer.x, &pointer.y);
++	return gdk_rectangle_intersect(&mPeekArea, &pointer, nullptr);
++}
++
++// Ask Fluxbox for a reversible raise while Picom dims the other application frames.
+ void GroupMenuItem::peek(bool show)
+ {
+ #ifdef ENABLE_X11
++	// Only physical movement outside the cancelled card may rearm its effect.
++	if (mPeekBlocked && !pointerInsidePeek())
++		mPeekBlocked = false;
+ 	if (!GDK_IS_X11_DISPLAY(Plugin::mDisplay))
+ 		return;
+ 	if (show && !Settings::showPreviews)
+ 		return;
+ 	if (show && mGroupWindow->getState(XFW_WINDOW_STATE_MINIMIZED))
+ 		return;
+-	if (show && !mPeekWindows.empty())
+-		return;
++	if (show && (mPeekBlocked || peekItem == this))
++		return;
++	if (!show && peekItem != this)
++		return;
++	if (show && peekItem)
++		peekItem->peek(false);
+ 
+ 	Display* display = GDK_DISPLAY_XDISPLAY(Plugin::mDisplay);
+ 	Atom property = XInternAtom(display, "_SLAX_PREVIEW_DIM", False);
+ 	gdk_x11_display_error_trap_push(Plugin::mDisplay);
++	// Advertised support keeps other window managers on the opacity-only effect.
++	GdkAtom preview = gdk_atom_intern_static_string("_FLUXBOX_WINDOW_PREVIEW");
++	if (gdk_x11_screen_supports_net_wm_hint(gdk_screen_get_default(), preview))
++	{
++		XEvent event = {};
++		event.xclient.type = ClientMessage;
++		event.xclient.window = xfw_window_x11_get_xid(mGroupWindow->mXfwWindow);
++		event.xclient.message_type = gdk_x11_atom_to_xatom_for_display(Plugin::mDisplay, preview);
++		event.xclient.format = 32;
++		event.xclient.data.l[0] = show;
++		XSendEvent(display, DefaultRootWindow(display), False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
++	}
++	peekItem = show ? this : nullptr;
+ 	if (show)
+ 	{
++		// Keep the original root rectangle through restacking and popup relayouts.
++		GtkWidget* widget = GTK_WIDGET(mItem);
++		GtkWidget* window = gtk_widget_get_toplevel(widget);
++		int left, top;
++		gdk_window_get_origin(gtk_widget_get_window(window), &left, &top);
++		gtk_widget_translate_coordinates(widget, window, 0, 0, &mPeekArea.x, &mPeekArea.y);
++		mPeekArea.x += left;
++		mPeekArea.y += top;
++		mPeekArea.width = gtk_widget_get_allocated_width(widget);
++		mPeekArea.height = gtk_widget_get_allocated_height(widget);
+ 		gulong dim = 1;
+ 		for (GList* node = xfw_screen_get_windows(Xfw::mXfwScreen); node != nullptr; node = node->next)
+ 		{
+--- a/src/GroupMenuItem.hpp
++++ b/src/GroupMenuItem.hpp
+@@ -29,6 +29,8 @@
+ 	void updateIcon();
+ 	void updatePreview();
+ 	void peek(bool show);
++	bool pointerInsidePeek();
++	static void cancelPeek();
+ 	void drawPreview(cairo_t* cr, int width, int height);
+ 	cairo_surface_t* snapshotPreview();
+ 	void setPreviousPreview(cairo_surface_t* surface);
+@@ -46,6 +48,8 @@
+ 	double mPreviewBlend = 1;
+ 	int mPreviewWidth = 215, mPreviewHeight = 150;
+ 	std::vector<gulong> mPeekWindows;
++	bool mPeekBlocked = false;
++	GdkRectangle mPeekArea;
+ 
+ 	Help::Gtk::Timeout mPreviewTimeout;
+ };
+--- a/src/Xfw.cpp
++++ b/src/Xfw.cpp
+@@ -70,9 +70,11 @@
+ 
+ 		g_signal_connect(G_OBJECT(mXfwScreen), "window-opened",
+ 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* xfwWindow) {
++				GroupMenuItem::cancelPeek();
+ 				std::shared_ptr<GroupWindow> newWindow = std::make_shared<GroupWindow>(xfwWindow);
+ 				mGroupWindows.pushSecond(xfwWindow, newWindow);
+ 				newWindow->mGroup->updateStyle();
++				setActiveWindow();
+ 
+ 				if (Settings::showPreviews && newWindow->mGroup->mGroupMenu.mVisible)
+ 					newWindow->mGroupMenuItem->mPreviewTimeout.start();
+@@ -81,18 +83,24 @@
+ 
+ 		g_signal_connect(G_OBJECT(mXfwScreen), "window-closed",
+ 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* xfwWindow) {
++				GroupMenuItem::cancelPeek();
+ 				std::shared_ptr<GroupWindow> groupWindow = mGroupWindows.pop(xfwWindow);
+ 			}),
+ 			nullptr);
+ 
+ 		g_signal_connect(G_OBJECT(mXfwScreen), "active-window-changed",
+ 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* previousActiveWindow) {
++				GroupMenuItem::cancelPeek();
+ 				XfwWindow* activeXfwWindow = getActiveWindow();
+ 				if (activeXfwWindow != nullptr)
+ 				{
+ 					std::shared_ptr<GroupWindow> activeWindow = mGroupWindows.get(activeXfwWindow);
+-					Help::Gtk::cssClassAdd(GTK_WIDGET(activeWindow->mGroupMenuItem->mItem), "active_menu_item");
+-					gtk_widget_queue_draw(activeWindow->mGroup->mButton);
++					// Focus can be announced before this client enters the window store.
++					if (activeWindow)
++					{
++						Help::Gtk::cssClassAdd(GTK_WIDGET(activeWindow->mGroupMenuItem->mItem), "active_menu_item");
++						gtk_widget_queue_draw(activeWindow->mGroup->mButton);
++					}
+ 				}
+ 				if (previousActiveWindow != nullptr)
+ 				{
+@@ -111,6 +119,7 @@
+ 		mXfwWorkspaceGroup = XFW_WORKSPACE_GROUP(xfw_workspace_manager_list_workspace_groups(wpManager)->data);
+ 		g_signal_connect(G_OBJECT(mXfwWorkspaceGroup), "active-workspace-changed",
+ 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* xfwWindow) {
++				GroupMenuItem::cancelPeek();
+ 				setVisibleGroups();
+ 			}),
+ 			nullptr);
+@@ -163,7 +172,7 @@
+ 		XfwWindow* activeWindow = getActiveWindow();
+ 		if (mGroupWindows.size() > 0)
+ 			mGroupWindows.first()->onUnactivate();
+-		if (activeWindow != nullptr)
++		if (mGroupWindows.get(activeWindow))
+ 			mGroupWindows.moveToStart(activeWindow)->onActivate();
+ 	}
+ 
+@@ -176,8 +185,11 @@
+ 			XfwWindow* xfwWindow = XFW_WINDOW(window_l->data);
+ 			std::shared_ptr<GroupWindow> groupWindow = mGroupWindows.get(xfwWindow);
+ 
+-			groupWindow->leaveGroup();
+-			groupWindow->updateState();
++			if (groupWindow)
++			{
++				groupWindow->leaveGroup();
++				groupWindow->updateState();
++			}
+ 		}
+ 	}
+ 
+--- a/src/GroupWindow.cpp
++++ b/src/GroupWindow.cpp
+@@ -37,12 +37,15 @@
+ 	g_signal_connect(G_OBJECT(mXfwWindow), "state-changed",
+ 		G_CALLBACK(+[](XfwWindow* window, XfwWindowState changed_mask,
+ 						XfwWindowState new_state, GroupWindow* me) {
++			if (changed_mask & XFW_WINDOW_STATE_MINIMIZED)
++				GroupMenuItem::cancelPeek();
+ 			me->updateState();
+ 		}),
+ 		this);
+ 
+ 	g_signal_connect(G_OBJECT(mXfwWindow), "workspace-changed",
+ 		G_CALLBACK(+[](XfwWindow* window, GroupWindow* me) {
++			GroupMenuItem::cancelPeek();
+ 			me->updateState();
+ 		}),
+ 		this);
+@@ -134,8 +137,8 @@
+ {
+ 	bool onScreen = true;
+ 	bool onWorkspace = true;
++	mState = xfw_window_get_state(this->mXfwWindow);
+ 	bool onTasklist = !(mState & XfwWindowState::XFW_WINDOW_STATE_SKIP_TASKLIST);
+-	mState = xfw_window_get_state(this->mXfwWindow);
+ 
+ 	if (Settings::onlyDisplayVisible)
+ 	{
+--- a/src/Store.tpp
++++ b/src/Store.tpp
+@@ -23,7 +23,7 @@
+ 	public:
+ 		void push(K k, V v) { mList.push_front(std::make_pair(k, v)); }
+ 
+-		void pushSecond(K k, V v) { mList.insert(std::next(mList.begin()), std::make_pair(k, v)); }
++		void pushSecond(K k, V v) { mList.insert(mList.empty() ? mList.end() : std::next(mList.begin()), std::make_pair(k, v)); }
+ 
+ 		V pop(K k)
+ 		{
