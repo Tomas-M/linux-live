@@ -11,12 +11,13 @@ apt-get source fluxbox
 cd fluxbox-*/
 # Keep Debian's binary rebuild version and identify the Slax patch.
 VERSION=$(dpkg-query -W -f='${Version}' fluxbox)
-sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax2)/" debian/changelog
 
 # Build the Debian package with Slax's window and menu changes.
 mkdir -p debian/patches
 cp "$CWD/patches/fluxbox-slax.diff" debian/patches/
-printf 'fluxbox-slax.diff\n' >> debian/patches/series
+cp "$CWD/patches/fluxbox-preview.diff" debian/patches/
+printf 'fluxbox-slax.diff\nfluxbox-preview.diff\n' >> debian/patches/series
 quilt push -a
 cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config
@@ -44,10 +45,10 @@ cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax11)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax18)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 cp ../xfce4-docklike-plugin_*.deb "$OUTPUT/"
