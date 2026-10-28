@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Remote Desktop
-Exec=fbinstall slax-remmina "Remote Desktop" "remmina remmina-plugin-rdp remmina-plugin-vnc" "remmina-file-wrapper" %U
+Exec=fbinstall org.remmina.Remmina slax-remmina "Remote Desktop" "remmina remmina-plugin-rdp remmina-plugin-vnc" "remmina-file-wrapper" %U
 X-Xlunch-Executable=remmina-file-wrapper
 Icon=slax-remmina
 Terminal=false

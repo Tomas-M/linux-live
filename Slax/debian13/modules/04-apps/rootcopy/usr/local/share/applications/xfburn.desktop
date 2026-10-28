@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=CD/DVD Burner
-Exec=fbinstall slax-xfburn "Xfburn" "xfburn gstreamer1.0-plugins-base" "xfburn"
+Exec=fbinstall xfburn slax-xfburn "Xfburn" "xfburn gstreamer1.0-plugins-base" "xfburn"
 X-Xlunch-Executable=xfburn
 Icon=slax-xfburn
 Terminal=false

@@ -1,5 +1,6 @@
 /* Build: cc -Os -s -o fbinstall fbinstall.c $(pkg-config --cflags --libs gtk+-2.0)
- * Usage: fbinstall [--user guest] ICON NAME "PACKAGE..." "COMMAND [ARGUMENT...]" [ARGUMENT...]
+ * Usage: fbinstall [--user guest] APP_ID ICON NAME "PACKAGE..." "COMMAND [ARGUMENT...]" [ARGUMENT...]
+ * APP_ID is the desktop entry ID without the .desktop suffix.
  * Commands use shell quoting for arguments, but are executed without a shell.
  */
 #include <gtk/gtk.h>
@@ -289,20 +290,21 @@ int main(int argc, char **argv)
         argc-=2;
         argv+=2;
     }
-    if (argc<5)
+    if (argc<6)
     {
-        fprintf(stderr, "Usage: fbinstall [--user guest] ICON NAME \"PACKAGE...\" \"COMMAND [ARGUMENT...]\" [ARGUMENT...]\n");
+        fprintf(stderr, "Usage: fbinstall [--user guest] APP_ID ICON NAME \"PACKAGE...\" \"COMMAND [ARGUMENT...]\" [ARGUMENT...]\n");
         return 2;
     }
-    g_set_prgname("fbinstall");
-    if (!g_shell_parse_argv(argv[4], NULL, &command, &error))
+    /* Shared helper classes would match an arbitrary installer desktop entry. */
+    g_set_prgname(argv[1]);
+    if (!g_shell_parse_argv(argv[5], NULL, &command, &error))
     {
         fprintf(stderr, "%s\n", error->message);
         return 2;
     }
     guint count=g_strv_length(command);
-    command=g_realloc_n(command, count+argc-4, sizeof(gchar *));
-    for (gint i=5; i<argc; i++) command[count++]=g_strdup(argv[i]);
+    command=g_realloc_n(command, count+argc-5, sizeof(gchar *));
+    for (gint i=6; i<argc; i++) command[count++]=g_strdup(argv[i]);
     command[count]=NULL;
     gchar *program=g_find_program_in_path(command[0]);
     if (program)
@@ -313,19 +315,20 @@ int main(int argc, char **argv)
         return 1;
     }
     gtk_init(NULL, NULL);
+    gdk_set_program_class(argv[1]);
     if (geteuid()!=0)
     {
         show_error("Package installation requires root privileges.");
         return 1;
     }
-    if (!g_shell_parse_argv(argv[3], NULL, &packages, &error))
+    if (!g_shell_parse_argv(argv[4], NULL, &packages, &error))
     {
         show_error(error->message);
         g_error_free(error);
         return 1;
     }
-    if (strchr(argv[1], '/') || g_file_test(argv[1], G_FILE_TEST_IS_REGULAR)) icon=gdk_pixbuf_new_from_file_at_scale(argv[1], 64, 64, TRUE, &error);
-    else icon=gtk_icon_theme_load_icon(gtk_icon_theme_get_default(), argv[1], 64, GTK_ICON_LOOKUP_FORCE_SIZE, &error);
+    if (strchr(argv[2], '/') || g_file_test(argv[2], G_FILE_TEST_IS_REGULAR)) icon=gdk_pixbuf_new_from_file_at_scale(argv[2], 64, 64, TRUE, &error);
+    else icon=gtk_icon_theme_load_icon(gtk_icon_theme_get_default(), argv[2], 64, GTK_ICON_LOOKUP_FORCE_SIZE, &error);
     if (!icon)
     {
         show_error(error->message);
@@ -339,12 +342,12 @@ int main(int argc, char **argv)
     gtk_window_set_gravity(GTK_WINDOW(window), GDK_GRAVITY_CENTER);
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
-    gtk_window_set_icon(GTK_WINDOW(window), icon);
+    gtk_window_set_default_icon(icon);
     g_signal_connect(window, "delete-event", G_CALLBACK(cancel_install), NULL);
     GtkWidget *box=gtk_vbox_new(FALSE, 12);
     GtkWidget *header=gtk_hbox_new(FALSE, 16);
     GtkWidget *image=gtk_image_new_from_pixbuf(icon);
-    gchar *message=g_strdup_printf("%s will be downloaded and installed, please wait...", argv[2]);
+    gchar *message=g_strdup_printf("%s will be downloaded and installed, please wait...", argv[3]);
     GtkWidget *label=gtk_label_new(message);
     g_free(message);
     g_object_unref(icon);

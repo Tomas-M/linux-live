@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Mines
-Exec=fbinstall slax-gnome-mines "Mines" "gnome-mines" "/usr/games/gnome-mines"
+Exec=fbinstall org.gnome.Mines slax-gnome-mines "Mines" "gnome-mines" "/usr/games/gnome-mines"
 X-Xlunch-Executable=/usr/games/gnome-mines
 Icon=slax-gnome-mines
 Terminal=false
