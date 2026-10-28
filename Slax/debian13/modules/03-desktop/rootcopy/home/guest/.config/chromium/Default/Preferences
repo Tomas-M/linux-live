@@ -25,6 +25,8 @@
         "use_system": true
      }
   },
+  "homepage": "https://slax.org/?live",
+  "homepage_is_newtabpage": false,
   "ntp": {
     "most_visited_blacklist": {
       "c8e0afd1da1d9e29511240861f795a5a": null,
@@ -34,5 +36,9 @@
   "safebrowsing": {
     "enabled": false,
     "scout_group_selected": true
+  },
+  "session": {
+    "restore_on_startup": 4,
+    "startup_urls": ["https://slax.org/?live"]
   }
 }
