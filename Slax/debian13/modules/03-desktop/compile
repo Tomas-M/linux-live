@@ -28,8 +28,10 @@ mkdir -p /tmp/picom-rebuild
 cd /tmp/picom-rebuild
 apt-get source picom
 cd picom-*/
-VERSION=$(dpkg-query -W -f='${Version}' picom)
+VERSION=$(dpkg-parsechangelog -S Version)
 sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+# Picom and its installed helpers use native code and POSIX shell, not Python.
+sed -i 's/^Depends: python3, /Depends: /' debian/control
 mkdir -p debian/patches
 cp "$CWD/patches/picom-top-corners.diff" debian/patches/
 printf 'picom-top-corners.diff\n' >> debian/patches/series
