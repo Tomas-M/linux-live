@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")"
+
+# Render each pixel-aligned SVG at its declared size; never resize raster artwork.
+for SIZE in 16 22 24 32 48; do
+   for NAME in network-offline preferences-system-network network-transmit-receive; do
+      CONTEXT=status
+      if [ "$NAME" = preferences-system-network ]; then
+         CONTEXT=apps
+      fi
+      ICON=rootcopy/usr/share/icons/hicolor/${SIZE}x${SIZE}/$CONTEXT/$NAME.png
+      LEGACY=rootcopy/usr/share/icons/Adwaita/${SIZE}x${SIZE}/legacy
+      mkdir -p "$(dirname "$ICON")" "$LEGACY"
+      rsvg-convert "network-tray-icons/${SIZE}x${SIZE}/$NAME.svg" -o "$ICON"
+      cp "$ICON" "$LEGACY/$NAME.png"
+   done
+done

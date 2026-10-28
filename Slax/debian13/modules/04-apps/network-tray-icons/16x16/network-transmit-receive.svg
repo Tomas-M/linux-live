@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<mask id="rear"><rect width="16" height="16" fill="white"/><rect x="0" y="4" width="11" height="8" fill="black"/></mask>
+<g mask="url(#rear)"><rect x="6.5" y="2.5" width="8" height="5" fill="none" stroke="white" stroke-width="1"/><rect x="10" y="8" width="1" height="2" fill="white"/><rect x="8" y="10" width="5" height="1" fill="white"/></g>
+<rect x="1.5" y="5.5" width="8" height="5" fill="none" stroke="white" stroke-width="1"/>
+<rect x="5" y="11" width="1" height="2" fill="white"/>
+<rect x="3" y="13" width="5" height="1" fill="white"/>
+</svg>

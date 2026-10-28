@@ -1,0 +1,14 @@
+Native vector tray icons
+
+Editable SVG sources live in network-tray-icons, with one directory per size.
+Each optical size uses its own pixel grid, with pixel-aligned straight edges.
+The foreground monitor masks the rear stand; only its exposed end is visible.
+Run sh render-network-tray-icons with librsvg's rsvg-convert available to export
+the bundled PNGs directly at their declared SVG dimensions. No raster resizing
+or filtering is used. The SVG sources and renderer are not included in the ISO;
+normal Slax builds copy the prepared PNGs without requiring a renderer.
+
+ConnMan GTK uses network-offline for disconnected, preferences-system-network
+for association/configuration, and network-transmit-receive for ready/online.
+These states are shared by all connection technologies.
+

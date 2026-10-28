@@ -195,14 +195,21 @@ must follow the general Slax repair rules above.
   replace them. Refresh this local icon cache through the final module too.
   SciTE reads `/usr/share/pixmaps/Sci48M.png`; xterm uses its bundled XPM through
   `XTerm*iconHint`. Its terminal artwork has no colored title-bar dots.
-  Keep Chromium, Session action icons and status tray icons unchanged.
+  Keep Chromium and Session action icons unchanged.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
-  `05-chromium`. Put ConnMan's regular tray icons in Adwaita's `16x16/legacy`
-  directory too: GTK may prefer Adwaita's symbolic icons over inherited hicolor
-  artwork even when a normal icon lookup finds the hicolor PNG.
-  Network, volume and battery status icons come from Debian's AdwaitaLegacy
-  theme; larger feh icons are rendered from their original SVG assets.
+  `05-chromium`. ConnMan uses three white vector tray glyphs: `network-offline`,
+  `preferences-system-network` and `network-transmit-receive`. Its tray states are
+  shared by Ethernet and Wi-Fi; strength icons inside its window remain unchanged.
+  Keep PNGs at 16, 22, 24, 32 and 48 px in hicolor and Adwaita's matching `legacy`
+  directories. Register the extra Adwaita sizes in `04-apps/copy`; GTK otherwise
+  selects its 16 px legacy artwork even when hicolor contains a native-size PNG.
+  Editable SVGs in `04-apps/network-tray-icons` use a separate pixel grid for
+  each size. Run `sh render-network-tray-icons` there to export native-size PNGs
+  with rsvg-convert. Do not downscale raster masters or add rendering to the build.
+  Keep the `slax-net-manager` application icon separate. Volume and battery status
+  icons come from Debian's AdwaitaLegacy theme; larger feh icons are rendered from
+  their original SVG assets.
 - Xarchiver requests a 24 px window icon. Store its selected 128 px artwork
   in the 24 px icon path too; GTK retains its resolution without rebuilding
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
@@ -429,8 +436,9 @@ must follow the general Slax repair rules above.
   entries into the window store.
   Its defaults live in `03-desktop/rootcopy/root/.config/xfce4/panel/docklike-2.rc`.
   Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
-  set only Docklike's icons to 32 px. Its native indicator uses blue for the
-  active group and gray for other running applications. The shared
+  set only Docklike's icons to 32 px. Its native indicator uses the same blue
+  for every running group; pinned launchers without windows have no indicator.
+  The shared
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` gives groups four background
   levels: transparent at rest, 12 percent on hover, 25 percent when selected and
   40 percent when selected and hovered. Hover alone stays weaker than selection.
