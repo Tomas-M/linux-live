@@ -3,7 +3,7 @@ showPreviews=true
 forceIconSize=true
 iconSize=32
 indicatorColor=rgb(138,180,248)
-inactiveColor=rgb(128,128,128)
+inactiveColor=rgb(138,180,248)
 onlyDisplayVisible=true
 # Fit thumbnails within both logical-pixel limits, preserving their aspect ratio.
 previewMaxWidth=215

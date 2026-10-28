@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+<mask id="badge"><rect width="48" height="48" fill="white"/><rect x="33" y="30" width="12" height="12" fill="black"/></mask>
+<g mask="url(#badge)"><mask id="rear"><rect width="48" height="48" fill="white"/><rect x="2" y="15" width="32" height="24" fill="black"/></mask>
+<g mask="url(#rear)"><rect x="17" y="7" width="26" height="18" fill="none" stroke="white" stroke-width="2"/><rect x="29" y="26" width="2" height="3" fill="white"/><rect x="23" y="29" width="14" height="2" fill="white"/></g>
+<rect x="5" y="18" width="26" height="18" fill="none" stroke="white" stroke-width="2"/>
+<rect x="17" y="37" width="2" height="3" fill="white"/>
+<rect x="11" y="40" width="14" height="2" fill="white"/>
+</g>
+<path d="M36 33l6 6m0 -6l-6 6" fill="none" stroke="white" stroke-width="2"/>
+</svg>
