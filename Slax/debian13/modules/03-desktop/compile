@@ -38,16 +38,16 @@ printf 'picom-top-corners.diff\n' >> debian/patches/series
 dpkg-buildpackage -b -us -uc
 cp ../picom_*.deb "$OUTPUT/"
 
-# Keep previews equally high with proportional widths and ellipsized window titles.
+# Recycle one animated popup with bounded, proportional previews and hover dimming.
 mkdir -p /tmp/docklike-rebuild
 cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax11)/" debian/changelog
 mkdir -p debian/patches
-cp "$CWD/patches/docklike-preview-sizing.diff" "$CWD/patches/docklike-preview-peek.diff" debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\n' >> debian/patches/series
+cp "$CWD"/patches/docklike-*.diff debian/patches/
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 cp ../xfce4-docklike-plugin_*.deb "$OUTPUT/"

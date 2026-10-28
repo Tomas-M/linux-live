@@ -1,0 +1,870 @@
+Description: Recycle one popup and animate preview images, geometry and card counts
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -144,7 +144,10 @@
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, Group* me) {
+ 			Help::Gtk::cssClassAdd(me->mButton, "hover_group");
+ 			me->mLeaveTimeout.stop();
+-			me->mMenuShowTimeout.start();
++			if (GroupMenu::isOpen())
++				me->onMouseEnter();
++			else
++				me->mMenuShowTimeout.start();
+ 
+ 			if (Settings::showPreviews)
+ 				me->mWindows.forEach([](GroupWindow* w) -> void {
+@@ -748,11 +751,6 @@
+ 
+ void Group::onMouseEnter()
+ {
+-	Dock::mGroups.forEach([this](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> g) -> void {
+-		if (&(g.second->mGroupMenu) != &(this->mGroupMenu))
+-			g.second->mGroupMenu.mGroup->onMouseLeave();
+-	});
+-
+ 	mGroupMenu.popup();
+ }
+ 
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -14,234 +14,457 @@
+ #include "GroupMenuItem.hpp"
+ #include "Plugin.hpp"
+ 
+-static GtkWidget*
+-create_window()
+-{
+-	GtkWidget* window = gtk_window_new(GtkWindowType::GTK_WINDOW_POPUP);
+-	gtk_widget_add_events(window, GDK_SCROLL_MASK);
+-	gtk_window_set_default_size(GTK_WINDOW(window), 1, 1);
++#include <vector>
++
++namespace
++{
++
++struct Rectangle
++{
++	double x = 0, y = 0, width = 1, height = 1;
++};
++
++struct Card
++{
++	GroupMenuItem* item;
++	Rectangle from, target, current;
++	double fromOpacity = 1, opacity = 1;
++};
++
++struct Ghost
++{
++	GtkWidget* widget;
++	Rectangle from, current;
++	double fromOpacity = 1, opacity = 1;
++	gint64 started = 0;
++};
++
++// One native popup owns every group's visible cards and their short transitions.
++struct PreviewPopup
++{
++	GtkWidget* window = nullptr;
++	GtkWidget* stage = nullptr;
++	GroupMenu* menu = nullptr;
++	unsigned users = 0, tick = 0;
++	gint64 started = 0;
++	Rectangle from, target, current;
++	std::vector<Card> cards;
++	std::vector<Ghost> ghosts;
++
++	// Connect popup input once; its current group changes without replacing the window.
++	void acquire()
++	{
++		if (users++ != 0)
++			return;
++		window = gtk_window_new(GTK_WINDOW_POPUP);
++		gtk_window_set_resizable(GTK_WINDOW(window), false);
++		gtk_widget_add_events(window, GDK_SCROLL_MASK);
++		stage = gtk_layout_new(nullptr, nullptr);
++		Help::Gtk::cssClassAdd(stage, "menu");
++		gtk_container_add(GTK_CONTAINER(window), stage);
++		gtk_widget_show(stage);
+ #ifdef ENABLE_WAYLAND
+-	if (gtk_layer_is_supported())
+-	{
+-		gtk_layer_init_for_window(GTK_WINDOW(window));
+-		gtk_layer_set_exclusive_zone(GTK_WINDOW(window), -1);
+-		gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
+-		gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+-	}
++		if (gtk_layer_is_supported())
++		{
++			gtk_layer_init_for_window(GTK_WINDOW(window));
++			gtk_layer_set_exclusive_zone(GTK_WINDOW(window), -1);
++			gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, true);
++			gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, true);
++		}
+ #endif
+-
+-	return window;
+-}
+-
++		g_signal_connect(window, "enter-notify-event", G_CALLBACK(+[](GtkWidget*, GdkEventCrossing* event, PreviewPopup* popup) {
++			if (popup->menu && event->detail != GDK_NOTIFY_INFERIOR)
++			{
++				popup->menu->mMouseHover = true;
++				popup->menu->mGroup->mLeaveTimeout.stop();
++				for (const Card& card : popup->cards)
++					if (Settings::showPreviews)
++						card.item->mPreviewTimeout.start();
++			}
++			return false;
++		}), this);
++		g_signal_connect(window, "leave-notify-event", G_CALLBACK(+[](GtkWidget*, GdkEventCrossing* event, PreviewPopup* popup) {
++			if (popup->menu && event->detail != GDK_NOTIFY_INFERIOR)
++			{
++				popup->menu->mMouseHover = false;
++				popup->menu->mGroup->setMouseLeaveTimeout();
++			}
++			return false;
++		}), this);
++		g_signal_connect(window, "scroll-event", G_CALLBACK(+[](GtkWidget*, GdkEventScroll* event, PreviewPopup* popup) {
++			if (popup->menu)
++				popup->menu->mGroup->scrollWindows(event->time, event->direction);
++			return true;
++		}), this);
++		g_signal_connect(Plugin::mXfPlugin, "notify::scale-factor", G_CALLBACK(+[](GtkWidget*, GParamSpec*, PreviewPopup* popup) {
++			if (popup->menu)
++				popup->menu->mPopupIdle.start();
++		}), this);
++	}
++
++	// Keep the popup alive until the last application group has been removed.
++	void release()
++	{
++		if (--users != 0)
++			return;
++		hide();
++		g_signal_handlers_disconnect_by_data(Plugin::mXfPlugin, this);
++		gtk_widget_destroy(window);
++		window = stage = nullptr;
++	}
++
++	// Capture outgoing cards as noninteractive images before their clients disappear.
++	void ghost(const Card& card)
++	{
++		int scale = gtk_widget_get_scale_factor(window);
++		int width = std::max(1, static_cast<int>(card.current.width));
++		int height = std::max(1, static_cast<int>(card.current.height));
++		cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width * scale, height * scale);
++		cairo_surface_set_device_scale(surface, scale, scale);
++		cairo_t* cr = cairo_create(surface);
++		GtkAllocation allocation;
++		gtk_widget_get_allocation(GTK_WIDGET(card.item->mItem), &allocation);
++		gtk_widget_size_allocate(GTK_WIDGET(card.item->mItem), &allocation);
++		gtk_widget_draw(GTK_WIDGET(card.item->mItem), cr);
++		cairo_destroy(cr);
++		GtkWidget* image = gtk_image_new_from_surface(surface);
++		cairo_surface_destroy(surface);
++		gtk_layout_put(GTK_LAYOUT(stage), image, card.current.x, card.current.y);
++		gtk_widget_show(image);
++		Ghost outgoing;
++		outgoing.widget = image;
++		outgoing.from = outgoing.current = card.current;
++		outgoing.fromOpacity = outgoing.opacity = card.opacity;
++		outgoing.started = g_get_monotonic_time();
++		ghosts.push_back(outgoing);
++	}
++
++	// Detach a closing card before GroupWindow destroys its event handlers.
++	void remove(GroupMenuItem* item)
++	{
++		for (auto card = cards.begin(); card != cards.end(); ++card)
++		{
++			if (card->item != item)
++				continue;
++			item->peek(false);
++			ghost(*card);
++			gtk_container_remove(GTK_CONTAINER(stage), GTK_WIDGET(item->mItem));
++			cards.erase(card);
++			return;
++		}
++	}
++
++	// Finish all layers before hiding; dimming properties never outlive the popup.
++	void hide()
++	{
++		if (tick)
++			gtk_widget_remove_tick_callback(window, tick);
++		tick = 0;
++		for (const Card& card : cards)
++		{
++			card.item->peek(false);
++			card.item->mPreviewTimeout.stop();
++			card.item->setPreviousPreview(nullptr);
++			gtk_container_remove(GTK_CONTAINER(stage), GTK_WIDGET(card.item->mItem));
++		}
++		cards.clear();
++		for (const Ghost& ghost : ghosts)
++			gtk_widget_destroy(ghost.widget);
++		ghosts.clear();
++		if (menu)
++			menu->mVisible = menu->mMouseHover = false;
++		menu = nullptr;
++		gtk_widget_hide(window);
++	}
++
++	// Retarget from the currently rendered geometry, including interrupted transitions.
++	void show(GroupMenu* next)
++	{
++		bool visible = gtk_widget_get_visible(window);
++		bool sameGroup = menu == next;
++		// Retire faded snapshots even when rapid switches keep restarting the animation.
++		ghosts.erase(std::remove_if(ghosts.begin(), ghosts.end(), [](const Ghost& ghost) {
++			if (ghost.opacity >= 0.01)
++				return false;
++			gtk_widget_destroy(ghost.widget);
++			return true;
++		}), ghosts.end());
++		std::vector<Card> old = cards;
++		std::vector<cairo_surface_t*> previews;
++		for (const Card& card : old)
++		{
++			card.item->peek(false);
++			card.item->mPreviewTimeout.stop();
++			previews.push_back(card.item->snapshotPreview());
++			card.item->setPreviousPreview(nullptr);
++		}
++		if (menu)
++		{
++			menu->mVisible = menu->mMouseHover = false;
++			menu->mGroup->mLeaveTimeout.stop();
++		}
++		menu = next;
++		menu->mVisible = true;
++		std::vector<bool> used(old.size(), false);
++		std::vector<int> matches;
++		for (unsigned index = 0; index < next->mItems.size(); ++index)
++		{
++			int match = -1;
++			if (sameGroup)
++			{
++				for (unsigned previous = 0; previous < old.size(); ++previous)
++					if (old[previous].item == next->mItems[index])
++						match = previous;
++			}
++			else if (index < old.size())
++				match = index;
++			matches.push_back(match);
++			if (match >= 0)
++				used[match] = true;
++		}
++		for (unsigned index = 0; index < old.size(); ++index)
++		{
++			if (!used[index])
++				ghost(old[index]);
++			gtk_container_remove(GTK_CONTAINER(stage), GTK_WIDGET(old[index].item->mItem));
++		}
++		cards.clear();
++		GdkRectangle area;
++		GtkWidget* button = menu->mGroup->mButton;
++		gdk_monitor_get_workarea(gdk_display_get_monitor_at_window(Plugin::mDisplay, gtk_widget_get_window(button)), &area);
++		bool horizontal = Settings::showPreviews && xfce_panel_plugin_get_mode(Plugin::mXfPlugin) == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL;
++		double x = 0, y = 0, rowHeight = 0, width = 1, height = 1;
++		for (unsigned index = 0; index < next->mItems.size(); ++index)
++		{
++			GroupMenuItem* item = next->mItems[index];
++			item->updateLabel();
++			item->updateIcon();
++			item->updatePreview();
++			if (Settings::showPreviews)
++				item->mPreviewTimeout.start();
++			item->setPreviousPreview(matches[index] >= 0 && old[matches[index]].item != item ? previews[matches[index]] : nullptr);
++			gtk_widget_set_opacity(GTK_WIDGET(item->mItem), 1);
++			gtk_widget_set_size_request(GTK_WIDGET(item->mItem), -1, -1);
++			gtk_layout_put(GTK_LAYOUT(stage), GTK_WIDGET(item->mItem), 0, 0);
++			GtkRequisition minimum;
++			gtk_widget_get_preferred_size(GTK_WIDGET(item->mItem), &minimum, nullptr);
++			double cardWidth = minimum.width, cardHeight = minimum.height;
++			if (Settings::showPreviews)
++			{
++				cardWidth = std::max(cardWidth, item->mPreviewWidth + 12.0);
++				cardHeight += item->mPreviewHeight - 1;
++			}
++			if (horizontal && x > 0 && x + cardWidth > area.width - 8)
++			{
++				y += rowHeight;
++				x = rowHeight = 0;
++			}
++			Card card;
++			card.item = item;
++			card.target.x = x;
++			card.target.y = y;
++			card.target.width = cardWidth;
++			card.target.height = cardHeight;
++			card.from = card.target;
++			card.from.y += 10;
++			card.fromOpacity = 0;
++			if (matches[index] >= 0)
++			{
++				card.from = old[matches[index]].current;
++				card.fromOpacity = old[matches[index]].opacity;
++			}
++			card.current = card.from;
++			card.opacity = card.fromOpacity;
++			cards.push_back(card);
++			width = std::max(width, x + cardWidth);
++			height = std::max(height, y + cardHeight);
++			if (horizontal)
++			{
++				x += cardWidth;
++				rowHeight = std::max(rowHeight, cardHeight);
++			}
++			else
++				y += cardHeight;
++		}
++		for (cairo_surface_t* surface : previews)
++			if (surface)
++				cairo_surface_destroy(surface);
++		if (!horizontal)
++			for (Card& card : cards)
++				card.target.width = width;
++		int bx, by, offsetX, offsetY;
++		GtkWidget* toplevel = gtk_widget_get_toplevel(button);
++		gdk_window_get_origin(gtk_widget_get_window(toplevel), &bx, &by);
++		gtk_widget_translate_coordinates(button, toplevel, 0, 0, &offsetX, &offsetY);
++		bx += offsetX;
++		by += offsetY;
++		target.width = std::min(width, area.width - 8.0);
++		target.height = std::min(height, area.height - 8.0);
++		bool bottom = by + gtk_widget_get_allocated_height(button) / 2 > area.y + area.height / 2;
++		target.x = bx + gtk_widget_get_allocated_width(button) / 2.0 - target.width / 2;
++		target.y = bottom ? by - target.height : by + gtk_widget_get_allocated_height(button);
++		if (xfce_panel_plugin_get_mode(Plugin::mXfPlugin) != XFCE_PANEL_PLUGIN_MODE_HORIZONTAL)
++		{
++			target.x = bx > area.x + area.width / 2 ? bx - target.width : bx + gtk_widget_get_allocated_width(button);
++			target.y = by + gtk_widget_get_allocated_height(button) / 2.0 - target.height / 2;
++		}
++		target.x = std::max(static_cast<double>(area.x), std::min(target.x, area.x + area.width - target.width));
++		target.y = std::max(static_cast<double>(area.y), std::min(target.y, area.y + area.height - target.height));
++		from = visible ? current : target;
++		started = g_get_monotonic_time();
++		animate(0);
++		gtk_widget_show(window);
++		if (!tick)
++			tick = gtk_widget_add_tick_callback(window, +[](GtkWidget*, GdkFrameClock* clock, gpointer data) -> gboolean {
++				PreviewPopup* popup = static_cast<PreviewPopup*>(data);
++				double progress = std::max(0.0, std::min(1.0, (gdk_frame_clock_get_frame_time(clock) - popup->started) / 180000.0));
++				popup->animate(progress);
++				if (progress < 1)
++					return true;
++				popup->tick = 0;
++				return false;
++			}, this, nullptr);
++	}
++
++	// Animate the shared viewport and card positions on GTK's frame clock.
++	void animate(double progress)
++	{
++		double eased = progress * progress * (3 - 2 * progress);
++		current.x = from.x + (target.x - from.x) * eased;
++		current.y = from.y + (target.y - from.y) * eased;
++		current.width = from.width + (target.width - from.width) * eased;
++		current.height = from.height + (target.height - from.height) * eased;
++		gtk_widget_set_size_request(stage, std::max(1, static_cast<int>(current.width + 0.5)), std::max(1, static_cast<int>(current.height + 0.5)));
++		gtk_window_resize(GTK_WINDOW(window), current.width + 0.5, current.height + 0.5);
++#ifdef ENABLE_WAYLAND
++		if (gtk_layer_is_supported())
++		{
++			gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, current.x);
++			gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, current.y);
++		}
++		else
++#endif
++			gtk_window_move(GTK_WINDOW(window), current.x + 0.5, current.y + 0.5);
++		for (Card& card : cards)
++		{
++			card.current.x = card.from.x + (card.target.x - card.from.x) * eased;
++			card.current.y = card.from.y + (card.target.y - card.from.y) * eased;
++			card.current.width = card.from.width + (card.target.width - card.from.width) * eased;
++			card.current.height = card.from.height + (card.target.height - card.from.height) * eased;
++			card.opacity = card.fromOpacity + (1 - card.fromOpacity) * eased;
++			gtk_layout_move(GTK_LAYOUT(stage), GTK_WIDGET(card.item->mItem), card.current.x + 0.5, card.current.y + 0.5);
++			gtk_widget_set_size_request(GTK_WIDGET(card.item->mItem), card.current.width + 0.5, card.current.height + 0.5);
++			gtk_widget_set_opacity(GTK_WIDGET(card.item->mItem), card.opacity);
++			card.item->mPreviewBlend = eased;
++			gtk_widget_queue_draw(card.item->mPreview);
++			if (progress == 1)
++				card.item->setPreviousPreview(nullptr);
++		}
++		for (Ghost& ghost : ghosts)
++		{
++			double age = std::min(1.0, (g_get_monotonic_time() - ghost.started) / 180000.0);
++			double fade = age * age * (3 - 2 * age);
++			ghost.current.x = ghost.from.x + 12 * fade;
++			ghost.current.y = ghost.from.y + 6 * fade;
++			ghost.opacity = ghost.fromOpacity * (1 - fade);
++			gtk_layout_move(GTK_LAYOUT(stage), ghost.widget, ghost.current.x, ghost.current.y);
++			gtk_widget_set_opacity(ghost.widget, ghost.opacity);
++		}
++		if (progress == 1)
++		{
++			for (const Ghost& ghost : ghosts)
++				gtk_widget_destroy(ghost.widget);
++			ghosts.clear();
++		}
++	}
++};
++
++PreviewPopup previewPopup;
++
++}
++
++// Keep a logical menu per group while sharing a single native popup.
+ GroupMenu::GroupMenu(Group* dockButton)
+ {
+ 	mGroup = dockButton;
+-	mVisible = false;
+-	mMouseHover = false;
+-	mWindow = create_window();
+-	mBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+-
+-	Help::Gtk::cssClassAdd(mBox, "menu");
+-	gtk_container_add(GTK_CONTAINER(mWindow), mBox);
+-	gtk_widget_show(mBox);
+-
+-	mPopupIdle.setup([this]() {
+-		popup();
+-		return false;
+-	});
+-
+-	//--------------------------------------------------
+-
+-	g_signal_connect(G_OBJECT(mWindow), "enter-notify-event",
+-		G_CALLBACK(+[](GtkWidget* widget, GdkEvent* event, GroupMenu* me) {
+-			me->mMouseHover = true;
+-
+-			if (Settings::showPreviews)
+-				me->mGroup->mWindows.forEach([](GroupWindow* w) -> void {
+-					w->mGroupMenuItem->updatePreview();
+-				});
+-
+-			return true;
+-		}),
+-		this);
+-
+-	g_signal_connect(G_OBJECT(mWindow), "leave-notify-event",
+-		G_CALLBACK(+[](GtkWidget* widget, GdkEvent* event, GroupMenu* me) {
+-			me->mGroup->setMouseLeaveTimeout();
+-			me->mMouseHover = false;
+-
+-			return true;
+-		}),
+-		this);
+-
+-	g_signal_connect(G_OBJECT(mWindow), "scroll-event",
+-		G_CALLBACK(+[](GtkWidget* widget, GdkEventScroll* event, GroupMenu* me) {
+-			((Group*)me->mGroup)->scrollWindows(event->time, event->direction);
+-			return true;
+-		}),
+-		this);
+-
+-	g_signal_connect(G_OBJECT(Plugin::mXfPlugin), "notify::scale-factor",
+-		G_CALLBACK(+[](GtkWidget* widget, GParamSpec* pspec, GroupMenu* me) {
+-			g_object_ref(me->mBox);
+-			gtk_container_remove(GTK_CONTAINER(me->mWindow), me->mBox);
+-			gtk_widget_destroy(me->mWindow);
+-			me->mWindow = create_window();
+-			gtk_container_add(GTK_CONTAINER(me->mWindow), me->mBox);
+-			g_object_unref(me->mBox);
+-		}),
+-		this);
+-}
+-
++	mVisible = mMouseHover = false;
++	previewPopup.acquire();
++	mWindow = previewPopup.window;
++	mPopupIdle.setup([this]() { popup(); return false; });
++}
++
++// Remove callbacks before the group and its popup membership are destroyed.
+ GroupMenu::~GroupMenu()
+ {
+ 	mPopupIdle.stop();
+-	gtk_widget_destroy(mWindow);
+-}
+-
+-void GroupMenu::add(GroupMenuItem* menuItem)
+-{
+-	gtk_box_pack_end(GTK_BOX(mBox), GTK_WIDGET(menuItem->mItem), false, true, 0);
+-
++	hide();
++	previewPopup.release();
++}
++
++// Keep the original most-recent-first card order without owning another popup.
++void GroupMenu::add(GroupMenuItem* item)
++{
++	mItems.insert(mItems.begin(), item);
+ 	if (mVisible)
+ 		mPopupIdle.start();
+ }
+ 
+-void GroupMenu::remove(GroupMenuItem* menuItem)
+-{
+-	gtk_container_remove(GTK_CONTAINER(mBox), GTK_WIDGET(menuItem->mItem));
+-	gtk_window_resize(GTK_WINDOW(mWindow), 1, 1);
+-
++// Fade a disappearing card while removing its live event target immediately.
++void GroupMenu::remove(GroupMenuItem* item)
++{
++	previewPopup.remove(item);
++	mItems.erase(std::remove(mItems.begin(), mItems.end(), item), mItems.end());
+ 	if (mGroup->mWindowsCount < (Settings::noWindowsListIfSingle ? 2 : 1))
+-		gtk_widget_hide(mWindow);
+-
++		hide();
++	else if (mVisible)
++		mPopupIdle.start();
++}
++
++// Recycle the visible frame, immediately changing titles and crossfading images.
++void GroupMenu::popup()
++{
++	if (mGroup->mWindowsCount >= (Settings::noWindowsListIfSingle ? 2 : 1))
++		previewPopup.show(this);
++	else
++		previewPopup.hide();
++}
++
++// An old group's delayed leave must never hide the newly selected group.
++void GroupMenu::hide()
++{
++	if (previewPopup.menu == this)
++		previewPopup.hide();
++	mVisible = mMouseHover = false;
++}
++
++// Apply preview-mode changes to every card before updating the shared geometry.
++void GroupMenu::showPreviewsChanged()
++{
++	for (GroupMenuItem* item : mItems)
++	{
++		item->peek(false);
++		gtk_label_set_width_chars(item->mLabel, Settings::showPreviews ? 1 : 26);
++		gtk_label_set_max_width_chars(item->mLabel, Settings::showPreviews ? 1 : -1);
++		gtk_widget_set_visible(item->mPreview, Settings::showPreviews);
++		item->mPreviewTimeout.stop();
++	}
+ 	if (mVisible)
+ 		mPopupIdle.start();
+ }
+ 
+-void GroupMenu::popup()
+-{
+-	if (mGroup->mWindowsCount >= (Settings::noWindowsListIfSingle ? 2 : 1))
+-	{
+-		gint wx, wy;
+-		mVisible = true;
+-
+-		updateOrientation();
+-
+-		// Update the previews before showing the window
+-		if (Settings::showPreviews)
+-		{
+-			mGroup->mWindows.forEach([](GroupWindow* w) -> void {
+-				w->mGroupMenuItem->updatePreview();
+-			});
+-			gtk_window_resize(GTK_WINDOW(mWindow), 1, 1);
+-		}
+-
+-		xfce_panel_plugin_position_widget(Plugin::mXfPlugin, mWindow, mGroup->mButton, &wx, &wy);
+-		updatePosition(wx, wy);
+-		gtk_widget_show(mWindow);
+-	}
+-}
+-
+-void GroupMenu::updateOrientation()
+-{
+-	XfcePanelPluginMode panelMode = xfce_panel_plugin_get_mode(Plugin::mXfPlugin);
+-
+-	if (Settings::showPreviews && panelMode == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL)
+-		gtk_orientable_set_orientation(GTK_ORIENTABLE(mBox), GTK_ORIENTATION_HORIZONTAL);
+-	else
+-		gtk_orientable_set_orientation(GTK_ORIENTABLE(mBox), GTK_ORIENTATION_VERTICAL);
+-}
+-
+-void GroupMenu::updatePosition(gint wx, gint wy)
+-{
+-	GdkScreen* screen;
+-	GdkRectangle geometry;
+-	GdkDisplay* display;
+-	GdkMonitor* monitor;
+-
+-	screen = gtk_widget_get_screen(mGroup->mButton);
+-	display = gdk_screen_get_display(screen);
+-	monitor = gdk_display_get_monitor_at_window(display, gtk_widget_get_window(mGroup->mButton));
+-	gdk_monitor_get_geometry(monitor, &geometry);
+-
+-	gint window_width, window_height;
+-	gtk_window_get_size(GTK_WINDOW(mWindow), &window_width, &window_height);
+-
+-	gint button_width = gtk_widget_get_allocated_width(mGroup->mButton);
+-	gint button_height = gtk_widget_get_allocated_height(mGroup->mButton);
+-
+-	XfcePanelPluginMode panelMode = xfce_panel_plugin_get_mode(Plugin::mXfPlugin);
+-
+-	if (panelMode == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL)
+-	{
+-		if (wx != geometry.x + geometry.width - window_width)
+-		{
+-			wx -= (window_width / 2) - (button_width / 2);
+-			wx = wx < geometry.x ? geometry.x : wx;
+-		}
+-	}
+-	else
+-	{
+-		if (wy != geometry.y + geometry.height - window_height)
+-		{
+-			wy -= (window_height / 2) - (button_height / 2);
+-			wy = wy < geometry.y ? geometry.y : wy;
+-		}
+-	}
+-
+-#ifdef HAVE_GTK_LAYER_SHELL
+-	if (gtk_layer_is_supported())
+-	{
+-		gtk_layer_set_margin(GTK_WINDOW(mWindow), GTK_LAYER_SHELL_EDGE_LEFT, wx - geometry.x);
+-		gtk_layer_set_margin(GTK_WINDOW(mWindow), GTK_LAYER_SHELL_EDGE_TOP, wy - geometry.y);
+-	}
+-	else
+-#endif
+-	{
+-		gtk_window_move(GTK_WINDOW(mWindow), wx, wy);
+-	}
+-}
+-
+-void GroupMenu::hide()
+-{
+-	mGroup->mWindows.forEach([](GroupWindow* window) -> void {
+-		window->mGroupMenuItem->peek(false);
+-	});
+-	mVisible = false;
+-	gtk_widget_hide(mWindow);
+-}
+-
+-void GroupMenu::showPreviewsChanged()
+-{
+-	mGroup->mWindows.forEach([](GroupWindow* w) -> void {
+-		gtk_label_set_width_chars(w->mGroupMenuItem->mLabel, Settings::showPreviews ? 1 : 26);
+-		gtk_label_set_max_width_chars(w->mGroupMenuItem->mLabel, Settings::showPreviews ? 1 : -1);
+-		gtk_widget_set_visible(GTK_WIDGET(w->mGroupMenuItem->mPreview), Settings::showPreviews);
+-		w->mGroupMenuItem->mPreviewTimeout.stop();
+-	});
+-	gtk_window_resize(GTK_WINDOW(mWindow), 1, 1);
+-}
+-
++// Use the currently animated frame for pointer-to-popup leave tolerance.
+ uint GroupMenu::getPointerDistance()
+ {
+-	gint wx, wy, ww, wh, px, py;
+-	guint dx, dy;
+-	dx = dy = 0;
+-
+-	gtk_window_get_position(GTK_WINDOW(mWindow), &wx, &wy);
+-	gtk_window_get_size(GTK_WINDOW(mWindow), &ww, &wh);
+-	gdk_device_get_position(Plugin::mPointer, nullptr, &px, &py);
+-
+-	if (px < wx)
+-		dx = wx - px;
+-	else if (px > wx + ww)
+-		dx = px - (wx + ww);
+-
+-	if (py < wy)
+-		dy = wy - py;
+-	else if (py > wy + wh)
+-		dy = py - (wy + wh);
+-
++	int x, y;
++	gdk_device_get_position(Plugin::mPointer, nullptr, &x, &y);
++	const Rectangle& box = previewPopup.current;
++	double dx = std::max(0.0, std::max(box.x - x, x - box.x - box.width));
++	double dy = std::max(0.0, std::max(box.y - y, y - box.y - box.height));
+ 	return std::max(dx, dy);
+ }
++
++// Adjacent taskbar icons switch an already visible popup without a new delay.
++bool GroupMenu::isOpen()
++{
++	return previewPopup.menu != nullptr;
++}
+--- a/src/GroupMenu.hpp
++++ b/src/GroupMenu.hpp
+@@ -13,6 +13,7 @@
+ #include <gtk/gtk.h>
+ 
+ #include <iostream>
++#include <vector>
+ 
+ class Group;
+ class GroupMenuItem;
+@@ -27,17 +28,16 @@
+ 	void remove(GroupMenuItem* menuItem);
+ 
+ 	void popup();
+-	void updateOrientation();
+-	void updatePosition(gint wx, gint wy);
+ 	void hide();
+ 	void showPreviewsChanged();
+ 
+ 	uint getPointerDistance();
++	static bool isOpen();
+ 
+ 	Group* mGroup;
+ 
+ 	GtkWidget* mWindow;
+-	GtkWidget* mBox;
++	std::vector<GroupMenuItem*> mItems;
+ 
+ 	bool mVisible;
+ 	bool mMouseHover;
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -26,7 +26,7 @@
+ 	gtk_drag_dest_set(GTK_WIDGET(mItem), GTK_DEST_DEFAULT_DROP, entries, 1, GDK_ACTION_MOVE);
+ 	Help::Gtk::cssClassAdd(GTK_WIDGET(mItem), "menu_item");
+ 	gtk_widget_show(GTK_WIDGET(mItem));
+-	g_object_ref(mItem);
++	g_object_ref_sink(mItem);
+ 
+ 	mGrid = GTK_GRID(gtk_grid_new());
+ 	gtk_grid_set_column_spacing(mGrid, 6);
+@@ -56,7 +56,14 @@
+ 	gtk_widget_show(GTK_WIDGET(mCloseButton));
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mCloseButton), 2, 0, 1, 1);
+ 
+-	mPreview = GTK_IMAGE(gtk_image_new());
++	mPreview = gtk_drawing_area_new();
++	gtk_widget_set_size_request(mPreview, 1, 1);
++	gtk_widget_set_hexpand(mPreview, true);
++	gtk_widget_set_vexpand(mPreview, true);
++	g_signal_connect(mPreview, "draw", G_CALLBACK(+[](GtkWidget* widget, cairo_t* cr, GroupMenuItem* item) {
++		item->drawPreview(cr, gtk_widget_get_allocated_width(widget), gtk_widget_get_allocated_height(widget));
++		return false;
++	}), this);
+ 	gtk_widget_set_margin_top(GTK_WIDGET(mPreview), 6);
+ 	gtk_widget_set_margin_bottom(GTK_WIDGET(mPreview), 6);
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mPreview), 0, 1, 3, 1);
+@@ -121,6 +128,9 @@
+ {
+ 	peek(false);
+ 	mPreviewTimeout.stop();
++	setPreviousPreview(nullptr);
++	if (mPreviewSurface)
++		cairo_surface_destroy(mPreviewSurface);
+ 	g_object_unref(mItem);
+ }
+ 
+@@ -200,9 +210,17 @@
+ 				thumbnail = gdk_pixbuf_scale_simple(pixbuf, width, height, GDK_INTERP_BILINEAR);
+ 				cairo_surface_t* surface = gdk_cairo_surface_create_from_pixbuf(thumbnail, scale_factor, NULL);
+ 
+-				gtk_image_set_from_surface(mPreview, surface);
+-
+-				cairo_surface_destroy(surface);
++				int logicalWidth = std::max(1, width / scale_factor);
++				int logicalHeight = std::max(1, height / scale_factor);
++				bool resized = logicalWidth != mPreviewWidth || logicalHeight != mPreviewHeight;
++				mPreviewWidth = logicalWidth;
++				mPreviewHeight = logicalHeight;
++				if (mPreviewSurface)
++					cairo_surface_destroy(mPreviewSurface);
++				mPreviewSurface = surface;
++				gtk_widget_queue_draw(mPreview);
++				if (resized && mGroupWindow->mGroup->mGroupMenu.mVisible)
++					mGroupWindow->mGroup->mGroupMenu.mPopupIdle.start();
+ 				g_object_unref(thumbnail);
+ 				g_object_unref(pixbuf);
+ 			}
+@@ -250,3 +268,57 @@
+ 	gdk_x11_display_error_trap_pop_ignored(Plugin::mDisplay);
+ #endif
+ }
++
++// Blend image layers inside the animated card while retaining each aspect ratio.
++void GroupMenuItem::drawPreview(cairo_t* cr, int width, int height)
++{
++	cairo_push_group(cr);
++	cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
++	cairo_surface_t* layers[] = {mPreviousPreview, mPreviewSurface};
++	double alpha[] = {1 - mPreviewBlend, mPreviousPreview ? mPreviewBlend : 1};
++	for (int index = 0; index < 2; ++index)
++	{
++		if (!layers[index])
++			continue;
++		double sx, sy;
++		cairo_surface_get_device_scale(layers[index], &sx, &sy);
++		double imageWidth = cairo_image_surface_get_width(layers[index]) / sx;
++		double imageHeight = cairo_image_surface_get_height(layers[index]) / sy;
++		double scale = std::min(width / imageWidth, height / imageHeight);
++		cairo_save(cr);
++		cairo_translate(cr, (width - imageWidth * scale) / 2, (height - imageHeight * scale) / 2);
++		cairo_scale(cr, scale, scale);
++		cairo_set_source_surface(cr, layers[index], 0, 0);
++		cairo_paint_with_alpha(cr, alpha[index]);
++		cairo_restore(cr);
++	}
++	cairo_pop_group_to_source(cr);
++	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
++	cairo_paint(cr);
++}
++
++// Retarget rapid icon changes from the image that is currently being displayed.
++cairo_surface_t* GroupMenuItem::snapshotPreview()
++{
++	if (!mPreviewSurface && !mPreviousPreview)
++		return nullptr;
++	int width = std::max(1, gtk_widget_get_allocated_width(mPreview));
++	int height = std::max(1, gtk_widget_get_allocated_height(mPreview));
++	int scale = gtk_widget_get_scale_factor(mPreview);
++	cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width * scale, height * scale);
++	cairo_surface_set_device_scale(surface, scale, scale);
++	cairo_t* cr = cairo_create(surface);
++	drawPreview(cr, width, height);
++	cairo_destroy(cr);
++	return surface;
++}
++
++// Keep one old image layer only for the duration of a group transition.
++void GroupMenuItem::setPreviousPreview(cairo_surface_t* surface)
++{
++	if (mPreviousPreview)
++		cairo_surface_destroy(mPreviousPreview);
++	mPreviousPreview = surface ? cairo_surface_reference(surface) : nullptr;
++	mPreviewBlend = surface ? 0 : 1;
++	gtk_widget_queue_draw(mPreview);
++}
+--- a/src/GroupMenuItem.hpp
++++ b/src/GroupMenuItem.hpp
+@@ -29,6 +29,9 @@
+ 	void updateIcon();
+ 	void updatePreview();
+ 	void peek(bool show);
++	void drawPreview(cairo_t* cr, int width, int height);
++	cairo_surface_t* snapshotPreview();
++	void setPreviousPreview(cairo_surface_t* surface);
+ 
+ 	GroupWindow* mGroupWindow;
+ 
+@@ -37,7 +40,11 @@
+ 	GtkImage* mIcon;
+ 	GtkLabel* mLabel;
+ 	GtkButton* mCloseButton;
+-	GtkImage* mPreview;
++	GtkWidget* mPreview;
++	cairo_surface_t* mPreviewSurface = nullptr;
++	cairo_surface_t* mPreviousPreview = nullptr;
++	double mPreviewBlend = 1;
++	int mPreviewWidth = 215, mPreviewHeight = 150;
+ 	std::vector<gulong> mPeekWindows;
+ 
+ 	Help::Gtk::Timeout mPreviewTimeout;
