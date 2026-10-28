@@ -366,6 +366,10 @@ must follow the general Slax repair rules above.
   so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
 - Picom replaces Compton and uses `/etc/picom.conf` at startup and after
   resolution changes. Build its Debian package with `picom-top-corners.diff`;
+  install only the rebuilt package in the runtime branch. Remove Debian's
+  unused `python3` dependency from its control file: Picom and picom-inspect
+  are native programs and picom-trans is a POSIX shell script. Python belongs
+  only in the disposable build branch when required by build tools.
   `xrender-round-top-only` preserves square lower corners in XRender masks.
   Use XRender without OpenGL shaders and repaint full frames to avoid stale
   translucent pixels. Round WM frames and opaque normal/dialog windows; opaque
