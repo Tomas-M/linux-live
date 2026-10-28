@@ -1,0 +1,31 @@
+Description: Clear application and taskbar selection when clicking unused panel space
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/panel/panel-window.c
++++ b/panel/panel-window.c
+@@ -1315,6 +1315,25 @@
+   GdkGrabStatus status;
+   guint modifiers;
+ 
++#ifdef ENABLE_X11
++  /* Interactive plugins consume their clicks; unused panel space clears focus. */
++  if (event->button == GDK_BUTTON_PRIMARY && WINDOWING_IS_X11 ())
++    {
++      GdkAtom atom = gdk_atom_intern_static_string ("_FLUXBOX_FOCUS_ROOT");
++      if (gdk_x11_screen_supports_net_wm_hint (gtk_widget_get_screen (widget), atom))
++        {
++          XEvent request = { 0 };
++          request.xclient.type = ClientMessage;
++          request.xclient.window = GDK_WINDOW_XID (gdk_screen_get_root_window (gtk_widget_get_screen (widget)));
++          request.xclient.message_type = gdk_x11_atom_to_xatom_for_display (window->display, atom);
++          request.xclient.format = 32;
++          XSendEvent (GDK_DISPLAY_XDISPLAY (window->display), request.xclient.window, False,
++                      SubstructureRedirectMask | SubstructureNotifyMask, &request);
++          gdk_display_flush (window->display);
++        }
++    }
++#endif
++
+   /* leave if the event is not for this window */
+   if (event->window != gtk_widget_get_window (widget))
+     goto end;

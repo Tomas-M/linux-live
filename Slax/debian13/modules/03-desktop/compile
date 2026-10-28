@@ -3,7 +3,7 @@ set -e
 CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
-apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-docklike-plugin
+apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
 apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
@@ -11,18 +11,32 @@ apt-get source fluxbox
 cd fluxbox-*/
 # Keep Debian's binary rebuild version and identify the Slax patch.
 VERSION=$(dpkg-query -W -f='${Version}' fluxbox)
-sed -i "1s/([^)]*)/($VERSION+slax2)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
 
 # Build the Debian package with Slax's window and menu changes.
 mkdir -p debian/patches
 cp "$CWD/patches/fluxbox-slax.diff" debian/patches/
 cp "$CWD/patches/fluxbox-preview.diff" debian/patches/
-printf 'fluxbox-slax.diff\nfluxbox-preview.diff\n' >> debian/patches/series
+cp "$CWD/patches/fluxbox-panel-focus.diff" debian/patches/
+printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\n' >> debian/patches/series
 quilt push -a
 cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config
 dpkg-buildpackage -b -us -uc
 cp ../fluxbox_*.deb "$OUTPUT/"
+
+# Let unused panel space relinquish application and taskbar focus.
+mkdir -p /tmp/panel-rebuild
+cd /tmp/panel-rebuild
+apt-get source xfce4-panel
+cd xfce4-panel-*/
+VERSION=$(dpkg-parsechangelog -S Version)
+sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+cp "$CWD/patches/panel-clear-focus.diff" debian/patches/
+printf 'panel-clear-focus.diff\n' >> debian/patches/series
+quilt push -a
+dpkg-buildpackage -b -us -uc
+cp ../xfce4-panel_*.deb "$OUTPUT/"
 
 # Keep smooth upper corners available without requiring OpenGL.
 mkdir -p /tmp/picom-rebuild
@@ -30,12 +44,13 @@ cd /tmp/picom-rebuild
 apt-get source picom
 cd picom-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
 # Picom and its installed helpers use native code and POSIX shell, not Python.
 sed -i 's/^Depends: python3, /Depends: /' debian/control
 mkdir -p debian/patches
 cp "$CWD/patches/picom-top-corners.diff" debian/patches/
-printf 'picom-top-corners.diff\n' >> debian/patches/series
+cp "$CWD/patches/picom-window-outline.diff" debian/patches/
+printf 'picom-top-corners.diff\npicom-window-outline.diff\n' >> debian/patches/series
 dpkg-buildpackage -b -us -uc
 cp ../picom_*.deb "$OUTPUT/"
 
@@ -45,10 +60,10 @@ cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax18)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax22)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 cp ../xfce4-docklike-plugin_*.deb "$OUTPUT/"

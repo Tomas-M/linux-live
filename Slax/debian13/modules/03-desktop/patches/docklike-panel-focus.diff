@@ -1,0 +1,279 @@
+Description: Highlight clicked preview groups independently of application focus
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Dock.cpp
++++ b/src/Dock.cpp
+@@ -13,6 +13,7 @@
+ namespace Dock
+ {
+ 	GtkWidget* mBox;
++	Group* mSelectedGroup = nullptr;
+ 	Store::KeyStore<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> mGroups;
+ 
+ 	int mPanelSize;
+@@ -75,8 +76,29 @@
+ 		g_list_free(children);
+ 	}
+ 
++	// Panel selection is independent of the window manager's active client.
++	void selectGroup(Group* group)
++	{
++		mSelectedGroup = group;
++		mGroups.forEach([](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> entry) {
++			entry.second->updateActiveStyle();
++		});
++	}
++
++	// Explicit focus changes dismiss every group's pending or visible preview.
++	void dismissPreviews()
++	{
++		selectGroup(nullptr);
++		GroupMenuItem::cancelPeek();
++		mGroups.forEach([](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> entry) {
++			entry.second->mMenuShowTimeout.stop();
++			entry.second->mGroupMenu.hide();
++		});
++	}
++
+ 	void drawGroups()
+ 	{
++		selectGroup(nullptr);
+ 		// Remove old groups
+ 		Xfw::mGroupWindows.clear();
+ 		mGroups.clear();
+--- a/src/Dock.hpp
++++ b/src/Dock.hpp
+@@ -32,6 +32,9 @@
+ 	void moveButton(Group* moving, Group* dest);
+ 	void savePinned();
+ 	void drawGroups();
++	void selectGroup(Group* group);
++	void dismissPreviews();
++	extern Group* mSelectedGroup;
+ 
+ 	void hoverSupered(bool on);
+ 	void activateGroup(int nb, guint32 timestamp);
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -248,6 +248,8 @@
+ {
+ 	mWindows.pop(window);
+ 	mWindowsCount.updateState();
++	if (!mWindowsCount && Dock::mSelectedGroup == this)
++		Dock::selectGroup(nullptr);
+ 	mGroupMenu.remove(window->mGroupMenuItem);
+ 
+ 	if (!mWindowsCount)
+@@ -352,7 +354,7 @@
+ 	else
+ 	{
+ 		std::shared_ptr<GdkRGBA> color;
+-		if (mActive)
++		if (isHighlighted())
+ 			color = Settings::indicatorColor;
+ 		else
+ 			color = Settings::inactiveColor;
+@@ -393,7 +395,7 @@
+ 	}
+ 
+ 	int indicator_style = Settings::inactiveIndicatorStyle;
+-	if (mActive)
++	if (isHighlighted())
+ 		indicator_style = Settings::indicatorStyle;
+ 
+ 	switch (indicator_style)
+@@ -845,13 +847,29 @@
+ {
+ 	mActive = true;
+ 	setTopWindow(groupWindow);
+-	Help::Gtk::cssClassAdd(mButton, "active_group");
++	updateActiveStyle();
+ }
+ 
+ void Group::onWindowUnactivate()
+ {
+ 	mActive = false;
+-	Help::Gtk::cssClassRemove(mButton, "active_group");
++	updateActiveStyle();
++}
++
++// A clicked group owns the indicator only while its previews remain open.
++bool Group::isHighlighted() const
++{
++	return Dock::mSelectedGroup ? Dock::mSelectedGroup == this : mActive;
++}
++
++// Apply the same derived selection to the button background and native indicator.
++void Group::updateActiveStyle()
++{
++	if (isHighlighted())
++		Help::Gtk::cssClassAdd(mButton, "active_group");
++	else
++		Help::Gtk::cssClassRemove(mButton, "active_group");
++	gtk_widget_queue_draw(mButton);
+ }
+ 
+ void Group::setTopWindow(GroupWindow* groupWindow)
+@@ -908,7 +926,10 @@
+ 		mAppInfo->launch();
+ 	else if (mWindowsCount > 1)
+ 	{
+-		if (mGroupMenu.mVisible)
++		bool hide = Dock::mSelectedGroup == this && mGroupMenu.mVisible;
++		Dock::selectGroup(this);
++		Xfw::clearFocus();
++		if (hide)
+ 			dismissPreviews(true);
+ 		else
+ 		{
+@@ -921,8 +942,10 @@
+ 	}
+ 	else
+ 	{
++		bool minimize = mActive && !Dock::mSelectedGroup;
++		Dock::dismissPreviews();
+ 		dismissPreviews();
+-		if (mActive)
++		if (minimize)
+ 			mWindows.get(mTopWindowIndex)->minimize();
+ 		else
+ 			activate(event->time);
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -65,6 +65,8 @@
+ 
+ 	void resize();
+ 	void updateStyle();
++	void updateActiveStyle();
++	bool isHighlighted() const;
+ 
+ 	void onDraw(cairo_t* cr);
+ 	void onWindowActivate(GroupWindow* groupWindow);
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -158,6 +158,8 @@
+ 	// Finish all layers before hiding; dimming properties never outlive the popup.
+ 	void hide(bool animated = false)
+ 	{
++		if (menu && Dock::mSelectedGroup == menu->mGroup)
++			Dock::selectGroup(nullptr);
+ 		if (menu)
+ 		{
+ 			menu->mPopupIdle.stop();
+@@ -205,6 +207,8 @@
+ 	// Retarget from the currently rendered geometry, including interrupted transitions.
+ 	void show(GroupMenu* next)
+ 	{
++		if (Dock::mSelectedGroup && Dock::mSelectedGroup != next->mGroup)
++			Dock::selectGroup(nullptr);
+ 		bool visible = gtk_widget_get_visible(window);
+ 		fromOpacity = visible ? opacity : 0;
+ 		targetOpacity = 1;
+--- a/src/Xfw.cpp
++++ b/src/Xfw.cpp
+@@ -7,6 +7,7 @@
+ 
+ #ifdef ENABLE_X11
+ #include <gdk/gdkx.h>
++#include <X11/Xatom.h>
+ #endif
+ 
+ #include "Xfw.hpp"
+@@ -61,12 +62,68 @@
+ 		}
+ 	} // namespace
+ 
++#ifdef ENABLE_X11
++	// Root focus requests notify even when there was already no active client.
++	static GdkFilterReturn focusRootEvent(GdkXEvent* raw, GdkEvent*, gpointer)
++	{
++		XEvent* event = static_cast<XEvent*>(raw);
++		Display* display = GDK_DISPLAY_XDISPLAY(Plugin::mDisplay);
++		Atom focus = XInternAtom(display, "_FLUXBOX_FOCUS_ROOT", False);
++		if (event->type != PropertyNotify || event->xproperty.atom != focus)
++			return GDK_FILTER_CONTINUE;
++		if (!gtk_widget_get_realized(gtk_widget_get_toplevel(GTK_WIDGET(Plugin::mXfPlugin))))
++			return GDK_FILTER_CONTINUE;
++		Atom type;
++		int format;
++		gulong count, remaining;
++		guchar* data = nullptr;
++		XGetWindowProperty(display, DefaultRootWindow(display), focus, 0, 1, False, XA_WINDOW, &type, &format, &count, &remaining, &data);
++		Window owner = data && count ? *reinterpret_cast<Window*>(data) : None;
++		if (data)
++			XFree(data);
++		Window self = GDK_WINDOW_XID(gtk_widget_get_window(gtk_widget_get_toplevel(GTK_WIDGET(Plugin::mXfPlugin))));
++		if (owner != self)
++			Dock::dismissPreviews();
++		return GDK_FILTER_CONTINUE;
++	}
++#endif
++
+ 	// public:
++
++	// Ask a supporting window manager to focus its neutral input window.
++	void clearFocus()
++	{
++#ifdef ENABLE_X11
++		if (!GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++			return;
++		GdkAtom atom = gdk_atom_intern_static_string("_FLUXBOX_FOCUS_ROOT");
++		if (!gdk_x11_screen_supports_net_wm_hint(gdk_screen_get_default(), atom))
++			return;
++		XEvent event = {};
++		event.xclient.type = ClientMessage;
++		event.xclient.window = GDK_WINDOW_XID(gdk_get_default_root_window());
++		event.xclient.message_type = gdk_x11_atom_to_xatom_for_display(Plugin::mDisplay, atom);
++		event.xclient.format = 32;
++		event.xclient.data.l[0] = GDK_WINDOW_XID(gtk_widget_get_window(gtk_widget_get_toplevel(GTK_WIDGET(Plugin::mXfPlugin))));
++		XSendEvent(GDK_DISPLAY_XDISPLAY(Plugin::mDisplay), event.xclient.window, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
++		gdk_display_flush(Plugin::mDisplay);
++#endif
++	}
+ 
+ 	void init()
+ 	{
+ 		xfw_set_client_type(XFW_CLIENT_TYPE_PAGER);
+ 		mXfwScreen = xfw_screen_get_default();
++#ifdef ENABLE_X11
++		if (GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++		{
++			Display* display = GDK_DISPLAY_XDISPLAY(Plugin::mDisplay);
++			XWindowAttributes attributes;
++			XGetWindowAttributes(display, DefaultRootWindow(display), &attributes);
++			XSelectInput(display, DefaultRootWindow(display), attributes.your_event_mask | PropertyChangeMask);
++			gdk_window_add_filter(gdk_get_default_root_window(), focusRootEvent, nullptr);
++		}
++#endif
+ 
+ 		g_signal_connect(G_OBJECT(mXfwScreen), "window-opened",
+ 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* xfwWindow) {
+@@ -94,6 +151,7 @@
+ 				XfwWindow* activeXfwWindow = getActiveWindow();
+ 				if (activeXfwWindow != nullptr)
+ 				{
++					Dock::dismissPreviews();
+ 					std::shared_ptr<GroupWindow> activeWindow = mGroupWindows.get(activeXfwWindow);
+ 					// Focus can be announced before this client enters the window store.
+ 					if (activeWindow)
+@@ -127,6 +185,10 @@
+ 
+ 	void finalize()
+ 	{
++#ifdef ENABLE_X11
++		if (GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++			gdk_window_remove_filter(gdk_get_default_root_window(), focusRootEvent, nullptr);
++#endif
+ 		mGroupWindows.clear();
+ 		g_signal_handlers_disconnect_by_data(mXfwWorkspaceGroup, nullptr);
+ 		g_signal_handlers_disconnect_by_data(mXfwScreen, nullptr);
+--- a/src/Xfw.hpp
++++ b/src/Xfw.hpp
+@@ -37,6 +37,7 @@
+ 	void switchToLastWindow(guint32 timestamp);
+ 
+ 	void setActiveWindow();
++	void clearFocus();
+ 	void setVisibleGroups();
+ 
+ 	extern XfwScreen* mXfwScreen;

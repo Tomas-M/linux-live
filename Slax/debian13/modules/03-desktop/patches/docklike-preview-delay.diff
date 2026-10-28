@@ -1,4 +1,4 @@
-Description: Configure initial peek and group switch delays, keeping click toggles deterministic
+Description: Configure initial preview, group switch and peek delays, keeping click toggles deterministic
 Author: Slax <build@slax.org>
 Forwarded: no
 --- a/src/Group.cpp
@@ -13,7 +13,7 @@ Forwarded: no
  			else
 +			{
 +				// Allow diagonal travel across neighboring icons to the current preview.
-+				me->mMenuShowTimeout.mDuration = GroupMenu::isOpen() ? Settings::previewSwitchDelay.get() : 90;
++				me->mMenuShowTimeout.mDuration = GroupMenu::isOpen() ? Settings::previewSwitchDelay.get() : Settings::previewShowDelay.get();
  				me->mMenuShowTimeout.start();
 +			}
  
@@ -236,19 +236,28 @@ Forwarded: no
  #endif // GROUP_MENU_ITEM_HPP
 --- a/src/Settings.cpp
 +++ b/src/Settings.cpp
-@@ -41,6 +41,8 @@
+@@ -41,6 +41,9 @@
  	State<int> previewMaxWidth;
  	State<int> previewMaxHeight;
  	State<int> previewSleep;
++	State<int> previewShowDelay;
 +	State<int> previewSwitchDelay;
 +	State<int> previewPeekDelay;
  
  	void init()
  	{
-@@ -263,6 +265,21 @@
+@@ -263,6 +266,29 @@
  				saveFile();
  			});
  
++		// Wait longer for the first popup than for switches between visible previews.
++		int showDelay = g_key_file_has_key(file, "user", "previewShowDelay", nullptr)
++			? std::max(0, g_key_file_get_integer(file, "user", "previewShowDelay", nullptr)) : 500;
++		previewShowDelay.setup(showDelay, [](int value) {
++			g_key_file_set_integer(mFile.get(), "user", "previewShowDelay", value);
++			saveFile();
++		});
++
 +		// Zero keeps immediate switching; the default grace period is 250 ms.
 +		int delay = g_key_file_has_key(file, "user", "previewSwitchDelay", nullptr)
 +			? std::max(0, g_key_file_get_integer(file, "user", "previewSwitchDelay", nullptr)) : 250;
@@ -269,10 +278,11 @@ Forwarded: no
  				g_key_file_set_integer(mFile.get(), "user", "previewSleep", _previewSleep);
 --- a/src/Settings.hpp
 +++ b/src/Settings.hpp
-@@ -57,6 +57,8 @@
+@@ -57,6 +57,9 @@
  	extern State<int> previewMaxWidth;
  	extern State<int> previewMaxHeight;
  	extern State<int> previewSleep;
++	extern State<int> previewShowDelay;
 +	extern State<int> previewSwitchDelay;
 +	extern State<int> previewPeekDelay;
  }; // namespace Settings
