@@ -1,0 +1,119 @@
+Description: Compact preview headers and show a flat configurable close button on hover
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -30,10 +30,10 @@
+ 
+ 	mGrid = GTK_GRID(gtk_grid_new());
+ 	gtk_grid_set_column_spacing(mGrid, 6);
+-	gtk_widget_set_margin_start(GTK_WIDGET(mGrid), 6);
+-	gtk_widget_set_margin_end(GTK_WIDGET(mGrid), 6);
++	gtk_widget_set_margin_start(GTK_WIDGET(mGrid), 7);
++	gtk_widget_set_margin_end(GTK_WIDGET(mGrid), 7);
+ 	gtk_widget_set_margin_top(GTK_WIDGET(mGrid), 2);
+-	gtk_widget_set_margin_bottom(GTK_WIDGET(mGrid), 2);
++	gtk_widget_set_margin_bottom(GTK_WIDGET(mGrid), 0);
+ 	gtk_widget_show(GTK_WIDGET(mGrid));
+ 	gtk_container_add(GTK_CONTAINER(mItem), GTK_WIDGET(mGrid));
+ 
+@@ -42,6 +42,7 @@
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mIcon), 0, 0, 1, 1);
+ 
+ 	mLabel = GTK_LABEL(gtk_label_new(""));
++	Help::Gtk::cssClassAdd(GTK_WIDGET(mLabel), "preview-title");
+ 	gtk_label_set_xalign(mLabel, 0);
+ 	gtk_label_set_ellipsize(mLabel, PANGO_ELLIPSIZE_END);
+ 	// Let the thumbnail determine the card width.
+@@ -51,8 +52,9 @@
+ 	gtk_widget_show(GTK_WIDGET(mLabel));
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mLabel), 1, 0, 1, 1);
+ 
+-	mCloseButton = GTK_BUTTON(gtk_button_new_from_icon_name("window-close", GTK_ICON_SIZE_MENU));
++	mCloseButton = GTK_BUTTON(gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU));
+ 	gtk_button_set_relief(mCloseButton, GTK_RELIEF_NONE);
++	Help::Gtk::cssClassAdd(GTK_WIDGET(mCloseButton), "preview-close");
+ 	gtk_widget_show(GTK_WIDGET(mCloseButton));
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mCloseButton), 2, 0, 1, 1);
+ 
+@@ -64,8 +66,8 @@
+ 		item->drawPreview(cr, gtk_widget_get_allocated_width(widget), gtk_widget_get_allocated_height(widget));
+ 		return false;
+ 	}), this);
+-	gtk_widget_set_margin_top(GTK_WIDGET(mPreview), 6);
+-	gtk_widget_set_margin_bottom(GTK_WIDGET(mPreview), 6);
++	gtk_widget_set_margin_top(GTK_WIDGET(mPreview), 3);
++	gtk_widget_set_margin_bottom(GTK_WIDGET(mPreview), 5);
+ 	gtk_grid_attach(mGrid, GTK_WIDGET(mPreview), 0, 1, 3, 1);
+ 	gtk_widget_set_visible(GTK_WIDGET(mPreview), Settings::showPreviews);
+ 
+@@ -141,15 +143,7 @@
+ {
+ 	const char* winName = xfw_window_get_name(mGroupWindow->mXfwWindow);
+ 
+-	if (Xfw::getActiveWindow() == mGroupWindow->mXfwWindow)
+-	{
+-		gchar* escaped = g_markup_escape_text(winName, -1);
+-		gchar* markup = g_strdup_printf("<b>%s</b>", escaped);
+-		gtk_label_set_markup(mLabel, markup);
+-		g_free(markup);
+-		g_free(escaped);
+-	}
+-	else if (mGroupWindow->getState(XFW_WINDOW_STATE_MINIMIZED))
++	if (mGroupWindow->getState(XFW_WINDOW_STATE_MINIMIZED))
+ 	{
+ 		gchar* escaped = g_markup_escape_text(winName, -1);
+ 		gchar* markup = g_strdup_printf("<i>%s</i>", escaped);
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -275,7 +275,7 @@
+ 			double cardWidth = minimum.width, cardHeight = minimum.height;
+ 			if (Settings::showPreviews)
+ 			{
+-				cardWidth = std::max(cardWidth, item->mPreviewWidth + 12.0);
++				cardWidth = std::max(cardWidth, item->mPreviewWidth + 14.0);
+ 				cardHeight += item->mPreviewHeight - 1;
+ 			}
+ 			if (horizontal && x > 0 && x + cardWidth > area.width - 8)
+--- a/src/Theme.cpp
++++ b/src/Theme.cpp
+@@ -17,7 +17,7 @@
+ void Theme::load()
+ {
+ 	GtkCssProvider* css_provider = gtk_css_provider_new();
+-	std::string css = get_theme_colors();
++	std::string css = get_theme_colors() + DEFAULT_THEME;
+ 	gchar* filename = xfce_resource_lookup(XFCE_RESOURCE_CONFIG, "xfce4-docklike-plugin/gtk.css");
+ 
+ 	if (filename != nullptr && g_file_test(filename, G_FILE_TEST_IS_REGULAR))
+@@ -31,11 +31,7 @@
+ 				css += read_char;
+ 			fclose(f);
+ 		}
+-		else // Empty file
+-			css += DEFAULT_THEME;
+ 	}
+-	else // No file
+-		css += DEFAULT_THEME;
+ 
+ 	if (gtk_css_provider_load_from_data(css_provider, css.c_str(), -1, nullptr))
+ 		gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+--- a/src/Theme.hpp
++++ b/src/Theme.hpp
+@@ -8,8 +8,14 @@
+ #ifndef THEME_HPP
+ #define THEME_HPP
+ 
+-#define DEFAULT_THEME ".menu { margin: 0; padding: 0; border: 0; background-color: @menu_bgcolor; }\n" \
+-					  ".hover_menu_item { background-color: alpha(@menu_item_color_hover, 0.2); }\n";
++#define DEFAULT_THEME \
++	"@define-color preview_close_hover #e81123;\n" \
++	".menu { margin: 0; padding: 0; border: 0; background-color: @menu_bgcolor; }\n" \
++	".hover_menu_item { background-color: alpha(@menu_item_color_hover, 0.2); }\n" \
++	".menu_item .preview-title { font-size: 12px; font-weight: normal; }\n" \
++	".menu_item .preview-close { min-width: 24px; min-height: 24px; padding: 0; margin: 0; border: 0; border-radius: 0; background-image: none; background-color: transparent; box-shadow: none; outline-width: 0; opacity: 0; }\n" \
++	".hover_menu_item .preview-close { opacity: 1; }\n" \
++	".menu_item .preview-close:hover, .menu_item .preview-close:active { background-color: @preview_close_hover; color: #fff; }\n"
+ 
+ #include "Dock.hpp"
+ 

@@ -1,0 +1,107 @@
+Description: Toggle grouped previews and suppress hover reopening after selection
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -142,8 +142,12 @@
+ 
+ 	g_signal_connect(G_OBJECT(mButton), "enter-notify-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, Group* me) {
++			if (event->mode != GDK_CROSSING_NORMAL || event->detail == GDK_NOTIFY_INFERIOR)
++				return false;
+ 			Help::Gtk::cssClassAdd(me->mButton, "hover_group");
+ 			me->mLeaveTimeout.stop();
++			if (me->mPreviewSuppressed)
++				return false;
+ 			if (GroupMenu::isOpen())
+ 				me->onMouseEnter();
+ 			else
+@@ -160,6 +164,9 @@
+ 
+ 	g_signal_connect(G_OBJECT(mButton), "leave-notify-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, Group* me) {
++			if (event->mode != GDK_CROSSING_NORMAL || event->detail == GDK_NOTIFY_INFERIOR)
++				return false;
++			me->mPreviewSuppressed = false;
+ 			Help::Gtk::cssClassRemove(me->mButton, "hover_group");
+ 			me->mMenuShowTimeout.stop();
+ 
+@@ -879,10 +886,33 @@
+ 	}
+ 	else if (event->state & GDK_SHIFT_MASK || (mPinned && !mWindowsCount))
+ 		mAppInfo->launch();
+-	else if (mActive)
+-		mWindows.get(mTopWindowIndex)->minimize();
++	else if (mWindowsCount > 1)
++	{
++		bool show = !mGroupMenu.mVisible;
++		dismissPreviews();
++		if (show)
++		{
++			mPreviewSuppressed = false;
++			mGroupMenu.popup();
++		}
++	}
+ 	else
+-		activate(event->time);
++	{
++		dismissPreviews();
++		if (mActive)
++			mWindows.get(mTopWindowIndex)->minimize();
++		else
++			activate(event->time);
++	}
++}
++
++// Dismiss a selection and suppress hover reopening until the pointer leaves its icon.
++void Group::dismissPreviews()
++{
++	mPreviewSuppressed = gtk_style_context_has_class(gtk_widget_get_style_context(mButton), "hover_group");
++	mMenuShowTimeout.stop();
++	mGroupMenu.mPopupIdle.stop();
++	mGroupMenu.hide();
+ }
+ 
+ bool Group::onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time)
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -71,6 +71,7 @@
+ 	void onWindowUnactivate();
+ 	void onButtonPress(GdkEventButton* event);
+ 	void onButtonRelease(GdkEventButton* event);
++	void dismissPreviews();
+ 	void onMouseEnter();
+ 	void onMouseLeave();
+ 	void setMouseLeaveTimeout();
+@@ -82,6 +83,7 @@
+ 
+ 	bool mPinned;
+ 	bool mActive;
++	bool mPreviewSuppressed = false;
+ 
+ 	uint mTolerablePointerDistance;
+ 	uint mTopWindowIndex;
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -423,6 +423,8 @@
+ // Recycle the visible frame, immediately changing titles and crossfading images.
+ void GroupMenu::popup()
+ {
++	if (mGroup->mPreviewSuppressed)
++		return;
+ 	if (mGroup->mWindowsCount >= (Settings::noWindowsListIfSingle ? 2 : 1))
+ 		previewPopup.show(this);
+ 	else
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -87,7 +87,10 @@
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventButton* event, GroupMenuItem* me) {
+ 			me->peek(false);
+ 			if (event->button == GDK_BUTTON_PRIMARY)
++			{
++				me->mGroupWindow->mGroup->dismissPreviews();
+ 				me->mGroupWindow->activate((event)->time);
++			}
+ 			return true;
+ 		}),
+ 		this);

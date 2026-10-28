@@ -355,11 +355,33 @@ must follow the general Slax repair rules above.
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
 - Use Docklike Taskbar for grouped application icons and hover previews.
-  Build its Debian package with `docklike-preview-sizing.diff`: every thumbnail
-  uses the same fraction of the panel monitor's work-area height, preserving
-  aspect ratios. Thumbnail widths determine cards and long titles are ellipsized.
-  Set this height fraction with `previewScale` in `docklike-2.rc` (default 0.2).
-  Cap it with `previewMaxHeight` in logical pixels (default 160; 0 disables the cap).
+  Build its Debian package with `docklike-preview-sizing.diff`: fit both
+  `previewMaxWidth` and `previewMaxHeight` in logical pixels, preserving aspect
+  ratios (defaults 215 and 150). Thumbnail widths determine cards and long titles
+  are ellipsized. Do not use `previewScale`.
+  `docklike-preview-animation.diff` shares one native popup between application
+  groups. Change titles and icons immediately, crossfade thumbnail images and
+  animate the frame's geometry for 180 ms on GTK's frame clock. Added cards slide
+  in and fade; removed cards become noninteractive fading snapshots. Retarget
+  rapid switches from the currently displayed images and geometry.
+  `docklike-taskbar-click.diff` dismisses single-window previews on activation
+  or minimization and suppresses hover reopening until the pointer leaves the
+  taskbar icon. Multi-window primary clicks only toggle previews. Thumbnail
+  selection dismisses the popup. Ignore grab-induced crossing events when
+  resetting this temporary suppression; preserve modifier and middle-click actions.
+  `docklike-popup-motion.diff` fades the whole shared frame in from 10 px below
+  its resting position and reverses that effect on hover dismissal. Application
+  activation/minimization and thumbnail selection hide it immediately. Multi-window
+  icon toggles may animate. Reverse interrupted fades without replacing the popup;
+  transparent moving frames must not intercept pointer input.
+  `docklike-preview-header.diff` uses compact 24 px close buttons with no default
+  frame. Reserve their space but show them only on card hover; their own hover
+  uses `preview_close_hover`, configured in `/etc/xdg/xfce4-docklike-plugin/gtk.css`
+  or the user's `~/.config/xfce4-docklike-plugin/gtk.css`. Load structural default
+  CSS before custom overrides so color-only customization retains the behavior.
+  Preview titles use regular 12 px text, including the active window. Keep 7 px
+  side margins, 5 px below the thumbnail, 2 px above the title row and 3 px
+  between the title row and thumbnail. Include both side margins in card widths.
   `docklike-preview-peek.diff` sets a temporary `_SLAX_PREVIEW_DIM` property on
   other clients while a visible window's preview is hovered. Picom dims those
   application windows, retaining focus, stacking and minimization. Remove the

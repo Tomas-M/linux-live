@@ -1,0 +1,281 @@
+Description: Fade and slide the shared preview popup, with instant application selection
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -764,7 +764,7 @@
+ void Group::onMouseLeave()
+ {
+ 	if (!mGroupMenu.mMouseHover)
+-		mGroupMenu.hide();
++		mGroupMenu.hide(true);
+ }
+ 
+ void Group::setMouseLeaveTimeout()
+@@ -888,10 +888,12 @@
+ 		mAppInfo->launch();
+ 	else if (mWindowsCount > 1)
+ 	{
+-		bool show = !mGroupMenu.mVisible;
+-		dismissPreviews();
+-		if (show)
+-		{
++		if (mGroupMenu.mVisible)
++			dismissPreviews(true);
++		else
++		{
++			mMenuShowTimeout.stop();
++			mGroupMenu.mPopupIdle.stop();
+ 			mPreviewSuppressed = false;
+ 			mGroupMenu.popup();
+ 		}
+@@ -907,12 +909,12 @@
+ }
+ 
+ // Dismiss a selection and suppress hover reopening until the pointer leaves its icon.
+-void Group::dismissPreviews()
++void Group::dismissPreviews(bool animated)
+ {
+ 	mPreviewSuppressed = gtk_style_context_has_class(gtk_widget_get_style_context(mButton), "hover_group");
+ 	mMenuShowTimeout.stop();
+ 	mGroupMenu.mPopupIdle.stop();
+-	mGroupMenu.hide();
++	mGroupMenu.hide(animated);
+ }
+ 
+ bool Group::onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time)
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -71,7 +71,7 @@
+ 	void onWindowUnactivate();
+ 	void onButtonPress(GdkEventButton* event);
+ 	void onButtonRelease(GdkEventButton* event);
+-	void dismissPreviews();
++	void dismissPreviews(bool animated = false);
+ 	void onMouseEnter();
+ 	void onMouseLeave();
+ 	void setMouseLeaveTimeout();
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -48,6 +48,7 @@
+ 	unsigned users = 0, tick = 0;
+ 	gint64 started = 0;
+ 	Rectangle from, target, current;
++	double opacity = 0, fromOpacity = 0, targetOpacity = 0;
+ 	std::vector<Card> cards;
+ 	std::vector<Ghost> ghosts;
+ 
+@@ -155,8 +156,27 @@
+ 	}
+ 
+ 	// Finish all layers before hiding; dimming properties never outlive the popup.
+-	void hide()
+-	{
++	void hide(bool animated = false)
++	{
++		if (menu)
++			menu->mPopupIdle.stop();
++		if (animated)
++		{
++			if (!menu || targetOpacity == 0)
++				return;
++			for (const Card& card : cards)
++			{
++				card.item->peek(false);
++				card.item->mPreviewTimeout.stop();
++			}
++			menu->mVisible = menu->mMouseHover = false;
++			from = target = current;
++			fromOpacity = opacity;
++			targetOpacity = 0;
++			setInput(false);
++			startAnimation();
++			return;
++		}
+ 		if (tick)
+ 			gtk_widget_remove_tick_callback(window, tick);
+ 		tick = 0;
+@@ -174,6 +194,8 @@
+ 		if (menu)
+ 			menu->mVisible = menu->mMouseHover = false;
+ 		menu = nullptr;
++		opacity = fromOpacity = targetOpacity = 0;
++		gtk_widget_set_opacity(window, 0);
+ 		gtk_widget_hide(window);
+ 	}
+ 
+@@ -181,6 +203,8 @@
+ 	void show(GroupMenu* next)
+ 	{
+ 		bool visible = gtk_widget_get_visible(window);
++		fromOpacity = visible ? opacity : 0;
++		targetOpacity = 1;
+ 		bool sameGroup = menu == next;
+ 		// Retire faded snapshots even when rapid switches keep restarting the animation.
+ 		ghosts.erase(std::remove_if(ghosts.begin(), ghosts.end(), [](const Ghost& ghost) {
+@@ -266,8 +290,12 @@
+ 			card.target.width = cardWidth;
+ 			card.target.height = cardHeight;
+ 			card.from = card.target;
+-			card.from.y += 10;
+-			card.fromOpacity = 0;
++			card.fromOpacity = 1;
++			if (visible)
++			{
++				card.from.y += 10;
++				card.fromOpacity = 0;
++			}
+ 			if (matches[index] >= 0)
+ 			{
+ 				card.from = old[matches[index]].current;
+@@ -311,54 +339,80 @@
+ 		target.x = std::max(static_cast<double>(area.x), std::min(target.x, area.x + area.width - target.width));
+ 		target.y = std::max(static_cast<double>(area.y), std::min(target.y, area.y + area.height - target.height));
+ 		from = visible ? current : target;
+-		started = g_get_monotonic_time();
++		gtk_widget_realize(window);
++		setInput(fromOpacity >= 1);
+ 		animate(0);
+ 		gtk_widget_show(window);
+-		if (!tick)
+-			tick = gtk_widget_add_tick_callback(window, +[](GtkWidget*, GdkFrameClock* clock, gpointer data) -> gboolean {
+-				PreviewPopup* popup = static_cast<PreviewPopup*>(data);
+-				double progress = std::max(0.0, std::min(1.0, (gdk_frame_clock_get_frame_time(clock) - popup->started) / 180000.0));
+-				popup->animate(progress);
+-				if (progress < 1)
+-					return true;
+-				popup->tick = 0;
+-				return false;
+-			}, this, nullptr);
++		startAnimation();
++	}
++
++	// Invisible moving frames must not intercept clicks on the panel or applications.
++	void setInput(bool enabled)
++	{
++		cairo_region_t* region = enabled ? nullptr : cairo_region_create();
++		gdk_window_input_shape_combine_region(gtk_widget_get_window(window), region, 0, 0);
++		if (region)
++			cairo_region_destroy(region);
++	}
++
++	// Reuse the same frame clock for content transitions and reversible popup fades.
++	void startAnimation()
++	{
++		started = g_get_monotonic_time();
++		if (tick)
++			return;
++		tick = gtk_widget_add_tick_callback(window, +[](GtkWidget*, GdkFrameClock* clock, gpointer data) -> gboolean {
++			PreviewPopup* popup = static_cast<PreviewPopup*>(data);
++			double progress = std::max(0.0, std::min(1.0, (gdk_frame_clock_get_frame_time(clock) - popup->started) / 180000.0));
++			popup->animate(progress);
++			if (progress < 1)
++				return true;
++			popup->tick = 0;
++			if (popup->targetOpacity == 0)
++				popup->hide();
++			return false;
++		}, this, nullptr);
+ 	}
+ 
+ 	// Animate the shared viewport and card positions on GTK's frame clock.
+ 	void animate(double progress)
+ 	{
+ 		double eased = progress * progress * (3 - 2 * progress);
++		opacity = fromOpacity + (targetOpacity - fromOpacity) * eased;
++		gtk_widget_set_opacity(window, opacity);
+ 		current.x = from.x + (target.x - from.x) * eased;
+ 		current.y = from.y + (target.y - from.y) * eased;
+ 		current.width = from.width + (target.width - from.width) * eased;
+ 		current.height = from.height + (target.height - from.height) * eased;
++		double y = current.y + (1 - opacity) * 10;
+ 		gtk_widget_set_size_request(stage, std::max(1, static_cast<int>(current.width + 0.5)), std::max(1, static_cast<int>(current.height + 0.5)));
+ 		gtk_window_resize(GTK_WINDOW(window), current.width + 0.5, current.height + 0.5);
+ #ifdef ENABLE_WAYLAND
+ 		if (gtk_layer_is_supported())
+ 		{
+ 			gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, current.x);
+-			gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, current.y);
++			gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, y);
+ 		}
+ 		else
+ #endif
+-			gtk_window_move(GTK_WINDOW(window), current.x + 0.5, current.y + 0.5);
+-		for (Card& card : cards)
+-		{
+-			card.current.x = card.from.x + (card.target.x - card.from.x) * eased;
+-			card.current.y = card.from.y + (card.target.y - card.from.y) * eased;
+-			card.current.width = card.from.width + (card.target.width - card.from.width) * eased;
+-			card.current.height = card.from.height + (card.target.height - card.from.height) * eased;
+-			card.opacity = card.fromOpacity + (1 - card.fromOpacity) * eased;
+-			gtk_layout_move(GTK_LAYOUT(stage), GTK_WIDGET(card.item->mItem), card.current.x + 0.5, card.current.y + 0.5);
+-			gtk_widget_set_size_request(GTK_WIDGET(card.item->mItem), card.current.width + 0.5, card.current.height + 0.5);
+-			gtk_widget_set_opacity(GTK_WIDGET(card.item->mItem), card.opacity);
+-			card.item->mPreviewBlend = eased;
+-			gtk_widget_queue_draw(card.item->mPreview);
+-			if (progress == 1)
+-				card.item->setPreviousPreview(nullptr);
++			gtk_window_move(GTK_WINDOW(window), current.x + 0.5, y + 0.5);
++		if (targetOpacity > 0)
++		{
++			for (Card& card : cards)
++			{
++				card.current.x = card.from.x + (card.target.x - card.from.x) * eased;
++				card.current.y = card.from.y + (card.target.y - card.from.y) * eased;
++				card.current.width = card.from.width + (card.target.width - card.from.width) * eased;
++				card.current.height = card.from.height + (card.target.height - card.from.height) * eased;
++				card.opacity = card.fromOpacity + (1 - card.fromOpacity) * eased;
++				gtk_layout_move(GTK_LAYOUT(stage), GTK_WIDGET(card.item->mItem), card.current.x + 0.5, card.current.y + 0.5);
++				gtk_widget_set_size_request(GTK_WIDGET(card.item->mItem), card.current.width + 0.5, card.current.height + 0.5);
++				gtk_widget_set_opacity(GTK_WIDGET(card.item->mItem), card.opacity);
++				card.item->mPreviewBlend = eased;
++				gtk_widget_queue_draw(card.item->mPreview);
++				if (progress == 1)
++					card.item->setPreviousPreview(nullptr);
++			}
+ 		}
+ 		for (Ghost& ghost : ghosts)
+ 		{
+@@ -375,6 +429,8 @@
+ 			for (const Ghost& ghost : ghosts)
+ 				gtk_widget_destroy(ghost.widget);
+ 			ghosts.clear();
++			if (targetOpacity > 0)
++				setInput(true);
+ 		}
+ 	}
+ };
+@@ -432,10 +488,10 @@
+ }
+ 
+ // An old group's delayed leave must never hide the newly selected group.
+-void GroupMenu::hide()
++void GroupMenu::hide(bool animated)
+ {
+ 	if (previewPopup.menu == this)
+-		previewPopup.hide();
++		previewPopup.hide(animated);
+ 	mVisible = mMouseHover = false;
+ }
+ 
+@@ -461,7 +517,8 @@
+ 	gdk_device_get_position(Plugin::mPointer, nullptr, &x, &y);
+ 	const Rectangle& box = previewPopup.current;
+ 	double dx = std::max(0.0, std::max(box.x - x, x - box.x - box.width));
+-	double dy = std::max(0.0, std::max(box.y - y, y - box.y - box.height));
++	double top = box.y + (1 - previewPopup.opacity) * 10;
++	double dy = std::max(0.0, std::max(top - y, y - top - box.height));
+ 	return std::max(dx, dy);
+ }
+ 
+--- a/src/GroupMenu.hpp
++++ b/src/GroupMenu.hpp
+@@ -28,7 +28,7 @@
+ 	void remove(GroupMenuItem* menuItem);
+ 
+ 	void popup();
+-	void hide();
++	void hide(bool animated = false);
+ 	void showPreviewsChanged();
+ 
+ 	uint getPointerDistance();

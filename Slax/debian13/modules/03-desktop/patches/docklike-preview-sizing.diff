@@ -1,4 +1,4 @@
-Description: Give previews a common capped height, proportional widths and ellipsized titles
+Description: Fit previews within two pixel limits and ellipsize their titles
 Author: Slax <build@slax.org>
 Forwarded: no
 --- a/src/GroupMenuItem.cpp
@@ -8,29 +8,36 @@ Forwarded: no
  	gtk_label_set_xalign(mLabel, 0);
  	gtk_label_set_ellipsize(mLabel, PANGO_ELLIPSIZE_END);
 -	gtk_label_set_width_chars(mLabel, 26);
-+	// Preview titles fill the thumbnail width without increasing it.
++	// Let the thumbnail determine the card width.
 +	gtk_label_set_width_chars(mLabel, Settings::showPreviews ? 1 : 26);
 +	gtk_label_set_max_width_chars(mLabel, Settings::showPreviews ? 1 : -1);
 +	gtk_widget_set_hexpand(GTK_WIDGET(mLabel), true);
  	gtk_widget_show(GTK_WIDGET(mLabel));
  	gtk_grid_attach(mGrid, GTK_WIDGET(mLabel), 1, 0, 1, 1);
  
-@@ -184,9 +187,16 @@
+@@ -164,10 +167,6 @@
+ 		GdkWindow* window;
+ 		GdkPixbuf* pixbuf;
+ 		GdkPixbuf* thumbnail;
+-
+-		double scale = 0.125;
+-		if (Settings::previewScale)
+-			scale = Settings::previewScale;
+ 
+ 		window = gdk_x11_window_foreign_new_for_display(Plugin::mDisplay,
+ 			xfw_window_x11_get_xid(mGroupWindow->mXfwWindow));
+@@ -184,9 +183,12 @@
  			if (pixbuf != nullptr)
  			{
  				gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(mPreview));
 -				scale *= scale_factor;
 -				thumbnail = gdk_pixbuf_scale_simple(pixbuf,
 -					gdk_pixbuf_get_width(pixbuf) * scale, gdk_pixbuf_get_height(pixbuf) * scale, GDK_INTERP_BILINEAR);
-+				// Use a common monitor-relative height, capped in logical pixels.
-+				GdkRectangle workarea;
-+				gdk_monitor_get_workarea(gdk_display_get_monitor_at_window(Plugin::mDisplay,
-+					gtk_widget_get_window(GTK_WIDGET(Plugin::mXfPlugin))), &workarea);
-+				double previewHeight = workarea.height * scale;
-+				if (Settings::previewMaxHeight > 0)
-+					previewHeight = std::min(previewHeight, static_cast<double>(Settings::previewMaxHeight));
-+				gint height = std::max(1, static_cast<int>(previewHeight * scale_factor + 0.5));
-+				gint width = std::max(1, gdk_pixbuf_get_width(pixbuf) * height / gdk_pixbuf_get_height(pixbuf));
++				// Fit both logical-pixel limits while preserving the window aspect ratio.
++				double scale = std::min(static_cast<double>(Settings::previewMaxWidth) / gdk_pixbuf_get_width(pixbuf),
++					static_cast<double>(Settings::previewMaxHeight) / gdk_pixbuf_get_height(pixbuf)) * scale_factor;
++				gint width = std::max(1, static_cast<int>(gdk_pixbuf_get_width(pixbuf) * scale));
++				gint height = std::max(1, static_cast<int>(gdk_pixbuf_get_height(pixbuf) * scale));
 +				thumbnail = gdk_pixbuf_scale_simple(pixbuf, width, height, GDK_INTERP_BILINEAR);
  				cairo_surface_t* surface = gdk_cairo_surface_create_from_pixbuf(thumbnail, scale_factor, NULL);
  
@@ -48,33 +55,45 @@ Forwarded: no
  	});
 --- a/src/Settings.cpp
 +++ b/src/Settings.cpp
-@@ -39,6 +39,7 @@
+@@ -38,7 +38,8 @@
+ 
  	State<bool> showWindowCount;
  	State<int> dockSize;
- 	State<double> previewScale;
+-	State<double> previewScale;
++	State<int> previewMaxWidth;
 +	State<int> previewMaxHeight;
  	State<int> previewSleep;
  
  	void init()
-@@ -254,6 +255,12 @@
+@@ -248,9 +249,17 @@
  				saveFile();
  			});
  
-+		previewMaxHeight.setup(g_key_file_get_integer(file, "user", "previewMaxHeight", nullptr),
-+			[](int height) -> void {
-+				g_key_file_set_integer(mFile.get(), "user", "previewMaxHeight", height);
+-		previewScale.setup(g_key_file_get_double(file, "user", "previewScale", nullptr),
+-			[](int _previewScale) -> void {
+-				g_key_file_set_double(mFile.get(), "user", "previewScale", _previewScale);
++		int width = g_key_file_get_integer(file, "user", "previewMaxWidth", nullptr);
++		previewMaxWidth.setup(width > 0 ? width : 215,
++			[](int value) -> void {
++				g_key_file_set_integer(mFile.get(), "user", "previewMaxWidth", value);
 +				saveFile();
 +			});
 +
- 		previewSleep.setup(g_key_file_get_integer(file, "user", "previewSleep", nullptr),
- 			[](int _previewSleep) -> void {
- 				g_key_file_set_integer(mFile.get(), "user", "previewSleep", _previewSleep);
++		int height = g_key_file_get_integer(file, "user", "previewMaxHeight", nullptr);
++		previewMaxHeight.setup(height > 0 ? height : 150,
++			[](int value) -> void {
++				g_key_file_set_integer(mFile.get(), "user", "previewMaxHeight", value);
+ 				saveFile();
+ 			});
+ 
 --- a/src/Settings.hpp
 +++ b/src/Settings.hpp
-@@ -55,6 +55,7 @@
+@@ -54,7 +54,8 @@
+ 
  	// HIDDEN SETTINGS:
  	extern State<int> dockSize;
- 	extern State<double> previewScale;
+-	extern State<double> previewScale;
++	extern State<int> previewMaxWidth;
 +	extern State<int> previewMaxHeight;
  	extern State<int> previewSleep;
  }; // namespace Settings
