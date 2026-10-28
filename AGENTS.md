@@ -190,7 +190,8 @@ must follow the general Slax repair rules above.
   `copy` installs those PNGs under `/usr/local/share/icons/hicolor` so APT cannot
   replace them. Refresh this local icon cache through the final module too.
   SciTE reads `/usr/share/pixmaps/Sci48M.png`; xterm uses its bundled XPM through
-  `XTerm*iconHint`. Keep Chromium, Session action icons and status tray icons unchanged.
+  `XTerm*iconHint`. Its terminal artwork has no colored title-bar dots.
+  Keep Chromium, Session action icons and status tray icons unchanged.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
   `05-chromium`. Put ConnMan's regular tray icons in Adwaita's `16x16/legacy`
