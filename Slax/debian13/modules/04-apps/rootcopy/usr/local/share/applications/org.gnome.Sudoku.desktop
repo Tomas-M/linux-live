@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Sudoku
-Exec=fbinstall slax-gnome-sudoku "Sudoku" "gnome-sudoku" "/usr/games/gnome-sudoku"
+Exec=fbinstall org.gnome.Sudoku slax-gnome-sudoku "Sudoku" "gnome-sudoku" "/usr/games/gnome-sudoku"
 X-Xlunch-Executable=/usr/games/gnome-sudoku
 Icon=slax-gnome-sudoku
 Terminal=false

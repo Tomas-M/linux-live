@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Document Scanner
-Exec=fbinstall slax-simple-scan "Document Scanner" "simple-scan" "simple-scan"
+Exec=fbinstall simple-scan slax-simple-scan "Document Scanner" "simple-scan" "simple-scan"
 X-Xlunch-Executable=simple-scan
 Icon=slax-simple-scan
 Terminal=false

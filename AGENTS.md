@@ -156,8 +156,12 @@ must follow the general Slax repair rules above.
   building; an extracted Debian source can retain a preparation marker that
   makes dpkg-source skip newly appended patches.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
-  `slax-desktop-tools`. Use `fbinstall [--user guest] ICON NAME "PACKAGE..."
-  "COMMAND [ARGS...]" [ARGS...]`. Available commands start before GTK or APT.
+  `slax-desktop-tools`. Use `fbinstall [--user guest] APP_ID ICON NAME "PACKAGE..."
+  "COMMAND [ARGS...]" [ARGS...]`. APP_ID is the canonical desktop ID without
+  `.desktop`; set both WM_CLASS strings from it before creating any windows. Each installer
+  and its error dialogs must map to the selected launcher instead of an arbitrary
+  desktop entry sharing the `fbinstall` executable. Keep its selected icon as
+  the process-wide default. Available commands start before GTK or APT.
   Missing applications install immediately, without a size threshold or confirmation.
   Launchers pass the application name; the installer supplies the shared explanation
   that it will be downloaded and installed, followed by "please wait...".

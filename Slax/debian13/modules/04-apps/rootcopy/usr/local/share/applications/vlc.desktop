@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Video Player
-Exec=fbinstall --user guest slax-vlc "Video Player" "vlc" "vlc --started-from-file" %U
+Exec=fbinstall --user guest vlc slax-vlc "Video Player" "vlc" "vlc --started-from-file" %U
 X-Xlunch-Executable=vlc
 Icon=slax-vlc
 Terminal=false
