@@ -1,3 +1,5 @@
-/* Keep Docklike's active group distinct while its native indicator marks focus. */
-#docklike-plugin .group { border-radius: 4px; }
-#docklike-plugin .active_group { background-image: none; background-color: rgba(211,227,253,0.25); }
+/* Keep hover below selection, and selected hover above both states. */
+#docklike-plugin .group { border-radius: 4px; background-image: none; background-color: transparent; }
+#docklike-plugin .group.hover_group { background-color: rgba(211,227,253,0.12); }
+#docklike-plugin .group.active_group { background-color: rgba(211,227,253,0.25); }
+#docklike-plugin .group.active_group.hover_group { background-color: rgba(211,227,253,0.4); }

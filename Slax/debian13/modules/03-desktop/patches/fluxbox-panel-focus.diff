@@ -1,0 +1,76 @@
+Description: Clear desktop and panel focus without raising or minimizing application windows
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Screen.hh
++++ b/src/Screen.hh
+@@ -257,6 +257,8 @@
+     FbRootWindow &rootWindow() { return m_root_window; }
+     const FbRootWindow &rootWindow() const { return m_root_window; }
+ 
++    void clearFocus(Window owner = None);
++
+     FbTk::FbWindow &dummyWindow() { return m_dummy_window; }
+     const FbTk::FbWindow &dummyWindow() const { return m_dummy_window; }
+ 
+--- a/src/Screen.cc
++++ b/src/Screen.cc
+@@ -682,7 +682,20 @@
+         FbTk::EventManager::instance()->ungrabKeyboard();
+ }
+ 
++// Keep neutral focus on the WM's mapped input-only window without changing stacking.
++void BScreen::clearFocus(Window owner) {
++    m_dummy_window.show();
++    FocusControl::setExpectingFocus(0);
++    m_dummy_window.setInputFocus(RevertToPointerRoot, CurrentTime);
++    FocusControl::setFocusedWindow(0);
++    Atom atom = XInternAtom(rootWindow().display(), "_FLUXBOX_FOCUS_ROOT", False);
++    XChangeProperty(rootWindow().display(), rootWindow().window(), atom,
++                    XA_WINDOW, 32, PropModeReplace, (unsigned char *)&owner, 1);
++}
++
+ void BScreen::buttonPressEvent(XButtonEvent &be) {
++    if (be.button == Button1)
++        clearFocus();
+     if (be.button == 1 && !isRootColormapInstalled())
+         imageControl().installRootColormap();
+ 
+--- a/src/Ewmh.cc
++++ b/src/Ewmh.cc
+@@ -322,6 +322,7 @@
+         moveresize_window = XInternAtom(disp, "_NET_MOVERESIZE_WINDOW", False);
+         restack_window = XInternAtom(disp, "_NET_RESTACK_WINDOW", False);
+         window_preview = XInternAtom(disp, "_FLUXBOX_WINDOW_PREVIEW", False);
++        focus_root = XInternAtom(disp, "_FLUXBOX_FOCUS_ROOT", False);
+         request_frame_extents = XInternAtom(disp,
+                 "_NET_REQUEST_FRAME_EXTENTS", False);
+ 
+@@ -400,6 +401,7 @@
+          moveresize_window,
+          restack_window,
+          window_preview,
++         focus_root,
+          request_frame_extents;
+ 
+     // root window messages
+@@ -580,6 +582,7 @@
+         m_net->workarea,
+         m_net->restack_window,
+         m_net->window_preview,
++        m_net->focus_root,
+         m_net->request_frame_extents,
+ 
+         m_net->wm_moveresize,
+@@ -1063,7 +1066,11 @@
+ bool Ewmh::checkClientMessage(const XClientMessageEvent &ce,
+                               BScreen * screen, WinClient * const winclient) {
+ 
+-    if (ce.message_type == m_net->wm_desktop) {
++    if (ce.message_type == m_net->focus_root) {
++        if (screen)
++            screen->clearFocus(ce.data.l[0]);
++        return true;
++    } else if (ce.message_type == m_net->wm_desktop) {
+         // ce.data.l[0] = workspace number
+         // valid window
+ 

@@ -355,6 +355,18 @@ must follow the general Slax repair rules above.
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
 - Use Docklike Taskbar for grouped application icons and hover previews.
+  `fluxbox-panel-focus.diff` advertises `_FLUXBOX_FOCUS_ROOT`. Desktop primary
+  clicks and requests from `panel-clear-focus.diff` focus the WM's mapped
+  input-only supporting window, leaving application stacking and visibility
+  unchanged. The root property identifies the requesting panel, or None for
+  desktop/empty-panel clicks, including repeated clears with no active client.
+  `docklike-panel-focus.diff` highlights a clicked multi-window group only while
+  its preview is open. This selection is independent of real window focus and
+  ends on preview hide, background clicks or real application activation.
+  A first click selects an unselected group and keeps its hover previews open;
+  hide previews only when clicking the already selected group again.
+  A subsequent single-window click activates instead of minimizing the former
+  focused client. Preserve ordinary active single-window click minimization.
   Build its Debian package with `docklike-preview-sizing.diff`: fit both
   `previewMaxWidth` and `previewMaxHeight` in logical pixels, preserving aspect
   ratios (defaults 215 and 150). Thumbnail widths determine cards and long titles
@@ -365,11 +377,12 @@ must follow the general Slax repair rules above.
   GTK's frame clock. Added cards slide
   in and fade; removed cards become noninteractive fading snapshots. Retarget
   rapid switches from the currently displayed images and geometry.
-  `docklike-preview-delay.diff` waits `previewSwitchDelay` milliseconds before
+  `docklike-preview-delay.diff` waits `previewShowDelay` milliseconds before
+  opening the first popup (default 500), and `previewSwitchDelay` before
   switching an open popup to another icon (default 250; zero is immediate).
   Cancel the pending switch on icon leave so crossing a neighbor on the way to
-  the current preview keeps that preview. Preserve the initial 90 ms hover delay
-  and immediate click actions.
+  the current preview keeps that preview. Cancel pending initial previews on
+  icon leave too; preserve immediate click actions.
   Its `previewPeekDelay` waits before the first dim/raise effect (default 250 ms).
   Transfer an active peek to adjacent cards immediately by deferring leave until
   input events have been dispatched. Cancel both pending and active effects on
@@ -413,8 +426,10 @@ must follow the general Slax repair rules above.
   Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
   set only Docklike's icons to 32 px. Its native indicator uses blue for the
   active group and gray for other running applications. The shared
-  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` adds a lighter active
-  background. Import it for root, guest and new users alongside scrollbar styles.
+  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` gives groups four background
+  levels: transparent at rest, 12 percent on hover, 25 percent when selected and
+  40 percent when selected and hovered. Hover alone stays weaker than selection.
+  Import it for root, guest and new users alongside scrollbar styles.
 - Start the panel and Picom on a near-black (`#010101`) root pixmap, then
   show the wallpaper after the panel's initial redraw. Keep its 84 percent
   opacity. The Slax theme uses `background: unset`; `none` restores the last
@@ -422,7 +437,18 @@ must follow the general Slax repair rules above.
   and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
   so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
 - Picom replaces Compton and uses `/etc/picom.conf` at startup and after
-  resolution changes. Build its Debian package with `picom-top-corners.diff`;
+  resolution changes. Keep compositor shadows disabled: XRender's rectangular
+  shadow masks do not follow Slax's rounded window outline.
+  `picom-window-outline.diff` adds a cached one-pixel inset XRender outline.
+  `xrender-window-outline` is its master switch. `xrender-outline-active-color`
+  and `xrender-outline-inactive-color` select RGB hex colors from actual window
+  focus, independently of panel group selection. Normal/dialog rules opt in with `outline=true`;
+  use `use-ewmh-active-win=true` to follow Fluxbox's active client and focus clearing.
+  maximized/fullscreen rules opt out. Reuse the window's corner mask, with
+  `xrender-outline-radius=8` matching Slax's native CSD theme when Picom does
+  not clip the client. Preserve native client alpha with ATOP compositing,
+  fade/dim the outline with the window and release its cache with the image.
+  Build its Debian package with `picom-top-corners.diff`;
   install only the rebuilt package in the runtime branch. Remove Debian's
   unused `python3` dependency from its control file: Picom and picom-inspect
   are native programs and picom-trans is a POSIX shell script. Python belongs
@@ -432,7 +458,7 @@ must follow the general Slax repair rules above.
   translucent pixels. Round WM frames and opaque normal/dialog windows; opaque
   client-decorated GTK windows cannot draw transparent corners themselves.
   ARGB client-decorated windows retain their own corners. Keep frames and Chromium opaque, fade normal/dialog
-  windows in and out, and shadow normal/dialog/dock windows. Fully maximized and
+  windows in and out. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
 - PCManFM uses the opened folder's icon in the tasklist. Preserve the original

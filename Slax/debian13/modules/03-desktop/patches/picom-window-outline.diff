@@ -1,0 +1,271 @@
+Description: Draw configurable one-pixel inset outlines along rounded window masks
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/config.h
++++ b/src/config.h
+@@ -180,6 +180,8 @@
+ 	enum tristate transparent_clipping;
+ 	/// Whether a window has shadow.
+ 	enum tristate shadow;
++	/// Whether the XRender window outline is eligible for this window.
++	enum tristate outline;
+ 	/// Whether to invert window color.
+ 	enum tristate invert_color;
+ 	/// Whether to blur window background.
+@@ -208,6 +210,7 @@
+ 	enum window_unredir_option unredir;
+ 	bool transparent_clipping;
+ 	bool shadow;
++	bool outline;
+ 	bool invert_color;
+ 	bool blur_background;
+ 	bool fade;
+@@ -225,7 +228,7 @@
+ 	return a->opacity == b->opacity && a->dim == b->dim &&
+ 	       a->corner_radius == b->corner_radius && a->unredir == b->unredir &&
+ 	       a->transparent_clipping == b->transparent_clipping &&
+-	       a->shadow == b->shadow && a->invert_color == b->invert_color &&
++	       a->shadow == b->shadow && a->outline == b->outline && a->invert_color == b->invert_color &&
+ 	       a->blur_background == b->blur_background && a->fade == b->fade &&
+ 	       a->clip_shadow_above == b->clip_shadow_above && a->paint == b->paint &&
+ 	       a->full_shadow == b->full_shadow && a->shader == b->shader;
+@@ -403,6 +406,11 @@
+ 	int corner_radius;
+ 	/// Round only the upper corners in the XRender backend.
+ 	bool xrender_round_top_only;
++	/// Master switch, color and native CSD radius for a one-pixel XRender outline.
++	bool xrender_window_outline;
++	struct color xrender_outline_active_color;
++	struct color xrender_outline_inactive_color;
++	int xrender_outline_radius;
+ 	/// Rounded corners blacklist. A linked list of conditions.
+ 	struct list_node rounded_corners_blacklist;
+ 	/// Rounded corner rules. A linked list of conditions.
+--- a/src/config.c
++++ b/src/config.c
+@@ -677,6 +677,10 @@
+ 
+ 	    .corner_radius = 0,
+ 	    .xrender_round_top_only = false,
++	    .xrender_window_outline = false,
++	    .xrender_outline_active_color = {.red = 0.5, .green = 0.5, .blue = 0.5, .alpha = 1},
++	    .xrender_outline_inactive_color = {.red = 0.5, .green = 0.5, .blue = 0.5, .alpha = 1},
++	    .xrender_outline_radius = 0,
+ 
+ 	    .fade_in_step = 0.028,
+ 	    .fade_out_step = 0.03,
+--- a/src/config_libconfig.c
++++ b/src/config_libconfig.c
+@@ -568,6 +568,7 @@
+     {"fade", offsetof(struct window_maybe_options, fade)},
+     {"paint", offsetof(struct window_maybe_options, paint)},
+     {"shadow", offsetof(struct window_maybe_options, shadow)},
++    {"outline", offsetof(struct window_maybe_options, outline)},
+     {"full-shadow", offsetof(struct window_maybe_options, full_shadow)},
+     {"invert-color", offsetof(struct window_maybe_options, invert_color)},
+     {"blur-background", offsetof(struct window_maybe_options, blur_background)},
+@@ -828,6 +829,15 @@
+ 	// --corner-radius
+ 	config_lookup_int(&cfg, "corner-radius", &opt->corner_radius);
+ 	lcfg_lookup_bool(&cfg, "xrender-round-top-only", &opt->xrender_round_top_only);
++	lcfg_lookup_bool(&cfg, "xrender-window-outline", &opt->xrender_window_outline);
++	config_lookup_int(&cfg, "xrender-outline-radius", &opt->xrender_outline_radius);
++	opt->xrender_outline_radius = max2(0, opt->xrender_outline_radius);
++	if (config_lookup_string(&cfg, "xrender-outline-active-color", &sval)) {
++		opt->xrender_outline_active_color = hex_to_rgb(sval);
++	}
++	if (config_lookup_string(&cfg, "xrender-outline-inactive-color", &sval)) {
++		opt->xrender_outline_inactive_color = hex_to_rgb(sval);
++	}
+ 
+ 	if (lcfg_lookup_bool(&cfg, "no-frame-pacing", &bval)) {
+ 		opt->frame_pacing = !bval;
+--- a/src/wm/win.h
++++ b/src/wm/win.h
+@@ -321,6 +321,7 @@
+     .blur_background = TRI_UNKNOWN,
+     .clip_shadow_above = TRI_UNKNOWN,
+     .shadow = TRI_UNKNOWN,
++    .outline = TRI_UNKNOWN,
+     .fade = TRI_UNKNOWN,
+     .invert_color = TRI_UNKNOWN,
+     .paint = TRI_UNKNOWN,
+@@ -349,6 +350,7 @@
+ 	    .clip_shadow_above = tri_or(upper.clip_shadow_above, lower.clip_shadow_above),
+ 	    .full_shadow = tri_or(upper.full_shadow, lower.full_shadow),
+ 	    .shadow = tri_or(upper.shadow, lower.shadow),
++	    .outline = tri_or(upper.outline, lower.outline),
+ 	    .fade = tri_or(upper.fade, lower.fade),
+ 	    .invert_color = tri_or(upper.invert_color, lower.invert_color),
+ 	    .paint = tri_or(upper.paint, lower.paint),
+@@ -374,6 +376,7 @@
+ 	    .clip_shadow_above = tri_or_bool(maybe.clip_shadow_above, def.clip_shadow_above),
+ 	    .full_shadow = tri_or_bool(maybe.full_shadow, def.full_shadow),
+ 	    .shadow = tri_or_bool(maybe.shadow, def.shadow),
++	    .outline = tri_or_bool(maybe.outline, def.outline),
+ 	    .corner_radius = maybe.corner_radius >= 0 ? (unsigned int)maybe.corner_radius
+ 	                                              : def.corner_radius,
+ 	    .fade = tri_or_bool(maybe.fade, def.fade),
+--- a/include/picom/backend.h
++++ b/include/picom/backend.h
+@@ -147,6 +147,9 @@
+ 	int border_width;
+ 	/// Whether the source image should be inverted.
+ 	bool color_inverted;
++	/// Eligibility and actual focus for the backend's optional window outline.
++	bool window_outline;
++	bool window_active;
+ };
+ 
+ enum backend_image_format {
+--- a/src/renderer/command_builder.c
++++ b/src/renderer/command_builder.c
+@@ -66,6 +66,8 @@
+ 	}
+ 	struct backend_blit_args args_base = {
+ 	    .border_width = border_width,
++	    .window_outline = layer->options.outline,
++	    .window_active = w->is_focused,
+ 	    .corner_radius = layer->options.corner_radius,
+ 	    .opacity = opacity,
+ 	    .dim = dim,
+--- a/src/renderer/damage.c
++++ b/src/renderer/damage.c
+@@ -71,6 +71,8 @@
+ 	// First part, if any blit argument that would affect the whole image changed
+ 	if (cmd1->blit.dim     != cmd2->blit.dim                   ||
+ 	    cmd1->blit.shader  != cmd2->blit.shader                ||
++	    cmd1->blit.window_outline != cmd2->blit.window_outline ||
++	    cmd1->blit.window_active != cmd2->blit.window_active   ||
+ 	    cmd1->blit.opacity != cmd2->blit.opacity               ||
+ 	    cmd1->blit.corner_radius  != cmd2->blit.corner_radius  ||
+ 	    cmd1->blit.max_brightness != cmd2->blit.max_brightness ||
+--- a/src/backend/xrender/xrender.c
++++ b/src/backend/xrender/xrender.c
+@@ -31,6 +31,7 @@
+ 	ivec2 size;
+ 	enum backend_image_format format;
+ 	struct xrender_rounded_rectangle_cache *rounded_rectangle;
++	struct xrender_rounded_rectangle_cache *outline;
+ 	// Pixmap that the client window draws to,
+ 	// it will contain the content of client window.
+ 	xcb_pixmap_t pixmap;
+@@ -84,6 +85,9 @@
+ 	/// If vsync is enabled and supported by the current system
+ 	bool vsync;
+ 	bool round_top_only;
++	bool outline_enabled;
++	int outline_radius;
++	xcb_render_picture_t outline_pixels[2];
+ } xrender_data;
+ 
+ struct xrender_blur_context {
+@@ -196,6 +200,37 @@
+ 
+ 	x_free_picture(base->c, cache->p);
+ 	free(cache);
++}
++
++// Cache an inset one-pixel ring using the same antialiased curves as window clipping.
++static void xrender_outline(struct xrender_data *xd, struct xrender_image_data_inner *inner,
++                             xcb_render_picture_t picture, int radius, bool active) {
++	radius = min3(radius, inner->size.width / 2, inner->size.height / 2);
++	if (inner->outline && inner->outline->radius != radius) {
++		xrender_release_rounded_corner_cache(&xd->base, inner->outline);
++		inner->outline = NULL;
++	}
++	if (!inner->outline) {
++		inner->outline = xrender_make_rounded_corner_cache(
++		    xd->base.c, xd->white_pixel, inner->size.width, inner->size.height,
++		    radius, xd->round_top_only);
++		if (inner->size.width > 2 && inner->size.height > 2) {
++			auto inset = xrender_make_rounded_corner_cache(
++			    xd->base.c, xd->white_pixel, inner->size.width - 2,
++			    inner->size.height - 2, max2(0, radius - 1), xd->round_top_only);
++			xcb_render_composite(xd->base.c->c, XCB_RENDER_PICT_OP_OUT_REVERSE,
++			                     inset->p, XCB_NONE, inner->outline->p,
++			                     0, 0, 0, 0, 1, 1,
++			                     to_u16_checked(inner->size.width - 2),
++			                     to_u16_checked(inner->size.height - 2));
++			xrender_release_rounded_corner_cache(&xd->base, inset);
++		}
++	}
++	// ATOP preserves native CSD alpha, including transparent rounded corners.
++	xcb_render_composite(xd->base.c->c, XCB_RENDER_PICT_OP_ATOP, xd->outline_pixels[active],
++	                     inner->outline->p, picture, 0, 0, 0, 0, 0, 0,
++	                     to_u16_checked(inner->size.width),
++	                     to_u16_checked(inner->size.height));
+ }
+ 
+ static inline void xrender_set_picture_repeat(struct xrender_data *xd,
+@@ -335,8 +370,9 @@
+ 
+ 	set_picture_scale(xd->base.c, mask_pict, args->scale);
+ 
++	bool outline = xd->outline_enabled && args->window_outline;
+ 	if (((args->color_inverted || args->dim != 0) && has_alpha) ||
+-	    args->corner_radius != 0) {
++	    args->corner_radius != 0 || outline) {
+ 		// Apply image properties using a temporary image, because the source
+ 		// image is transparent or will get transparent corners. Otherwise the
+ 		// properties can be applied directly on the target image.
+@@ -420,6 +456,10 @@
+ 			                     tmp_pict, 0, 0, 0, 0, 0, 0, tmpw, tmph);
+ 		}
+ 
++		if (outline) {
++			int radius = args->corner_radius > 0 ? (int)args->corner_radius : xd->outline_radius;
++			xrender_outline(xd, inner, tmp_pict, radius, args->window_active);
++		}
+ 		set_picture_scale(xd->base.c, tmp_pict, args->scale);
+ 		// Transformations don't affect the picture's clip region, so we need to
+ 		// set it again
+@@ -699,6 +739,7 @@
+ 	}
+ 
+ 	xrender_release_rounded_corner_cache(base, img->rounded_rectangle);
++	xrender_release_rounded_corner_cache(base, img->outline);
+ 	x_free_picture(base->c, img->pict);
+ 	if (img->is_pixmap_internal && img->pixmap != XCB_NONE) {
+ 		xcb_free_pixmap(base->c->c, img->pixmap);
+@@ -730,6 +771,8 @@
+ 	}
+ 	x_free_picture(xd->base.c, xd->white_pixel);
+ 	x_free_picture(xd->base.c, xd->black_pixel);
++	x_free_picture(xd->base.c, xd->outline_pixels[false]);
++	x_free_picture(xd->base.c, xd->outline_pixels[true]);
+ 	free(xd);
+ }
+ 
+@@ -913,6 +956,14 @@
+ 
+ 	xd->vsync = ps->o.vsync;
+ 	xd->round_top_only = ps->o.xrender_round_top_only;
++	xd->outline_enabled = ps->o.xrender_window_outline;
++	xd->outline_radius = ps->o.xrender_outline_radius;
++	struct color outline_colors[] = {ps->o.xrender_outline_inactive_color,
++	                                 ps->o.xrender_outline_active_color};
++	for (int i = 0; i < 2; i++) {
++		xd->outline_pixels[i] = solid_picture(&ps->c, true, 1, outline_colors[i].red,
++		                                     outline_colors[i].green, outline_colors[i].blue);
++	}
+ 	if (ps->present_exists) {
+ 		auto eid = x_new_id(&ps->c);
+ 		auto e =
+--- a/picom.sample.conf
++++ b/picom.sample.conf
+@@ -98,6 +98,14 @@
+ 
+ # XRender only: keep the bottom corners square when rounding windows.
+ xrender-round-top-only = false;
++
++# Optional one-pixel XRender outline; enable it for selected windows with rules.
++xrender-window-outline = false;
++xrender-outline-active-color = "#808080";
++xrender-outline-inactive-color = "#808080";
++# Native client decorations retain their own alpha; match their corner radius.
++xrender-outline-radius = 0;
++# rules = ({ match = "window_type = 'normal'"; outline = true; });
+ 
+ #################################
+ #            Blur               #
