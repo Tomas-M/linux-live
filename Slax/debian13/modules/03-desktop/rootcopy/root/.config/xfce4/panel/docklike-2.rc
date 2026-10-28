@@ -1,0 +1,12 @@
+[user]
+showPreviews=true
+forceIconSize=true
+iconSize=32
+indicatorColor=rgb(138,180,248)
+inactiveColor=rgb(128,128,128)
+onlyDisplayVisible=true
+# Preview height as a fraction of the monitor work area (0.2 = 20%).
+previewScale=0.2
+# Maximum thumbnail height in logical pixels; 0 disables the limit.
+previewMaxHeight=160
+previewSleep=250

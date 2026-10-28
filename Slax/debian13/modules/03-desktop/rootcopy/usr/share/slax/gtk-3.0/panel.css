@@ -1,2 +1,3 @@
-/* Shrink window icons without changing the launcher or notification icons. */
-.xfce4-panel .tasklist image { -gtk-icon-transform: scale(0.75); }
+/* Keep Docklike's active group distinct while its native indicator marks focus. */
+#docklike-plugin .group { border-radius: 4px; }
+#docklike-plugin .active_group { background-image: none; background-color: rgba(211,227,253,0.25); }

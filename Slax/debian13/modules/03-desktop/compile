@@ -3,7 +3,7 @@ set -e
 CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
-apt-get build-dep --yes --no-install-recommends fluxbox picom
+apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-docklike-plugin
 apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
@@ -37,6 +37,20 @@ cp "$CWD/patches/picom-top-corners.diff" debian/patches/
 printf 'picom-top-corners.diff\n' >> debian/patches/series
 dpkg-buildpackage -b -us -uc
 cp ../picom_*.deb "$OUTPUT/"
+
+# Keep previews equally high with proportional widths and ellipsized window titles.
+mkdir -p /tmp/docklike-rebuild
+cd /tmp/docklike-rebuild
+apt-get source xfce4-docklike-plugin
+cd xfce4-docklike-plugin-*/
+VERSION=$(dpkg-parsechangelog -S Version)
+sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
+mkdir -p debian/patches
+cp "$CWD/patches/docklike-preview-sizing.diff" "$CWD/patches/docklike-preview-peek.diff" debian/patches/
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\n' >> debian/patches/series
+quilt push -a
+dpkg-buildpackage -b -us -uc
+cp ../xfce4-docklike-plugin_*.deb "$OUTPUT/"
 
 # Collect the additional desktop programs into one binary package.
 PACKAGE=$OUTPUT/tools

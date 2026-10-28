@@ -30,15 +30,7 @@
     </property>
   </property>
   <property name="plugins" type="empty">
-    <property name="plugin-2" type="string" value="tasklist">
-      <property name="grouping" type="bool" value="false"/>
-      <property name="show-labels" type="bool" value="true"/>
-      <property name="flat-buttons" type="bool" value="true"/>
-      <property name="show-handle" type="bool" value="false"/>
-      <property name="sort-order" type="uint" value="4"/>
-      <property name="show-wireframes" type="bool" value="false"/>
-      <property name="show-tooltips" type="bool" value="false"/>
-    </property>
+    <property name="plugin-2" type="string" value="docklike"/>
     <property name="plugin-3" type="string" value="separator">
       <property name="expand" type="bool" value="true"/>
       <property name="style" type="uint" value="0"/>
