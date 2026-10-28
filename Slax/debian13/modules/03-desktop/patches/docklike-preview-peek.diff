@@ -1,0 +1,139 @@
+Description: Dim other application windows while hovering a taskbar preview
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -7,6 +7,7 @@
+ 
+ #ifdef ENABLE_X11
+ #include <gdk/gdkx.h>
++#include <X11/Xatom.h>
+ #include <libxfce4windowing/xfw-x11.h>
+ #endif
+ 
+@@ -77,6 +78,7 @@
+ 
+ 	g_signal_connect(G_OBJECT(mItem), "button-press-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventButton* event, GroupMenuItem* me) {
++			me->peek(false);
+ 			if (event->button == GDK_BUTTON_PRIMARY)
+ 				me->mGroupWindow->activate((event)->time);
+ 			return true;
+@@ -87,6 +89,8 @@
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, GroupMenuItem* me) {
+ 			if (event->state & GDK_BUTTON1_MASK)
+ 				me->mGroupWindow->activate(event->time);
++			else
++				me->peek(true);
+ 			Help::Gtk::cssClassAdd(widget, "hover_menu_item");
+ 			gtk_widget_queue_draw(widget);
+ 			return true;
+@@ -94,7 +98,10 @@
+ 		this);
+ 
+ 	g_signal_connect(G_OBJECT(mItem), "leave-notify-event",
+-		G_CALLBACK(+[](GtkWidget* widget, GdkEvent* event, GroupMenuItem* me) {
++		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, GroupMenuItem* me) {
++			if (event->detail == GDK_NOTIFY_INFERIOR)
++				return true;
++			me->peek(false);
+ 			Help::Gtk::cssClassRemove(widget, "hover_menu_item");
+ 			gtk_widget_queue_draw(widget);
+ 			gtk_widget_queue_draw(me->mGroupWindow->mGroup->mButton);
+@@ -104,6 +111,7 @@
+ 
+ 	g_signal_connect(G_OBJECT(mCloseButton), "clicked",
+ 		G_CALLBACK(+[](GtkButton* button, GroupMenuItem* me) {
++			me->peek(false);
+ 			Xfw::close(me->mGroupWindow, 0);
+ 		}),
+ 		this);
+@@ -111,6 +119,7 @@
+ 
+ GroupMenuItem::~GroupMenuItem()
+ {
++	peek(false);
+ 	mPreviewTimeout.stop();
+ 	g_object_unref(mItem);
+ }
+@@ -210,3 +219,42 @@
+ 	}
+ #endif
+ }
++
++// Dim other clients through Picom without changing focus, stacking or minimization.
++void GroupMenuItem::peek(bool show)
++{
++#ifdef ENABLE_X11
++	if (!GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++		return;
++	if (show && !Settings::showPreviews)
++		return;
++	if (show && mGroupWindow->getState(XFW_WINDOW_STATE_MINIMIZED))
++		return;
++	if (show && !mPeekWindows.empty())
++		return;
++
++	Display* display = GDK_DISPLAY_XDISPLAY(Plugin::mDisplay);
++	Atom property = XInternAtom(display, "_SLAX_PREVIEW_DIM", False);
++	gdk_x11_display_error_trap_push(Plugin::mDisplay);
++	if (show)
++	{
++		gulong dim = 1;
++		for (GList* node = xfw_screen_get_windows(Xfw::mXfwScreen); node != nullptr; node = node->next)
++		{
++			XfwWindow* window = XFW_WINDOW(node->data);
++			if (window == mGroupWindow->mXfwWindow)
++				continue;
++			Window xid = xfw_window_x11_get_xid(window);
++			mPeekWindows.push_back(xid);
++			XChangeProperty(display, xid, property, XA_CARDINAL, 32, PropModeReplace, (const guchar*)&dim, 1);
++		}
++	}
++	else
++	{
++		for (gulong window : mPeekWindows)
++			XDeleteProperty(display, window, property);
++		mPeekWindows.clear();
++	}
++	gdk_x11_display_error_trap_pop_ignored(Plugin::mDisplay);
++#endif
++}
+--- a/src/GroupMenuItem.hpp
++++ b/src/GroupMenuItem.hpp
+@@ -15,6 +15,7 @@
+ #include <gtk/gtk.h>
+ 
+ #include <iostream>
++#include <vector>
+ 
+ class GroupWindow;
+ 
+@@ -27,6 +28,7 @@
+ 	void updateLabel();
+ 	void updateIcon();
+ 	void updatePreview();
++	void peek(bool show);
+ 
+ 	GroupWindow* mGroupWindow;
+ 
+@@ -36,6 +38,7 @@
+ 	GtkLabel* mLabel;
+ 	GtkButton* mCloseButton;
+ 	GtkImage* mPreview;
++	std::vector<gulong> mPeekWindows;
+ 
+ 	Help::Gtk::Timeout mPreviewTimeout;
+ };
+--- a/src/GroupMenu.cpp
++++ b/src/GroupMenu.cpp
+@@ -205,6 +205,9 @@
+ 
+ void GroupMenu::hide()
+ {
++	mGroup->mWindows.forEach([](GroupWindow* window) -> void {
++		window->mGroupMenuItem->peek(false);
++	});
+ 	mVisible = false;
+ 	gtk_widget_hide(mWindow);
+ }

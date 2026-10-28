@@ -354,10 +354,23 @@ must follow the general Slax repair rules above.
 - Keep PCManFM's standard Debian package. The GTK module hides its root warning
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
-- Keep the panel's `icon-size` automatic so xlunch retains its launcher size.
-  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` shrinks only tasklist
-  icons to 75 percent, leaving space above and below them. Import this scoped
-  stylesheet for root, guest and new users alongside the scrollbar styles.
+- Use Docklike Taskbar for grouped application icons and hover previews.
+  Build its Debian package with `docklike-preview-sizing.diff`: every thumbnail
+  uses the same fraction of the panel monitor's work-area height, preserving
+  aspect ratios. Thumbnail widths determine cards and long titles are ellipsized.
+  Set this height fraction with `previewScale` in `docklike-2.rc` (default 0.2).
+  Cap it with `previewMaxHeight` in logical pixels (default 160; 0 disables the cap).
+  `docklike-preview-peek.diff` sets a temporary `_SLAX_PREVIEW_DIM` property on
+  other clients while a visible window's preview is hovered. Picom dims those
+  application windows, retaining focus, stacking and minimization. Remove the
+  properties on leave, click, menu hide and item destruction. Minimized previews
+  do not trigger the effect. Preserve the panel and preview popup's normal opacity.
+  Its defaults live in `03-desktop/rootcopy/root/.config/xfce4/panel/docklike-2.rc`.
+  Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
+  set only Docklike's icons to 32 px. Its native indicator uses blue for the
+  active group and gray for other running applications. The shared
+  `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` adds a lighter active
+  background. Import it for root, guest and new users alongside scrollbar styles.
 - Start the panel and Picom on a near-black (`#010101`) root pixmap, then
   show the wallpaper after the panel's initial redraw. Keep its 84 percent
   opacity. The Slax theme uses `background: unset`; `none` restores the last
