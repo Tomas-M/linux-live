@@ -383,6 +383,14 @@ must follow the general Slax repair rules above.
   `previewMaxWidth` and `previewMaxHeight` in logical pixels, preserving aspect
   ratios (defaults 215 and 150). Thumbnail widths determine cards and long titles
   are ellipsized. Do not use `previewScale`.
+  `docklike-preview-capture.diff` retains the compositor's existing backing
+  pixmap before first hover. Follow map, resize and reparent events, preserving
+  other X11 event subscriptions. Read the client crop from its top-level frame,
+  including covered windows; cache a compact thumbnail on unmap and release the
+  native reference. Keep the last good image through capture failures. Windows
+  already minimized when the panel starts have no recoverable pixels: show their
+  application icon until they are restored. Capture must work across local users
+  without depending on a VM or application identity.
   `docklike-preview-animation.diff` shares one native popup between application
   groups. Once a group is selected, change titles and icons immediately,
   crossfade thumbnail images and animate the frame's geometry for 180 ms on

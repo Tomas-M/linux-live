@@ -60,12 +60,16 @@ cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax22)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax23)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
+# Reject incomplete plugin packages before they enter the runtime branch.
+dpkg-deb -c ../xfce4-docklike-plugin_*.deb > /tmp/docklike-package-files
+grep -q '/libdocklike.so$' /tmp/docklike-package-files
+grep -q '/docklike.desktop$' /tmp/docklike-package-files
 cp ../xfce4-docklike-plugin_*.deb "$OUTPUT/"
 
 # Collect the additional desktop programs into one binary package.
