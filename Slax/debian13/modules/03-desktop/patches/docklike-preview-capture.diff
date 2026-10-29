@@ -1,0 +1,461 @@
+Description: Retain compositor backing pixels for reliable previews before the first hover
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/configure.ac
++++ b/configure.ac
+@@ -71,6 +71,7 @@
+                            [
+                              XDT_FEATURE_DEPENDENCY([GDK_X11], [gdk-x11-3.0], [gtk_min_version])
+                              XDT_FEATURE_DEPENDENCY([LIBX11], [x11], [libx11_min_version])
++                             XDT_FEATURE_DEPENDENCY([LIBXCOMPOSITE], [xcomposite], [0.2])
+                              XDT_FEATURE_DEPENDENCY([LIBXFCE4WINDOWING_X11], [libxfce4windowing-x11-0], [libxfce4windowing_min_version])
+                            ],
+                            [the X11 windowing system])
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -91,6 +91,48 @@
+ 		updatePreview();
+ 		return true;
+ 	});
++
++	// Prepare a backing reference before the first hover or minimization.
++	mPrepareTimeout.setup(100, [this]() {
++#ifdef ENABLE_X11
++		return !mCapture.prepare(xfw_window_x11_get_xid(mGroupWindow->mXfwWindow));
++#else
++		return false;
++#endif
++	});
++	mPrepareIdle.setup([this]() { preparePreview(); return false; });
++#ifdef ENABLE_X11
++	if (GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++	{
++		gdk_x11_display_error_trap_push(Plugin::mDisplay);
++		mCaptureWindow = gdk_x11_window_foreign_new_for_display(Plugin::mDisplay, xfw_window_x11_get_xid(mGroupWindow->mXfwWindow));
++		if (mCaptureWindow)
++		{
++			// Keep event subscriptions installed by the window tracking library.
++			XWindowAttributes attributes;
++			Window xid = xfw_window_x11_get_xid(mGroupWindow->mXfwWindow);
++			if (XGetWindowAttributes(GDK_DISPLAY_XDISPLAY(Plugin::mDisplay), xid, &attributes))
++				XSelectInput(GDK_DISPLAY_XDISPLAY(Plugin::mDisplay), xid, attributes.your_event_mask | StructureNotifyMask);
++			// Coalesce resize/reparent events, but save the retained pixels on unmap.
++			mCaptureFilter = +[](GdkXEvent* event, GdkEvent*, gpointer data) {
++				GroupMenuItem* item = static_cast<GroupMenuItem*>(data);
++				XEvent* xevent = static_cast<XEvent*>(event);
++				if (xevent->type == UnmapNotify)
++					item->updatePreview();
++				else if (xevent->type == MapNotify)
++					item->preparePreview();
++				else if (xevent->type == ConfigureNotify || xevent->type == ReparentNotify)
++					item->mPrepareIdle.start();
++				return GDK_FILTER_CONTINUE;
++			};
++			gdk_window_add_filter(mCaptureWindow, mCaptureFilter, this);
++		}
++		gdk_x11_display_error_trap_pop_ignored(Plugin::mDisplay);
++	}
++#endif
++	g_signal_connect(gdk_screen_get_default(), "composited-changed", G_CALLBACK(+[](GdkScreen*, GroupMenuItem* item) {
++		item->preparePreview();
++	}), this);
+ 
+ 	//--------------------------------------------------
+ 
+@@ -157,6 +199,16 @@
+ {
+ 	peek(false);
+ 	mPreviewTimeout.stop();
++	mPrepareTimeout.stop();
++	mPrepareIdle.stop();
++	g_signal_handlers_disconnect_by_data(gdk_screen_get_default(), this);
++#ifdef ENABLE_X11
++	if (mCaptureWindow)
++	{
++		gdk_window_remove_filter(mCaptureWindow, mCaptureFilter, this);
++		g_object_unref(mCaptureWindow);
++	}
++#endif
+ 	setPreviousPreview(nullptr);
+ 	if (mPreviewSurface)
+ 		cairo_surface_destroy(mPreviewSurface);
+@@ -192,62 +244,49 @@
+ 	}
+ }
+ 
++// Keep a last good image; unmapped windows must never overwrite it with black pixels.
+ void GroupMenuItem::updatePreview()
+ {
+-	if (mGroupWindow->getState(XFW_WINDOW_STATE_MINIMIZED))
+-		return; // minimized windows never need a new thumbnail
+-
+-#ifdef ENABLE_X11
+-	// This needs work to survive porting to GTK4 and/or Wayland.
+-	// GDK doesn't expose an API to get a foreign window on X11 anymore (so X11 code).
+-	// Wayland may never have a public protocol for obtaining a preview of a foreign window,
+-	// which goes against its security principles (so private protocol).
+-	if (GDK_IS_X11_DISPLAY(Plugin::mDisplay))
+-	{
+-		GdkWindow* window;
+-		GdkPixbuf* pixbuf;
+-		GdkPixbuf* thumbnail;
+-
+-		window = gdk_x11_window_foreign_new_for_display(Plugin::mDisplay,
+-			xfw_window_x11_get_xid(mGroupWindow->mXfwWindow));
+-
+-		if (window != nullptr)
+-		{
+-			// we're probably not doing anything wrong at our level, but things can go wrong in cairo when
+-			// multiple windows are closed and thumbnails are shown (#71), so let's catch X11 errors for it
+-			GdkDisplay* display = gdk_display_get_default();
+-			gdk_x11_display_error_trap_push(display);
+-			pixbuf = gdk_pixbuf_get_from_window(window, 0, 0, gdk_window_get_width(window), gdk_window_get_height(window));
+-			gdk_x11_display_error_trap_pop_ignored(display);
+-
+-			if (pixbuf != nullptr)
+-			{
+-				gint scale_factor = gtk_widget_get_scale_factor(GTK_WIDGET(mPreview));
+-				// Fit both logical-pixel limits while preserving the window aspect ratio.
+-				double scale = std::min(static_cast<double>(Settings::previewMaxWidth) / gdk_pixbuf_get_width(pixbuf),
+-					static_cast<double>(Settings::previewMaxHeight) / gdk_pixbuf_get_height(pixbuf)) * scale_factor;
+-				gint width = std::max(1, static_cast<int>(gdk_pixbuf_get_width(pixbuf) * scale));
+-				gint height = std::max(1, static_cast<int>(gdk_pixbuf_get_height(pixbuf) * scale));
+-				thumbnail = gdk_pixbuf_scale_simple(pixbuf, width, height, GDK_INTERP_BILINEAR);
+-				cairo_surface_t* surface = gdk_cairo_surface_create_from_pixbuf(thumbnail, scale_factor, NULL);
+-
+-				int logicalWidth = std::max(1, width / scale_factor);
+-				int logicalHeight = std::max(1, height / scale_factor);
+-				bool resized = logicalWidth != mPreviewWidth || logicalHeight != mPreviewHeight;
+-				mPreviewWidth = logicalWidth;
+-				mPreviewHeight = logicalHeight;
+-				if (mPreviewSurface)
+-					cairo_surface_destroy(mPreviewSurface);
+-				mPreviewSurface = surface;
+-				gtk_widget_queue_draw(mPreview);
+-				if (resized && mGroupWindow->mGroup->mGroupMenu.mVisible)
+-					mGroupWindow->mGroup->mGroupMenu.mPopupIdle.start();
+-				g_object_unref(thumbnail);
+-				g_object_unref(pixbuf);
+-			}
+-			g_object_unref(window);
+-		}
+-	}
++#ifdef ENABLE_X11
++	if (!Settings::showPreviews)
++	{
++		mCapture.clear();
++		return;
++	}
++	if (!GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++		return;
++	int factor = gtk_widget_get_scale_factor(mPreview);
++	cairo_surface_t* surface = mCapture.snapshot(xfw_window_x11_get_xid(mGroupWindow->mXfwWindow), Settings::previewMaxWidth, Settings::previewMaxHeight, factor);
++	if (!surface)
++		return;
++	int width = std::max(1, cairo_image_surface_get_width(surface) / factor);
++	int height = std::max(1, cairo_image_surface_get_height(surface) / factor);
++	bool resized = width != mPreviewWidth || height != mPreviewHeight;
++	mPreviewWidth = width;
++	mPreviewHeight = height;
++	if (mPreviewSurface)
++		cairo_surface_destroy(mPreviewSurface);
++	mPreviewSurface = surface;
++	gtk_widget_queue_draw(mPreview);
++	if (resized && mGroupWindow->mGroup->mGroupMenu.mVisible)
++		mGroupWindow->mGroup->mGroupMenu.mPopupIdle.start();
++#endif
++}
++
++// Retry compositor startup and reparenting without continuously polling other windows.
++void GroupMenuItem::preparePreview()
++{
++#ifdef ENABLE_X11
++	mPrepareTimeout.stop();
++	if (!Settings::showPreviews)
++	{
++		mCapture.clear();
++		return;
++	}
++	if (!GDK_IS_X11_DISPLAY(Plugin::mDisplay))
++		return;
++	if (!mCapture.prepare(xfw_window_x11_get_xid(mGroupWindow->mXfwWindow)))
++		mPrepareTimeout.start();
+ #endif
+ }
+ 
+@@ -358,6 +397,20 @@
+ // Blend image layers inside the animated card while retaining each aspect ratio.
+ void GroupMenuItem::drawPreview(cairo_t* cr, int width, int height)
+ {
++	// Windows already minimized when the panel starts have no recoverable pixels.
++	if (!mPreviewSurface && !mPreviousPreview)
++	{
++		int factor = gtk_widget_get_scale_factor(mPreview);
++		GdkPixbuf* icon = xfw_window_get_icon(mGroupWindow->mXfwWindow, std::max(1, std::min(64, std::min(width, height))), factor);
++		if (icon)
++		{
++			cairo_surface_t* surface = gdk_cairo_surface_create_from_pixbuf(icon, factor, nullptr);
++			cairo_set_source_surface(cr, surface, (width - gdk_pixbuf_get_width(icon) / factor) / 2.0, (height - gdk_pixbuf_get_height(icon) / factor) / 2.0);
++			cairo_paint(cr);
++			cairo_surface_destroy(surface);
++		}
++		return;
++	}
+ 	cairo_push_group(cr);
+ 	cairo_set_operator(cr, CAIRO_OPERATOR_ADD);
+ 	cairo_surface_t* layers[] = {mPreviousPreview, mPreviewSurface};
+--- a/src/GroupMenuItem.hpp
++++ b/src/GroupMenuItem.hpp
+@@ -14,6 +14,10 @@
+ 
+ #include <gtk/gtk.h>
+ 
++#ifdef ENABLE_X11
++#include "PreviewCapture.hpp"
++#endif
++
+ #include <iostream>
+ #include <vector>
+ 
+@@ -28,6 +32,7 @@
+ 	void updateLabel();
+ 	void updateIcon();
+ 	void updatePreview();
++	void preparePreview();
+ 	void peek(bool show);
+ 	bool pointerInsidePeek();
+ 	void updatePeekArea();
+@@ -53,6 +58,13 @@
+ 	GdkRectangle mPeekArea;
+ 
+ 	Help::Gtk::Timeout mPreviewTimeout;
++	Help::Gtk::Timeout mPrepareTimeout;
++	Help::Gtk::Idle mPrepareIdle;
++#ifdef ENABLE_X11
++	PreviewCapture mCapture;
++	GdkWindow* mCaptureWindow = nullptr;
++	GdkFilterFunc mCaptureFilter = nullptr;
++#endif
+ 	Help::Gtk::Timeout mPeekTimeout;
+ 	Help::Gtk::Idle mPeekLeaveIdle;
+ };
+--- a/src/GroupWindow.cpp
++++ b/src/GroupWindow.cpp
+@@ -74,6 +74,7 @@
+ 	updateState();
+ 	mGroupMenuItem->updateIcon();
+ 	mGroupMenuItem->updateLabel();
++	mGroupMenuItem->preparePreview();
+ }
+ 
+ bool GroupWindow::getState(XfwWindowState flagMask) const
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -26,7 +26,7 @@
+ 
+ if ENABLE_X11
+ libdocklike_la_SOURCES += \
+-	Hotkeys.cpp Hotkeys.hpp
++	Hotkeys.cpp Hotkeys.hpp PreviewCapture.cpp PreviewCapture.hpp
+ endif
+ 
+ _gresources.c: _gresources.xml _dialogs.ui
+@@ -56,10 +56,10 @@
+ 
+ if ENABLE_X11
+ libdocklike_la_CPPFLAGS += \
+-	$(LIBX11_CFLAGS)
++	$(LIBX11_CFLAGS) $(LIBXCOMPOSITE_CFLAGS)
+ 
+ libdocklike_la_LIBADD += \
+-	$(LIBX11_LIBS)
++	$(LIBX11_LIBS) $(LIBXCOMPOSITE_LIBS)
+ endif
+ 
+ pluginsdir = $(datadir)/xfce4/panel/plugins
+--- /dev/null
++++ b/src/PreviewCapture.cpp
+@@ -0,0 +1,153 @@
++#include "PreviewCapture.hpp"
++
++// Negotiate the standard extension once for this display connection.
++PreviewCapture::PreviewCapture() : mDisplay(gdk_display_get_default())
++{
++	if (!GDK_IS_X11_DISPLAY(mDisplay))
++		return;
++	int major = 0, minor = 4;
++	if (XCompositeQueryVersion(GDK_DISPLAY_XDISPLAY(mDisplay), &major, &minor))
++		mCompositeAvailable = major > 0 || minor >= 2;
++}
++
++// Release the server reference even when the application has already closed.
++PreviewCapture::~PreviewCapture()
++{
++	clear();
++}
++
++// A pixmap reference is not a copied screenshot and must not outlive its owner.
++void PreviewCapture::clear()
++{
++	if (!mPixmap)
++		return;
++	gdk_x11_display_error_trap_push(mDisplay);
++	XFreePixmap(GDK_DISPLAY_XDISPLAY(mDisplay), mPixmap);
++	gdk_x11_display_error_trap_pop_ignored(mDisplay);
++	mPixmap = None;
++}
++
++// Retain the frame and client crop; retry only transient failures of mapped windows.
++bool PreviewCapture::prepare(Window window)
++{
++	if (!mCompositeAvailable || !gdk_screen_is_composited(gdk_display_get_default_screen(mDisplay)))
++	{
++		clear();
++		return true;
++	}
++	Display* display = GDK_DISPLAY_XDISPLAY(mDisplay);
++	XWindowAttributes client, frameAttributes;
++	Window frame = window, root, parent, child;
++	GdkRectangle area;
++	gdk_x11_display_error_trap_push(mDisplay);
++	bool valid = XGetWindowAttributes(display, window, &client) && client.map_state == IsViewable;
++	if (!valid)
++	{
++		gdk_x11_display_error_trap_pop_ignored(mDisplay);
++		return true;
++	}
++	while (valid)
++	{
++		Window* children = nullptr;
++		unsigned count;
++		valid = XQueryTree(display, frame, &root, &parent, &children, &count);
++		if (children)
++			XFree(children);
++		if (!valid || parent == root)
++			break;
++		frame = parent;
++	}
++	if (valid)
++		valid = XGetWindowAttributes(display, frame, &frameAttributes);
++	if (valid)
++		valid = XTranslateCoordinates(display, window, frame, 0, 0, &area.x, &area.y, &child);
++	Pixmap pixmap = valid ? XCompositeNameWindowPixmap(display, frame) : None;
++	int error = gdk_x11_display_error_trap_pop(mDisplay);
++	if (error || !pixmap)
++		return false;
++	unsigned width, height, border, depth;
++	int left, top;
++	XGetGeometry(display, pixmap, &root, &left, &top, &width, &height, &border, &depth);
++	area.x += frameAttributes.border_width;
++	area.y += frameAttributes.border_width;
++	area.width = client.width;
++	area.height = client.height;
++	// Client and frame resize requests can interleave; retry inconsistent crops.
++	bool nonnegative = area.x >= 0 && area.y >= 0;
++	bool fits = area.x + area.width <= static_cast<int>(width) && area.y + area.height <= static_cast<int>(height);
++	if (!nonnegative || !fits)
++	{
++		XFreePixmap(display, pixmap);
++		return false;
++	}
++	clear();
++	mPixmap = pixmap;
++	mFrame = frameAttributes;
++	mFrame.width = width;
++	mFrame.height = height;
++	mArea = area;
++	return true;
++}
++
++// Keep a bounded image after unmapping, then release the native backing reference.
++cairo_surface_t* PreviewCapture::snapshot(Window window, int maxWidth, int maxHeight, int scale)
++{
++	if (!GDK_IS_X11_DISPLAY(mDisplay))
++		return nullptr;
++	Display* display = GDK_DISPLAY_XDISPLAY(mDisplay);
++	XWindowAttributes attributes;
++	gdk_x11_display_error_trap_push(mDisplay);
++	bool valid = XGetWindowAttributes(display, window, &attributes);
++	int error = gdk_x11_display_error_trap_pop(mDisplay);
++	if (!valid || error)
++		return nullptr;
++	if (attributes.map_state == IsViewable && !prepare(window))
++		return nullptr;
++
++	cairo_surface_t* source = nullptr;
++	GdkRectangle area = mArea;
++	gdk_x11_display_error_trap_push(mDisplay);
++	if (mPixmap)
++		source = cairo_xlib_surface_create(display, mPixmap, mFrame.visual, mFrame.width, mFrame.height);
++	else if (attributes.map_state == IsViewable && !gdk_screen_is_composited(gdk_display_get_default_screen(mDisplay)))
++	{
++		// Preserve operation without a compositor, but never sample unmapped drawables.
++		GdkWindow* foreign = gdk_x11_window_foreign_new_for_display(mDisplay, window);
++		GdkPixbuf* pixels = foreign ? gdk_pixbuf_get_from_window(foreign, 0, 0, attributes.width, attributes.height) : nullptr;
++		if (pixels)
++		{
++			source = gdk_cairo_surface_create_from_pixbuf(pixels, 1, nullptr);
++			area = {0, 0, gdk_pixbuf_get_width(pixels), gdk_pixbuf_get_height(pixels)};
++			g_object_unref(pixels);
++		}
++		if (foreign)
++			g_object_unref(foreign);
++	}
++	cairo_surface_t* result = nullptr;
++	if (source)
++	{
++		double fit = std::min(static_cast<double>(maxWidth) / area.width, static_cast<double>(maxHeight) / area.height) * scale;
++		int width = std::max(1, static_cast<int>(area.width * fit));
++		int height = std::max(1, static_cast<int>(area.height * fit));
++		result = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
++		cairo_t* cr = cairo_create(result);
++		cairo_scale(cr, static_cast<double>(width) / area.width, static_cast<double>(height) / area.height);
++		cairo_set_source_surface(cr, source, -area.x, -area.y);
++		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
++		cairo_paint(cr);
++		valid = cairo_status(cr) == CAIRO_STATUS_SUCCESS;
++		cairo_destroy(cr);
++		cairo_surface_destroy(source);
++		cairo_surface_flush(result);
++		cairo_surface_set_device_scale(result, scale, scale);
++	}
++	error = gdk_x11_display_error_trap_pop(mDisplay);
++	if (attributes.map_state != IsViewable)
++		clear();
++	if (result && (error || !valid || cairo_surface_status(result) != CAIRO_STATUS_SUCCESS))
++	{
++		cairo_surface_destroy(result);
++		result = nullptr;
++	}
++	return result;
++}
+--- /dev/null
++++ b/src/PreviewCapture.hpp
+@@ -0,0 +1,27 @@
++#ifndef PREVIEW_CAPTURE_HPP
++#define PREVIEW_CAPTURE_HPP
++
++#include <gdk/gdkx.h>
++#include <cairo-xlib.h>
++#include <X11/extensions/Xcomposite.h>
++#include <algorithm>
++
++// Retain the compositor's existing backing pixmap until an unmapped window is sampled.
++class PreviewCapture
++{
++public:
++	PreviewCapture();
++	~PreviewCapture();
++	bool prepare(Window window);
++	cairo_surface_t* snapshot(Window window, int maxWidth, int maxHeight, int scale);
++	void clear();
++
++private:
++	GdkDisplay* mDisplay;
++	Pixmap mPixmap = None;
++	XWindowAttributes mFrame = {};
++	GdkRectangle mArea = {};
++	bool mCompositeAvailable = false;
++};
++
++#endif
