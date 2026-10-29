@@ -596,6 +596,14 @@ must follow the general Slax repair rules above.
   device. Keep this host configuration in the local VM helpers.
 - Slax's `guest` account needs membership in `audio`: Chromium and VLC run
   under that account and access ALSA directly, without a sound server.
+- Chromium defaults live in `05-chromium/rootcopy/etc/chromium.d/slax-flags`,
+  applied after cleanup. Keep the HTTP/code cache under RAM-backed `/tmp`,
+  with a private per-user directory and a 32 MiB HTTP cache limit; disable GPU
+  shader disk cache. Do not use `/dev/null` as a cache directory: Chromium tries
+  to create subdirectories there and logs backend errors. Suppress only the
+  Memory Saver onboarding feature
+  `IPH_HighEfficiencyMode`; users can still configure Memory Saver themselves.
+  Keep bookmarks, cookies, history and other normal profile data available.
 - Boot error audit: VMSVGA's `vmwgfx` hypervisor warning and the SSH generator's
   missing AF_VSOCK CID also occur when resuming without duplication. The copied
   session reaches the desktop with no failed systemd units. The ALSA restore

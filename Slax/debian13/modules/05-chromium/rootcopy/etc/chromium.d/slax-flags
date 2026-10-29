@@ -1,0 +1,13 @@
+# Slax mounts /tmp in RAM; keep browser caches out of the persistent profile.
+CHROMIUM_CACHE_DIR=/tmp/chromium-cache-$(id -u)
+if ! mkdir -m 700 "$CHROMIUM_CACHE_DIR" 2>/dev/null; then
+   if [ ! -d "$CHROMIUM_CACHE_DIR" ] || [ -L "$CHROMIUM_CACHE_DIR" ] || [ "$(stat -c %u "$CHROMIUM_CACHE_DIR")" != "$(id -u)" ]; then
+      CHROMIUM_CACHE_DIR=$(mktemp -d /tmp/chromium-cache.XXXXXX) || exit 1
+   fi
+fi
+chmod 700 "$CHROMIUM_CACHE_DIR" || exit 1
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disk-cache-dir=$CHROMIUM_CACHE_DIR --disk-cache-size=33554432 --disable-gpu-shader-disk-cache"
+unset CHROMIUM_CACHE_DIR
+
+# Suppress the Memory Saver onboarding prompt without locking its user setting.
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disable-features=IPH_HighEfficiencyMode"

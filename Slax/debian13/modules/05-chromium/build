@@ -2,6 +2,5 @@
 set -e
 apt-get update
 apt-get install --yes --no-install-recommends chromium chromium-sandbox
-printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disk-cache-dir=/dev/null --disk-cache-size=1"' >> /etc/chromium.d/default-flags
 rm -rf /usr/share/icons/gnome/256x256
 rm -f /root/.fluxbox/kblayout /root/.gtk-bookmarks
