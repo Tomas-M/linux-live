@@ -1,15 +1,16 @@
 /* Match Chromium's frames while preserving each application's content theme. */
-window.csd, window.csd decoration { border-radius: 8px 8px 0 0; }
-window.csd .titlebar { border-radius: 4px 4px 0 0; }
-window headerbar, window .titlebar { background-image: none; background-color: #d3e3fd; color: #333338; }
-window:backdrop headerbar, window:backdrop .titlebar { background-color: #dde3e9; }
-window.csd decoration, window.solid-csd decoration { border: 4px solid #d3e3fd; background-color: #d3e3fd; padding: 0; margin: 0; box-shadow: none; }
-window.csd:backdrop decoration, window.solid-csd:backdrop decoration { border-color: #dde3e9; background-color: #dde3e9; }
-window.maximized decoration, window.fullscreen decoration { border-width: 0; border-radius: 0; }
-window.maximized, window.fullscreen, window.maximized .titlebar, window.fullscreen .titlebar { border-radius: 0; }
+/* GtkWindow subclasses share .background even when their CSS node has another name. */
+.background.csd, .background.csd decoration { border-radius: 8px 8px 0 0; }
+.background.csd .titlebar { border-radius: 4px 4px 0 0; }
+.background headerbar, .background .titlebar { background-image: none; background-color: #d3e3fd; color: #333338; }
+.background:backdrop headerbar, .background:backdrop .titlebar { background-color: #dde3e9; }
+.background.csd decoration, .background.solid-csd decoration { border: 4px solid #d3e3fd; background-color: #d3e3fd; padding: 0; margin: 0; box-shadow: none; }
+.background.csd:backdrop decoration, .background.solid-csd:backdrop decoration { border-color: #dde3e9; background-color: #dde3e9; }
+.background.maximized decoration, .background.fullscreen decoration { border-width: 0; border-radius: 0; }
+.background.maximized, .background.fullscreen, .background.maximized .titlebar, .background.fullscreen .titlebar { border-radius: 0; }
 
 /* Leave the symbols bare until the pointer enters a window button. */
-window .titlebar button.titlebutton { min-width: 16px; min-height: 16px; padding: 6px; border: 0; border-radius: 50%; background: transparent; box-shadow: none; color: #5f6368; }
-window .titlebar button.titlebutton:backdrop { color: #adb1b7; }
-window .titlebar button.titlebutton:hover { background: rgba(95, 99, 104, 0.12); }
-window .titlebar button.titlebutton:active { background: rgba(95, 99, 104, 0.24); }
+.background .titlebar button.titlebutton { min-width: 16px; min-height: 16px; padding: 6px; border: 0; border-radius: 50%; background: transparent; box-shadow: none; color: #5f6368; }
+.background .titlebar button.titlebutton:backdrop { color: #adb1b7; }
+.background .titlebar button.titlebutton:hover { background: rgba(95, 99, 104, 0.12); }
+.background .titlebar button.titlebutton:active { background: rgba(95, 99, 104, 0.24); }

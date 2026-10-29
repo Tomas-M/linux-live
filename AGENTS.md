@@ -344,8 +344,10 @@ must follow the general Slax repair rules above.
   `#dde3e9`, 8 px upper corners, square lower corners and 4 px borders. Keep Fluxbox titles compact at
   28 px and leave application content themes unchanged. Shared GTK 3/4 rules
   are in `03-desktop/rootcopy/usr/share/slax/gtk-{3,4}.0/windows.css`, imported
-  by root, guest and `/etc/skel`. Hide borders and use square corners on
-  maximized/fullscreen GTK windows. Keep Fluxbox's `window.roundCorners` empty;
+  by root, guest and `/etc/skel`. GTK 3 rules target the shared `.background`
+  window class: dialogs, message dialogs and assistants have different CSS node
+  names. GTK 4 window subclasses retain the `window` node. Hide borders and use
+  square corners on maximized/fullscreen GTK windows. Keep Fluxbox's `window.roundCorners` empty;
   Picom supplies the antialiased mask instead of Fluxbox's binary shape cutouts.
   Window buttons use bare gray symbols, with circles only on hover/press.
   The four Adwaita symbolic window icons and Fluxbox's 22 px button pixmaps
