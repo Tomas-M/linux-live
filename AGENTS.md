@@ -352,9 +352,10 @@ must follow the general Slax repair rules above.
   belong to `03-desktop/rootcopy`; refresh the icon cache after copying them.
   Enable `gtk-dialogs-use-header` in GTK 3 and GTK 4 settings so native file
   dialogs retain the same header style. No XSettings daemon is needed.
-- GTK 3/4 file choosers default to 800 by 500 pixels through
+- GTK 3/4 file choosers default to 832 by 576 pixels through
   `03-desktop/rootcopy/usr/share/glib-2.0/schemas/90-slax-filechooser.gschema.override`.
-  Compile schemas in `03-desktop/copy` after rootcopy. Keep this a system default;
+  GTK 3 also needs a nonnegative `window-position` default to use the saved size;
+  this does not move the dialog. Compile schemas in `03-desktop/copy` after rootcopy. Keep this a system default;
   users can resize dialogs and GTK remembers their choice. Do not ship a binary
   user dconf database with unrelated preferences.
 - Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
@@ -482,8 +483,12 @@ must follow the general Slax repair rules above.
   windows in and out. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
-- PCManFM uses the opened folder's icon in the tasklist. Preserve the original
-  `folder.png` artwork in `04-apps`, including the Adwaita and gnome theme paths.
+- PCManFM uses the opened folder's icon in the tasklist. Use Adwaita's blue
+  `inode-directory` artwork for generic and special folders in `04-apps`, including
+  the Adwaita and gnome theme paths at 16, 22, 24, 32 and 48 px. Preserve the native
+  16 px PNG and render larger sizes from the original SVG. Include `user-home`
+  and `inode-directory`; register the additional Places and MimeTypes sizes in
+  `04-apps/copy` so GTK does not enlarge the 16 px artwork.
   Keep the selected File Manager artwork for `slax-file-manager` and
   `system-file-manager`; do not alias it to the generic `folder` icon.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
