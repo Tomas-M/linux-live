@@ -19,16 +19,22 @@ mkdir -p /usr/lib/x86_64-linux-gnu/gtk-3.0/modules
 cp /artifacts/04-apps/libslax-app-style.so /usr/lib/x86_64-linux-gnu/gtk-3.0/modules/
 printf 'gtk-modules=slax-app-style\n' >> /etc/gtk-3.0/settings.ini
 
-# Register native tray sizes so GTK does not enlarge Adwaita's 16 px legacy icons.
-for SIZE in 22 24 32 48; do
-   DIR=${SIZE}x${SIZE}/legacy
-   if ! grep -Fqx "[$DIR]" /usr/share/icons/Adwaita/index.theme; then
-      sed -i "s|^Directories=|Directories=$DIR,|" /usr/share/icons/Adwaita/index.theme
-      printf '\n[%s]\nContext=Legacy\nSize=%s\nType=Fixed\n' "$DIR" "$SIZE" >> /usr/share/icons/Adwaita/index.theme
-   fi
-done
+# Register native tray and folder sizes instead of enlarging Adwaita's 16 px icons.
+while read CONTEXT NAME; do
+   for SIZE in 22 24 32 48; do
+      DIR=${SIZE}x${SIZE}/$CONTEXT
+      if ! grep -Fqx "[$DIR]" /usr/share/icons/Adwaita/index.theme; then
+         sed -i "s|^Directories=|Directories=$DIR,|" /usr/share/icons/Adwaita/index.theme
+         printf '\n[%s]\nContext=%s\nSize=%s\nType=Fixed\n' "$DIR" "$NAME" "$SIZE" >> /usr/share/icons/Adwaita/index.theme
+      fi
+   done
+done <<'EOF'
+legacy Legacy
+places Places
+mimetypes MimeTypes
+EOF
 
-# Include restored application and network icons in GTK's lookup cache.
+# Include application, folder and network icons in GTK's lookup cache.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor
 gtk-update-icon-cache -f /usr/local/share/icons/hicolor
