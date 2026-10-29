@@ -1,2 +1,3 @@
 terminal slax-terminal
+utilities-terminal slax-terminal
 xterm slax-terminal
