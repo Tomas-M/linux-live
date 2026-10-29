@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 cp -a rootcopy/. /
+# Debian reads global defaults and mandatory policy through these system paths.
+mkdir -p /etc/chromium/policies/managed
+ln -sf /usr/share/slax/chromium/initial_preferences /etc/chromium/initial_preferences
+ln -sf /usr/share/slax/chromium/policies.json /etc/chromium/policies/managed/slax.json
 # Refresh the final cache after cleanup and icons restored by earlier modules.
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
 gtk-update-icon-cache -f /usr/share/icons/hicolor
