@@ -602,7 +602,14 @@ must follow the general Slax repair rules above.
   shader disk cache. Do not use `/dev/null` as a cache directory: Chromium tries
   to create subdirectories there and logs backend errors. Suppress only the
   Memory Saver onboarding feature
-  `IPH_HighEfficiencyMode`; users can still configure Memory Saver themselves.
+  `IPH_HighEfficiencyMode`.
+  Keep new-profile defaults in `/usr/share/slax/chromium/initial_preferences`,
+  linked from `/etc/chromium/initial_preferences`. Keep the mandatory
+  `HighEfficiencyModeEnabled=true` policy in `/usr/share/slax/chromium/policies.json`,
+  linked from `/etc/chromium/policies/managed/slax.json`. Do not seed Chromium
+  files in root, guest or `/etc/skel` home directories during the build.
+  Set `PromotionsEnabled=false` in the same policy to suppress Chromium's
+  first-run welcome flow without shipping a per-user `First Run` sentinel.
   Keep bookmarks, cookies, history and other normal profile data available.
 - Boot error audit: VMSVGA's `vmwgfx` hypervisor warning and the SSH generator's
   missing AF_VSOCK CID also occur when resuming without duplication. The copied

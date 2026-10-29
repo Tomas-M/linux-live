@@ -9,5 +9,5 @@ chmod 700 "$CHROMIUM_CACHE_DIR" || exit 1
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disk-cache-dir=$CHROMIUM_CACHE_DIR --disk-cache-size=33554432 --disable-gpu-shader-disk-cache"
 unset CHROMIUM_CACHE_DIR
 
-# Suppress the Memory Saver onboarding prompt without locking its user setting.
+# Suppress the Memory Saver onboarding prompt.
 export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --disable-features=IPH_HighEfficiencyMode"

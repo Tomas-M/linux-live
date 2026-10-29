@@ -1,7 +1,4 @@
 {
-  "AudioCaptureAllowed": false,
-  "account_id_migration_state": 2,
-  "account_tracker_service_last_update": "13154004704520013",
   "alternate_error_pages": {
     "enabled": false
   },
@@ -21,24 +18,28 @@
     }
   },
   "extensions": {
-     "theme": {
-        "use_system": true
-     }
+    "theme": {
+      "use_system": true
+    }
   },
   "homepage": "https://slax.org/?live",
   "homepage_is_newtabpage": false,
-  "ntp": {
-    "most_visited_blacklist": {
-      "c8e0afd1da1d9e29511240861f795a5a": null,
-      "eacc8c3ad0b50bd698ef8752d5ee24b6": null
-    }
-  },
   "safebrowsing": {
     "enabled": false,
     "scout_group_selected": true
   },
   "session": {
     "restore_on_startup": 4,
-    "startup_urls": ["https://slax.org/?live"]
+    "startup_urls": [
+      "https://slax.org/?live"
+    ]
+  },
+  "distribution": {
+    "make_chrome_default_for_user": false,
+    "import_bookmarks": false,
+    "import_history": false,
+    "import_home_page": false,
+    "import_search_engine": false,
+    "import_autofill_form_data": false
   }
 }
