@@ -1,4 +1,5 @@
 calculator slax-calculator
+accessories-calculator slax-calculator
 galculator slax-calculator
 system-file-manager slax-file-manager
 connman-gtk slax-net-manager
@@ -7,6 +8,7 @@ preferences-system-network slax-net-manager
 xarchiver slax-xarchiver
 utilities-system-monitor slax-task-manager
 editor slax-text-editor
+accessories-text-editor slax-text-editor
 xfburn slax-xfburn
 stock_xfburn slax-xfburn
 simple-scan slax-simple-scan

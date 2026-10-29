@@ -196,6 +196,8 @@ must follow the general Slax repair rules above.
   SciTE reads `/usr/share/pixmaps/Sci48M.png`; xterm uses its bundled XPM through
   `XTerm*iconHint`. Its terminal artwork has no colored title-bar dots.
   Keep Chromium and Session action icons unchanged.
+  Publish the standard `utilities-terminal`, `accessories-calculator` and
+  `accessories-text-editor` names through the existing icon aliases too.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
   `05-chromium`. ConnMan uses three white vector tray glyphs: `network-offline`,
@@ -215,7 +217,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.8.0`); do not carry a duplicate
+  the tagged upstream release (currently `v5.8.1`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   xlunch uses libXcursor to load the system-themed hand for clickable controls,
@@ -223,8 +225,12 @@ must follow the general Slax repair rules above.
   cursor; do not restore fixed-size X font cursors.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
-  background refresh must stop before launching a selection. `05-chromium/copy`
-  prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
+  background refresh must stop before launching a selection.
+  Its icon lookup preserves the configured theme first, then uses the desktop
+  theme and inherited themes, with symbolic artwork as a final equivalent.
+  Keep Adwaita's `scalable` SVG icons during cleanup; large PNG sizes and the
+  unused Adwaita cursors can still be removed.
+  `05-chromium/copy` prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
   entries and icons are present. Match the runtime profile, locale, PATH and
   XDG environment; refresh the final module cache after changing these inputs.
   Incremental icon changes must also refresh the final GTK icon cache in
