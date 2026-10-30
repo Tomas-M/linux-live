@@ -104,9 +104,10 @@ for RECIPE in "$THIS"/modules/*; do
       BRANCH=$RUNTIME
       mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
       # Install any compiled packages; other artifacts are installed by the copy phase.
+      # APT treats locally rebuilt packages with unchanged versions as downgrades.
       chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive TMPDIR=/tmp /bin/sh -ec \
          'set -- /artifacts/"$1"/*.deb
-          if [ -f "$1" ]; then apt-get install -y --no-install-recommends --reinstall "$@"; fi' sh "$NAME"
+          if [ -f "$1" ]; then apt-get install -y --no-install-recommends --reinstall --allow-downgrades "$@"; fi' sh "$NAME"
    fi
    in_root /build cleanup
    if [ -f "$RECIPE/cleanup" ]; then
