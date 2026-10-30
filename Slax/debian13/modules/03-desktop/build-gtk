@@ -27,7 +27,6 @@ dpkg-deb -R libgtk-3-0t64_*.deb package
 LIBRARY=$(readlink package/usr/lib/x86_64-linux-gnu/libgtk-3.so.0)
 install -m 644 "build/gtk/$LIBRARY" "package/usr/lib/x86_64-linux-gnu/$LIBRARY"
 strip --strip-unneeded "package/usr/lib/x86_64-linux-gnu/$LIBRARY"
-sed -i "s/^Version:.*/Version: $VERSION+slax2/" package/DEBIAN/control
 cd package
 find usr -type f -exec md5sum {} + > DEBIAN/md5sums
-dpkg-deb --build --root-owner-group . "$OUTPUT/libgtk-3-0t64_${VERSION}+slax2_amd64.deb"
+dpkg-deb --build --root-owner-group . "$OUTPUT/libgtk-3-0t64_${VERSION}_amd64.deb"

@@ -10,9 +10,9 @@ mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
 apt-get source fluxbox
 cd fluxbox-*/
-# Keep Debian's binary rebuild version and identify the Slax patch.
+# Keep Debian's original binary package version, including binary rebuilds.
 VERSION=$(dpkg-query -W -f='${Version}' fluxbox)
-sed -i "1s/([^)]*)/($VERSION+slax4)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 
 # Build the Debian package with Slax's window and menu changes.
 mkdir -p debian/patches
@@ -32,8 +32,8 @@ mkdir -p /tmp/panel-rebuild
 cd /tmp/panel-rebuild
 apt-get source xfce4-panel
 cd xfce4-panel-*/
-VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax1)/" debian/changelog
+VERSION=$(apt-cache show --no-all-versions xfce4-panel | sed -n 's/^Version: //p')
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 cp "$CWD/patches/panel-clear-focus.diff" debian/patches/
 printf 'panel-clear-focus.diff\n' >> debian/patches/series
 quilt push -a
@@ -45,8 +45,8 @@ mkdir -p /tmp/picom-rebuild
 cd /tmp/picom-rebuild
 apt-get source picom
 cd picom-*/
-VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
+VERSION=$(apt-cache show --no-all-versions picom | sed -n 's/^Version: //p')
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 # Picom and its installed helpers use native code and POSIX shell, not Python.
 sed -i 's/^Depends: python3, /Depends: /' debian/control
 mkdir -p debian/patches
@@ -61,8 +61,8 @@ mkdir -p /tmp/docklike-rebuild
 cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
-VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax24)/" debian/changelog
+VERSION=$(apt-cache show --no-all-versions xfce4-docklike-plugin | sed -n 's/^Version: //p')
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
 printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\n' >> debian/patches/series
