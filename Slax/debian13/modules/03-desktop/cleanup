@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+# Keep OpenType for Fontconfig and Type1 for Ghostscript, without duplicate X11 copies.
+for FONT in /usr/share/fonts/opentype/urw-base35/*.otf; do
+   rm -f "/usr/share/fonts/X11/Type1/$(basename "$FONT" .otf).pfb"
+done
+update-fonts-scale Type1
+update-fonts-dir --x11r7-layout Type1
+
+# Omit CJK PDF mappings, preserving shared Identity maps.
+rm -Rf /usr/share/poppler/cMap/Adobe-CNS1 /usr/share/poppler/cMap/Adobe-GB1 \
+   /usr/share/poppler/cMap/Adobe-Japan1 /usr/share/poppler/cMap/Adobe-Japan2 \
+   /usr/share/poppler/cMap/Adobe-Korea1 /usr/share/poppler/cMap/Adobe-KR
+find /var/lib/ghostscript/CMap -type l ! -exec test -e {} \; -delete
