@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+VERSION=$(dpkg-query -W -f='${Version}' libgtk-3-0t64)
+SOURCEVERSION=$(dpkg-query -W -f='${source:Version}' libgtk-3-0t64)
+apt-get build-dep --yes --no-install-recommends "gtk+3.0=$SOURCEVERSION"
+mkdir -p /tmp/gtk-rebuild
+cd /tmp/gtk-rebuild
+apt-get source "gtk+3.0=$SOURCEVERSION"
+cd gtk+3.0-*/
+patch -p1 < "$CWD/patches/gtk-chromium-file-activation.diff"
+
+# Rebuild only the runtime library, retaining Debian's features and hardening.
+export DEB_BUILD_MAINT_OPTIONS=hardening=+all
+meson setup build --prefix=/usr --libdir=lib/x86_64-linux-gnu --sysconfdir=/etc --localstatedir=/var \
+   -Dbuildtype=plain -Dc_args="$(dpkg-buildflags --get CPPFLAGS) $(dpkg-buildflags --get CFLAGS)" \
+   -Dc_link_args="$(dpkg-buildflags --get LDFLAGS) -Wl,-O1" \
+   -Dx11_backend=true -Dwayland_backend=true -Dbroadway_backend=true -Dcloudproviders=true \
+   -Dprofiler=true -Dcolord=yes -Dprint_backends=cups,file -Dgtk_doc=false -Dman=false \
+   -Dintrospection=false -Dtests=false -Dinstalled_tests=false -Ddemos=false -Dexamples=false
+meson compile -C build -j "$(nproc)" gtk-3
+
+# Keep the original package metadata and helpers; replace only its shared library.
+apt-get download "libgtk-3-0t64=$VERSION"
+dpkg-deb -R libgtk-3-0t64_*.deb package
+LIBRARY=$(readlink package/usr/lib/x86_64-linux-gnu/libgtk-3.so.0)
+install -m 644 "build/gtk/$LIBRARY" "package/usr/lib/x86_64-linux-gnu/$LIBRARY"
+strip --strip-unneeded "package/usr/lib/x86_64-linux-gnu/$LIBRARY"
+sed -i "s/^Version:.*/Version: $VERSION+slax2/" package/DEBIAN/control
+cd package
+find usr -type f -exec md5sum {} + > DEBIAN/md5sums
+dpkg-deb --build --root-owner-group . "$OUTPUT/libgtk-3-0t64_${VERSION}+slax2_amd64.deb"
