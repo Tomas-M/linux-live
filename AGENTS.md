@@ -66,6 +66,20 @@ reporting progress.
 - For a small change in an existing module, update the source and repack only
   that module in tmpfs, then recreate the ISO. Do not rebuild Debian and every
   application merely to change one configuration file.
+- `03-desktop` includes minimal VirtualBox and VMware integration: text
+  clipboard, automatic screen resizing and shared folders. Package only the
+  required userspace binaries and plugins; retain the kernel's existing drivers.
+  Build its package through `build-guest-tools`, with the VirtualBox download
+  pinned and verified through `guest-tools.versions`. Do not create a separate module.
+  Start desktop agents from Fluxbox startup only on their matching hypervisor;
+  Slax does not install a general XDG autostart runner. VBoxService also launches
+  VBoxDRMClient; do not start a second DRM daemon. VirtualBox automounts host
+  shares under `/media/sf_*`; VMware exposes its shares under `/mnt/hgfs`.
+  Host clipboard and folder sharing still require the host owner's settings.
+  Preserve Fluxbox startup's initial 1440x900 then 1280x800 resolution switch
+  in VirtualBox and VMware. Guest tools still handle later host resize requests.
+  The small X11 resize listener restores the selected wallpaper after automatic
+  screen changes without polling.
 
 ## Work VM
 
@@ -243,7 +257,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.9.2`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.0`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   xlunch uses libXcursor to load the system-themed hand for clickable controls
@@ -252,6 +266,11 @@ must follow the general Slax repair rules above.
   cursor; do not restore fixed-size X font cursors.
   Ignore NotifyGrab/NotifyUngrab crossing events when updating input hover and
   cursors; pointer capture during clicks must not look like leaving the field.
+  Only the editable viewport starts text selection or middle-click paste;
+  the search icon and Ctrl F hint retain the inherited pointer cursor.
+  The caret blinks in 500 ms phases. Editing and caret movement restore its
+  visible phase; ordinary mouse motion does not. Hide it while text is selected,
+  and redraw only the input bar for idle blink updates.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection.
@@ -367,6 +386,9 @@ must follow the general Slax repair rules above.
   explicit application positions and dialog placement handled before this policy.
   Fluxbox's SIGUSR1 restarts it with exec, preserving its PID, Xorg and applications;
   SIGUSR2 reloads configuration. Do not confuse these signals.
+  `fluxbox-assistant-title.diff` replaces only the exact initial title
+  `127.0.0.1_/` for class `slax-ai` with `Slax Assistant`, through both WM_NAME
+  and EWMH title paths. Preserve later page titles and all other window classes.
 - GTK 3 scrollbar overrides live in
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/scrollbars.css`: white tracks and
   junctions, a faint horizontal thumb, and Chromium-gray vertical thumbs with

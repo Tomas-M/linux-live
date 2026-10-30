@@ -54,6 +54,9 @@ if [ $? -eq 0 ]; then
     fbautostart &
 fi
 
+# Start desktop integration only on its matching hypervisor.
+slax-guest-desktop &
+
 # gen screen resolutions to fluxbox menu
 xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 | sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution

@@ -1,0 +1,10 @@
+[Unit]
+Description=VMware guest information and display integration
+ConditionVirtualization=vmware
+After=systemd-modules-load.service
+
+[Service]
+ExecStart=/usr/bin/vmtoolsd
+
+[Install]
+WantedBy=multi-user.target

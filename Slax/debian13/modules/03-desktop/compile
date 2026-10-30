@@ -12,14 +12,15 @@ apt-get source fluxbox
 cd fluxbox-*/
 # Keep Debian's binary rebuild version and identify the Slax patch.
 VERSION=$(dpkg-query -W -f='${Version}' fluxbox)
-sed -i "1s/([^)]*)/($VERSION+slax3)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax4)/" debian/changelog
 
 # Build the Debian package with Slax's window and menu changes.
 mkdir -p debian/patches
 cp "$CWD/patches/fluxbox-slax.diff" debian/patches/
 cp "$CWD/patches/fluxbox-preview.diff" debian/patches/
 cp "$CWD/patches/fluxbox-panel-focus.diff" debian/patches/
-printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\n' >> debian/patches/series
+cp "$CWD/patches/fluxbox-assistant-title.diff" debian/patches/
+printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\nfluxbox-assistant-title.diff\n' >> debian/patches/series
 quilt push -a
 cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config
@@ -61,10 +62,10 @@ cd /tmp/docklike-rebuild
 apt-get source xfce4-docklike-plugin
 cd xfce4-docklike-plugin-*/
 VERSION=$(dpkg-parsechangelog -S Version)
-sed -i "1s/([^)]*)/($VERSION+slax23)/" debian/changelog
+sed -i "1s/([^)]*)/($VERSION+slax24)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 # Reject incomplete plugin packages before they enter the runtime branch.
@@ -80,9 +81,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cfla
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.9.2.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.0.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.9.2
+cd xlunch-5.10.0
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"
@@ -141,3 +142,4 @@ Depends: ${DEPENDS#shlibs:Depends=}
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
 dpkg-deb --build --root-owner-group "$PACKAGE" "$OUTPUT/slax-desktop-tools.deb"
+sh "$CWD/build-guest-tools" "$OUTPUT"

@@ -1,0 +1,34 @@
+Description: Replace the assistant's initial Chromium title before displaying its frame
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/WinClient.cc
++++ b/src/WinClient.cc
+@@ -61,6 +61,13 @@
+ using std::dec;
+ 
+ namespace {
+ 
++// Preserve page titles while replacing Chromium's initial local assistant name.
++FbTk::FbString assistantTitle(const FbTk::FbString &title, const std::string &class_name) {
++    if (class_name == "slax-ai" && title == "127.0.0.1_/")
++        return "Slax Assistant";
++    return title;
++}
++
+ void sendMessage(const WinClient& win, Atom atom, Time time) {
+     XEvent ce;
+@@ -307,12 +314,12 @@
+     if (m_title_override)
+         return;
+ 
+-    m_title.setLogical(FbTk::FbString(Xutil::getWMName(window()), 0, 512));
++    m_title.setLogical(assistantTitle(FbTk::FbString(Xutil::getWMName(window()), 0, 512), m_class_name));
+     titleSig().emit(m_title.logical(), *this);
+ }
+ 
+ void WinClient::setTitle(const FbTk::FbString &title) {
+-    m_title.setLogical(title);
++    m_title.setLogical(assistantTitle(title, m_class_name));
+     m_title_override = true;
+     titleSig().emit(m_title.logical(), *this);
+ }

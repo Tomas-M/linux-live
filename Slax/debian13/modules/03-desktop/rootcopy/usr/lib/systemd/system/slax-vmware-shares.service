@@ -1,0 +1,15 @@
+[Unit]
+Description=VMware shared folders
+ConditionVirtualization=vmware
+After=slax-vmware.service
+Wants=slax-vmware.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/mkdir -p /mnt/hgfs
+ExecStart=/usr/bin/vmhgfs-fuse .host:/ /mnt/hgfs -o allow_other,default_permissions,gid=100,umask=002
+ExecStop=/usr/bin/umount /mnt/hgfs
+
+[Install]
+WantedBy=multi-user.target
