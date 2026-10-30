@@ -1,0 +1,10 @@
+# System-wide client defaults. Command-line options override these TOML values.
+backend = "https://ai.slax.org"
+name = "Slax AI"
+
+# Optional PNG branding replaces both the browser header icon and name.
+# logo = "/usr/share/icons/hicolor/128x128/apps/slax-ai.png"
+
+# Keep both modes disabled so the Slax launcher receives the local browser URL.
+# desktop = false
+# cli = false

@@ -108,6 +108,11 @@ must follow the general Slax repair rules above.
   do not ship it in Slax. Get approval before restarting an active work desktop
   session with open applications.
 - Stop only our unneeded test VMs/processes. Leave unrelated VMs untouched.
+- Keep only one ISO under `VM`: the latest verified image at
+  `VM/slax-build-trixie/slax-amd64.iso`. Replace this file for subsequent builds
+  instead of retaining differently named copies, and keep the test VM attached
+  to this path. Remove superseded ISO files, preserving kernel packages and disks.
+- Always include the resulting ISO size in MB when reporting a build or ISO update.
 
 ## Kernel and full Slax build
 
@@ -155,6 +160,13 @@ must follow the general Slax repair rules above.
   Apply newly registered Fluxbox patches with `quilt push -a` before
   building; an extracted Debian source can retain a preparation marker that
   makes dpkg-source skip newly appended patches.
+- Core compiles `Tomas-M/linux-assistant` with `scripts/build_client.sh` in a
+  disposable branch, using its pinned Rust toolchain. Only the resulting
+  `/usr/bin/linux-assistant` is copied into `01-core` after cleanup.
+- `04-apps` provides the Slax AI launcher and its `slax-ai` PNG icons. It runs
+  `linux-assistant` as the desktop user, reading backend and branding defaults
+  from `/etc/linux-assistant/config` in core rootcopy, then opens its private
+  local URL through `fbliveapp` in a dedicated Chromium app profile.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
   `slax-desktop-tools`. Use `fbinstall [--user guest] APP_ID ICON NAME "PACKAGE..."
   "COMMAND [ARGS...]" [ARGS...]`. APP_ID is the canonical desktop ID without

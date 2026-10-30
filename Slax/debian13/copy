@@ -4,6 +4,7 @@ set -e
 # Replace the link itself, without overwriting the time zone file it points to.
 rm -f /etc/localtime
 cp -a /build/rootcopy/. /
+install -m 755 /artifacts/01-core/linux-assistant /usr/bin/linux-assistant
 # Copied service files must not be writable by other users.
 for FILE in /build/rootcopy/usr/lib/systemd/system/*.service; do
    chmod 644 "/usr/lib/systemd/system/$(basename "$FILE")"

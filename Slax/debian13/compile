@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+apt-get update
+apt-get install --yes --no-install-recommends build-essential git curl
+
+# Keep the pinned Rust toolchain, sources and Cargo cache in temporary build storage.
+export CARGO_HOME=/tmp/linux-assistant-cargo RUSTUP_HOME=/tmp/linux-assistant-rustup
+export CARGO_NET_GIT_FETCH_WITH_CLI=true
+export PATH="$CARGO_HOME/bin:$PATH"
+curl --fail --location https://sh.rustup.rs -o /tmp/linux-assistant-rustup.sh
+sh /tmp/linux-assistant-rustup.sh -y --profile minimal --default-toolchain none --no-modify-path
+git clone --depth 1 https://github.com/Tomas-M/linux-assistant.git /tmp/linux-assistant
+cd /tmp/linux-assistant
+./scripts/build_client.sh
+install -m 755 target/release/linux-assistant /artifacts/01-core/linux-assistant

@@ -11,7 +11,7 @@ while read NAME ICON; do
 done < icon-aliases
 # Xarchiver requests 24 px but accepts the original resolution for its window icon.
 cp /usr/share/icons/hicolor/128x128/apps/slax-xarchiver.png /usr/local/share/icons/hicolor/24x24/apps/xarchiver.png
-chmod 755 /usr/bin/connman-gtk-start
+chmod 755 /usr/bin/connman-gtk-start /usr/bin/slax-ai
 update-desktop-database /usr/local/share/applications
 
 # Install the GTK module after cleanup; its adjustments are scoped to named applications.
