@@ -431,6 +431,9 @@ must follow the general Slax repair rules above.
   it in `04-apps/copy` after cleanup and enable it there. Keep native themes,
   application commands and launchers unchanged; styles must work from xlunch,
   Fluxbox and the terminal without leaking a theme environment to child apps.
+  Install Debian's matching GTK runtime and development package only in this
+  disposable branch, allowing the downgrade from Slax's patched runtime there.
+  Removing the compile branch restores the patched library in the final image.
 - Keep PCManFM's standard Debian package. The GTK module hides its root warning
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
