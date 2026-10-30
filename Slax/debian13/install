@@ -11,6 +11,9 @@ hdparm sdparm mdadm smartmontools dosfstools lsof htop gddrescue rsync netcat-op
 ntfs-3g rfkill file dnsmasq dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
 /artifacts/kernel.deb
 
+# Keep the AUFS kernel paired with the modules shipped in the live image.
+apt-mark hold "$(dpkg-deb -f /artifacts/kernel.deb Package)"
+
 ln -sf bash /bin/sh
 # Create the guest account with ALSA access for Chromium and VLC.
 useradd -m -g users -G audio -s /bin/bash guest

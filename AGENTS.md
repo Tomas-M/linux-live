@@ -137,6 +137,8 @@ must follow the general Slax repair rules above.
   change, and keep image, headers and libc-dev package versions together.
 - AUFS is built into the custom Slax kernel. Compile and install this kernel
   on the build host, reboot into it, then build Slax with matching modules.
+  Hold the installed kernel image package in Slax, deriving its name from the
+  kernel artifact. Preserve its custom ABI release and package version.
 - The production configuration excludes DWARF, BTF and other auxiliary debug
   metadata. Keep compilation in tmpfs and retain completed `.deb` packages
   on the guest's persistent Linux filesystem.
