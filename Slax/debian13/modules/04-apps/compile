@@ -1,7 +1,9 @@
 #!/bin/sh
 set -e
 apt-get update
-apt-get install --yes --no-install-recommends build-essential pkg-config libgtk-3-dev
+# Debian's headers require their exact runtime version in this disposable branch.
+GTKVERSION=$(apt-cache show --no-all-versions libgtk-3-dev | sed -n 's/^Version: //p')
+apt-get install --yes --no-install-recommends --allow-downgrades build-essential pkg-config libgtk-3-dev "libgtk-3-0t64=$GTKVERSION"
 
 # Apply Slax's UI adjustments while keeping the stock Debian applications.
 cc -Os -shared -fPIC -s -o /artifacts/04-apps/libslax-app-style.so \
