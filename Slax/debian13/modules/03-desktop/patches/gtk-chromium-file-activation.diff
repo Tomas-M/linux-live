@@ -1,0 +1,152 @@
+Description: Restore Chromium's native file chooser activation on X11
+ Recognize Chromium's custom Open response, making Open the default and suggested
+ action. Preserve folder navigation and block Enter/Space until initial held keys
+ are released and the dialog has been visible for at least 500 milliseconds.
+Author: Slax <build@slax.org>
+
+--- a/gtk/gtkfilechooserdialog.c
++++ b/gtk/gtkfilechooserdialog.c
+@@ -39,6 +39,10 @@
+ #include "gtkfilechooserentry.h"
+ 
+ #include <stdarg.h>
++#include <gdk/gdkkeysyms.h>
++#ifdef GDK_WINDOWING_X11
++#include <gdk/gdkx.h>
++#endif
+ 
+ 
+ /**
+@@ -215,6 +219,8 @@
+   gboolean response_requested;
+   gboolean search_setup;
+   gboolean has_entry;
++  gboolean chromium_keys_held;
++  gint64 chromium_show_time;
+ };
+ 
+ static void     gtk_file_chooser_dialog_set_property (GObject               *object,
+@@ -251,6 +257,77 @@
+                          G_IMPLEMENT_INTERFACE (GTK_TYPE_FILE_CHOOSER,
+                                                 _gtk_file_chooser_delegate_iface_init))
+ 
++/* Identify Chromium's nonstandard Open response only where key state is queryable. */
++static GtkWidget *
++get_chromium_accept_button (GtkDialog *dialog)
++{
++#ifdef GDK_WINDOWING_X11
++  if (GDK_IS_X11_DISPLAY (gtk_widget_get_display (GTK_WIDGET (dialog))) &&
++      g_strcmp0 (g_get_prgname (), "chromium") == 0 &&
++      gtk_file_chooser_get_action (GTK_FILE_CHOOSER (dialog)) == GTK_FILE_CHOOSER_ACTION_OPEN)
++    return gtk_dialog_get_widget_for_response (dialog, 0);
++#endif
++  return NULL;
++}
++
++/* Match all Enter and Space variants used to activate GTK's file list. */
++static gboolean
++is_activation_key (guint keyval)
++{
++  return keyval == GDK_KEY_Return || keyval == GDK_KEY_ISO_Enter ||
++         keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_space ||
++         keyval == GDK_KEY_KP_Space;
++}
++
++/* Read physical keys so a key held before mapping cannot accept an upload. */
++static gboolean
++activation_key_down (GtkWidget *widget)
++{
++#ifdef GDK_WINDOWING_X11
++  Display *display = gdk_x11_display_get_xdisplay (gtk_widget_get_display (widget));
++  guint keyvals[] = { GDK_KEY_Return, GDK_KEY_ISO_Enter, GDK_KEY_KP_Enter,
++                     GDK_KEY_space, GDK_KEY_KP_Space };
++  char keys[32];
++  guint i;
++
++  XQueryKeymap (display, keys);
++  for (i = 0; i < G_N_ELEMENTS (keyvals); i++)
++    {
++      KeyCode code = XKeysymToKeycode (display, keyvals[i]);
++      if (code && (keys[code / 8] & (1 << (code % 8))))
++        return TRUE;
++    }
++#endif
++  return FALSE;
++}
++
++/* Keep Chromium's held-key protection while allowing fresh keyboard activation. */
++static gboolean
++gtk_file_chooser_dialog_key_press (GtkWidget *widget,
++                                   GdkEventKey *event)
++{
++  GtkFileChooserDialogPrivate *priv = GTK_FILE_CHOOSER_DIALOG (widget)->priv;
++  gboolean protected = get_chromium_accept_button (GTK_DIALOG (widget)) != NULL;
++  gboolean settling = g_get_monotonic_time () - priv->chromium_show_time < 500 * 1000;
++
++  if (protected && is_activation_key (event->keyval) &&
++      (priv->chromium_keys_held || settling))
++    return TRUE;
++  return GTK_WIDGET_CLASS (gtk_file_chooser_dialog_parent_class)->key_press_event (widget, event);
++}
++
++/* Repeated key events must not unlock a key that is still physically held. */
++static gboolean
++gtk_file_chooser_dialog_key_release (GtkWidget *widget,
++                                     GdkEventKey *event)
++{
++  GtkFileChooserDialogPrivate *priv = GTK_FILE_CHOOSER_DIALOG (widget)->priv;
++
++  if (priv->chromium_keys_held && is_activation_key (event->keyval))
++    priv->chromium_keys_held = activation_key_down (widget);
++  return GTK_WIDGET_CLASS (gtk_file_chooser_dialog_parent_class)->key_release_event (widget, event);
++}
++
+ static void
+ gtk_file_chooser_dialog_class_init (GtkFileChooserDialogClass *class)
+ {
+@@ -261,6 +338,8 @@
+   gobject_class->get_property = gtk_file_chooser_dialog_get_property;
+   gobject_class->notify = gtk_file_chooser_dialog_notify;
+ 
++  widget_class->key_press_event = gtk_file_chooser_dialog_key_press;
++  widget_class->key_release_event = gtk_file_chooser_dialog_key_release;
+   widget_class->map = gtk_file_chooser_dialog_map;
+   widget_class->unmap = gtk_file_chooser_dialog_unmap;
+   widget_class->size_allocate = gtk_file_chooser_dialog_size_allocate;
+@@ -322,6 +401,9 @@
+         }
+     }
+ 
++  widget = get_chromium_accept_button (dialog);
++  if (widget && (!sensitive_only || gtk_widget_is_sensitive (widget)))
++    return widget;
+   return NULL;
+ }
+ 
+@@ -578,7 +660,14 @@
+ 
+   setup_search (dialog);
+   setup_save_entry (dialog);
++  if (get_chromium_accept_button (GTK_DIALOG (dialog)))
++    {
++      priv->chromium_keys_held = activation_key_down (widget);
++      priv->chromium_show_time = g_get_monotonic_time ();
++    }
+   ensure_default_response (dialog);
++  if (get_chromium_accept_button (GTK_DIALOG (dialog)))
++    gtk_dialog_set_default_response (GTK_DIALOG (dialog), 0);
+ 
+   _gtk_file_chooser_embed_initial_focus (GTK_FILE_CHOOSER_EMBED (priv->widget));
+ 
+@@ -645,7 +734,10 @@
+   priv = gtk_file_chooser_dialog_get_instance_private (GTK_FILE_CHOOSER_DIALOG (dialog));
+ 
+   /* Act only on response IDs we recognize */
+-  if (is_stock_accept_response_id (response_id) &&
++  /* Custom Open responses must retain GTK's folder navigation and validation. */
++  gboolean accept_response = is_stock_accept_response_id (response_id) ||
++                             (response_id == 0 && get_chromium_accept_button (dialog));
++  if (accept_response &&
+       !priv->response_requested &&
+       !_gtk_file_chooser_embed_should_respond (GTK_FILE_CHOOSER_EMBED (priv->widget)))
+     {

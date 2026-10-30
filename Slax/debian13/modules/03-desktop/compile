@@ -3,6 +3,7 @@ set -e
 CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
+sh "$CWD/build-gtk" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
 apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
 mkdir -p /tmp/fluxbox-rebuild
