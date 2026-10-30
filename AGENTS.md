@@ -163,7 +163,7 @@ must follow the general Slax repair rules above.
 - Core compiles `Tomas-M/linux-assistant` with `scripts/build_client.sh` in a
   disposable branch, using its pinned Rust toolchain. Only the resulting
   `/usr/bin/linux-assistant` is copied into `01-core` after cleanup.
-- `04-apps` provides the Slax AI launcher and its `slax-ai` PNG icons. It runs
+- `04-apps` provides the Slax Assistant launcher and its `slax-ai` PNG icons. It runs
   `linux-assistant` as the desktop user, reading backend and branding defaults
   from `/etc/linux-assistant/config` in core rootcopy, then opens its private
   local URL through `fbliveapp` in a dedicated Chromium app profile.
@@ -243,12 +243,15 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.8.1`); do not carry a duplicate
+  the tagged upstream release (currently `v5.9.2`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
-  xlunch uses libXcursor to load the system-themed hand for clickable controls,
+  xlunch uses libXcursor to load the system-themed hand for clickable controls
+  and the text cursor over editable input, including selection drags,
   respecting the configured theme and size. Other areas inherit the desktop
   cursor; do not restore fixed-size X font cursors.
+  Ignore NotifyGrab/NotifyUngrab crossing events when updating input hover and
+  cursors; pointer capture during clicks must not look like leaving the field.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection.
