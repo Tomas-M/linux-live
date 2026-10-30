@@ -109,6 +109,9 @@ for RECIPE in "$THIS"/modules/*; do
           if [ -f "$1" ]; then apt-get install -y --no-install-recommends --reinstall "$@"; fi' sh "$NAME"
    fi
    in_root /build cleanup
+   if [ -f "$RECIPE/cleanup" ]; then
+      in_root "/build/modules/$NAME" cleanup
+   fi
    # Restore module defaults only after package installation and cleanup.
    if [ -f "$RECIPE/copy" ]; then
       in_root "/build/modules/$NAME" copy

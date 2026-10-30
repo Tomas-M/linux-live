@@ -39,14 +39,37 @@ rm -f /usr/share/images/fluxbox/debian-squared.jpg
 rm -Rf /usr/share/fluxbox/nls/??*
 rm -Rf /usr/share/gnome/help
 
+# Remove development documentation and metadata for tools absent from the live system.
+rm -Rf /usr/share/gtk-doc /usr/share/doc-base /usr/share/lintian
+rm -Rf /usr/share/bug /usr/share/apport /usr/share/metainfo /usr/share/appdata
+
+# GTK embeds English emoji data; these external resources contain translated names.
+rm -f /usr/share/gtk-3.0/emoji/*.gresource
+
+# Kernel self-tests are not hardware drivers; regenerate indexes after removing them.
+for DIR in /lib/modules/*; do
+   if [ -d "$DIR/kernel/lib" ]; then
+      if [ -n "$(find "$DIR/kernel/lib" -type f -name 'test_*.ko*' -print -delete)" ]; then
+         depmod "${DIR##*/}"
+      fi
+   fi
+done
+
 rm -Rf /usr/share/locale/??
 rm -Rf /usr/share/locale/??_*
 rm -Rf /usr/share/locale/??@*
 rm -Rf /usr/share/locale/???
 rm -Rf /usr/share/i18n/locales/*_*
+# Runtime conversion uses gconv; keep the source charmap only for UTF-8 locale generation.
+find /usr/share/i18n/charmaps -type f ! -name UTF-8.gz -delete
 rm -Rf /usr/share/man/??
 rm -Rf /usr/share/man/??.*
 rm -Rf /usr/share/man/*_*
+
+# Keep user and administration manuals, without programming, OpenSSL API or PAM references.
+rm -Rf /usr/share/man/man2* /usr/share/man/man3*
+rm -f /usr/share/man/man7/*.7ssl /usr/share/man/man7/*.7ssl.*
+rm -f /usr/share/man/man*/pam_*
 
 rm -Rf /usr/share/icons/elementaryXubuntu-dark
 rm -Rf /usr/share/icons/gnome/256x256

@@ -192,6 +192,20 @@ must follow the general Slax repair rules above.
   change size, using `GTK_WIN_POS_CENTER_ALWAYS` and `GDK_GRAVITY_CENTER` so
   the window-manager frame is included in the centered position.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
+- Run an optional module `cleanup` after shared cleanup and before `copy`.
+  Shared cleanup removes packaging/reporting metadata, API documentation,
+  translated GTK emoji names and kernel self-test modules (then runs depmod).
+  Chromium cleanup removes only Vulkan development test libraries and GN symbol
+  tables; preserve its real Vulkan loader, SwiftShader, sandbox and runtime data.
+  Exclude syscall/library manuals (`man2*`, `man3*`) and OpenSSL `*.7ssl`
+  reference pages and `pam_*` manual pages, including compressed forms.
+  Keep other English manuals.
+- Keep UTF-8's source charmap; other source charmaps are omitted. Preserve gconv
+  modules and compiled C.UTF-8 so runtime text conversion remains available.
+  Desktop cleanup retains DejaVu, URW OpenType and Ghostscript's Type1 fonts,
+  removing only corresponding duplicate X11 PFB copies. Keep Identity CMaps;
+  CJK Poppler collections are omitted, including their broken
+  Ghostscript CMap links. Chromium uses its own PDFium PDF renderer.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
 - Keep Slax application desktop overrides in their module's
