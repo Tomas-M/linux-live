@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Slax AI
+Comment=Ask questions and complete local tasks with Slax AI
+Exec=slax-ai
+Icon=slax-ai
+Categories=Utility;
+Terminal=false
+StartupNotify=true
+StartupWMClass=slax-ai

@@ -72,6 +72,17 @@ cp "$IMAGE" "$ARTIFACTS/kernel.deb"
 sed "s/trixie/$SUITE/g" "$THIS/rootcopy/etc/apt/sources.list" > "$RUN/sources.list"
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
 in_root /build install
+# Compile core tools in a disposable branch so build dependencies stay out of Slax.
+RUNTIME=$BRANCH
+new_branch 01-core-build
+mkdir -p "$ARTIFACTS/01-core"
+in_root /build compile
+auplink "$UNION" flush
+mount -i -t aufs -o "remount,del=$BRANCH" none "$UNION"
+rm -rf "$BRANCH"
+BRANCH=$RUNTIME
+mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
+
 in_root /build cleanup
 in_root /build copy
 # Use the selected suite after rootcopy has applied the Slax defaults.

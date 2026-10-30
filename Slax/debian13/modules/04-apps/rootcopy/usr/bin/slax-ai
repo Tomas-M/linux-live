@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+
+# Keep the assistant in the desktop user's session and sandbox Chromium as usual.
+URL=$(linux-assistant)
+exec fbliveapp sh -c 'exec chromium --no-first-run --no-default-browser-check --class=slax-ai --user-data-dir="${XDG_CONFIG_HOME:-$HOME/.config}/slax-ai" --app="$1"' sh "$URL"
