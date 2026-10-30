@@ -1,6 +1,6 @@
 # System-wide client defaults. Command-line options override these TOML values.
 backend = "https://ai.slax.org"
-name = "Slax AI"
+name = "Slax Assistant"
 
 # Optional PNG branding replaces both the browser header icon and name.
 # logo = "/usr/share/icons/hicolor/128x128/apps/slax-ai.png"
