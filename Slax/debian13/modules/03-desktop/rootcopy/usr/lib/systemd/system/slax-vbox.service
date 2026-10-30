@@ -1,0 +1,10 @@
+[Unit]
+Description=VirtualBox shared folders and guest information
+ConditionVirtualization=oracle
+After=systemd-modules-load.service
+
+[Service]
+ExecStart=/usr/sbin/VBoxService --foreground --only-automount --enable-vminfo
+
+[Install]
+WantedBy=multi-user.target

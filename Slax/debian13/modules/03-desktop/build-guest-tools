@@ -1,0 +1,51 @@
+#!/bin/sh
+set -e
+CWD=$(CDPATH= cd "$(dirname "$0")" && pwd)
+. "$CWD/guest-tools.versions"
+OUTPUT=${1:?Usage: build-guest-tools output-directory}
+PACKAGE=$OUTPUT/guest-tools
+LIB=usr/lib/x86_64-linux-gnu
+apt-get install --yes --no-install-recommends build-essential libx11-dev dpkg-dev xorriso wget ca-certificates bzip2 open-vm-tools open-vm-tools-desktop
+mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/sbin" "$PACKAGE/$LIB/open-vm-tools/plugins/vmusr" \
+   "$PACKAGE/$LIB/open-vm-tools/plugins/vmsvc" "$PACKAGE/usr/share/slax/guest-tools/licenses" "$PACKAGE/DEBIAN"
+cc -Os -s -o "$PACKAGE/usr/bin/slax-guest-resize" "$CWD/guest-desktop-resize.c" -lX11
+
+# Retain desktop integration and shared folders, without deployment or remote-control plugins.
+cp /usr/bin/vmtoolsd /usr/bin/vmhgfs-fuse /usr/bin/vmware-hgfsclient "$PACKAGE/usr/bin/"
+cp -a /$LIB/libvmtools.so.* /$LIB/libhgfs.so.* "$PACKAGE/$LIB/"
+cp /$LIB/open-vm-tools/plugins/vmusr/*.so "$PACKAGE/$LIB/open-vm-tools/plugins/vmusr/"
+cp /$LIB/open-vm-tools/plugins/vmsvc/libresolutionKMS.so \
+   /$LIB/open-vm-tools/plugins/vmsvc/libguestInfo.so "$PACKAGE/$LIB/open-vm-tools/plugins/vmsvc/"
+cp /usr/share/doc/open-vm-tools/copyright "$PACKAGE/usr/share/slax/guest-tools/licenses/open-vm-tools"
+
+# Use only Linux userspace tools; the matching hardware drivers already belong to our kernel.
+mkdir -p /tmp/slax-vbox-tools
+cd /tmp/slax-vbox-tools
+wget -O additions.iso "https://download.virtualbox.org/virtualbox/$VBOXVERSION/VBoxGuestAdditions_$VBOXVERSION.iso"
+printf '%s  additions.iso\n' "$VBOXSHA256" | sha256sum -c -
+xorriso -osirrox on -indev additions.iso -extract /VBoxLinuxAdditions.run additions.run
+sh additions.run --noexec --target installer
+mkdir files
+tar -xf installer/VBoxGuestAdditions-amd64.tar.bz2 -C files
+cp files/bin/VBoxClient files/bin/VBoxDRMClient "$PACKAGE/usr/bin/"
+cp files/sbin/VBoxService files/other/mount.vboxsf "$PACKAGE/usr/sbin/"
+cp files/LICENSE "$PACKAGE/usr/share/slax/guest-tools/licenses/virtualbox"
+printf 'VirtualBox Guest Additions %s\nopen-vm-tools %s\n' "$VBOXVERSION" \
+   "$(dpkg-query -W -f='${Version}' open-vm-tools)" > "$PACKAGE/usr/share/slax/guest-tools/versions"
+
+# Derive dependencies from all retained plugins, excluding the libraries bundled in this package.
+mkdir debian
+printf 'Source: slax-guest-tools\n\nPackage: slax-guest-tools\nArchitecture: amd64\n' > debian/control
+DEPENDS=$(dpkg-shlibdeps -O -xopen-vm-tools -xopen-vm-tools-desktop \
+   "$PACKAGE"/usr/bin/* "$PACKAGE"/usr/sbin/* "$PACKAGE/$LIB"/*.so.* \
+   "$PACKAGE/$LIB"/open-vm-tools/plugins/*/*.so)
+cat > "$PACKAGE/DEBIAN/control" <<EOF
+Package: slax-guest-tools
+Version: 1
+Architecture: amd64
+Maintainer: Slax <build@slax.org>
+Depends: ${DEPENDS#shlibs:Depends=}, fuse3, libx11-6, libxfixes3, libxmu6, libxt6, libxrandr2
+Conflicts: open-vm-tools, open-vm-tools-desktop, virtualbox-guest-utils, virtualbox-guest-x11
+Description: Minimal VirtualBox and VMware desktop integration for Slax
+EOF
+dpkg-deb --build --root-owner-group "$PACKAGE" "$OUTPUT/slax-guest-tools.deb"

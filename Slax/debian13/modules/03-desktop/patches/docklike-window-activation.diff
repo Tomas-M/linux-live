@@ -1,0 +1,22 @@
+Description: Restore minimized windows regardless of cached group focus
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -942,11 +942,14 @@
+ 	}
+ 	else
+ 	{
+-		bool minimize = mActive && !Dock::mSelectedGroup;
++		GroupWindow* window = mWindows.get(mTopWindowIndex);
++		// Only an active, visible window may toggle to minimized on a panel click.
++		bool minimize = xfw_window_is_active(window->mXfwWindow) && !window->getState(XFW_WINDOW_STATE_MINIMIZED);
++		minimize = minimize && !Dock::mSelectedGroup;
+ 		Dock::dismissPreviews();
+ 		dismissPreviews();
+ 		if (minimize)
+-			mWindows.get(mTopWindowIndex)->minimize();
++			window->minimize();
+ 		else
+ 			activate(event->time);
+ 	}
