@@ -273,6 +273,37 @@ static void menu_select(GtkButton *button, gpointer data)
     if (select_layout(GPOINTER_TO_INT(data), TRUE)) close_popup();
 }
 
+/* Share button padding between the flagged shortcuts and the complete layout list. */
+static GtkWidget *layout_button(guint index, gboolean show_flag)
+{
+    Layout *layout=&g_array_index(layouts, Layout, index);
+    GtkWidget *entry=gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(entry), GTK_RELIEF_NONE);
+    GtkWidget *row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_container_add(GTK_CONTAINER(entry), row);
+    if (show_flag)
+        gtk_box_pack_start(GTK_BOX(row), gtk_image_new_from_file(layout->flag), FALSE, FALSE, 0);
+    GtkWidget *name=gtk_label_new(layout->name);
+    gtk_label_set_xalign(GTK_LABEL(name), 0);
+    gtk_box_pack_start(GTK_BOX(row), name, TRUE, TRUE, 0);
+    g_signal_connect(entry, "clicked", G_CALLBACK(menu_select), GINT_TO_POINTER(index));
+    return entry;
+}
+
+/* Sort only the complete menu, preserving the shortcut cycle and saved layout indexes. */
+static gint compare_layout_names(gconstpointer first, gconstpointer second)
+{
+    return g_utf8_collate(g_array_index(layouts, Layout, GPOINTER_TO_UINT(first)).name,
+                         g_array_index(layouts, Layout, GPOINTER_TO_UINT(second)).name);
+}
+
+/* Open every available layout without dismissing the tray popup. */
+static void show_all_layouts(GtkButton *button, gpointer data)
+{
+    (void)button; (void)data;
+    gtk_stack_set_visible_child_name(GTK_STACK(pages), "all");
+}
+
 /* Fit each menu page to the tray's monitor and keep the arrow over its text. */
 static void position_popup(void)
 {
@@ -474,38 +505,42 @@ static void dock_tray(void)
         pages=gtk_stack_new();
         gtk_stack_set_homogeneous(GTK_STACK(pages), FALSE);
         GtkWidget *main=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-        GtkWidget *other=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-        GtkWidget *other_page=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        GtkWidget *all=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        GtkWidget *all_page=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
         GtkWidget *scroll=gtk_scrolled_window_new(NULL, NULL);
         gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
         gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroll), 420);
         gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroll), TRUE);
-        gtk_container_add(GTK_CONTAINER(scroll), other);
+        gtk_container_add(GTK_CONTAINER(scroll), all);
         gtk_stack_add_named(GTK_STACK(pages), main, "main");
-        gtk_stack_add_named(GTK_STACK(pages), other_page, "other");
+        gtk_stack_add_named(GTK_STACK(pages), all_page, "all");
         gtk_container_add(GTK_CONTAINER(body), pages);
         g_signal_connect(pages, "notify::visible-child", G_CALLBACK(page_changed), NULL);
         GtkWidget *back=gtk_model_button_new();
         g_object_set(back, "text", "Keyboard layout", "menu-name", "main", "inverted", TRUE, NULL);
-        gtk_box_pack_start(GTK_BOX(other_page), back, FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(other_page), scroll, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(all_page), back, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(all_page), scroll, TRUE, TRUE, 0);
+        GList *sorted=NULL;
         for (guint i=0; i<layouts->len; i++)
         {
             Layout *layout=&g_array_index(layouts, Layout, i);
-            GtkWidget *entry=gtk_button_new();
-            gtk_button_set_relief(GTK_BUTTON(entry), GTK_RELIEF_NONE);
-            GtkWidget *row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-            gtk_container_add(GTK_CONTAINER(entry), row);
             if (*layout->flag)
-                gtk_box_pack_start(GTK_BOX(row), gtk_image_new_from_file(layout->flag), FALSE, FALSE, 0);
-            GtkWidget *name=gtk_label_new(layout->name);
-            gtk_label_set_xalign(GTK_LABEL(name), 0);
-            gtk_box_pack_start(GTK_BOX(row), name, TRUE, TRUE, 0);
-            gtk_box_pack_start(GTK_BOX(*layout->flag ? main : other), entry, FALSE, FALSE, 0);
-            g_signal_connect(entry, "clicked", G_CALLBACK(menu_select), GINT_TO_POINTER(i));
+                gtk_box_pack_start(GTK_BOX(main), layout_button(i, TRUE), FALSE, FALSE, 0);
+            sorted=g_list_prepend(sorted, GUINT_TO_POINTER(i));
         }
-        GtkWidget *more=gtk_model_button_new();
-        g_object_set(more, "text", "Other", "menu-name", "other", NULL);
+        sorted=g_list_sort(sorted, compare_layout_names);
+        for (GList *item=sorted; item; item=item->next)
+            gtk_box_pack_start(GTK_BOX(all), layout_button(GPOINTER_TO_UINT(item->data), FALSE), FALSE, FALSE, 0);
+        g_list_free(sorted);
+        GtkWidget *more=gtk_button_new();
+        gtk_button_set_relief(GTK_BUTTON(more), GTK_RELIEF_NONE);
+        GtkWidget *more_row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+        GtkWidget *more_label=gtk_label_new("Show all");
+        gtk_label_set_xalign(GTK_LABEL(more_label), 0);
+        gtk_box_pack_start(GTK_BOX(more_row), more_label, TRUE, TRUE, 0);
+        gtk_box_pack_end(GTK_BOX(more_row), gtk_image_new_from_icon_name("go-next-symbolic", GTK_ICON_SIZE_MENU), FALSE, FALSE, 0);
+        gtk_container_add(GTK_CONTAINER(more), more_row);
+        g_signal_connect(more, "clicked", G_CALLBACK(show_all_layouts), NULL);
         gtk_box_pack_start(GTK_BOX(main), more, FALSE, FALSE, 0);
         gtk_widget_show_all(body);
         draw_label();
