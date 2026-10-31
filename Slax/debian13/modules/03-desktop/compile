@@ -36,7 +36,8 @@ cd xfce4-panel-*/
 VERSION=$(apt-cache show --no-all-versions xfce4-panel | sed -n 's/^Version: //p')
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 cp "$CWD/patches/panel-clear-focus.diff" debian/patches/
-printf 'panel-clear-focus.diff\n' >> debian/patches/series
+cp "$CWD/patches/panel-tray-spacing.diff" debian/patches/
+printf 'panel-clear-focus.diff\npanel-tray-spacing.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 cp ../xfce4-panel_*.deb "$OUTPUT/"
@@ -83,9 +84,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-c
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.2.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.3.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.10.2
+cd xlunch-5.10.3
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"

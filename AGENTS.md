@@ -308,6 +308,8 @@ must follow the general Slax repair rules above.
   `05-chromium`. ConnMan uses three white vector tray glyphs: `network-offline`,
   `preferences-system-network` and `network-transmit-receive`. Its tray states are
   shared by Ethernet and Wi-Fi; strength icons inside its window remain unchanged.
+  Fluxbox startup runs `connman-gtk --tray` after the panel appears, without
+  opening Network Settings. The tray still opens the settings on demand.
   Keep PNGs at 16, 22, 24, 32 and 48 px in hicolor and Adwaita's matching `legacy`
   directories. Register the extra Adwaita sizes in `04-apps/copy`; GTK otherwise
   selects its 16 px legacy artwork even when hicolor contains a native-size PNG.
@@ -322,7 +324,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.2`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.3`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   Fullscreen xlunch sets `_NET_WM_STATE_FULLSCREEN` and `_NET_WM_STATE_SKIP_PAGER`
@@ -348,6 +350,11 @@ must follow the general Slax repair rules above.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection.
+  Apply completed refreshes only after pointer buttons are released, with the
+  worker pipe closed while waiting. For one second after a refresh, mouse presses
+  and releases must match the same application ID at that point in the previous
+  visible grid. Unchanged tiles remain usable immediately; a blocked press cannot
+  become valid merely by holding it past the deadline. Preserve keyboard activation.
   Its icon lookup preserves the configured theme first, then uses the desktop
   theme and inherited themes, with symbolic artwork as a final equivalent.
   Keep Adwaita's `scalable` SVG icons during cleanup; large PNG sizes and the
@@ -493,6 +500,10 @@ must follow the general Slax repair rules above.
   and Space until released, and ignore activation keys during the first 500 ms.
   Preserve ordinary GTK applications and backends without queryable key state.
   Do not add desktop portals and their multimedia dependencies for this fix.
+  Apply `gtk-menu-scroll-bounds.diff` too: when monitor bounds move or resize a
+  combo popup, clamp its initial scrolling to the actual menu contents. Avoid
+  blank space before the first item or after the last while keeping selection,
+  scrolling and ordinary menu placement intact.
 - GTK 3/4 file choosers default to 832 by 576 pixels through
   `03-desktop/rootcopy/usr/share/glib-2.0/schemas/90-slax-filechooser.gschema.override`.
   GTK 3 also needs a nonnegative `window-position` default to use the saved size;
@@ -594,13 +605,22 @@ must follow the general Slax repair rules above.
   Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
   set only Docklike's icons to 32 px. Its native indicator uses the same blue
   for every running group; pinned launchers without windows have no indicator.
+  Keep the notification area's icons at 22 px with `square-icons=false`.
+  `panel-tray-spacing.diff` gives compact XEmbed icons 12 px between items,
+  avoiding both full-height square slots and the crowded upstream 2 px gap.
+  The shared panel stylesheet adds 8 px on either side of the tray plugin.
   The shared
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` gives groups four background
   levels: transparent at rest, 12 percent on hover, 25 percent when selected and
   40 percent when selected and hovered. Hover alone stays weaker than selection.
   Import it for root, guest and new users alongside scrollbar styles.
 - Start the panel and Picom on a near-black (`#010101`) root pixmap, then
-  show the wallpaper after the panel's initial redraw. Keep its 84 percent
+  wait for visible keyboard, volume and network tray windows before the panel's
+  final redraw and wallpaper. Skip applets that exit and bound the tray wait to
+  ten seconds using monotonic `/proc/uptime`, polling at 100 ms intervals.
+  Play the startup sound after setting the
+  wallpaper; do not delay desktop startup for an earlier sound or wait on all
+  background processes when the sound file is absent. Keep the panel's 84 percent
   opacity. The Slax theme uses `background: unset`; `none` restores the last
   background at startup. `fbscreensize` runs `sh ~/.fehbg` to restore the image
   and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
