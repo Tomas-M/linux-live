@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+VERSION=$(dpkg-query -W -f='${Version}' volumeicon-alsa)
+SOURCEVERSION=$(dpkg-query -W -f='${source:Version}' volumeicon-alsa)
+apt-get build-dep --yes --no-install-recommends "volumeicon=$SOURCEVERSION"
+mkdir -p /tmp/volumeicon-rebuild
+cd /tmp/volumeicon-rebuild
+apt-get source "volumeicon=$SOURCEVERSION"
+cd volumeicon-*/
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
+patch -p1 < "$CWD/patches/volumeicon-bubble.diff"
+dpkg-buildpackage -b -us -uc
+cp ../volumeicon-alsa_*.deb "$OUTPUT/"

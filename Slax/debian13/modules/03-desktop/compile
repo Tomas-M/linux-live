@@ -4,6 +4,7 @@ CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
 sh "$CWD/build-gtk" "$OUTPUT"
+sh "$CWD/build-volumeicon" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
 apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev
 mkdir -p /tmp/fluxbox-rebuild
@@ -82,9 +83,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-c
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.1.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.2.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.10.1
+cd xlunch-5.10.2
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"

@@ -74,6 +74,17 @@ reporting progress.
   Leave the themed body outline open at the tail junction. The popup's
   `slax-keyboard-popup` role enables Picom's ordinary window fades without
   enabling fades for unrelated menus or animating opacity in the applet.
+- Rebuild `volumeicon-alsa` with `03-desktop/build-volumeicon` and
+  `patches/volumeicon-bubble.diff`, preserving Debian's binary version and holding
+  the package. Left-click opens a GTK 3 bubble anchored to the tray, with a
+  horizontal volume slider, percentage and symbolic mute toggle. Match the keyboard
+  bubble's continuous outline and use the `slax-volume-popup` role for Picom fades.
+  Keep the popup open during adjustment; Escape, an outside click or another tray
+  click dismisses it. Preserve scrolling, media keys and the right-click menu.
+  Backend changes update the controls without writing values back. Mute retains
+  the selected level; moving the slider unmutes. ALSA channels without a playback
+  switch use software mute and restore their saved level, including when leaving
+  that channel. Disable controls when no audio device is available.
 - Put identical boot assets in shared `bootfiles`, not in both boot trees.
   Keep only Slax-specific overrides in `Slax/debian13/bootfiles`.
 - Keep shell changes portable and use POSIX syntax where the script uses
@@ -287,9 +298,13 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.1`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.2`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
+  Fullscreen xlunch sets `_NET_WM_STATE_FULLSCREEN` and `_NET_WM_STATE_SKIP_PAGER`
+  before mapping its window, so workspace previews never briefly list it. Do not
+  defer these initial hints to a later client message. Windowed and desktop modes
+  retain their existing behavior; no panel patch is needed.
   xlunch uses libXcursor to load the system-themed hand for clickable controls
   and the text cursor over editable input, including selection drags,
   respecting the configured theme and size. Other areas inherit the desktop

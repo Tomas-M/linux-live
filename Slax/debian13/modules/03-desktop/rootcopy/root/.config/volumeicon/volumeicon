@@ -1,9 +1,9 @@
 [StatusIcon]
 stepsize=5
-lmb_slider=false
+lmb_slider=true
 mmb_mute=false
-use_horizontal_slider=false
-show_sound_level=false
+use_horizontal_slider=true
+show_sound_level=true
 onclick=xterm -e 'alsamixer'
 theme=White Gnome
 

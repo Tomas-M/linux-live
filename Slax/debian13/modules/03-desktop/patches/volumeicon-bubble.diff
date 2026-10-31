@@ -1,0 +1,597 @@
+--- a/src/volumeicon.c
++++ b/src/volumeicon.c
+@@ -66,10 +66,6 @@
+ #define COPYRIGHT "Copyright (c) Mart G"
+ #define COMMENTS "Volume control for your system tray."
+ #define WEBSITE "http://nullwise.com/volumeicon.html"
+-
+-// Scale constants
+-#define SCALE_HIDE_DELAY 500
+-#define TIMER_INTERVAL 50
+ 
+ // Setup retry
+ #define SETUP_RETRY_INTERVAL 1000
+@@ -124,6 +120,10 @@
+ static GtkStatusIcon *m_status_icon = NULL;
+ static GtkWidget *m_scale_window = NULL;
+ static GtkWidget *m_scale = NULL;
++static GtkWidget *m_scale_body, *m_scale_title, *m_scale_level, *m_scale_mute, *m_scale_icon;
++static GtkStyleContext *m_scale_style;
++static gboolean m_scale_arrow_bottom;
++static int m_scale_arrow_x;
+ static gboolean m_setting_scale_value = FALSE;
+ static PreferencesGui *gui = NULL;
+ 
+@@ -275,7 +275,7 @@
+ {
+ 	gboolean active = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+ 	config_set_show_sound_level(active);
+-	gtk_scale_set_draw_value(GTK_SCALE(m_scale), active);
++	gtk_widget_set_visible(m_scale_level, active);
+ }
+ 
+ static void preferences_theme_combobox_changed(GtkComboBox *widget,
+@@ -714,6 +714,7 @@
+ 	                 NULL);
+ 
+ 	gtk_widget_show_all(gui->window);
++	gtk_widget_hide(GTK_WIDGET(gui->use_transparent_background_checkbutton));
+ }
+ 
+ static void menu_quit_on_activate(GtkMenuItem *menuitem, gpointer user_data)
+@@ -755,46 +756,48 @@
+ 	volume_icon_launch_helper();
+ }
+ 
+-static gboolean scale_point_in_rect(GdkRectangle *rect, gint x, gint y)
+-{
+-	return (x >= rect->x && x <= rect->x + rect->width && y >= rect->y &&
+-	        y <= rect->y + rect->height);
+-}
+-
+-static gboolean scale_timeout(gpointer data)
+-{
+-	static int counter = SCALE_HIDE_DELAY;
+-	GdkRectangle window;
+-	GdkRectangle icon;
+-
+-	gtk_window_get_position(GTK_WINDOW(m_scale_window), &window.x, &window.y);
+-	gtk_window_get_size(GTK_WINDOW(m_scale_window), &window.width,
+-	                    &window.height);
++/* Release both grabs before hiding, so applications immediately regain input. */
++static void scale_close(void)
++{
++	gdk_seat_ungrab(gdk_display_get_default_seat(gtk_widget_get_display(m_scale_window)));
++	if(gtk_widget_has_grab(m_scale_window)) gtk_grab_remove(m_scale_window);
++	gtk_widget_hide(m_scale_window);
++	gtk_status_icon_set_has_tooltip(m_status_icon, TRUE);
++}
++
++/* Keep the bubble on the icon's monitor and point its tail at the tray. */
++static void scale_open(GdkEventButton *event)
++{
++	GdkRectangle icon = {event->x_root, event->y_root, 1, 1}, area;
+ 	gtk_status_icon_get_geometry(m_status_icon, NULL, &icon, NULL);
+-
+-	GdkWindow *root_window;
+-	GdkDeviceManager *device_manager;
+-	GdkDevice *pointer;
+-	gint x, y;
+-
+-	root_window =
+-	    gdk_screen_get_root_window(gtk_widget_get_screen(m_scale_window));
+-	device_manager =
+-	    gdk_display_get_device_manager(gdk_window_get_display(root_window));
+-	pointer = gdk_device_manager_get_client_pointer(device_manager);
+-	gdk_window_get_device_position(root_window, pointer, &x, &y, NULL);
+-
+-	if(scale_point_in_rect(&window, x, y) ||
+-	   scale_point_in_rect(&icon, x, y)) {
+-		counter = SCALE_HIDE_DELAY;
+-		return TRUE;
+-	}
+-	else if(counter > 0) {
+-		counter -= TIMER_INTERVAL;
+-		return TRUE;
+-	}
+-	gtk_widget_hide(m_scale_window);
+-	return FALSE;
++	GdkDisplay *display = gtk_widget_get_display(m_scale_window);
++	GdkMonitor *monitor = gdk_display_get_monitor_at_point(display, icon.x, icon.y);
++	gdk_monitor_get_geometry(monitor, &area);
++	area.x += 8; area.y += 8; area.width -= 16; area.height -= 16;
++	gtk_status_icon_set_has_tooltip(m_status_icon, FALSE);
++	scale_update();
++	gtk_widget_set_margin_top(m_scale_body, 16);
++	gtk_widget_set_margin_bottom(m_scale_body, 16);
++	GtkRequisition size;
++	gtk_widget_get_preferred_size(m_scale_body, NULL, &size);
++	int width = size.width, height = size.height + 12;
++	m_scale_arrow_bottom = icon.y - area.y >= height;
++	gtk_widget_set_margin_top(m_scale_body, m_scale_arrow_bottom ? 16 : 28);
++	gtk_widget_set_margin_bottom(m_scale_body, m_scale_arrow_bottom ? 28 : 16);
++	int x = CLAMP(icon.x + icon.width / 2 - width / 2, area.x, MAX(area.x, area.x + area.width - width));
++	int y = m_scale_arrow_bottom ? icon.y - height : icon.y + icon.height;
++	m_scale_arrow_x = CLAMP(icon.x + icon.width / 2 - x, 24, width - 24);
++	gtk_window_resize(GTK_WINDOW(m_scale_window), width, height);
++	gtk_window_move(GTK_WINDOW(m_scale_window), x, CLAMP(y, area.y, area.y + area.height - height));
++	gtk_widget_show(m_scale_window);
++	gtk_widget_queue_draw(m_scale_window);
++	if(gdk_seat_grab(gdk_display_get_default_seat(display), gtk_widget_get_window(m_scale_window),
++	                GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, (GdkEvent *)event, NULL, NULL) != GDK_GRAB_SUCCESS) {
++		scale_close();
++		return;
++	}
++	gtk_grab_add(m_scale_window);
++	gtk_widget_grab_focus(m_scale);
+ }
+ 
+ // StatusIcon handlers
+@@ -802,41 +805,10 @@
+                                             GdkEventButton *event,
+                                             gpointer user_data)
+ {
++	if(event->type != GDK_BUTTON_PRESS) return TRUE;
+ 	if(event->button == 1 && config_get_left_mouse_slider()) {
+-		if(gtk_widget_get_visible(m_scale_window)) {
+-			gtk_widget_hide(m_scale_window);
+-			return TRUE;
+-		}
+-
+-		gint sizex;
+-		gint sizey;
+-		gtk_window_get_size(GTK_WINDOW(m_scale_window), &sizex, &sizey);
+-
+-		gint x = (gint)event->x_root - sizex / 2;
+-		gint y = (gint)event->y_root - sizey;
+-
+-		if(gtk_status_icon_is_embedded(m_status_icon)) {
+-			GdkRectangle area;
+-			gtk_status_icon_get_geometry(m_status_icon, NULL, &area, NULL);
+-			if(config_get_use_horizontal_slider()) {
+-				y = area.y + area.height / 2 - sizey / 2;
+-				if(area.x > sizex) // popup left
+-					x = area.x - sizex;
+-				else // popup right
+-					x = area.x + area.width;
+-			}
+-			else {
+-				x = area.x + area.width / 2 - sizex / 2;
+-				if(area.y > sizey) // popup up
+-					y = area.y - sizey;
+-				else // popup down
+-					y = area.y + area.height;
+-			}
+-		}
+-
+-		gtk_window_move(GTK_WINDOW(m_scale_window), x, y);
+-		gtk_window_present_with_time(GTK_WINDOW(m_scale_window), event->time);
+-		g_timeout_add(TIMER_INTERVAL, scale_timeout, NULL);
++		if(gtk_widget_get_visible(m_scale_window)) scale_close();
++		else scale_open(event);
+ 	}
+ 	else if((event->button == 1 && !config_get_left_mouse_slider()) ||
+ 	        (event->button == 2 && config_get_middle_mouse_mute())) {
+@@ -844,6 +816,7 @@
+ 		backend_set_volume(m_volume);
+ 		backend_set_mute(m_mute);
+ 		status_icon_update(m_mute, FALSE);
++		scale_update();
+ 		notification_show();
+ 	}
+ 	else if(event->button == 2) {
+@@ -1068,12 +1041,40 @@
+ 	icons_loaded = TRUE;
+ }
+ 
++/* Reflect backend changes without feeding programmatic values back into ALSA. */
+ static void scale_update()
+ {
+-	assert(m_scale != NULL);
+ 	m_setting_scale_value = TRUE;
+ 	gtk_range_set_value(GTK_RANGE(m_scale), (double)m_volume);
++	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(m_scale_mute), m_mute);
++	const char *icon = "audio-volume-high-symbolic";
++	if(m_mute || !m_volume) icon = "audio-volume-muted-symbolic";
++	else if(m_volume < 34) icon = "audio-volume-low-symbolic";
++	else if(m_volume < 67) icon = "audio-volume-medium-symbolic";
++	gtk_image_set_from_icon_name(GTK_IMAGE(m_scale_icon), icon, GTK_ICON_SIZE_LARGE_TOOLBAR);
++	const char *action = m_mute ? _("Unmute") : _("Mute");
++	gtk_widget_set_tooltip_text(m_scale_mute, action);
++	atk_object_set_name(gtk_widget_get_accessible(m_scale_mute), action);
++	gboolean available = m_backend_is_setup && backend_get_channel() != NULL;
++	gtk_label_set_text(GTK_LABEL(m_scale_title), available ? (m_mute ? _("Muted") : _("Volume")) : _("No audio device"));
++	char level[8];
++	g_snprintf(level, sizeof(level), "%d%%", m_volume);
++	gtk_label_set_text(GTK_LABEL(m_scale_level), level);
++	gtk_widget_set_sensitive(m_scale, available);
++	gtk_widget_set_sensitive(m_scale_mute, available);
++	gtk_widget_set_opacity(m_scale, m_mute ? 0.55 : 1.0);
+ 	m_setting_scale_value = FALSE;
++}
++
++/* Toggling mute preserves the selected level; moving the slider restores sound. */
++static void scale_mute_toggled(GtkToggleButton *button, gpointer data)
++{
++	if(m_setting_scale_value) return;
++	m_mute = gtk_toggle_button_get_active(button);
++	backend_set_volume(m_volume);
++	backend_set_mute(m_mute);
++	status_icon_update(m_mute, FALSE);
++	scale_update();
+ }
+ 
+ static void scale_value_changed(GtkRange *range, gpointer user_data)
+@@ -1124,136 +1125,146 @@
+ 	}
+ }
+ 
+-static void render_widget(cairo_t *cairo_context, gint width, gint height)
+-{
+-	cairo_set_source_rgba(cairo_context, 1.0, 1.0, 1.0, 0.0);
+-	cairo_set_operator(cairo_context, CAIRO_OPERATOR_SOURCE);
+-	cairo_paint(cairo_context);
+-}
+-
+-static void update_widget(GtkWidget *widget, gint width, gint height)
+-{
+-	cairo_surface_t *mask;
+-	cairo_region_t *mask_region;
+-
+-	mask = cairo_image_surface_create(CAIRO_FORMAT_A1, width, height);
+-	if(cairo_surface_status(mask) == CAIRO_STATUS_SUCCESS) {
+-
+-		cairo_t *cairo_context = cairo_create(mask);
+-		if(cairo_status(cairo_context) == CAIRO_STATUS_SUCCESS) {
+-
+-			render_widget(cairo_context, width, height);
+-			cairo_destroy(cairo_context);
+-
+-			mask_region = gdk_cairo_region_create_from_surface(mask);
+-
+-			gtk_widget_input_shape_combine_region(widget, NULL);
+-			if(!gtk_widget_is_composited(widget))
+-				gtk_widget_input_shape_combine_region(widget, mask_region);
+-
+-			gtk_widget_shape_combine_region(widget, NULL);
+-			if(!gtk_widget_is_composited(widget))
+-				gtk_widget_shape_combine_region(widget, mask_region);
+-
+-			cairo_region_destroy(mask_region);
++/* Draw one continuous themed outline around the rounded body and its tail. */
++static gboolean scale_draw(GtkWidget *widget, cairo_t *cr, gpointer data)
++{
++	int width = gtk_widget_get_allocated_width(widget), height = gtk_widget_get_allocated_height(widget);
++	int top = m_scale_arrow_bottom ? 0 : 12, edge = m_scale_arrow_bottom ? height - 12 : 12;
++	int tip = m_scale_arrow_bottom ? height - 1 : 1;
++	cairo_save(cr);
++	cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
++	cairo_set_source_rgba(cr, 0, 0, 0, 0);
++	cairo_paint(cr);
++	cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
++	gtk_render_background(m_scale_style, cr, 0, top, width, height - 12);
++	gtk_render_frame_gap(m_scale_style, cr, 0, top, width, height - 12,
++	                     m_scale_arrow_bottom ? GTK_POS_BOTTOM : GTK_POS_TOP,
++	                     m_scale_arrow_x - 10, m_scale_arrow_x + 10);
++	GdkRGBA background, border;
++	gtk_style_context_get_background_color(m_scale_style, GTK_STATE_FLAG_NORMAL, &background);
++	gtk_style_context_get_border_color(m_scale_style, GTK_STATE_FLAG_NORMAL, &border);
++	cairo_move_to(cr, m_scale_arrow_x - 10, edge);
++	cairo_line_to(cr, m_scale_arrow_x, tip);
++	cairo_line_to(cr, m_scale_arrow_x + 10, edge);
++	cairo_close_path(cr);
++	gdk_cairo_set_source_rgba(cr, &background);
++	cairo_fill(cr);
++	cairo_move_to(cr, m_scale_arrow_x - 10, edge);
++	cairo_line_to(cr, m_scale_arrow_x, tip);
++	cairo_line_to(cr, m_scale_arrow_x + 10, edge);
++	gdk_cairo_set_source_rgba(cr, &border);
++	cairo_set_line_width(cr, 1);
++	cairo_stroke(cr);
++	cairo_restore(cr);
++	return FALSE;
++}
++
++/* Outside clicks, including a second tray click, dismiss without changing volume. */
++static gboolean scale_press(GtkWidget *widget, GdkEventButton *event, gpointer data)
++{
++	int x, y;
++	gdk_window_get_origin(gtk_widget_get_window(widget), &x, &y);
++	gboolean inside_x = event->x_root >= x && event->x_root < x + gtk_widget_get_allocated_width(widget);
++	gboolean inside_y = event->y_root >= y && event->y_root < y + gtk_widget_get_allocated_height(widget);
++	if(inside_x && inside_y) return FALSE;
++	scale_close();
++	return TRUE;
++}
++
++/* Keep Escape and configured media shortcuts working while the popup owns input. */
++static gboolean scale_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
++{
++	if(event->keyval == GDK_KEY_Escape) { scale_close(); return TRUE; }
++	const char *keys[] = {config_get_hotkey_up(), config_get_hotkey_down(), config_get_hotkey_mute()};
++	gboolean enabled[] = {config_get_hotkey_up_enabled(), config_get_hotkey_down_enabled(), config_get_hotkey_mute_enabled()};
++	for(int i = 0; i < 3; i++) {
++		guint key;
++		GdkModifierType modifiers;
++		gtk_accelerator_parse(keys[i], &key, &modifiers);
++		GdkModifierType held = event->state & gtk_accelerator_get_default_mod_mask();
++		if(enabled[i] && event->keyval == key && held == modifiers) {
++			hotkey_handle(keys[i], GINT_TO_POINTER(i));
++			return TRUE;
+ 		}
+-
+-		cairo_surface_destroy(mask);
+-	}
+-}
+-
+-static gboolean on_configure(GtkWidget *widget, GdkEventConfigure *event,
+-                             gpointer user_data)
+-{
+-	static gint width = 0, height = 0;
+-	if(width != event->width || height != event->height) {
+-		width = event->width;
+-		height = event->height;
+-		update_widget(widget, width, height);
+ 	}
+ 	return FALSE;
+ }
+ 
+-static gboolean on_draw(GtkWidget *widget, cairo_t *cairo_context,
+-                        gpointer user_data)
+-{
+-	render_widget(cairo_context, gtk_widget_get_allocated_width(widget),
+-	              gtk_widget_get_allocated_height(widget));
++/* Release grabs when GTK destroys or another popup replaces this window. */
++static gboolean scale_grab_broken(GtkWidget *widget, GdkEventGrabBroken *event, gpointer data)
++{
++	if(!event->implicit) scale_close();
+ 	return FALSE;
+ }
+ 
+-static void on_composited_changed(GtkWidget *window, gpointer user_data)
+-{
+-	gtk_widget_destroy(m_scale);
+-	gtk_widget_destroy(m_scale_window);
+-	scale_setup();
+-}
+-
++/* Build the compact volume bubble using native controls and symbolic artwork. */
+ static void scale_setup()
+ {
+-	GdkScreen *screen;
+-
+-	if(config_get_use_horizontal_slider()) {
+-		m_scale = gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0.0,
+-		                                   100.0, 1.0);
+-	}
+-	else {
+-		m_scale = gtk_scale_new_with_range(GTK_ORIENTATION_VERTICAL, 0.0,
+-		                                   100.0, 1.0);
+-		gtk_range_set_inverted(GTK_RANGE(m_scale), TRUE);
+-	}
+-	gtk_scale_set_draw_value(GTK_SCALE(m_scale),
+-	                         config_get_show_sound_level());
+-
+ 	m_scale_window = gtk_window_new(GTK_WINDOW_POPUP);
+-
+-	screen = gtk_widget_get_screen(GTK_WIDGET(m_scale_window));
+-	if(gdk_screen_is_composited(screen) &&
+-	   config_get_use_transparent_background()) {
+-		GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
+-		if(visual) {
+-			gtk_widget_set_visual(GTK_WIDGET(m_scale_window), visual);
+-			gtk_widget_set_app_paintable(GTK_WIDGET(m_scale_window), TRUE);
+-			gtk_widget_realize(GTK_WIDGET(m_scale_window));
+-			gdk_window_set_background_pattern(
+-			    gtk_widget_get_window(GTK_WIDGET(m_scale_window)), NULL);
+-			gtk_window_set_type_hint(GTK_WINDOW(m_scale_window),
+-			                         GDK_WINDOW_TYPE_HINT_DOCK);
+-
+-			g_signal_connect(G_OBJECT(m_scale_window), "draw",
+-			                 G_CALLBACK(on_draw), NULL);
+-			g_signal_connect(G_OBJECT(m_scale_window), "configure-event",
+-			                 G_CALLBACK(on_configure), NULL);
+-
+-			update_widget(
+-			    GTK_WIDGET(m_scale_window),
+-			    gtk_widget_get_allocated_width(GTK_WIDGET(m_scale_window)),
+-			    gtk_widget_get_allocated_height(GTK_WIDGET(m_scale_window)));
+-		}
+-	}
+-
+-	gtk_window_set_decorated(GTK_WINDOW(m_scale_window), FALSE);
+-	gtk_window_set_skip_pager_hint(GTK_WINDOW(m_scale_window), TRUE);
+-	gtk_window_set_skip_taskbar_hint(GTK_WINDOW(m_scale_window), TRUE);
+-	gtk_window_set_keep_above(GTK_WINDOW(m_scale_window), TRUE);
+-	gtk_container_add(GTK_CONTAINER(m_scale_window), m_scale);
+-
+-	if(config_get_use_horizontal_slider()) {
+-		gtk_window_set_default_size(GTK_WINDOW(m_scale_window), 120, 0);
+-		gtk_scale_set_value_pos(GTK_SCALE(m_scale), GTK_POS_RIGHT);
+-	}
+-	else {
+-		gtk_window_set_default_size(GTK_WINDOW(m_scale_window), 0, 120);
+-		gtk_scale_set_value_pos(GTK_SCALE(m_scale), GTK_POS_TOP);
+-	}
+-
+-	gtk_widget_show(m_scale);
++	gtk_window_set_title(GTK_WINDOW(m_scale_window), _("Volume"));
++	gtk_window_set_role(GTK_WINDOW(m_scale_window), "slax-volume-popup");
++	gtk_window_set_type_hint(GTK_WINDOW(m_scale_window), GDK_WINDOW_TYPE_HINT_POPUP_MENU);
++	gtk_widget_set_name(m_scale_window, "slax-volume-popup");
++	gtk_widget_set_app_paintable(m_scale_window, TRUE);
++	GdkScreen *screen = gtk_widget_get_screen(m_scale_window);
++	GdkVisual *visual = gdk_screen_get_rgba_visual(screen);
++	if(visual) gtk_widget_set_visual(m_scale_window, visual);
++	GtkCssProvider *css = gtk_css_provider_new();
++	gtk_css_provider_load_from_data(css,
++	    "#slax-volume-popup { background: transparent; border: 0; box-shadow: none; padding: 0; }"
++	    "#volume-heading { font: 14px Sans; }", -1, NULL);
++	gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
++	g_object_unref(css);
++	GtkWidgetPath *path = gtk_widget_path_new();
++	gtk_widget_path_append_type(path, GTK_TYPE_POPOVER);
++	gtk_widget_path_iter_set_object_name(path, -1, "popover");
++	g_clear_object(&m_scale_style);
++	m_scale_style = gtk_style_context_new();
++	gtk_style_context_set_path(m_scale_style, path);
++	gtk_style_context_set_screen(m_scale_style, screen);
++	gtk_style_context_add_class(m_scale_style, GTK_STYLE_CLASS_BACKGROUND);
++	gtk_widget_path_unref(path);
++	m_scale_body = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
++	gtk_widget_set_margin_start(m_scale_body, 16);
++	gtk_widget_set_margin_end(m_scale_body, 16);
++	gtk_widget_set_margin_top(m_scale_body, 16);
++	gtk_widget_set_margin_bottom(m_scale_body, 16);
++	gtk_container_add(GTK_CONTAINER(m_scale_window), m_scale_body);
++	GtkWidget *heading = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 16);
++	m_scale_title = gtk_label_new(_("Volume"));
++	m_scale_level = gtk_label_new("");
++	gtk_widget_set_name(m_scale_title, "volume-heading");
++	gtk_widget_set_name(m_scale_level, "volume-heading");
++	gtk_label_set_xalign(GTK_LABEL(m_scale_title), 0);
++	gtk_label_set_width_chars(GTK_LABEL(m_scale_level), 4);
++	gtk_label_set_xalign(GTK_LABEL(m_scale_level), 1);
++	gtk_box_pack_start(GTK_BOX(heading), m_scale_title, TRUE, TRUE, 0);
++	gtk_box_pack_end(GTK_BOX(heading), m_scale_level, FALSE, FALSE, 0);
++	gtk_box_pack_start(GTK_BOX(m_scale_body), heading, FALSE, FALSE, 0);
++	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
++	gtk_box_pack_start(GTK_BOX(m_scale_body), row, FALSE, FALSE, 0);
++	m_scale_mute = gtk_toggle_button_new();
++	gtk_button_set_relief(GTK_BUTTON(m_scale_mute), GTK_RELIEF_NONE);
++	gtk_widget_set_size_request(m_scale_mute, 36, 36);
++	m_scale_icon = gtk_image_new();
++	gtk_container_add(GTK_CONTAINER(m_scale_mute), m_scale_icon);
++	gtk_box_pack_start(GTK_BOX(row), m_scale_mute, FALSE, FALSE, 0);
++	gboolean horizontal = config_get_use_horizontal_slider();
++	m_scale = gtk_scale_new_with_range(horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL, 0, 100, 1);
++	gtk_scale_set_draw_value(GTK_SCALE(m_scale), FALSE);
++	gtk_range_set_inverted(GTK_RANGE(m_scale), !horizontal);
++	gtk_widget_set_size_request(m_scale, horizontal ? 200 : -1, horizontal ? -1 : 160);
++	atk_object_set_name(gtk_widget_get_accessible(m_scale), _("Volume"));
++	gtk_box_pack_start(GTK_BOX(row), m_scale, TRUE, TRUE, 0);
++	gtk_widget_show_all(m_scale_body);
++	gtk_widget_set_visible(m_scale_level, config_get_show_sound_level());
+ 	scale_update();
+-
+-	g_signal_connect(G_OBJECT(m_scale), "value-changed",
+-	                 G_CALLBACK(scale_value_changed), NULL);
+-	g_signal_connect(G_OBJECT(m_scale_window), "composited-changed",
+-	                 G_CALLBACK(on_composited_changed), NULL);
++	g_signal_connect(m_scale, "value-changed", G_CALLBACK(scale_value_changed), NULL);
++	g_signal_connect(m_scale_mute, "toggled", G_CALLBACK(scale_mute_toggled), NULL);
++	g_signal_connect(m_scale_window, "draw", G_CALLBACK(scale_draw), NULL);
++	g_signal_connect(m_scale_window, "button-press-event", G_CALLBACK(scale_press), NULL);
++	g_signal_connect(m_scale_window, "key-press-event", G_CALLBACK(scale_key), NULL);
++	g_signal_connect(m_scale_window, "grab-broken-event", G_CALLBACK(scale_grab_broken), NULL);
+ }
+ 
+ static void hotkey_handle(const char *key, void *user_data)
+@@ -1288,6 +1299,7 @@
+ 		m_volume = clamp_volume(backend_get_volume());
+ 		m_mute = backend_get_mute();
+ 		status_icon_update(m_mute, FALSE);
++		scale_update();
+ 		return FALSE;
+ 	}
+ 	else {
+--- a/src/alsa_backend.c
++++ b/src/alsa_backend.c
+@@ -35,6 +35,9 @@
+ // Static variables
+ //##############################################################################
+ static snd_mixer_elem_t *m_elem = NULL;
++static gboolean m_soft_muted = FALSE;
++static int m_saved_volume;
++static int asound_read_volume(void);
+ static char *m_channel = NULL;
+ static char *m_device = NULL;
+ static snd_mixer_t *m_mixer = NULL;
+@@ -60,6 +63,8 @@
+ static int asound_elem_event(snd_mixer_elem_t *elem, unsigned int mask)
+ {
+ 	assert(m_elem == elem);
++	/* A real external level change also ends software mute. */
++	if(m_soft_muted && asound_read_volume() > 0) m_soft_muted = FALSE;
+ 
+ 	m_volume_changed(asound_get_volume(), asound_get_mute());
+ 	return 0;
+@@ -88,7 +93,8 @@
+ 
+ const GList *asound_get_device_names() { return m_device_names; }
+ 
+-int asound_get_volume()
++/* Read the physical mixer independently of software mute. */
++static int asound_read_volume(void)
+ {
+ 	if(m_elem == NULL) {
+ 		return 0;
+@@ -105,13 +111,19 @@
+ 		return rint(100 * get_normalized_playback_volume(m_elem, 0));
+ }
+ 
++/* Keep the selected level visible when a channel has no hardware mute switch. */
++int asound_get_volume()
++{
++	return m_soft_muted ? m_saved_volume : asound_read_volume();
++}
++
+ gboolean asound_get_mute()
+ {
+ 	if(m_elem == NULL) {
+ 		return TRUE;
+ 	}
+ 
+-	gboolean mute = FALSE;
++	gboolean mute = m_soft_muted;
+ 	if(snd_mixer_selem_has_playback_switch(m_elem)) {
+ 		int pswitch;
+ 		snd_mixer_selem_get_playback_switch(m_elem, 0, &pswitch);
+@@ -125,6 +137,9 @@
+ {
+ 	gchar *card_override = NULL; // used to hold a string like hw:0 if a nice
+ 	// device name was given as 'card'
++
++	// Restore a software-muted channel before leaving its mixer.
++	if(m_soft_muted) asound_set_mute(FALSE);
+ 
+ 	// Clean up resources from previous calls to setup
+ 	g_free(m_channel);
+@@ -247,6 +262,9 @@
+ 	if(g_strcmp0(channel, m_channel) == 0)
+ 		return;
+ 
++	// Restore the old channel before switching controls.
++	if(m_soft_muted) asound_set_mute(FALSE);
++
+ 	// Clean up any previously set channels
+ 	g_free(m_channel);
+ 	m_channel = g_strdup(channel);
+@@ -275,8 +293,16 @@
+ 	if(snd_mixer_selem_has_playback_switch(m_elem)) {
+ 		snd_mixer_selem_set_playback_switch_all(m_elem, !mute);
+ 	}
+-	else if(mute) {
+-		asound_set_volume(0);
++	else if(mute != m_soft_muted) {
++		if(mute) {
++			m_saved_volume = asound_read_volume();
++			asound_set_volume(0);
++			m_soft_muted = TRUE;
++		}
++		else {
++			m_soft_muted = FALSE;
++			asound_set_volume(m_saved_volume);
++		}
+ 	}
+ }
+ 
+@@ -286,6 +312,8 @@
+ 		return;
+ 	}
+ 	volume = (volume < 0 ? 0 : (volume > 100 ? 100 : volume));
++	/* Adjust the restore level without leaking sound while muted. */
++	if(m_soft_muted) { m_saved_volume = volume; return; }
+ 
+ 	if(config_get_use_logarithmic_scale()) {
+ 		long pmin, pmax;
