@@ -367,8 +367,9 @@ static gboolean popup_menu(GtkWidget *widget, GdkEventButton *event, gpointer da
     (void)widget; (void)data;
     if (event->button!=1 && event->button!=3) return FALSE;
     gtk_stack_set_visible_child_name(GTK_STACK(pages), "main");
-    position_popup();
     gtk_widget_show(popup);
+    /* GTK restores a reused popup's old position on show; anchor it afterward. */
+    position_popup();
     GdkSeat *seat=gdk_display_get_default_seat(gtk_widget_get_display(popup));
     if (gdk_seat_grab(seat, gtk_widget_get_window(popup), GDK_SEAT_CAPABILITY_ALL, TRUE,
                       NULL, (GdkEvent *)event, NULL, NULL)!=GDK_GRAB_SUCCESS)
