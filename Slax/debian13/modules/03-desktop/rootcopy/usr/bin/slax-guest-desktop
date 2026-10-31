@@ -1,10 +1,13 @@
 #!/bin/sh
-# Start only the desktop agent belonging to the detected hypervisor.
+# Start the desktop agent for the exposed guest channel or detected hypervisor.
 if [ "$(systemd-detect-virt --vm)" = oracle ]; then
    VBoxClient --clipboard --session-type x11
    VBoxClient --vmsvga-session --session-type x11
 elif [ "$(systemd-detect-virt --vm)" = vmware ]; then
    vmtoolsd -n vmusr &
+elif [ -e /dev/virtio-ports/com.redhat.spice.0 ]; then
+   spice-vdagent
+   exec slax-guest-resize --follow-preferred
 else
    exit 0
 fi

@@ -35,6 +35,7 @@ chown -R guest:users /home/guest
 
 # Enable hypervisor-specific services and access to VirtualBox shared folders.
 chmod 644 /usr/lib/systemd/system/slax-vbox.service /usr/lib/systemd/system/slax-vmware*.service
+chmod 644 /etc/default/spice-vdagentd
 groupadd -f -r vboxsf
 usermod -a -G vboxsf guest
 systemctl enable slax-vbox.service slax-vmware.service slax-vmware-shares.service

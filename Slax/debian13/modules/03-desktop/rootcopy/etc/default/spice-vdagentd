@@ -1,0 +1,2 @@
+# Slax starts one X11 session directly, without an active logind seat.
+SPICE_VDAGENTD_EXTRA_ARGS="-X"
