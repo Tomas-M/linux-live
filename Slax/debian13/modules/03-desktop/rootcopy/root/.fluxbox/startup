@@ -12,6 +12,7 @@ xrdb -merge ~/.Xresources
 
 # Start the keyboard tray with English and the remembered alternate layout.
 fbkeyboard &
+KEYBOARDPID=$!
 
 # setup bookmarks for file manager
 gtk-bookmarks-update
@@ -36,16 +37,6 @@ xset -dpms
 # preload picom and fluxbox to cache
 (picom --help; fluxbox --help; xfce4-panel --help) >/dev/null 2>&1
 
-# Keep black screen for first second while the sound plays.
-# This slows startup a little, but it is nicer effect.
-SND=/usr/share/sounds/startup.wav
-if [ -r $SND ]; then
-   cat $SND > /dev/null # preload
-   aplay $SND &
-   sleep 1 &
-   SOUNDPID=$!
-fi
-
 # Debian-local change:
 #   - fbautostart has been added with a quick hack to check to see if it
 #     exists. If it does, we'll start it up by default.
@@ -60,10 +51,6 @@ slax-guest-desktop &
 # gen screen resolutions to fluxbox menu
 xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 | sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
-
-# In all cases, wait for the sound sleeper.
-# If startup took longer (sound completed already), no extra wait
-wait $SOUNDPID
 
 # If we are running inside VirtualBox or vmware,
 # switch to bigger screen size right away
@@ -86,10 +73,35 @@ xfce4-panel --disable-wm-check --sm-client-disable &
 
    picom -b --config /etc/picom.conf
    volumeicon &
+   VOLUMEPID=$!
+   connman-gtk --tray &
+   NETWORKPID=$!
+
+   # Wait up to ten monotonic seconds for visible icons, skipping failed applets.
+   read UPTIME IDLE < /proc/uptime
+   DEADLINE=$(( ${UPTIME%%.*} + 10 ))
+   while true; do
+      MISSING=
+      for TRAY in "fbkeyboard:$KEYBOARDPID" "volumeicon:$VOLUMEPID" "connman-gtk:$NETWORKPID"; do
+         if kill -0 "${TRAY#*:}" 2>/dev/null && ! xdotool search --onlyvisible --classname "^${TRAY%:*}$" >/dev/null 2>&1; then
+            MISSING=1
+         fi
+      done
+      read UPTIME IDLE < /proc/uptime
+      if [ -z "$MISSING" ] || [ "${UPTIME%%.*}" -ge "$DEADLINE" ]; then
+         break
+      fi
+      sleep 0.1
+   done
 
    # Finish the panel's initial redraw on black before showing the wallpaper.
-   sleep 1
    fbsetbg -f /usr/share/wallpapers/slax_wallpaper.jpg
+
+   # Announce the completed desktop instead of delaying its startup with sound.
+   SND=/usr/share/sounds/startup.wav
+   if [ -r "$SND" ]; then
+      aplay "$SND"
+   fi
 ) &
 
 # And last but not least we start fluxbox.

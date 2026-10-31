@@ -3,3 +3,5 @@
 #docklike-plugin .group.hover_group { background-color: rgba(211,227,253,0.12); }
 #docklike-plugin .group.active_group { background-color: rgba(211,227,253,0.25); }
 #docklike-plugin .group.active_group.hover_group { background-color: rgba(211,227,253,0.4); }
+/* Separate the notification area from its neighboring panel items. */
+#systray-6 > box { padding: 0 8px; }

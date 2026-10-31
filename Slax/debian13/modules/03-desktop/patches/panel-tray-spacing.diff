@@ -1,0 +1,14 @@
+Description: Give compact XEmbed tray icons room without enlarging their artwork
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/plugins/systray/systray-box.c
++++ b/plugins/systray/systray-box.c
+@@ -31,7 +31,7 @@
+ #include <math.h>
+ #endif
+ 
+-#define SPACING (2)
++#define SPACING (12)
+ 
+ /* some icon implementations request a 1x1 size for invisible icons */
+ #define REQUISITION_IS_INVISIBLE(child_req) ((child_req).width <= 1 && (child_req).height <= 1)
