@@ -297,6 +297,12 @@ must follow the general Slax repair rules above.
   Ghostscript CMap links. Chromium uses its own PDFium PDF renderer.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
+- Bundle Noto COLRv1 2.051 and its SIL OFL license in `03-desktop/rootcopy`
+  under `/usr/share/fonts/truetype/noto`; refresh Fontconfig in `copy`.
+  Source: `googlefonts/noto-emoji` commit `8998f5dd683424a73e2314a8c1f1e359c19e8742`,
+  `fonts/Noto-COLRv1.ttf`, SHA256 `0ae57fe58645638523ba35f388d93739d292539a9acb84df5700c81b1e1a28d2`.
+  Keep this compact color emoji font instead of installing the bitmap
+  `fonts-noto-color-emoji` package. Preserve its license through cleanup.
 - Keep Slax application desktop overrides in their module's
   `rootcopy/usr/local/share/applications`, with the exact Debian desktop filename
   (including case). Preserve the package's `/usr/share/applications` original:
