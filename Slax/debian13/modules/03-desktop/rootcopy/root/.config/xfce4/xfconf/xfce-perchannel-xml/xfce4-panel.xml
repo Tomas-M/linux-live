@@ -53,9 +53,14 @@
       <property name="style" type="uint" value="0"/>
     </property>
     <property name="plugin-12" type="string" value="clock">
-      <property name="digital-layout" type="uint" value="3"/>
-      <property name="digital-time-font" type="string" value="Sans 14"/>
-      <property name="tooltip-format" type="string" value=""/>
+      <property name="digital-layout" type="uint" value="1"/>
+      <property name="digital-time-font" type="string" value="DejaVu Sans 10"/>
+      <property name="tooltip-format" type="string" value="%A %d %B %Y"/>
+      <property name="show-week-numbers" type="bool" value="false"/>
+      <property name="mode" type="uint" value="2"/>
+      <property name="digital-date-font" type="string" value="DejaVu Sans 8"/>
+      <property name="digital-time-format" type="string" value="&lt;span foreground=&quot;#ffffff&quot;&gt;%H:%M&lt;/span&gt;"/>
+      <property name="digital-date-format" type="string" value="&lt;span foreground=&quot;#ffffff&quot;&gt;%Y-%m-%d&lt;/span&gt;"/>
     </property>
     <property name="plugin-13" type="string" value="separator">
       <property name="style" type="uint" value="0"/>
