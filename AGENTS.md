@@ -218,6 +218,8 @@ must follow the general Slax repair rules above.
   `linux-assistant` as the desktop user, reading backend and branding defaults
   from `/etc/linux-assistant/config` in core rootcopy, then opens its private
   local URL through `fbliveapp` in a dedicated Chromium app profile.
+  Set `assistant-image` in that configuration to `/usr/share/slax/slax-assistant.png`.
+  Keep this transparent PNG in `04-apps` rootcopy, fitted within 512 by 512 pixels.
   The Fluxbox apps rule for `class=slax-ai`, `role=pop-up` opens its main window
   centered at 90 percent of the monitor's available width and height, excluding
   panel struts. Override saved maximized/fullscreen states only on opening;
@@ -674,6 +676,9 @@ must follow the general Slax repair rules above.
 - For incremental module edits, extract the finished ISO into `/tmp`, unpack
   only the affected `.sb`, apply the matching source change, repack and run
   the extracted `slax/boot/grub/makeiso.sh`.
+  After copying guest defaults, restore `/home/guest` ownership to `guest:users`
+  before repacking, matching `03-desktop/copy`; root-owned configuration
+  directories prevent sandboxed Chromium from creating application profiles.
 - Slax's module command is `sb`, with `sb2dir` and `dir2sb` underneath it.
   Install these existing tools on the host when useful. A directory ending
   in `.sb` is packed without adding its directory name inside the module.
