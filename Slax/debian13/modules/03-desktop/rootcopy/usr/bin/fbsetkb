@@ -1,4 +1,2 @@
-#!/bin/bash
-
-setxkbmap $1
-echo $1 > ~/.fluxbox/kblayout
+#!/bin/sh
+exec fbkeyboard --select "$1"

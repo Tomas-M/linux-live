@@ -5,7 +5,7 @@ OUTPUT=/artifacts/03-desktop
 apt-get update
 sh "$CWD/build-gtk" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
-apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev
+apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
 apt-get source fluxbox
@@ -80,6 +80,7 @@ mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACK
 cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cflags --libs gtk+-2.0)
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
+cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
 cd /tmp
 wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.1.tar.gz
 tar -xf xlunch.tar.gz
@@ -132,7 +133,7 @@ Architecture: any
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
 DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
-   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer")
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard")
 cat > "$PACKAGE/DEBIAN/control" <<EOF
 Package: slax-desktop-tools
 Version: 1

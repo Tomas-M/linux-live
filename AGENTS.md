@@ -50,6 +50,30 @@ reporting progress.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `02-xorg/rootcopy/root/.Xresources`.
+- `03-desktop/fbkeyboard.c` supplies the GTK 3 keyboard tray and `fbsetkb` selection.
+  Start in US English, displayed as white `EN`; other layouts use two-letter
+  uppercase identifiers. Share the existing labels and flags through
+  `/usr/share/slax/keyboard-layouts.tsv`, supplementing them from installed XKB
+  layouts. Keep layout selection in the tray only; do not generate a Fluxbox submenu.
+  Ctrl+Shift, Alt+Shift and Super+Space initially cycle only layouts with flags.
+  Unflagged layouts remain selectable from Other and can be the remembered alternate.
+  A menu selection or thirty continuous
+  seconds on a non-English layout remembers the alternate in `~/.fluxbox/kblayout`;
+  thereafter the shortcut toggles English and that alternate. English alone never
+  ends exploration. Menu selections replace the alternate. Start each login in
+  English while retaining the alternate in persistent sessions. Observe modifier
+  chords without grabbing application input; Ctrl+Shift plus another key must not
+  change layouts. Keep the tray synchronized with external XKB changes.
+  The tray handles bare left Super on release to open `fbappselect`, suppressing
+  it for combinations. Fluxbox binds Super+Space to `Exec true` so the focused app
+  receives no space. Preserve its other Super shortcuts and AltGr typing.
+  Render the tray abbreviation as a native GTK label in an XEmbed plug, not
+  a raster icon. Its GTK 3 popup has a themed rounded body and a tail pointing
+  at the tray label, with a scrollable Other page. Use a separate popup window:
+  X11 clips an ordinary GtkPopover to the tiny embedded tray window.
+  Leave the themed body outline open at the tail junction. The popup's
+  `slax-keyboard-popup` role enables Picom's ordinary window fades without
+  enabling fades for unrelated menus or animating opacity in the applet.
 - Put identical boot assets in shared `bootfiles`, not in both boot trees.
   Keep only Slax-specific overrides in `Slax/debian13/bootfiles`.
 - Keep shell changes portable and use POSIX syntax where the script uses

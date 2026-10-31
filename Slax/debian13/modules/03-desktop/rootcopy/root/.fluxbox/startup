@@ -10,8 +10,8 @@ xmodmap "/root/.Xmodmap"
 # merge xresource settings
 xrdb -merge ~/.Xresources
 
-# set keyboard layout
-fbsetkb $(cat ~/.fluxbox/kblayout)
+# Start the keyboard tray with English and the remembered alternate layout.
+fbkeyboard &
 
 # setup bookmarks for file manager
 gtk-bookmarks-update
