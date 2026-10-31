@@ -212,13 +212,23 @@ must follow the general Slax repair rules above.
   Service startup inside the chroot is blocked with `policy-rc.d`.
 - ConnMan provides NTP synchronization. Do not install `ntpsec-ntpdate` in core;
   it pulls in an otherwise unused Python runtime and its dependencies.
+- Install the dependency-free `libwacom-common` data package in `01-core` so
+  udev builds the complete hardware database there. Keep its `.hwdb` sources
+  for later package updates; Xorg must reuse the database instead of shipping
+  another generated copy.
 - Keep `01-firmware` focused on getting users online over Wi-Fi or Ethernet,
   including MediaTek/Ralink and Atheros USB adapters. Do not add dedicated
   graphics or audio firmware packages to the base image; users can install
   those after connecting. Keep small legacy network packages for compatibility.
+  Its cleanup removes only the known MediaTek MT81xx VPU, SCP and SOF payloads
+  when every bundled kernel configuration lacks the corresponding driver.
+  Preserve network firmware and retain these payloads if their driver is enabled,
+  whether built in or modular. Do not infer unused firmware solely from modinfo:
+  some drivers construct firmware names dynamically.
 - Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
   `grub-efi-amd64-bin` and `mtools` only on the build host: UEFI USB setup copies
-  the bundled loader, and ISO recreation reuses the bundled EFI image.
+  the bundled loader, and ISO recreation builds a temporary FAT image with
+  the existing `mkfs.fat` and loop-mount tools.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
   the build output's `kernel` directory when reinstalling the work VM.
@@ -793,6 +803,23 @@ must follow the general Slax repair rules above.
 - Use GRUB 2 for BIOS and UEFI CD/USB boot, plus GRUB PXE boot. Preserve the
   `/slax` layout and the generic `mylinux` layout; do not hardcode Slax into
   shared loader generation.
+- Create hybrid ISOs through the shared `bootfiles/grub/makeiso.sh`: retain
+  both El Torito entries, use GRUB's bundled `boot_hybrid.img` for BIOS disk
+  boot and append a temporary EFI image as a GPT EFI System Partition.
+  Use a 16-block ISO partition offset so normal partition probing finds the
+  Slax data. Keep the ISO and EFI partitions non-overlapping. Build a valid FAT16
+  image from `boot/EFI` for each ISO and omit `boot/grub/efi.img` from its files.
+  Size it from the payload plus FAT overhead and 128 KiB for directories and
+  free space, rounding up to 64 KiB. Keep at least 2112 KiB, use 512-byte sectors
+  and select cluster sizes within FAT16's valid range. Never truncate a formatted image
+  below its declared filesystem size or inflate it to FAT32's larger minimum.
+  Use mtools when available, otherwise `mkfs.fat` and a temporary loop mount;
+  always unmount before removing temporary files, including on errors or signals.
+  `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
+  file-copy USB installation without an existing EFI image or partition.
+  `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
+  it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
+  UEFI without `bootinst`, while the existing file-copy USB setup remains valid.
 - Windows boot setup must use bundled GRUB/EFI binaries from shared Live Kit
   assets. Linux may use the system's GRUB tools. USB setup creates the root
   `EFI/BOOT` directory from the bundled loaders.

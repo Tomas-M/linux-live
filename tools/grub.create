@@ -19,6 +19,7 @@ EOF
 
 MODULES="part_gpt part_msdos fat iso9660 search search_fs_file normal configfile linux test gfxterm gfxmenu gfxterm_background png font"
 if [ -d /usr/lib/grub/i386-pc ]; then
+   cp /usr/lib/grub/i386-pc/boot_hybrid.img "$BOOT/grub/"
    grub-mkstandalone -O i386-pc-eltorito --modules="biosdisk all_video $MODULES" \
       --install-modules="biosdisk all_video $MODULES" --locales="" --fonts="" --themes="" \
       -o "$BOOT/grub/cdboot.img" "boot/grub/grub.cfg=$BOOT/grub/grub.cfg"
@@ -55,9 +56,3 @@ if [ -z "$FILE" ]; then
    echo "Install GRUB EFI modules for the target firmware platform." >&2
    exit 1
 fi
-
-# El Torito uses a FAT image containing the same EFI files as a USB drive.
-SIZE=$(du -sk "$BOOT/EFI" | cut -f1)
-dd if=/dev/zero of="$BOOT/grub/efi.img" bs=1048576 count="$((SIZE/1024+8))" 2>/dev/null
-mformat -i "$BOOT/grub/efi.img" ::
-mcopy -i "$BOOT/grub/efi.img" -s "$BOOT/EFI" ::/

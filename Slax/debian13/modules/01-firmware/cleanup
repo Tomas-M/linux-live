@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+KERNEL_CONFIG=$(cat /boot/config-*)
+
+# Remove only known platform firmware whose drivers are absent from every bundled kernel.
+remove_unused_firmware()
+{
+   DRIVER=$1
+   shift
+   if printf '%s\n' "$KERNEL_CONFIG" | grep -Eq "^($DRIVER)=[my]$"; then
+      return
+   fi
+   rm -Rf "$@"
+}
+
+cd /usr/lib/firmware
+remove_unused_firmware CONFIG_VIDEO_MEDIATEK_VPU mediatek/mt8173 vpu_d.bin vpu_p.bin
+remove_unused_firmware CONFIG_MTK_SCP mediatek/mt8183 mediatek/mt8186 mediatek/mt8188 mediatek/mt8192 mediatek/mt8195
+remove_unused_firmware 'CONFIG_SND_SOC_SOF_MT[0-9]+' mediatek/sof mediatek/sof-tplg

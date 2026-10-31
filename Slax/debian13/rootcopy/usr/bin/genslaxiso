@@ -1,5 +1,5 @@
 #!/bin/sh
-# Recreate a BIOS/UEFI Slax ISO, optionally replacing rootcopy and adding modules.
+# Recreate a BIOS/UEFI hybrid Slax ISO, optionally replacing rootcopy and adding modules.
 set -e
 
 SOURCE=/run/initramfs/memory
@@ -58,7 +58,7 @@ while IFS= read -r ENCODED; do
    FILE=$(printf '%b.' "$ENCODED")
    FILE=${FILE%.}
    FILE=${FILE#./}
-   case "$FILE" in changes/*|boot/grub/boot.cat) continue ;; esac
+   case "$FILE" in changes/*|boot/grub/boot.cat|boot/grub/efi.img) continue ;; esac
    if [ "$REGEX" != '^$' ]; then
       FILTER_PATH=$FILE FILTER_REGEX=$REGEX awk 'BEGIN {exit !(ENVIRON["FILTER_PATH"] ~ ENVIRON["FILTER_REGEX"])}' && continue
    fi
@@ -80,10 +80,11 @@ for MODULE in "$@"; do
    graft "slax/modules/$(basename "$MODULE")" "$MODULE" >> "$XORRISO_PATH_LIST"
 done
 
-# The boot directory contains both the El Torito image and the USB EFI loaders.
+# Stage the BIOS images and EFI loaders; makeiso builds a temporary FAT image.
 mkdir -p "$TEMP/media/slax/boot/grub" "$TEMP/media/slax/modules" "$TEMP/media/slax/changes"
-cp "$SLAX/boot/grub/makeiso.sh" "$SLAX/boot/grub/efi.img" "$TEMP/media/slax/boot/grub/"
+cp "$SLAX/boot/grub/makeiso.sh" "$TEMP/media/slax/boot/grub/"
+cp -r "$SLAX/boot/EFI" "$TEMP/media/slax/boot/"
 if [ -f "$SLAX/boot/grub/cdboot.img" ]; then
-   cp "$SLAX/boot/grub/cdboot.img" "$TEMP/media/slax/boot/grub/"
+   cp "$SLAX/boot/grub/cdboot.img" "$SLAX/boot/grub/boot_hybrid.img" "$TEMP/media/slax/boot/grub/"
 fi
 sh "$TEMP/media/slax/boot/grub/makeiso.sh" "$TARGET"
