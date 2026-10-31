@@ -81,9 +81,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cfla
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.0.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.1.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.10.0
+cd xlunch-5.10.1
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"
