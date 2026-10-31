@@ -67,7 +67,7 @@ wait $SOUNDPID
 
 # If we are running inside VirtualBox or vmware,
 # switch to bigger screen size right away
-if [ "$(virt-what | egrep -i "virtualbox|vmware")" != "" ]; then
+if [ "$(virt-what | egrep -i "virtualbox|vmware|qemu|kvm")" != "" ]; then
    # this is here to fix some strange virtualbox bug
    # to adjust window size properly
    fbscreensize 1440x900 -n

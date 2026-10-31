@@ -183,6 +183,10 @@ must follow the general Slax repair rules above.
   `linux-assistant` as the desktop user, reading backend and branding defaults
   from `/etc/linux-assistant/config` in core rootcopy, then opens its private
   local URL through `fbliveapp` in a dedicated Chromium app profile.
+  The Fluxbox apps rule for `class=slax-ai`, `role=pop-up` opens its main window
+  centered at 90 percent of the monitor's available width and height, excluding
+  panel struts. Override saved maximized/fullscreen states only on opening;
+  users can still resize and maximize it afterward.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
   `slax-desktop-tools`. Use `fbinstall [--user guest] APP_ID ICON NAME "PACKAGE..."
   "COMMAND [ARGS...]" [ARGS...]`. APP_ID is the canonical desktop ID without
@@ -259,7 +263,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.0`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.1`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   xlunch uses libXcursor to load the system-themed hand for clickable controls
@@ -273,6 +277,11 @@ must follow the general Slax repair rules above.
   The caret blinks in 500 ms phases. Editing and caret movement restore its
   visible phase; ordinary mouse motion does not. Hide it while text is selected,
   and redraw only the input bar for idle blink updates.
+  Follow root-window size changes in fullscreen and desktop modes, retaining
+  explicit desktop dimensions and ordinary windowed sizing. Recompute layout
+  and backgrounds on resize, and refresh root-based backgrounds when the root
+  pixmap changes. Bound image reads by the pixmap's actual dimensions while
+  the desktop wallpaper is catching up with a resolution change.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection.

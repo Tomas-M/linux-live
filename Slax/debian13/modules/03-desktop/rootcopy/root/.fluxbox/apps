@@ -16,3 +16,10 @@
 [app] (name=xterm) {1}
   [Position]	(WINCENTER)	{0 0}
 [end]
+
+[app] (class=slax-ai) (role=pop-up)
+  [Dimensions]	{90% 90%}
+  [Position]	(WINCENTER)	{0 0}
+  [Maximized]	{no}
+  [Fullscreen]	{no}
+[end]
