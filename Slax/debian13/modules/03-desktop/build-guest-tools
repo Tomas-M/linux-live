@@ -5,10 +5,10 @@ CWD=$(CDPATH= cd "$(dirname "$0")" && pwd)
 OUTPUT=${1:?Usage: build-guest-tools output-directory}
 PACKAGE=$OUTPUT/guest-tools
 LIB=usr/lib/x86_64-linux-gnu
-apt-get install --yes --no-install-recommends build-essential libx11-dev dpkg-dev xorriso wget ca-certificates bzip2 open-vm-tools open-vm-tools-desktop
+apt-get install --yes --no-install-recommends build-essential libx11-dev libxrandr-dev dpkg-dev xorriso wget ca-certificates bzip2 open-vm-tools open-vm-tools-desktop
 mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/sbin" "$PACKAGE/$LIB/open-vm-tools/plugins/vmusr" \
    "$PACKAGE/$LIB/open-vm-tools/plugins/vmsvc" "$PACKAGE/usr/share/slax/guest-tools/licenses" "$PACKAGE/DEBIAN"
-cc -Os -s -o "$PACKAGE/usr/bin/slax-guest-resize" "$CWD/guest-desktop-resize.c" -lX11
+cc -Os -s -o "$PACKAGE/usr/bin/slax-guest-resize" "$CWD/guest-desktop-resize.c" -lX11 -lXrandr
 
 # Retain desktop integration and shared folders, without deployment or remote-control plugins.
 cp /usr/bin/vmtoolsd /usr/bin/vmhgfs-fuse /usr/bin/vmware-hgfsclient "$PACKAGE/usr/bin/"

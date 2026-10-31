@@ -103,6 +103,8 @@ reporting progress.
 - For a small change in an existing module, update the source and repack only
   that module in tmpfs, then recreate the ISO. Do not rebuild Debian and every
   application merely to change one configuration file.
+  Incremental rootcopy replacements must retain the copy phase's permissions:
+  install helper commands with mode 755 and verify their packed executable bits.
 - `03-desktop` includes minimal VirtualBox and VMware integration: text
   clipboard, automatic screen resizing and shared folders. Package only the
   required userspace binaries and plugins; retain the kernel's existing drivers.
@@ -117,6 +119,19 @@ reporting progress.
   in VirtualBox and VMware. Guest tools still handle later host resize requests.
   The small X11 resize listener restores the selected wallpaper after automatic
   screen changes without polling.
+- QEMU/KVM desktop integration uses Debian's `spice-vdagent` in `03-desktop`.
+  Start its X11 agent when `/dev/virtio-ports/com.redhat.spice.0` is present;
+  Debian's udev rule activates the system daemon's socket. Keep the shared
+  wallpaper resize listener active for this session too. The host must expose
+  the agent channel and enable clipboard/display integration.
+  Set `SPICE_VDAGENTD_EXTRA_ARGS="-X"`: Slax starts one X11 session directly
+  without an active logind seat, so the daemon must use its single-session mode.
+  In SPICE sessions, `slax-guest-resize --follow-preferred` follows RandR output
+  changes: Virtio publishes host resize requests as new preferred modes. Apply
+  only changed preferences so manual mode selection remains possible, and skip
+  the startup script's fixed resolution switch when the SPICE channel is present.
+  Shared folders use the existing virtiofs or 9p kernel drivers and `mount`;
+  do not pull in SPICE WebDAV/GVfs or the unrelated QEMU management agent.
 
 ## Work VM
 
