@@ -249,6 +249,11 @@ must follow the general Slax repair rules above.
   change size, using `GTK_WIN_POS_CENTER_ALWAYS` and `GDK_GRAVITY_CENTER` so
   the window-manager frame is included in the centered position.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
+- Preserve `timers.target.wants`. Core `copy` masks all ten bundled timers:
+  APT daily and upgrade, dpkg database backup, fstrim, man-db, tmpfiles cleanup,
+  mdcheck start and continue, mdmonitor oneshot and mdadm last-resort instances.
+  Preserve their packaged unit definitions; the corresponding services remain
+  available for deliberate manual use.
 - Run an optional module `cleanup` after shared cleanup and before `copy`.
   Shared cleanup removes packaging/reporting metadata, API documentation,
   translated GTK emoji names and kernel self-test modules (then runs depmod).

@@ -17,3 +17,8 @@ done
 
 ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
 ln -sf /usr/lib/systemd/system/slax-rmmounts.service /etc/systemd/system/sysinit.target.wants/slax-rmmounts.service
+
+# Disable bundled timers, including static units and timers activated by other services.
+systemctl --root=/ mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer \
+   fstrim.timer man-db.timer systemd-tmpfiles-clean.timer mdcheck_start.timer \
+   mdcheck_continue.timer mdmonitor-oneshot.timer mdadm-last-resort@.timer
