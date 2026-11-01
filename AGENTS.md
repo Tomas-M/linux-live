@@ -258,6 +258,10 @@ must follow the general Slax repair rules above.
   PR fixes can be merged into the fork. Run its Meson tests
   before packaging. Paging must validate its saved focus target after a window
   closes, and startup must handle root focus before the preview window exists.
+  Paging stays open when applications or cached preview windows are destroyed,
+  including on empty desktops. Only switch/expose modes may close with no applications.
+  With desktop cycling disabled, empty Alt+Tab requests finish before mapping the
+  switcher and still notify their IPC client. Alt+F3 remains available on empty desktops.
   Keep Fluxbox's `XQueryTree` client list and Slax styling in `/etc/xdg/skippy-xd.rc`.
   Give the daemon an explicit screen suffix in DISPLAY, matching Fluxbox's commands:
   Skippy's IPC filenames distinguish `:0` from `:0.0` even on the same X server.
@@ -274,7 +278,8 @@ must follow the general Slax repair rules above.
   `align=left`, `iconSize=16` and `width=1.0`. Include its fixed screen-pixel
   height in the tile layout. The full caption, including its icon and padding,
   must fit inside the preview width; desktop-page labels have no application icon.
-  Application headers add two pixels above and below the original line insets.
+  `[label] padding=2` adds two screen pixels on all four sides of application
+  captions, including their icon. This one setting controls both axes.
   Workspace labels sit inside their previews. Set their `[desktop-label]` padding,
   margin and radius in screen pixels; keep their rounded masks and Pango layouts cached.
 - Back up completed kernel `.deb` packages and their checksums to
