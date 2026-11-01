@@ -33,6 +33,7 @@ tintOpacity = 128
 tintBorder = 10
 
 [label]
+padding = 2
 option = windowTitle
 font = DejaVu Sans,WenQuanYi Micro Hei 11
 position = top
