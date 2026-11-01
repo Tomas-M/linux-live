@@ -83,6 +83,9 @@ rm -rf "$BRANCH"
 BRANCH=$RUNTIME
 mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
 
+# Install the native XFS tools without their optional Python helpers.
+chroot "$UNION" env DEBIAN_FRONTEND=noninteractive LC_ALL=C apt-get install -y --no-install-recommends /artifacts/01-core/xfsprogs.deb
+chroot "$UNION" apt-mark hold xfsprogs
 in_root /build cleanup
 in_root /build copy
 # Use the selected suite after rootcopy has applied the Slax defaults.
