@@ -1,8 +1,0 @@
-#!/bin/sh
-set -e
-apt-get update
-apt-get install --yes --no-install-recommends build-essential pkg-config libgtk-3-dev
-
-# Apply Slax's UI adjustments while keeping the stock Debian applications.
-cc -Os -shared -fPIC -s -o /artifacts/04-apps/libslax-app-style.so \
-   gtk-app-style.c $(pkg-config --cflags --libs gtk+-3.0)

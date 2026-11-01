@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+# Remove package application artwork before restoring Slax's selected icons.
+rm -f /usr/share/icons/hicolor/scalable/apps/*
+
 # Keep OpenType for Fontconfig and Type1 for Ghostscript, without duplicate X11 copies.
 for FONT in /usr/share/fonts/opentype/urw-base35/*.otf; do
    rm -f "/usr/share/fonts/X11/Type1/$(basename "$FONT" .otf).pfb"

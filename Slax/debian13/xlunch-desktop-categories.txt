@@ -17,17 +17,17 @@ line belongs to the main [Desktop Entry] group.
    Added: Categories=System;TerminalEmulator;
    Expected menu: System.
 
-2. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/galculator.desktop
+2. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/galculator.desktop
    Added: Categories=Utility;Calculator;
    Expected menu: Accessories.
 
-3. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/connman-gtk.desktop
+3. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/connman-gtk.desktop
    Added: Categories=Network;Settings;HardwareSettings;GTK;
    Expected menus: Internet and System (the latter includes Settings).
    ConnMan GTK configures connections; its upstream entry also uses Settings
    and HardwareSettings. Slax's Exec=connman-gtk-start and icon are unchanged.
 
-4. Slax/debian13/modules/04-apps/rootcopy/usr/local/share/applications/SciTE.desktop
+4. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/SciTE.desktop
    Added: Categories=Utility;TextEditor;GTK;
    Expected menu: Accessories, matching Slax's general-purpose Text Editor role.
    Exec=scite %f and Icon=Sci48M are unchanged.
@@ -43,7 +43,7 @@ ALREADY VALID ENTRIES
 These files need no category changes. Their paths also begin with
 Slax/debian13/modules/:
 
-- 04-apps/rootcopy/usr/local/share/applications/pcmanfm.desktop:
+- 03-desktop/rootcopy/usr/local/share/applications/pcmanfm.desktop:
   Categories=System;FileTools;FileManager;Utility;Core;GTK;
   File Manager belongs to both System and Accessories because it declares both
   main categories. Keep this metadata; All apps still contains it once.
@@ -52,11 +52,11 @@ Slax/debian13/modules/:
   Categories=Network;WebBrowser;
   Web Browser belongs to Internet. Keep the existing fbliveapp command.
 
-- 04-apps/rootcopy/usr/local/share/applications/xarchiver.desktop:
+- 03-desktop/rootcopy/usr/local/share/applications/xarchiver.desktop:
   Categories=GTK;Archiving;Utility;
   Archiver belongs to Accessories.
 
-- 04-apps/rootcopy/usr/local/share/applications/lxtask.desktop:
+- 03-desktop/rootcopy/usr/local/share/applications/lxtask.desktop:
   Categories=GTK;System;Monitor;
   Task Manager belongs to System.
 
@@ -115,7 +115,7 @@ the Slax override once and preserves its command when APT updates the original.
 For an existing build, remove the former Slax entries from /usr/share/applications
 and restore any package desktop originals deleted by the old cleanup. Apply the
 new rootcopy files, including the updated Favorites and MIME defaults. Repack
-03-desktop, 04-apps and 05-chromium, then recreate the ISO using the repository's
+03-desktop and 04-chromium, then recreate the ISO using the repository's
 incremental-build workflow. A fresh build retains the originals automatically.
 Runtime changes alone do not update an existing ISO.
 

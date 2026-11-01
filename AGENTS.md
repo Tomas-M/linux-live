@@ -24,11 +24,11 @@ reporting progress.
 - Slax currently targets Debian 13 on amd64. Slax recipes and branding belong
   under `Slax/debian13`; reusable functionality belongs in Live Kit.
 - Slax uses the bundled Windows Modern Light cursor theme at size 32 for X11
-  and GTK. Its converted Xcursor files and MIT license live in `02-xorg/rootcopy`;
-  do not download or convert them during a build. `02-xorg/cursor-aliases` lists
+  and GTK. Its converted Xcursor files and MIT license live in `03-desktop/rootcopy`;
+  do not download or convert them during a build. `03-desktop/cursor-aliases` lists
   symlinks created by `copy`. Preserve the original blue wait and progress
   animations, including their premultiplied alpha and timing.
-  Do not install Breeze. Keep cursor defaults in `02-xorg` and register the
+  Do not install Breeze. Keep cursor defaults in `03-desktop` and register the
   bundled `cursor.theme` with update-alternatives at priority 100, above
   Adwaita's 90. Desktop startup uses the named watch cursor from these defaults.
 - `fbvboxpointer` reads the active vboxguest absolute-pointer position before
@@ -49,7 +49,7 @@ reporting progress.
   the actual hotspot to the host instead of shifting the artwork.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
-  applications. The setting belongs in `02-xorg/rootcopy/root/.Xresources`.
+  applications. The setting belongs in `03-desktop/rootcopy/root/.Xresources`.
 - `03-desktop/fbkeyboard.c` supplies the GTK 3 keyboard tray and `fbsetkb` selection.
   Start in US English, displayed as white `EN`; other layouts use two-letter
   uppercase identifiers. Share the existing labels and flags through
@@ -212,13 +212,19 @@ must follow the general Slax repair rules above.
   man pages and removes info, documentation and most translations. Each module
   gets its own filesystem branch.
   Service startup inside the chroot is blocked with `policy-rc.d`.
+- Slax has four runtime modules: `01-core`, `02-firmware`, `03-desktop` and
+  `04-chromium`. Desktop includes Xorg, Fluxbox and the bundled X applications;
+  do not install Blackbox. Install all desktop runtime packages before its
+  disposable compilation branch, then clean and apply the combined rootcopy once.
+  Refresh fonts, desktop entries and icon caches after all desktop defaults.
+  Publish only the current build's manifest set when module names change.
 - ConnMan provides NTP synchronization. Do not install `ntpsec-ntpdate` in core;
   it pulls in an otherwise unused Python runtime and its dependencies.
 - Install the dependency-free `libwacom-common` data package in `01-core` so
   udev builds the complete hardware database there. Keep its `.hwdb` sources
   for later package updates; Xorg must reuse the database instead of shipping
   another generated copy.
-- Keep `01-firmware` focused on getting users online over Wi-Fi or Ethernet,
+- Keep `02-firmware` focused on getting users online over Wi-Fi or Ethernet,
   including MediaTek/Ralink and Atheros USB adapters. Do not add dedicated
   graphics or audio firmware packages to the base image; users can install
   those after connecting. Keep small legacy network packages for compatibility.
@@ -247,12 +253,12 @@ must follow the general Slax repair rules above.
 - Core compiles `Tomas-M/linux-assistant` with `scripts/build_client.sh` in a
   disposable branch, using its pinned Rust toolchain. Only the resulting
   `/usr/bin/linux-assistant` is copied into `01-core` after cleanup.
-- `04-apps` provides the Slax Assistant launcher and its `slax-ai` PNG icons. It runs
+- `03-desktop` provides the Slax Assistant launcher and its `slax-ai` PNG icons. It runs
   `linux-assistant` as the desktop user, reading backend and branding defaults
   from `/etc/linux-assistant/config` in core rootcopy, then opens its private
   local URL through `fbliveapp` in a dedicated Chromium app profile.
   Set `assistant-image` in that configuration to `/usr/share/slax/slax-assistant.png`.
-  Keep this transparent PNG in `04-apps` rootcopy, fitted within 512 by 512 pixels.
+  Keep this transparent PNG in `03-desktop` rootcopy, fitted within 512 by 512 pixels.
   The Fluxbox apps rule for `class=slax-ai`, `role=pop-up` opens its main window
   centered at 90 percent of the monitor's available width and height, excluding
   panel struts. Override saved maximized/fullscreen states only on opening;
@@ -326,16 +332,16 @@ must follow the general Slax repair rules above.
   Publish the standard `utilities-terminal`, `accessories-calculator` and
   `accessories-text-editor` names through the existing icon aliases too.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
-  GTK's icon caches after restoring files in `03-desktop`, `04-apps` and
-  `05-chromium`. ConnMan uses three white vector tray glyphs: `network-offline`,
+  GTK's icon caches after restoring files in `03-desktop` and `04-chromium`.
+  ConnMan uses three white vector tray glyphs: `network-offline`,
   `preferences-system-network` and `network-transmit-receive`. Its tray states are
   shared by Ethernet and Wi-Fi; strength icons inside its window remain unchanged.
   Fluxbox startup runs `connman-gtk --tray` after the panel appears, without
   opening Network Settings. The tray still opens the settings on demand.
   Keep PNGs at 16, 22, 24, 32 and 48 px in hicolor and Adwaita's matching `legacy`
-  directories. Register the extra Adwaita sizes in `04-apps/copy`; GTK otherwise
+  directories. Register the extra Adwaita sizes in `03-desktop/copy`; GTK otherwise
   selects its 16 px legacy artwork even when hicolor contains a native-size PNG.
-  Editable SVGs in `04-apps/network-tray-icons` use a separate pixel grid for
+  Editable SVGs in `03-desktop/network-tray-icons` use a separate pixel grid for
   each size. Run `sh render-network-tray-icons` there to export native-size PNGs
   with rsvg-convert. Do not downscale raster masters or add rendering to the build.
   Keep the `slax-net-manager` application icon separate. Volume and battery status
@@ -381,11 +387,11 @@ must follow the general Slax repair rules above.
   theme and inherited themes, with symbolic artwork as a final equivalent.
   Keep Adwaita's `scalable` SVG icons during cleanup; large PNG sizes and the
   unused Adwaita cursors can still be removed.
-  `05-chromium/copy` prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
+  `04-chromium/copy` prebuilds root and guest snapshots with `--rebuild-cache`, after all desktop
   entries and icons are present. Match the runtime profile, locale, PATH and
   XDG environment; refresh the final module cache after changing these inputs.
   Incremental icon changes must also refresh the final GTK icon cache in
-  `05-chromium`: its cache overrides caches from earlier modules.
+  `04-chromium`: its cache overrides caches from earlier modules.
 - Slax's Focus footer uses `align=grid` and `bottom_margin=0`. This places
   the help 28 px lower than the shared margin and gives the icon grid the same
   additional height while leaving the bottom-left close button unobstructed.
@@ -437,7 +443,7 @@ must follow the general Slax repair rules above.
   A shared WM_CLIENT_LEADER can retain an old startup ID, so it must not prevent
   matching new windows from an already running application by process or class.
   Keep desktop-file execution in GIO, including quoting, field codes and D-Bus.
-- Optional application launchers and their bundled icon sizes live in `04-apps`
+- Optional application launchers and their bundled icon sizes live in `03-desktop`
   rootcopy. `optional-apps.tsv` records independently resolved unpacked sizes
   against clean Slax, without recommends; every entry is below 500 MB.
   Keep canonical Debian desktop IDs and MIME declarations in `/usr/local/share`
@@ -445,7 +451,7 @@ must follow the general Slax repair rules above.
   `slax-*.png` icon to remove an uninstalled application from the catalog.
   `fbliveapp` runs guest applications with separate D-Bus sessions and grants
   X11 access only to that local user. VLC and selected Internet applications
-  use `fbinstall --user guest`. Set `LANG=C.UTF-8` in `02-xorg`'s `/etc/locale.conf`;
+  use `fbinstall --user guest`. Set `LANG=C.UTF-8` in `03-desktop`'s `/etc/locale.conf`;
   Debian 13 redirects `/etc/default/locale` to this canonical file at boot.
 - Keep LXTask optional: its Task Manager launcher installs `lxtask` through
   `fbinstall`. Display Xarchiver as `X Archiver` and Remmina as `Remote Desktop`.
@@ -499,7 +505,7 @@ must follow the general Slax repair rules above.
   `.config/gtk-3.0/gtk.css`. Preserve the selected GTK theme and its dark variant;
   replacing it with a light-only theme also changes the taskbar. Keep the CSS
   and its tiny SVG arrows in rootcopy, applied after cleanup. Cursor defaults
-  remain in `02-xorg/rootcopy/etc/gtk-3.0/settings.ini`.
+  remain in `03-desktop/rootcopy/etc/gtk-3.0/settings.ini`.
 - Match window frames to Chromium's light palette: focused `#d3e3fd`, inactive
   `#dde3e9`, 8 px upper corners, square lower corners and 4 px borders. Keep Fluxbox titles compact at
   28 px and leave application content themes unchanged. Shared GTK 3/4 rules
@@ -532,10 +538,10 @@ must follow the general Slax repair rules above.
   this does not move the dialog. Compile schemas in `03-desktop/copy` after rootcopy. Keep this a system default;
   users can resize dialogs and GTK remembers their choice. Do not ship a binary
   user dconf database with unrelated preferences.
-- Application CSS belongs to `04-apps/rootcopy/usr/share/slax/gtk-3.0/apps`.
-  The small `04-apps/gtk-app-style.c` GTK module loads only the stylesheet named
+- Application CSS belongs to `03-desktop/rootcopy/usr/share/slax/gtk-3.0/apps`.
+  The small `03-desktop/gtk-app-style.c` GTK module loads only the stylesheet named
   for the running program. Compile it in the disposable build branch, install
-  it in `04-apps/copy` after cleanup and enable it there. Keep native themes,
+  it in `03-desktop/copy` after cleanup and enable it there. Keep native themes,
   application commands and launchers unchanged; styles must work from xlunch,
   Fluxbox and the terminal without leaking a theme environment to child apps.
   Rebuilt Debian packages keep their original names and binary versions, including
@@ -673,11 +679,11 @@ must follow the general Slax repair rules above.
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
 - PCManFM uses the opened folder's icon in the tasklist. Use Adwaita's blue
-  `inode-directory` artwork for generic and special folders in `04-apps`, including
+  `inode-directory` artwork for generic and special folders in `03-desktop`, including
   the Adwaita and gnome theme paths at 16, 22, 24, 32 and 48 px. Preserve the native
   16 px PNG and render larger sizes from the original SVG. Include `user-home`
   and `inode-directory`; register the additional Places and MimeTypes sizes in
-  `04-apps/copy` so GTK does not enlarge the 16 px artwork.
+  `03-desktop/copy` so GTK does not enlarge the 16 px artwork.
   Keep the selected File Manager artwork for `slax-file-manager` and
   `system-file-manager`; do not alias it to the generic `folder` icon.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
@@ -780,7 +786,7 @@ must follow the general Slax repair rules above.
   device. Keep this host configuration in the local VM helpers.
 - Slax's `guest` account needs membership in `audio`: Chromium and VLC run
   under that account and access ALSA directly, without a sound server.
-- Chromium defaults live in `05-chromium/rootcopy/etc/chromium.d/slax-flags`,
+- Chromium defaults live in `04-chromium/rootcopy/etc/chromium.d/slax-flags`,
   applied after cleanup. Keep the HTTP/code cache under RAM-backed `/tmp`,
   with a private per-user directory and a 32 MiB HTTP cache limit; disable GPU
   shader disk cache. Do not use `/dev/null` as a cache directory: Chromium tries
@@ -872,7 +878,7 @@ must follow the general Slax repair rules above.
   Use the VT_PROCESS release handshake; canonical input alone does not mean
   getty has taken over, because init resets termios too. Slax's optional
   `/usr/libexec/fbmenu-driver` keeps animation running until graphics modules load.
-  `02-xorg/copy` derives an override of Debian's `80-drivers.rules`, preserving
+  `03-desktop/copy` derives an override of Debian's `80-drivers.rules`, preserving
   other rules and the normal loader for non-graphics modules. Identify graphics
   through module dependency paths, not specific GPU names. Bracket loading with
   `fbmenu --pause` / `--continue`; count overlapping loads and resume on errors.

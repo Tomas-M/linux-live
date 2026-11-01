@@ -3,8 +3,28 @@ set -e
 # Preserve patched Debian packages across ordinary system upgrades.
 apt-mark hold libgtk-3-0t64 fluxbox picom xfce4-panel xfce4-docklike-plugin volumeicon-alsa
 cp -a rootcopy/. /
-# Register the bundled vector emoji font after rootcopy.
-fc-cache -f
+# Preserve Debian's other driver rules while coordinating the boot splash.
+mkdir -p /etc/udev/rules.d
+sed '/^ENV{MODALIAS}==/ {
+i\
+ENV{MODALIAS}=="?*", TEST=="/run/fbmenu.sock", PROGRAM="/usr/libexec/fbmenu-driver --check $env{MODALIAS}", RUN+="/usr/libexec/fbmenu-driver $env{MODALIAS}", GOTO="fbmenu_driver_done"
+a\
+LABEL="fbmenu_driver_done"
+}' /usr/lib/udev/rules.d/80-drivers.rules > /etc/udev/rules.d/80-drivers.rules
+grep -q '/usr/libexec/fbmenu-driver' /etc/udev/rules.d/80-drivers.rules
+chmod 644 /etc/udev/rules.d/80-drivers.rules
+
+# Share each cursor bitmap across its X11 and toolkit names.
+while read -r CURSOR ALIASES; do
+   for ALIAS in $ALIASES; do
+      ln -sf "$CURSOR" "/usr/share/icons/Windows-Modern-Light/cursors/$ALIAS"
+   done
+done < cursor-aliases
+
+mkdir -p /usr/share/icons/default
+update-alternatives --install /usr/share/icons/default/index.theme x-cursor-theme /usr/share/icons/Windows-Modern-Light/cursor.theme 100
+ln -sf /usr/lib/systemd/system/xorg.service /etc/systemd/system/display-manager.service
+
 # Native names under /usr/local keep application installs from replacing Slax's artwork.
 while read NAME ICON; do
    for SIZE in 16 22 24 32 48 64 96 128; do
@@ -14,20 +34,23 @@ while read NAME ICON; do
    done
 done < icon-aliases
 cp /usr/share/icons/hicolor/index.theme /usr/local/share/icons/hicolor/
+# Xarchiver requests 24 px but accepts the original resolution for its window icon.
+cp /usr/share/icons/hicolor/128x128/apps/slax-xarchiver.png /usr/local/share/icons/hicolor/24x24/apps/xarchiver.png
 # All shipped helper commands must be executable regardless of checkout permissions.
 for FILE in rootcopy/usr/bin/*; do
    chmod 755 "/usr/bin/$(basename "$FILE")"
 done
 chmod 755 /root/.xinitrc /root/.fluxbox/startup
+chmod 755 /usr/libexec/slax-fbcon-palette /usr/libexec/fbmenu-driver
+chmod 644 /usr/lib/systemd/system/xorg.service /etc/systemd/system/getty@tty1.service.d/xorg.conf /etc/systemd/system/getty@.service.d/framebuffer.conf
+
+# Install application-specific styling only after cleanup.
+mkdir -p /usr/lib/x86_64-linux-gnu/gtk-3.0/modules
+cp /artifacts/03-desktop/libslax-app-style.so /usr/lib/x86_64-linux-gnu/gtk-3.0/modules/
 # Keep native dialog headerbars consistent with other GTK windows.
-printf '\ngtk-dialogs-use-header=true\n' >> /etc/gtk-3.0/settings.ini
+printf '\ngtk-dialogs-use-header=true\ngtk-modules=slax-app-style\n' >> /etc/gtk-3.0/settings.ini
 # Apply the shared GTK file chooser defaults after restoring schema overrides.
 glib-compile-schemas /usr/share/glib-2.0/schemas
-update-desktop-database /usr/local/share/applications
-# Refresh icon lookup after cleanup and the restored icons.
-gtk-update-icon-cache -f /usr/share/icons/Adwaita
-gtk-update-icon-cache -f /usr/share/icons/hicolor
-gtk-update-icon-cache -f /usr/local/share/icons/hicolor
 
 # Set ownership after restoring the guest's desktop defaults.
 for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do
@@ -41,3 +64,25 @@ chmod 644 /etc/default/spice-vdagentd
 groupadd -f -r vboxsf
 usermod -a -G vboxsf guest
 systemctl enable slax-vbox.service slax-vmware.service slax-vmware-shares.service
+
+# Register native tray and folder sizes instead of enlarging Adwaita's 16 px icons.
+while read CONTEXT NAME; do
+   for SIZE in 22 24 32 48; do
+      DIR=${SIZE}x${SIZE}/$CONTEXT
+      if ! grep -Fqx "[$DIR]" /usr/share/icons/Adwaita/index.theme; then
+         sed -i "s|^Directories=|Directories=$DIR,|" /usr/share/icons/Adwaita/index.theme
+         printf '\n[%s]\nContext=%s\nSize=%s\nType=Fixed\n' "$DIR" "$NAME" "$SIZE" >> /usr/share/icons/Adwaita/index.theme
+      fi
+   done
+done <<'EOF'
+legacy Legacy
+places Places
+mimetypes MimeTypes
+EOF
+
+# Refresh shared caches after every desktop default and icon has been restored.
+fc-cache -f
+update-desktop-database /usr/local/share/applications
+gtk-update-icon-cache -f /usr/share/icons/Adwaita
+gtk-update-icon-cache -f /usr/share/icons/hicolor
+gtk-update-icon-cache -f /usr/local/share/icons/hicolor

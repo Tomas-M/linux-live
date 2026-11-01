@@ -83,6 +83,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cfla
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
+# Scope application-specific GTK adjustments to the selected programs.
+cc -Os -shared -fPIC -s -o "$OUTPUT/libslax-app-style.so" \
+   "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)
 cd /tmp
 wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.3.tar.gz
 tar -xf xlunch.tar.gz

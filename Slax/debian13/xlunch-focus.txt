@@ -49,7 +49,7 @@ Its transparent overlay does not accept focus or pointer input. It leaves the
 native cursor unchanged over desktop, application windows and launcher controls.
 Clickable xlunch controls use the system-themed hand; other areas inherit the
 desktop cursor. X11 and GTK select the bundled Windows Modern Light theme at
-32 px in 02-xorg, including its original blue wait and progress animations.
+32 px in 03-desktop, including its original blue wait and progress animations.
 Slax desktop overrides live in each module's rootcopy/usr/local/share/applications
 using the package's original desktop filename. XDG gives them precedence over
 the retained /usr/share/applications files, so APT upgrades do not create a second
@@ -73,19 +73,19 @@ validation prevents an incompatible executable from being packaged.
 For an incremental rebuild, replace the executable and assets in 03-desktop,
 apply the new rootcopy files, retain /usr/bin/fblogout and
 /etc/xlunch/logout.dsv for Fluxbox, and include gio and its runtime
-dependencies. Repack 03-desktop and the application-category changes in 04-apps,
+dependencies. Repack 03-desktop with its application-category changes,
 then recreate the ISO. Follow the repository's normal incremental-build rules.
 When applying the desktop relocation to an existing build, remove the old Slax
 rootcopy entries from /usr/share/applications, restore package desktop originals
 removed by the previous cleanup, and install the new /usr/local/share/applications
-overrides. Include 05-chromium when restoring its package desktop entry. A fresh
+overrides. Include 04-chromium when restoring its package desktop entry. A fresh
 build preserves the originals automatically.
 
-05-chromium/copy runs xlunch --ui-config /etc/xlunch/focus.ini --rebuild-cache
+04-chromium/copy runs xlunch --ui-config /etc/xlunch/focus.ini --rebuild-cache
 after all applications and icons are present. Root and guest get separate
 uncompressed snapshots in ~/.cache/xlunch, matching their runtime locale,
 PATH and XDG environment. Rebuild this final-module cache after changing
-desktop entries, icons or the Focus profile, then repack 05-chromium too.
+desktop entries, icons or the Focus profile, then repack 04-chromium too.
 xlunch opens the snapshot immediately, refreshes it at nice priority 19 after
 the first frame and cancels refresh before launching an application.
 
