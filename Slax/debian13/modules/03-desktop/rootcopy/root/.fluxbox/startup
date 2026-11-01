@@ -52,16 +52,6 @@ slax-guest-desktop &
 xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
 | sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
 
-# If we are running inside VirtualBox or vmware,
-# switch to bigger screen size right away
-if [ "$(virt-what | egrep -i "virtualbox|vmware|qemu|kvm")" != "" ]; then
-   # SPICE supplies the host's preferred mode; other guests keep the initial resize.
-   if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ]; then
-      fbscreensize 1440x900 -n
-      fbscreensize 1280x800 -n
-   fi
-fi
-
 # start xfce4 panel in background
 xfce4-panel --disable-wm-check --sm-client-disable &
 
