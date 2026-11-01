@@ -80,7 +80,7 @@ activate()
    fi
 
    # add current branch to aufs union
-   mount -t aufs -o remount,add:1:"$TGT=rr+wh" aufs /
+   mount -t aufs -o remount,add=1:"$TGT=rr+wh" aufs /
    if [ $? -ne 0 ]; then
       umount "$TGT"
       rmdir "$TGT"
@@ -120,7 +120,7 @@ deactivate()
    fi
 
    echo "Attempting to deactivate Slax bundle $SB..."
-   mount -t aufs -o remount,verbose,del:"$BUNDLES/$SB" aufs / 2>/dev/null
+   mount -t aufs -o remount,verbose,del="$BUNDLES/$SB" aufs / 2>/dev/null
    if [ $? -ne 0 ]; then
       die "Unable to deactivate Slax Bundle - still in use. See dmesg for more."
    fi
