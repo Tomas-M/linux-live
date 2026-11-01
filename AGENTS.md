@@ -184,6 +184,8 @@ must follow the general Slax repair rules above.
 
 - Version pins and hashes live in `Slax/debian13/aufs-kernel-compile/versions`.
   Read that file rather than assuming a version is still the latest.
+  Kernel 7.3.1 uses the matching `aufs7.3` source. Both vmwgfx cursor patches
+  remain necessary and apply without context fuzz; keep their behavior intact.
 - `KERNELPACKAGEVERSION` distinguishes patched kernel packages from stale cached
   builds without changing the kernel ABI release. Advance it when kernel patches
   change, and keep image, headers and libc-dev package versions together.
@@ -229,6 +231,10 @@ must follow the general Slax repair rules above.
   `grub-efi-amd64-bin` and `mtools` only on the build host: UEFI USB setup copies
   the bundled loader, and ISO recreation builds a temporary FAT image with
   the existing `mkfs.fat` and loop-mount tools.
+- Core also needs `fdisk` for `bootinst.sh`'s GPT ESP setup through `sfdisk`.
+  PXE needs GNU `cpio` for initramfs repacking and Debian's dynamically linked
+  `busybox` for `httpd`. Install both without recommends; keep the separate
+  static BusyBox bundled in the initramfs unchanged.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
   the build output's `kernel` directory when reinstalling the work VM.
