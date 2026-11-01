@@ -27,7 +27,7 @@ print_branches()
    SI="/sys/fs/aufs/$(cat /proc/mounts | grep 'aufs / aufs' | egrep -o 'si=([^,) ]+)' | tr = _)"
    CWD="$(pwd)"
    cd "$SI"
-   ls -v1 | grep -v xi_path | egrep 'br[0-9]+' | xargs cat | grep memory/bundles | rev | cut -b 4- | rev | while read BUNDLE; do
+   ls -v1 | grep -v xi_path | egrep 'br[0-9]+' | xargs cat | grep memory/bundles | sed 's/=[^=]*$//' | while read BUNDLE; do
       if mountpoint -q "$BUNDLE"; then
          LOOP=$(cat /proc/mounts | fgrep " $BUNDLE squashfs" | cut -d " " -f 1)
          echo -n "$BUNDLE"
