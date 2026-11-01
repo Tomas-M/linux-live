@@ -244,6 +244,34 @@ must follow the general Slax repair rules above.
 - Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
+- `03-desktop/build-skippy` compiles the current Skippy-XD fork HEAD in a disposable
+  branch, with Debian's Chipmunk library and without GIF or JPEG support. Its X11
+  and PNG runtime libraries are shared with the desktop. Start its daemon after Picom to retain previews
+  of minimized windows; Alt+Tab and Alt+Shift+Tab switch within the current desktop.
+  Alt+F3 opens its four-workspace overview. Keep live and uncached preview icons at 16 px.
+  Maintain source fixes in the sibling `../skippy-xd` repository and publish them
+  to `Tomas-M/skippy-xd`. Download its current HEAD without manual version or
+  hash pins and derive the package version from its source. Do not duplicate
+  fork fixes as local Slax patches.
+  Do not submit further PRs to the official Skippy repository. Existing upstream
+  PR fixes can be merged into the fork. Run its Meson tests
+  before packaging. Paging must validate its saved focus target after a window
+  closes, and startup must handle root focus before the preview window exists.
+  Keep Fluxbox's `XQueryTree` client list and Slax styling in `/etc/xdg/skippy-xd.rc`.
+  Give the daemon an explicit screen suffix in DISPLAY, matching Fluxbox's commands:
+  Skippy's IPC filenames distinguish `:0` from `:0.0` even on the same X server.
+  Keep `switchOnCurrentMonitor=false` so previews stay on their original monitors.
+  Keep `switchCycleDuringWait=false`. Processing CreateNotify/MapNotify during
+  animation refreshes the client list and `clientwin_update()` overwrites computed
+  preview positions with original window positions. The default false setting
+  defers event handling until the preview layout has been drawn.
+  Render Skippy labels through PangoXft, with `DejaVu Sans,WenQuanYi Micro Hei 11`
+  as the Slax font description. Pango handles fallback, shaping and UTF-8
+  ellipsization. Keep layouts cached across hover redraws. Install only the
+  PangoXft runtime library in Slax; development packages stay in the build branch.
+  Place the label above the preview with `position=top`, `align=left`,
+  `iconSize=16` and `width=1.0`. The full caption, including its icon and padding,
+  must fit inside the preview width; desktop-page labels have no application icon.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
   the build output's `kernel` directory when reinstalling the work VM.
@@ -291,9 +319,10 @@ must follow the general Slax repair rules above.
   change size, using `GTK_WIN_POS_CENTER_ALWAYS` and `GDK_GRAVITY_CENTER` so
   the window-manager frame is included in the centered position.
 - Run `Slax/debian13/cleanup` after the core and each runtime module.
-- Preserve `timers.target.wants`. Core `copy` masks all ten bundled timers:
+- Preserve `timers.target.wants`. Core `copy` masks all eleven bundled timers:
   APT daily and upgrade, dpkg database backup, fstrim, man-db, tmpfiles cleanup,
-  mdcheck start and continue, mdmonitor oneshot and mdadm last-resort instances.
+  mdcheck start and continue, mdmonitor oneshot, mdadm last-resort instances and
+  e2scrub. Disable e2scrub's automatic snapshot reaper at boot too.
   Preserve their packaged unit definitions; the corresponding services remain
   available for deliberate manual use.
 - Run an optional module `cleanup` after shared cleanup and before `copy`.

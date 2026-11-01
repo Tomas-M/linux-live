@@ -62,6 +62,13 @@ xfce4-panel --disable-wm-check --sm-client-disable &
    xprop -id $(wmctrl -l | grep xfce4-panel | cut -d " " -f 1) -format _NET_WM_STRUT 32c -set _NET_WM_STRUT "0,0,0,52"
 
    picom -b --config /etc/picom.conf
+   # Retain window snapshots for Alt+Tab, including minimized applications.
+   # Fluxbox commands include the default screen in DISPLAY; match its IPC path.
+   SKIPPYDISPLAY=$DISPLAY
+   if ! printf '%s\n' "${DISPLAY##*:}" | grep -q '\.'; then
+      SKIPPYDISPLAY=$DISPLAY.0
+   fi
+   DISPLAY=$SKIPPYDISPLAY skippy-xd --start-daemon &
    volumeicon &
    VOLUMEPID=$!
    connman-gtk --tray &
