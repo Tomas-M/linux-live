@@ -1,0 +1,48 @@
+[system]
+clientList = XQueryTree
+pseudoTrans = false
+
+[multimonitor]
+# Keep previews on their original monitors.
+switchOnCurrentMonitor = false
+
+[layout]
+switchLayout = rect
+switchWaitDuration = 100
+# Defer X events so mapping previews cannot reset positions during animation.
+switchCycleDuringWait = false
+switchCycleDesktops = false
+exposeCycleDesktops = false
+
+[appearance]
+animationDuration = 150
+background = #00000088
+includeFrame = true
+cornerRadius = 8
+
+[livepreview]
+icon = false
+iconSize = 16
+
+[filler]
+iconSize = 16
+
+[highlight]
+tint = #abcdff
+tintOpacity = 48
+tintBorder = 4
+
+[label]
+option = windowTitle
+font = DejaVu Sans,WenQuanYi Micro Hei 11
+position = top
+align = left
+iconSize = 16
+width = 1.0
+
+[panel]
+show = false
+reserveSpace = true
+
+[desktop]
+show = false

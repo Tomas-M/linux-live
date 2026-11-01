@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+apt-get install --yes --no-install-recommends build-essential dpkg-dev meson pkg-config \
+   libx11-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev libxft-dev libxrender-dev libxi-dev libxrandr-dev libxinerama-dev libpng-dev libchipmunk-dev libpango1.0-dev
+mkdir -p /tmp/skippy-build
+cd /tmp/skippy-build
+wget -O source.tar.gz https://github.com/Tomas-M/skippy-xd/archive/HEAD.tar.gz
+mkdir source
+tar -xf source.tar.gz -C source --strip-components=1
+cd source
+SKIPPYVERSION=$(sed -n 's/^v\([0-9][0-9.]*\).*/\1/p' version.txt)
+meson setup build --prefix=/usr --sysconfdir=/etc --buildtype=release --strip \
+   -Dskippy_chipmunk=enabled -Dskippy_gif=disabled -Dskippy_jpeg=disabled
+meson compile -C build
+meson test -C build --print-errorlogs
+PACKAGE=/tmp/skippy-build/package
+DESTDIR=$PACKAGE meson install -C build
+mkdir -p "$PACKAGE/DEBIAN" "$PACKAGE/usr/share/skippy-xd" debian
+printf '/etc/xdg/skippy-xd.rc\n' > "$PACKAGE/DEBIAN/conffiles"
+cp COPYING "$PACKAGE/usr/share/skippy-xd/COPYING"
+# Derive only runtime dependencies; compiler packages stay in the disposable branch.
+printf 'Source: skippy-xd\n\nPackage: skippy-xd\nArchitecture: any\nDescription: X11 window previews and switcher\n' > debian/control
+DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/skippy-xd")
+printf 'Package: skippy-xd\nVersion: %s\nArchitecture: amd64\nMaintainer: Slax <build@slax.org>\nDepends: %s\nDescription: X11 window previews and switcher\n' \
+   "$SKIPPYVERSION" "${DEPENDS#shlibs:Depends=}" > "$PACKAGE/DEBIAN/control"
+dpkg-deb --build --root-owner-group "$PACKAGE" "$OUTPUT/skippy-xd.deb"
