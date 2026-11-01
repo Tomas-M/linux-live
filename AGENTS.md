@@ -241,6 +241,9 @@ must follow the general Slax repair rules above.
   PXE needs GNU `cpio` for initramfs repacking and Debian's dynamically linked
   `busybox` for `httpd`. Install both without recommends; keep the separate
   static BusyBox bundled in the initramfs unchanged.
+- Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
+  creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
+  `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
   the build output's `kernel` directory when reinstalling the work VM.
@@ -315,6 +318,10 @@ must follow the general Slax repair rules above.
   `fonts/Noto-COLRv1.ttf`, SHA256 `0ae57fe58645638523ba35f388d93739d292539a9acb84df5700c81b1e1a28d2`.
   Keep this compact color emoji font instead of installing the bitmap
   `fonts-noto-color-emoji` package. Preserve its license through cleanup.
+- Desktop also installs `fonts-wqy-microhei` for CJK fallback. Preserve its
+  packaged copyright as `/usr/share/fonts/truetype/wqy/LICENSE` before cleanup,
+  disable its generic family preference in `copy` so Latin defaults stay intact,
+  and include it in the existing final Fontconfig refresh.
 - Keep Slax application desktop overrides in their module's
   `rootcopy/usr/local/share/applications`, with the exact Debian desktop filename
   (including case). Preserve the package's `/usr/share/applications` original:

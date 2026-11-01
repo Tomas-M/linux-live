@@ -81,6 +81,8 @@ mimetypes MimeTypes
 EOF
 
 # Refresh shared caches after every desktop default and icon has been restored.
+# Keep the existing Latin font preferences; Micro Hei supplies missing CJK glyphs.
+rm -f /etc/fonts/conf.d/65-wqy-microhei.conf
 fc-cache -f
 update-desktop-database /usr/local/share/applications
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
