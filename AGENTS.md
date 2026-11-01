@@ -248,7 +248,8 @@ must follow the general Slax repair rules above.
   branch, with Debian's Chipmunk library and without GIF or JPEG support. Its X11
   and PNG runtime libraries are shared with the desktop. Start its daemon after Picom to retain previews
   of minimized windows; Alt+Tab and Alt+Shift+Tab switch within the current desktop.
-  Alt+F3 opens its four-workspace overview. Keep live and uncached preview icons at 16 px.
+  Alt+F3 opens its four-workspace overview. Keep the caption and uncached preview
+  icons at 16 px. Disable the live screenshot icon overlay with `livepreview.icon=false`.
   Maintain source fixes in the sibling `../skippy-xd` repository and publish them
   to `Tomas-M/skippy-xd`. Download its current HEAD without manual version or
   hash pins and derive the package version from its source. Do not duplicate
@@ -269,8 +270,9 @@ must follow the general Slax repair rules above.
   as the Slax font description. Pango handles fallback, shaping and UTF-8
   ellipsization. Keep layouts cached across hover redraws. Install only the
   PangoXft runtime library in Slax; development packages stay in the build branch.
-  Place the label above the preview with `position=top`, `align=left`,
-  `iconSize=16` and `width=1.0`. The full caption, including its icon and padding,
+  Place the caption inside the preview's common frame with `position=top`,
+  `align=left`, `iconSize=16` and `width=1.0`. Include its fixed screen-pixel
+  height in the tile layout. The full caption, including its icon and padding,
   must fit inside the preview width; desktop-page labels have no application icon.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
@@ -388,7 +390,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.3`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.4`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   Fullscreen xlunch sets `_NET_WM_STATE_FULLSCREEN` and `_NET_WM_STATE_SKIP_PAGER`
@@ -403,6 +405,8 @@ must follow the general Slax repair rules above.
   cursors; pointer capture during clicks must not look like leaving the field.
   Only the editable viewport starts text selection or middle-click paste;
   the search icon and Ctrl F hint retain the inherited pointer cursor.
+  With an empty search field, all four arrows navigate the icon grid. Horizontal
+  arrows edit the caret only while the focused search field contains text.
   The caret blinks in 500 ms phases. Editing and caret movement restore its
   visible phase; ordinary mouse motion does not. Hide it while text is selected,
   and redraw only the input bar for idle blink updates.

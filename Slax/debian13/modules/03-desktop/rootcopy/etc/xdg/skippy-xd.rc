@@ -7,7 +7,7 @@ pseudoTrans = false
 switchOnCurrentMonitor = false
 
 [layout]
-switchLayout = rect
+switchLayout = cosmos
 switchWaitDuration = 100
 # Defer X events so mapping previews cannot reset positions during animation.
 switchCycleDuringWait = false
@@ -18,7 +18,7 @@ exposeCycleDesktops = false
 animationDuration = 150
 background = #00000088
 includeFrame = true
-cornerRadius = 8
+cornerRadius = 9
 
 [livepreview]
 icon = false
@@ -29,8 +29,8 @@ iconSize = 16
 
 [highlight]
 tint = #abcdff
-tintOpacity = 48
-tintBorder = 4
+tintOpacity = 128
+tintBorder = 10
 
 [label]
 option = windowTitle

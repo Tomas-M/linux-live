@@ -88,9 +88,9 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cf
 cc -Os -shared -fPIC -s -o "$OUTPUT/libslax-app-style.so" \
    "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.3.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.4.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.10.3
+cd xlunch-5.10.4
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"

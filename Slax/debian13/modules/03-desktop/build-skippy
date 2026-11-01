@@ -1,6 +1,5 @@
 #!/bin/sh
 set -eu
-CWD=$(pwd)
 OUTPUT=$1
 apt-get install --yes --no-install-recommends build-essential dpkg-dev meson pkg-config \
    libx11-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev libxft-dev libxrender-dev libxi-dev libxrandr-dev libxinerama-dev libpng-dev libchipmunk-dev libpango1.0-dev
