@@ -30,4 +30,4 @@
    or from=http://some_url/to_iso_file.iso, or from=ask to select from list
 
  * noload=[regex] is used to specify what modules will not be loaded. Use
-   a regular expression, for example noload=04-apps or noload=apps|chromium
+   a regular expression, for example noload=04-chromium or noload=firmware|chromium

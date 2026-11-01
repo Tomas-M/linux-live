@@ -62,6 +62,7 @@ mv "$INITRAMFS" "$BOOT/initrfs.img"
 sh "$KIT/tools/grub.create" "$MEDIA" slax
 sh "$BOOT/grub/makeiso.sh" "$BUILD/slax-amd64.iso"
 # Publish the completed ISO atomically; keep small package manifests alongside it.
+rm -rf "$WORK/manifests"
 cp -a "$BUILD/manifests" "$WORK/"
 cp "$BUILD/slax-amd64.iso" "$WORK/slax-amd64.iso.part"
 mv "$WORK/slax-amd64.iso.part" "$WORK/slax-amd64.iso"

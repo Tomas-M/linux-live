@@ -22,3 +22,14 @@ included in Slax.
 
 The finished slax-amd64.iso (BIOS and UEFI) and package lists in manifests
 are saved to the working directory. A new run reuses the compiled kernel.
+
+The runtime modules load in this order:
+
+    01-core.sb       Base system, kernel modules and Linux Assistant
+    02-firmware.sb   Network firmware
+    03-desktop.sb    Xorg, Fluxbox, desktop tools and X applications
+    04-chromium.sb   Chromium and final launcher caches
+
+Desktop runtime packages share one module. Compilation uses a disposable
+branch, followed by cleanup and the combined rootcopy. Fluxbox is the window
+manager; Blackbox is not installed.
