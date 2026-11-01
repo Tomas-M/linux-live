@@ -274,6 +274,9 @@ must follow the general Slax repair rules above.
   `align=left`, `iconSize=16` and `width=1.0`. Include its fixed screen-pixel
   height in the tile layout. The full caption, including its icon and padding,
   must fit inside the preview width; desktop-page labels have no application icon.
+  Application headers add two pixels above and below the original line insets.
+  Workspace labels sit inside their previews. Set their `[desktop-label]` padding,
+  margin and radius in screen pixels; keep their rounded masks and Pango layouts cached.
 - Back up completed kernel `.deb` packages and their checksums to
   `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
   the build output's `kernel` directory when reinstalling the work VM.

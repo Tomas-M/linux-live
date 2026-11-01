@@ -40,6 +40,11 @@ align = left
 iconSize = 16
 width = 1.0
 
+[desktop-label]
+padding = 4
+margin = 8
+radius = 6
+
 [panel]
 show = false
 reserveSpace = true

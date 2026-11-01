@@ -7,7 +7,8 @@ mkdir -p /tmp/skippy-build
 cd /tmp/skippy-build
 wget -O source.tar.gz https://github.com/Tomas-M/skippy-xd/archive/HEAD.tar.gz
 mkdir source
-tar -xf source.tar.gz -C source --strip-components=1
+# Use extraction time so clock differences in Git archives do not stop Meson.
+tar -mxf source.tar.gz -C source --strip-components=1
 cd source
 SKIPPYVERSION=$(sed -n 's/^v\([0-9][0-9.]*\).*/\1/p' version.txt)
 meson setup build --prefix=/usr --sysconfdir=/etc --buildtype=release --strip \
