@@ -244,6 +244,14 @@ must follow the general Slax repair rules above.
 - Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
+- Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
+  the official binary package without recompiling. Remove `xfs_scrub`, its
+  scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
+  The current kernel lacks online scrub support. Drop ICU and Python runtime
+  dependencies after removing these tools; preserve the unrelated XFS udev rule.
+  Install the resulting package after discarding the compiler branch, before
+  cleanup, and hold it so an ordinary upgrade cannot reintroduce Python.
+  Keep its original Debian package name, version and remaining native binaries.
 - `03-desktop/build-skippy` compiles the current Skippy-XD fork HEAD in a disposable
   branch, with Debian's Chipmunk library and without GIF or JPEG support. Its X11
   and PNG runtime libraries are shared with the desktop. Start its daemon after Picom to retain previews

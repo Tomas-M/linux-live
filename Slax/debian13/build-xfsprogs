@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+OUTPUT=$1
+WORK=$(mktemp -d /tmp/xfsprogs-repack.XXXXXX)
+trap 'rm -rf "$WORK"' 0
+cd "$WORK"
+apt-get download xfsprogs
+dpkg-deb --raw-extract xfsprogs_*.deb package
+
+# Keep Debian's native tools unchanged, without online scrub or Python helpers.
+rm package/usr/sbin/xfs_protofile package/usr/sbin/xfs_scrub*
+rm package/usr/share/man/man8/xfs_protofile.8.gz package/usr/share/man/man8/xfs_scrub*.8.gz
+rm package/usr/share/xfsprogs/xfs_scrub_all.cron package/usr/libexec/xfsprogs/xfs_scrub_fail
+rm package/usr/lib/systemd/system/xfs_scrub* package/usr/lib/systemd/system/system-xfs_scrub.slice
+sed -i -E 's/, python3-dbus( \([^)]*\))?//; s/, python3:any( \([^)]*\))?//; s/, libicu[0-9]+( \([^)]*\))?//' package/DEBIAN/control
+
+# Do not manage the removed scrub services and timer from package hooks.
+sed -i '/^# Automatically added by dh_installsystemd\//,/^# End automatically added section$/d' \
+   package/DEBIAN/postinst package/DEBIAN/prerm package/DEBIAN/postrm
+sed -i "s/^Installed-Size:.*/Installed-Size: $(du -sk --exclude=DEBIAN package | cut -f1)/" package/DEBIAN/control
+cd package
+find . -type f ! -path './DEBIAN/*' -printf '%P\0' | sort -z | xargs -0 md5sum > DEBIAN/md5sums
+cd ..
+dpkg-deb --build --root-owner-group package "$OUTPUT"
