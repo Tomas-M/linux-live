@@ -12,7 +12,7 @@ mc squashfs-tools xorriso grub2-common grub-pc-bin zip unzip psmisc net-tools ip
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
 hdparm sdparm mdadm smartmontools dosfstools fdisk lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
 ntfs-3g rfkill file dnsmasq cpio busybox dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
-e2fsprogs exfatprogs btrfs-progs iputils-ping bind9-dnsutils traceroute ethtool iw usbutils tcpdump \
+e2fsprogs exfatprogs btrfs-progs lvm2 cryptsetup-bin iputils-ping bind9-dnsutils traceroute ethtool iw usbutils tcpdump \
 /artifacts/kernel.deb
 
 # Keep the AUFS kernel paired with the modules shipped in the live image.
