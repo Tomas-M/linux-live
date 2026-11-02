@@ -99,6 +99,12 @@ xfce4-panel --disable-wm-check --sm-client-disable &
    if [ -r "$SND" ]; then
       aplay "$SND"
    fi
+
+   # Preload Chromium after the sound only with more than 512 MiB available RAM.
+   AVAILABLEKB=$(awk '/^MemAvailable:/ { print $2 }' /proc/meminfo)
+   if [ "$AVAILABLEKB" -gt 524288 ]; then
+      fbliveapp chromium --no-startup-window &
+   fi
 ) &
 
 # And last but not least we start fluxbox.
