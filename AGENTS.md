@@ -244,6 +244,9 @@ must follow the general Slax repair rules above.
 - Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
+- Core includes `lvm2` and `cryptsetup-bin` for accessing LVM volumes and LUKS
+  encrypted disks offline. Desktop includes GParted as the ready-to-use Partition
+  Manager; its launcher must not require a download on a clean Slax boot.
 - Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
   the official binary package without recompiling. Remove `xfs_scrub`, its
   scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
