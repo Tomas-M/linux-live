@@ -387,9 +387,10 @@ must follow the general Slax repair rules above.
   `accessories-text-editor` names through the existing icon aliases too.
   `03-desktop` includes `librsvg2-common` so GTK can decode SVG icons. Refresh
   GTK's icon caches after restoring files in `03-desktop` and `04-chromium`.
-  ConnMan uses three white vector tray glyphs: `network-offline`,
+  ConnMan uses three vector tray glyphs: `network-offline`,
   `preferences-system-network` and `network-transmit-receive`. Its tray states are
   shared by Ethernet and Wi-Fi; strength icons inside its window remain unchanged.
+  Keep the glyphs white, with a red `#ff4d4d` X badge on disconnected icons.
   Fluxbox startup runs `connman-gtk --tray` after the panel appears, without
   opening Network Settings. The tray still opens the settings on demand.
   Keep PNGs at 16, 22, 24, 32 and 48 px in hicolor and Adwaita's matching `legacy`
@@ -704,8 +705,11 @@ must follow the general Slax repair rules above.
   ten seconds using monotonic `/proc/uptime`, polling at 100 ms intervals.
   Play the startup sound after setting the
   wallpaper; do not delay desktop startup for an earlier sound or wait on all
-  background processes when the sound file is absent. Keep the panel's 84 percent
-  opacity. The Slax theme uses `background: unset`; `none` restores the last
+  background processes when the sound file is absent. After the sound, start
+  `fbliveapp chromium --no-startup-window &` as requested for preload testing;
+  run it only when `/proc/meminfo` reports `MemAvailable` above 524288 KiB
+  (512 MiB). Do not add a keep-alive flag implicitly. Keep the panel's 84 percent opacity.
+  The Slax theme uses `background: unset`; `none` restores the last
   background at startup. `fbscreensize` runs `sh ~/.fehbg` to restore the image
   and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
   so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
@@ -819,7 +823,11 @@ must follow the general Slax repair rules above.
   themes or desktop configuration, one VM startup is sufficient.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
   or `-Firmware uefi`. Stop it and allow VirtualBox to release its session
-  before changing firmware. Stop test VMs after verification. Use Slax's normal
+  before changing firmware. Tomas authorizes normal shutdowns, ISO replacements
+  and restarts of this Slax test VM without asking again. Leave its GUI window
+  accessible and the VM running after requested boots and tests. Stop other
+  temporary test VMs after verification. This does not authorize restarting the
+  separate Debian work desktop. Use Slax's normal
   shutdown whenever persistence or automount can have writable disks mounted,
   even when booting from CD. `sync` does not replace unmounting. Use VirtualBox
   `controlvm ... poweroff` only when no writable filesystems remain mounted.
