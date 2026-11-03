@@ -253,17 +253,9 @@ static BOOL format_data(HANDLE disk,const Plan *plan)
    return TRUE;
 }
 
-// Publish the new partition only after formatting, writing the backup GPT first.
-static BOOL prepare_data(HANDLE disk,Plan *plan)
+// Commit matching GPT copies in backup-first order, retaining the BIOS boot code.
+static BOOL publish_plan(HANDLE disk,Plan *plan)
 {
-   GUID unique;
-   if (FAILED(CoCreateGuid(&unique))) return fail(L"Windows could not create a unique partition identifier.");
-   if (!format_data(disk,plan)) return FALSE;
-   BYTE *entry=plan->table+3*128;
-   memset(entry,0,128);
-   memcpy(entry,&data_type,16); memcpy(entry+16,&unique,16);
-   put64(entry+32,plan->start/512); put64(entry+40,(plan->start+plan->size)/512-1);
-   memcpy(entry+56,L"Live data",18);
    uint64_t last=plan->disk_bytes/512-1;
    BYTE *header=plan->header,backup[512];
    put64(header+32,last); put64(header+48,last-plan->table_sectors-1);
@@ -279,7 +271,31 @@ static BOOL prepare_data(HANDLE disk,Plan *plan)
       if (plan->mbr[i+4]==0xee) put32(plan->mbr+i+12,last>UINT32_MAX?UINT32_MAX:last);
    if (!write_at(disk,0,plan->mbr,512)) return FALSE;
    if (!FlushFileBuffers(disk)) return windows_error(L"Could not finish updating the disk.");
+   BYTE check[512],*table=malloc(plan->table_bytes);
+   if (!table) return fail(L"Not enough memory to verify the updated partition table.");
+   BOOL read=read_at(disk,0,check,512);
+   BOOL equal=read && !memcmp(check,plan->mbr,512);
+   if (equal) equal=read_header(disk,1,last+1,check) && !memcmp(check,header,512);
+   if (equal) equal=read_header(disk,last,last+1,check) && !memcmp(check,backup,512);
+   if (equal) equal=read_at(disk,1024,table,plan->table_bytes) && !memcmp(table,plan->table,plan->table_bytes);
+   if (equal) equal=read_at(disk,(last-plan->table_sectors)*512,table,plan->table_bytes) && !memcmp(table,plan->table,plan->table_bytes);
+   free(table);
+   if (!equal) return fail(L"The USB disk did not retain the expected partition tables. Reconnect it and check the disk before continuing.");
    return TRUE;
+}
+
+// Publish the data partition only after its filesystem has been written successfully.
+static BOOL prepare_data(HANDLE disk,Plan *plan)
+{
+   GUID unique;
+   if (FAILED(CoCreateGuid(&unique))) return fail(L"Windows could not create a unique partition identifier.");
+   if (!format_data(disk,plan)) return FALSE;
+   BYTE *entry=plan->table+3*128;
+   memset(entry,0,128);
+   memcpy(entry,&data_type,16); memcpy(entry+16,&unique,16);
+   put64(entry+32,plan->start/512); put64(entry+40,(plan->start+plan->size)/512-1);
+   memcpy(entry+56,L"Live data",18);
+   return publish_plan(disk,plan);
 }
 
 #ifdef DISK_SETUP_TEST
@@ -319,6 +335,88 @@ static BOOL volume_extent(const WCHAR *name,DISK_EXTENT *extent)
    if (!ok || extents.NumberOfDiskExtents!=1) return FALSE;
    *extent=extents.Extents[0];
    return TRUE;
+}
+
+typedef struct
+{
+   DWORD signature;
+   HANDLE disk,mutex,parent;
+   DISK_EXTENT extent;
+   WCHAR volume[128];
+   Plan plan;
+   BYTE table[1024*128];
+} Handoff;
+
+// Retain the exact approved disk, GPT identity and partition array across relaunch.
+static BOOL same_plan(const Plan *a,const Plan *b)
+{
+   BOOL space=a->disk_bytes==b->disk_bytes && a->start==b->start && a->size==b->size;
+   BOOL headers=!memcmp(a->mbr,b->mbr,512) && !memcmp(a->header,b->header,512);
+   BOOL partitions=a->table_bytes==b->table_bytes && !memcmp(a->table,b->table,a->table_bytes);
+   if (!space || !headers || !partitions) return fail(L"The USB disk or partition layout changed. No further changes were made. Run Disk Setup again from DISK-SETUP.");
+   return TRUE;
+}
+
+// Relaunch an ordinary temporary EXE with only the original disk's inherited handles.
+static BOOL relaunch(HANDLE disk,HANDLE mutex,const DISK_EXTENT *extent,const WCHAR *volume,const Plan *plan,const WCHAR *executable)
+{
+   WCHAR temp[260],root[260],temp_volume[128],folder[260]=L"",copy[260]=L"",id[40],command[320];
+   GUID unique;
+   DISK_EXTENT location;
+   DWORD length=GetTempPathW(180,temp);
+   if (!length || length>=180 || !GetVolumePathNameW(temp,root,260) || !GetVolumeNameForVolumeMountPointW(root,temp_volume,128))
+      return windows_error(L"Could not locate a temporary folder on the Windows disk.");
+   if (GetDriveTypeW(root)!=DRIVE_FIXED || !volume_extent(temp_volume,&location) || location.DiskNumber==extent->DiskNumber)
+      return fail(L"The temporary folder must be on a local disk separate from this USB drive.");
+   if (FAILED(CoCreateGuid(&unique))) return fail(L"Could not create a temporary folder name.");
+   StringFromGUID2(&unique,id,40);
+   swprintf(folder,260,L"%lsDiskSetup-%ls",temp,id);
+   swprintf(copy,260,L"%ls\\disk-setup.exe",folder);
+   if (!CreateDirectoryW(folder,NULL)) return windows_error(L"Could not create the temporary folder.");
+   BOOL ok=FALSE;
+   HANDLE mapping=NULL,parent=NULL;
+   Handoff *handoff=NULL;
+   STARTUPINFOEXW startup={0};
+   if (!CopyFileW(executable,copy,TRUE)) { windows_error(L"Could not copy Disk Setup to the temporary folder."); goto done; }
+   SECURITY_ATTRIBUTES attributes={sizeof(attributes),NULL,TRUE};
+   mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,&attributes,PAGE_READWRITE,0,sizeof(Handoff),NULL);
+   parent=OpenProcess(SYNCHRONIZE,TRUE,GetCurrentProcessId());
+   if (!mapping || !parent) { windows_error(L"Could not transfer the confirmed USB disk."); goto done; }
+   handoff=MapViewOfFile(mapping,FILE_MAP_WRITE,0,0,sizeof(Handoff));
+   if (!handoff) { windows_error(L"Could not transfer the confirmed USB disk."); goto done; }
+   handoff->signature=0x4c4c4b31;
+   handoff->disk=disk; handoff->mutex=mutex; handoff->parent=parent;
+   handoff->extent=*extent; handoff->plan=*plan;
+   wcscpy(handoff->volume,volume);
+   memcpy(handoff->table,plan->table,plan->table_bytes);
+   SIZE_T bytes=0;
+   InitializeProcThreadAttributeList(NULL,1,0,&bytes);
+   startup.lpAttributeList=malloc(bytes);
+   if (!startup.lpAttributeList) { fail(L"Not enough memory to restart Disk Setup."); goto done; }
+   if (!InitializeProcThreadAttributeList(startup.lpAttributeList,1,0,&bytes))
+   { free(startup.lpAttributeList); startup.lpAttributeList=NULL; windows_error(L"Could not restart Disk Setup."); goto done; }
+   HANDLE handles[]={mapping,disk,mutex,parent};
+   if (!SetHandleInformation(disk,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT) || !SetHandleInformation(mutex,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT) ||
+       !UpdateProcThreadAttribute(startup.lpAttributeList,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,handles,sizeof(handles),NULL,NULL))
+   { windows_error(L"Could not transfer the confirmed USB disk."); goto done; }
+   swprintf(command,320,L"\"%ls\" --continue %lu",copy,(unsigned long)(uintptr_t)mapping);
+   startup.StartupInfo.cb=sizeof(startup);
+   // Queue cleanup before starting; the running EXE cannot delete its own image.
+   if (!MoveFileExW(copy,NULL,MOVEFILE_DELAY_UNTIL_REBOOT) || !MoveFileExW(folder,NULL,MOVEFILE_DELAY_UNTIL_REBOOT))
+   { windows_error(L"Could not schedule temporary file cleanup. No changes were made."); goto done; }
+   PROCESS_INFORMATION process;
+   if (!CreateProcessW(copy,command,NULL,NULL,TRUE,EXTENDED_STARTUPINFO_PRESENT,NULL,folder,&startup.StartupInfo,&process))
+   { windows_error(L"Could not start the temporary copy of Disk Setup."); goto done; }
+   CloseHandle(process.hThread); CloseHandle(process.hProcess);
+   ok=TRUE;
+done:
+   SetHandleInformation(disk,HANDLE_FLAG_INHERIT,0); SetHandleInformation(mutex,HANDLE_FLAG_INHERIT,0);
+   if (startup.lpAttributeList) { DeleteProcThreadAttributeList(startup.lpAttributeList); free(startup.lpAttributeList); }
+   if (handoff) UnmapViewOfFile(handoff);
+   if (mapping) CloseHandle(mapping);
+   if (parent) CloseHandle(parent);
+   if (!ok) { DeleteFileW(copy); RemoveDirectoryW(folder); }
+   return ok;
 }
 
 // Use Windows' storage provider to reject disks used by its system or boot files.
@@ -405,39 +503,105 @@ typedef struct
    HANDLE disk,thread;
    DWORD number;
    uint64_t source_offset;
+   const WCHAR *volume;
    Plan *plan;
    HWND dialog;
    BOOL success;
    WCHAR drive[260];
 } Job;
 
-// Recheck the confirmed disk layout, prepare its free tail and refresh Windows.
+// Test real file I/O on the confirmed FAT32 volume before removing its setup tools.
+static BOOL verify_data(const Job *job)
+{
+   WCHAR name[128],path[260];
+   DISK_EXTENT extent;
+   if (!GetVolumeNameForVolumeMountPointW(job->drive,name,128) || !volume_extent(name,&extent))
+      return fail(L"Could not verify USB-DATA. DISK-SETUP has been kept.");
+   if (extent.DiskNumber!=job->number || (uint64_t)extent.StartingOffset.QuadPart!=job->plan->start)
+      return fail(L"The data drive no longer belongs to the confirmed USB disk. DISK-SETUP has been kept.");
+   if (!GetTempFileNameW(job->drive,L"llk",0,path)) return windows_error(L"Could not test writing to USB-DATA. DISK-SETUP has been kept.");
+   HANDLE file=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_WRITE_THROUGH|FILE_FLAG_DELETE_ON_CLOSE,NULL);
+   if (file==INVALID_HANDLE_VALUE)
+   {
+      windows_error(L"Could not test USB-DATA. DISK-SETUP has been kept.");
+      DeleteFileW(path);
+      return FALSE;
+   }
+   GUID written,read;
+   DWORD count;
+   BOOL ok=SUCCEEDED(CoCreateGuid(&written));
+   if (ok) ok=WriteFile(file,&written,sizeof(written),&count,NULL) && count==sizeof(written) && FlushFileBuffers(file);
+   LARGE_INTEGER start={0};
+   if (ok) ok=SetFilePointerEx(file,start,NULL,FILE_BEGIN) && ReadFile(file,&read,sizeof(read),&count,NULL) && count==sizeof(read);
+   if (ok) ok=!memcmp(&written,&read,sizeof(read));
+   CloseHandle(file);
+   if (!ok) return fail(L"The USB-DATA write/read test failed. DISK-SETUP has been kept.");
+   return TRUE;
+}
+
+// Remove only the original setup entry after locking its volume and rechecking GPT.
+static BOOL remove_setup(const Job *job,const Plan *expected)
+{
+   DISK_EXTENT extent;
+   if (!volume_extent(job->volume,&extent)) return fail(L"USB-DATA is ready, but DISK-SETUP could not be located and was kept.");
+   if (extent.DiskNumber!=job->number || (uint64_t)extent.StartingOffset.QuadPart!=job->source_offset)
+      return fail(L"The setup volume changed. No partition was removed.");
+   WCHAR path[128];
+   wcscpy(path,job->volume); path[wcslen(path)-1]=0;
+   HANDLE volume=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+   if (volume==INVALID_HANDLE_VALUE) return windows_error(L"USB-DATA is ready, but DISK-SETUP could not be opened and was kept.");
+   DWORD returned;
+   BOOL ok=DeviceIoControl(volume,FSCTL_LOCK_VOLUME,NULL,0,NULL,0,&returned,NULL);
+   if (!ok) windows_error(L"USB-DATA is ready. DISK-SETUP is still in use and was kept. Close its files and run Disk Setup again.");
+   Plan fresh={0};
+   if (ok) ok=read_plan(job->disk,expected->disk_bytes,job->source_offset,&fresh) && same_plan(&fresh,expected);
+   if (ok && !DeviceIoControl(volume,FSCTL_DISMOUNT_VOLUME,NULL,0,NULL,0,&returned,NULL))
+      ok=windows_error(L"USB-DATA is ready, but DISK-SETUP could not be unmounted and was kept.");
+   if (ok)
+   {
+      memset(fresh.table+2*128,0,128);
+      ok=publish_plan(job->disk,&fresh);
+   }
+   free(fresh.table);
+   CloseHandle(volume);
+   if (ok && !DeviceIoControl(job->disk,IOCTL_DISK_UPDATE_PROPERTIES,NULL,0,NULL,0,&returned,NULL))
+      ok=windows_error(L"USB-DATA is ready, but Windows could not refresh the removed setup partition. Reconnect the USB drive.");
+   return ok;
+}
+
+// Keep DISK-SETUP until the data partition is formatted, mounted and verified.
 static DWORD WINAPI prepare_worker(void *data)
 {
    Job *job=data;
    Plan fresh={0};
    BOOL ok=read_plan(job->disk,job->plan->disk_bytes,job->source_offset,&fresh);
-   if (ok)
-   {
-      BOOL same_space=fresh.start==job->plan->start && fresh.size==job->plan->size;
-      BOOL same_partitions=fresh.table_bytes==job->plan->table_bytes && !memcmp(fresh.table,job->plan->table,fresh.table_bytes);
-      if (!same_space || !same_partitions) ok=fail(L"The disk layout changed while this window was open. Close Disk Setup and try again.");
-   }
-   if (ok) ok=prepare_data(job->disk,&fresh);
-   free(fresh.table);
+   if (ok) ok=same_plan(&fresh,job->plan);
+   if (ok && fresh.size) ok=prepare_data(job->disk,&fresh);
    DWORD returned;
    if (ok && !DeviceIoControl(job->disk,IOCTL_DISK_UPDATE_PROPERTIES,NULL,0,NULL,0,&returned,NULL))
       ok=windows_error(L"The data partition was created, but Windows could not refresh the disk. Reconnect the USB drive.");
    if (ok) ok=mount_data(job->number,job->plan->start,job->drive);
+   if (ok) ok=verify_data(job);
+   fresh.size=0;
+   if (ok) ok=remove_setup(job,&fresh);
+   if (ok) ok=mount_data(job->number,job->plan->start,job->drive);
+   free(fresh.table);
    job->success=ok;
    return 0;
 }
 
-// Keep the progress window responsive while disk writes run on a worker thread.
-static HRESULT CALLBACK progress_callback(HWND window,UINT event,WPARAM button,LPARAM value,LONG_PTR data)
+// Apply the application icon and keep progress responsive while disk writes run.
+static HRESULT CALLBACK dialog_callback(HWND window,UINT event,WPARAM button,LPARAM value,LONG_PTR data)
 {
    (void)value;
+   if (event==TDN_CREATED)
+   {
+      HINSTANCE instance=GetModuleHandleW(NULL);
+      SendMessageW(window,WM_SETICON,ICON_BIG,(LPARAM)LoadIconW(instance,MAKEINTRESOURCEW(1)));
+      SendMessageW(window,WM_SETICON,ICON_SMALL,(LPARAM)LoadImageW(instance,MAKEINTRESOURCEW(1),IMAGE_ICON,GetSystemMetrics(SM_CXSMICON),GetSystemMetrics(SM_CYSMICON),LR_SHARED));
+   }
    Job *job=(Job *)data;
+   if (!job) return S_OK;
    if (event==TDN_CREATED)
    {
       job->dialog=window;
@@ -466,7 +630,11 @@ static HRESULT CALLBACK progress_callback(HWND window,UINT event,WPARAM button,L
 static int dialog(const WCHAR *heading,const WCHAR *content,PCWSTR icon,TASKDIALOG_COMMON_BUTTON_FLAGS buttons)
 {
    int button=IDCANCEL;
-   if (FAILED(TaskDialog(NULL,NULL,L"Disk Setup",heading,content,buttons,icon,&button)))
+   TASKDIALOGCONFIG config={0};
+   config.cbSize=sizeof(config); config.pszWindowTitle=L"Disk Setup";
+   config.pszMainInstruction=heading; config.pszContent=content;
+   config.dwCommonButtons=buttons; config.pszMainIcon=icon; config.pfCallback=dialog_callback;
+   if (FAILED(TaskDialogIndirect(&config,&button,NULL,NULL)))
       button=MessageBoxW(NULL,content,L"Disk Setup",MB_OKCANCEL|MB_ICONINFORMATION);
    return button;
 }
@@ -479,14 +647,37 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,LPWSTR command,int sho
    int argc;
    WCHAR **argv=CommandLineToArgvW(GetCommandLineW(),&argc);
    BOOL preview=argv && argc==2 && !wcscmp(argv[1],L"--preview");
+   BOOL continuation=argv && argc==3 && !wcscmp(argv[1],L"--continue");
+   WCHAR *end=NULL;
+   uint64_t token=continuation?_wcstoui64(argv[2],&end,10):0;
+   BOOL valid_token=continuation && token && token<=UINTPTR_MAX;
+   if (valid_token) valid_token=end && !*end;
+   BOOL arguments=argv && (argc==1 || preview || valid_token);
    LocalFree(argv);
    CoInitializeEx(NULL,COINIT_APARTMENTTHREADED);
    HANDLE disk=INVALID_HANDLE_VALUE,mutex=NULL;
+   Handoff *handoff=NULL;
    Plan plan={0};
    WCHAR executable[32768],root[32768],volume[128],device[64],model[256]=L"USB disk";
    DISK_EXTENT extent;
    BOOL ok=FALSE;
-   if (!GetModuleFileNameW(NULL,executable,32768) || !GetVolumePathNameW(executable,root,32768) || !GetVolumeNameForVolumeMountPointW(root,volume,128))
+   if (!arguments) { fail(L"Run Disk Setup directly from the USB drive's DISK-SETUP partition."); goto done; }
+   if (!GetModuleFileNameW(NULL,executable,32768)) { windows_error(L"Could not locate Disk Setup."); goto done; }
+   if (continuation)
+   {
+      HANDLE mapping=(HANDLE)(uintptr_t)token;
+      handoff=MapViewOfFile(mapping,FILE_MAP_READ,0,0,sizeof(Handoff));
+      CloseHandle(mapping);
+      if (!handoff || handoff->signature!=0x4c4c4b31)
+      { fail(L"The temporary copy did not receive the original USB disk. No changes were made."); goto done; }
+      disk=handoff->disk; mutex=handoff->mutex; extent=handoff->extent;
+      wcscpy(volume,handoff->volume);
+      DWORD waited=WaitForSingleObject(handoff->parent,10000);
+      CloseHandle(handoff->parent);
+      if (waited!=WAIT_OBJECT_0) { fail(L"The original Disk Setup process did not close. No changes were made."); goto done; }
+      goto inspect;
+   }
+   if (!GetVolumePathNameW(executable,root,32768) || !GetVolumeNameForVolumeMountPointW(root,volume,128))
    {
       windows_error(L"Could not locate the disk containing Disk Setup.");
       goto done;
@@ -503,9 +694,18 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,LPWSTR command,int sho
    if (!preview) access|=GENERIC_WRITE;
    disk=CreateFileW(device,access,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,FILE_FLAG_WRITE_THROUGH,NULL);
    if (disk==INVALID_HANDLE_VALUE) { windows_error(L"Could not open the USB disk. Administrator access is required."); goto done; }
+inspect:
+   ;
    BYTE descriptor[4096];
    STORAGE_PROPERTY_QUERY query={StorageDeviceProperty,PropertyStandardQuery,{0}};
    DWORD returned;
+   STORAGE_DEVICE_NUMBER identity;
+   if (!DeviceIoControl(disk,IOCTL_STORAGE_GET_DEVICE_NUMBER,NULL,0,&identity,sizeof(identity),&returned,NULL))
+   { windows_error(L"The original USB disk is no longer available."); goto done; }
+   DISK_EXTENT current;
+   BOOL same_disk=identity.DeviceType==FILE_DEVICE_DISK && identity.DeviceNumber==extent.DiskNumber;
+   BOOL same_volume=volume_extent(volume,&current) && current.DiskNumber==extent.DiskNumber && current.StartingOffset.QuadPart==extent.StartingOffset.QuadPart;
+   if (!same_disk || !same_volume) { fail(L"The original USB disk or setup volume changed. No changes were made."); goto done; }
    if (!DeviceIoControl(disk,IOCTL_STORAGE_QUERY_PROPERTY,&query,sizeof(query),descriptor,sizeof(descriptor),&returned,NULL))
    { windows_error(L"Could not identify the disk hardware."); goto done; }
    STORAGE_DEVICE_DESCRIPTOR *storage=(STORAGE_DEVICE_DESCRIPTOR *)descriptor;
@@ -530,33 +730,39 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,LPWSTR command,int sho
    if (!preview && !DeviceIoControl(disk,IOCTL_DISK_IS_WRITABLE,NULL,0,NULL,0,&returned,NULL))
    { windows_error(L"The USB disk is write-protected or unavailable."); goto done; }
    if (!read_plan(disk,physical->DiskSize.QuadPart,extent.StartingOffset.QuadPart,&plan)) goto done;
+   if (handoff)
+   {
+      Plan approved=handoff->plan;
+      approved.table=handoff->table;
+      if (!same_plan(&plan,&approved)) goto done;
+   }
    if (preview)
    {
       wprintf(L"PLAN %llu %llu\n",(unsigned long long)plan.start,(unsigned long long)plan.size);
       ok=TRUE;
       goto done;
    }
-   if (!plan.size)
+   WCHAR explanation[1024];
+   if (!continuation)
    {
-      WCHAR drive[260],message[512];
-      if (!mount_data(extent.DiskNumber,plan.start,drive)) goto done;
-      swprintf(message,512,L"This USB already has a data drive at %ls",drive);
-      dialog(L"USB-DATA is already available",message,TD_INFORMATION_ICON,TDCBF_OK_BUTTON);
-      ok=TRUE;
+      if (plan.size)
+         swprintf(explanation,1024,L"Make %.2f GB available for your files.\n\nUSB: %ls\n\nYour USB will remain bootable.",plan.size/1e9,model);
+      else
+         swprintf(explanation,1024,L"USB-DATA already exists on %ls.\n\nYour files will be kept and your USB will remain bootable.",model);
+      if (dialog(plan.size?L"Reclaim your missing space":L"USB-DATA is already available",explanation,TD_INFORMATION_ICON,TDCBF_OK_BUTTON|TDCBF_CANCEL_BUTTON)!=IDOK)
+      { ok=TRUE; goto done; }
+      ok=relaunch(disk,mutex,&extent,volume,&plan,executable);
       goto done;
    }
-   WCHAR explanation[1024];
-   swprintf(explanation,1024,L"Create a %.2f GB drive (FAT32) for your files.\n\nUSB: %ls\n\nThe live system and boot files will be kept.",plan.size/1e9,model);
-   if (dialog(L"Use the remaining USB space",explanation,TD_INFORMATION_ICON,TDCBF_OK_BUTTON|TDCBF_CANCEL_BUTTON)!=IDOK)
-   { ok=TRUE; goto done; }
    Job job={0};
    job.disk=disk; job.number=extent.DiskNumber; job.source_offset=extent.StartingOffset.QuadPart; job.plan=&plan;
+   job.volume=volume;
    TASKDIALOGCONFIG progress={0};
    progress.cbSize=sizeof(progress); progress.pszWindowTitle=L"Disk Setup";
    progress.pszMainInstruction=L"Preparing USB-DATA";
    progress.pszContent=L"Keep the USB drive connected.";
    progress.dwFlags=TDF_SHOW_MARQUEE_PROGRESS_BAR|TDF_CALLBACK_TIMER;
-   progress.dwCommonButtons=TDCBF_OK_BUTTON; progress.pfCallback=progress_callback; progress.lpCallbackData=(LONG_PTR)&job;
+   progress.dwCommonButtons=TDCBF_OK_BUTTON; progress.pfCallback=dialog_callback; progress.lpCallbackData=(LONG_PTR)&job;
    HRESULT result=TaskDialogIndirect(&progress,NULL,NULL,NULL);
    if (job.thread) { WaitForSingleObject(job.thread,INFINITE); CloseHandle(job.thread); }
    if (FAILED(result)) { fail(L"Windows could not open the disk preparation window."); goto done; }
@@ -573,6 +779,7 @@ done:
    free(plan.table);
    if (disk!=INVALID_HANDLE_VALUE) CloseHandle(disk);
    if (mutex) CloseHandle(mutex);
+   if (handoff) UnmapViewOfFile(handoff);
    CoUninitialize();
    return ok?0:1;
 }

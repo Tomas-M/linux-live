@@ -10,7 +10,7 @@ apt-get update
 apt-get install --yes --no-install-recommends systemd-sysv udev libwacom-common dbus login passwd tzdata locales kmod \
 mc squashfs-tools xorriso grub2-common grub-pc-bin zip unzip psmisc net-tools iproute2 \
 alsa-utils man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
-hdparm sdparm mdadm smartmontools dosfstools fdisk lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
+hdparm sdparm eject mdadm smartmontools dosfstools fdisk lsof htop gddrescue rsync netcat-openbsd ssh gpm wireless-tools \
 ntfs-3g rfkill file dnsmasq cpio busybox dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \
 e2fsprogs exfatprogs btrfs-progs lvm2 cryptsetup-bin iputils-ping bind9-dnsutils traceroute ethtool iw usbutils tcpdump \
 /artifacts/kernel.deb

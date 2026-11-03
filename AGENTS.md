@@ -945,6 +945,8 @@ must follow the general Slax repair rules above.
   Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
   FAT16 setup partition after the ESP, with Windows preparation tools from shared
   `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
+  Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
+  the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
   Mark the ISO partition with the Linux filesystem GUID so Windows does not
   assign it a drive letter. Append the 300 KiB CD read-ahead padding inside the setup partition,
   beyond its FAT filesystem, and disable xorriso's separate trailing padding to
@@ -952,18 +954,27 @@ must follow the general Slax repair rules above.
   `disk-setup.exe` is a separate, manually launched Windows 10/11 tool. It must
   resolve its own USB disk, reject system disks and unexpected layouts, validate
   both GPT copies, and confirm before formatting only the unused tail as FAT32.
-  Preserve the first three partitions and BIOS/UEFI loaders, relocate the backup
+  Preserve the ISO and EFI partitions and BIOS/UEFI loaders, relocate the backup
   GPT to the physical disk end, and leave an existing data partition unchanged.
+  First format, mount and verify file writes/reads on USB-DATA, then lock and
+  remove only DISK-SETUP. Keep DISK-SETUP if data preparation or verification fails.
+  After confirmation, relaunch a plain EXE copy in a separate local temporary
+  folder. Transfer the original open disk handle, volume identity, mutex and
+  complete approved GPT snapshot through inherited handles; revalidate them
+  before writing. Never choose a target from the temporary EXE's location or
+  a command-line disk number. Schedule temporary files for deletion at restart.
   Support FAT32 above 32 GiB without depending on Windows' native formatter.
-  Ship only the native Win32 executable and README on DISK-SETUP. Keep its source
-  and manifest under `tools`; rebuild the bundled 32-bit executable manually with
+  Ship only the native Win32 executable and README on DISK-SETUP. Keep its source,
+  manifest, PNG icon master and ICO with multiple resolutions under `tools`;
+  rebuild the bundled 32-bit executable manually with
   `sh tools/disk-setup.build` and MinGW-w64 after source changes, never during ISO builds.
-  Work exclusively on the physical USB disk containing the executable; never
+  Work exclusively on the physical USB disk of the original launch; never
   select a different disk. Reject unexpected layouts and concurrent instances.
   Use exact-sized Win32 sector reads, including the final sector. Derive the data start from the ISO volume size,
   not the backup GPT address, because Windows may already have relocated GPT.
-  Test writes on disposable dynamic VHDs, not large raw files on the Windows
-  system disk. Extending a sparse file alone does not avoid NTFS valid-data
+  Run Disk Setup write tests only inside an isolated VM, never on this Windows
+  host. Use disposable media, not large raw files on a Windows system disk.
+  Extending a sparse file alone does not avoid NTFS valid-data
   zero filling when later writes target its end; a 64 GiB test caused heavy host I/O.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
