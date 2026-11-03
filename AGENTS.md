@@ -533,6 +533,12 @@ must follow the general Slax repair rules above.
   Generate ordinary automount units only under `/run/systemd/system`; udev
   starts them without persistent enablement. Boot cleanup cancels queued starts
   of saved generated units before removing them and reloading systemd.
+- Automatic fstab generation and the udev automounter skip whole block devices
+  with kernel partition children. Hybrid ISOs expose duplicate filesystem
+  signatures on the disk and its ISO partition; mount only the partitions.
+  Keep whole-device filesystems without partitions supported, including USB
+  media without a partition table. Detect actual sysfs partition children
+  rather than relying on device names or excluding all disks.
 - xlunch keeps each fitted label and its measured width until the cell width
   changes. Repeated Imlib2 measurements shifted `Terminal` by one pixel on hover;
   partial redraws must preserve label geometry, including for the first entry.
