@@ -632,6 +632,16 @@ must follow the general Slax repair rules above.
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
 - Use Docklike Taskbar for grouped application icons and hover previews.
+  `docklike-window-removal.diff` adjusts the selected window index whenever a
+  group member leaves, including SIGTERM, SIGKILL and workspace changes. Keep
+  the selected surviving window when earlier entries shift; if it leaves,
+  select the first remaining member. Window counts still derive from the list.
+  A removed preview cancels hover across visible-card relayout until the pointer
+  leaves its previous hit area; another card must not restart dimming there.
+  `panel-plugin-restart.diff` restarts crashed plugins without a dialog or
+  removing their configuration. Repeated crashes within sixty seconds wait
+  one second before restarting. Fluxbox startup also supervises abnormal exits
+  of the whole panel while X is available; a clean panel exit stops supervision.
   `fluxbox-panel-focus.diff` advertises `_FLUXBOX_FOCUS_ROOT`. Desktop primary
   clicks and requests from `panel-clear-focus.diff` focus the WM's mapped
   input-only supporting window, leaving application stacking and visibility

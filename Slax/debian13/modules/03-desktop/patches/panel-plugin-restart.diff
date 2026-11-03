@@ -1,0 +1,166 @@
+Description: Restart crashed plugins without prompting, delaying repeated failures
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/panel/panel-plugin-external.c
++++ b/panel/panel-plugin-external.c
+@@ -58,12 +58,13 @@ static void
+ panel_plugin_external_realize (GtkWidget *widget);
+ static void
+ panel_plugin_external_unrealize (GtkWidget *widget);
+-static gboolean
+-panel_plugin_external_child_ask_restart (PanelPluginExternal *external);
++static guint
++panel_plugin_external_restart_delay (PanelPluginExternal *external);
+ static void
+ panel_plugin_external_child_spawn (PanelPluginExternal *external);
+ static void
+-panel_plugin_external_child_respawn_schedule (PanelPluginExternal *external);
++panel_plugin_external_child_respawn_schedule (PanelPluginExternal *external,
++                                              guint delay);
+ static void
+ panel_plugin_external_child_watch (GPid pid,
+                                    gint status,
+@@ -372,7 +373,7 @@ panel_plugin_external_realize (GtkWidget
+       /* the child was asked to quit during unrealize and there is
+        * still an pid, so wait for the child to quit and then
+        * spawn it again */
+-      panel_plugin_external_child_respawn_schedule (external);
++      panel_plugin_external_child_respawn_schedule (external, 100);
+     }
+ }
+ 
+@@ -404,38 +405,6 @@ panel_plugin_external_unrealize (GtkWidg
+ 
+ 
+ static gboolean
+-panel_plugin_external_child_ask_restart_dialog (GtkWindow *parent,
+-                                                const gchar *plugin_name)
+-{
+-  gchar *primary_text, *secondary_text;
+-  GtkWidget *dialog;
+-  gint response;
+-
+-  panel_return_val_if_fail (parent == NULL || GTK_IS_WINDOW (parent), FALSE);
+-  panel_return_val_if_fail (plugin_name != NULL, FALSE);
+-
+-  primary_text = g_strdup_printf (_("Plugin \"%s\" unexpectedly left the panel, do you want to restart it?"), plugin_name);
+-  secondary_text = g_strdup_printf (_("The plugin restarted more than once in "
+-                                      "the last %d seconds. If you press Execute the panel will try to restart "
+-                                      "the plugin otherwise it will be permanently removed from the panel."),
+-                                    PANEL_PLUGIN_AUTO_RESTART);
+-
+-  dialog = xfce_message_dialog_new (parent, _("Plugin Restart"), "dialog-question", primary_text,
+-                                    secondary_text, _("_Execute"), GTK_RESPONSE_OK, _("_Remove"), GTK_RESPONSE_REJECT, NULL);
+-  gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
+-  gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_CENTER);
+-
+-  response = gtk_dialog_run (GTK_DIALOG (dialog));
+-  gtk_widget_destroy (dialog);
+-  g_free (primary_text);
+-  g_free (secondary_text);
+-
+-  return (response != GTK_RESPONSE_REJECT);
+-}
+-
+-
+-
+-static gboolean
+ panel_plugin_external_remove (gpointer data)
+ {
+   /* cleanup the plugin configuration (in PanelApplication) and destroy 'external' */
+@@ -445,52 +414,26 @@ panel_plugin_external_remove (gpointer d
+ 
+ 
+ 
+-static gboolean
+-panel_plugin_external_child_ask_restart (PanelPluginExternal *external)
++/* Recover automatically, slowing repeated crashes without removing the plugin. */
++static guint
++panel_plugin_external_restart_delay (PanelPluginExternal *external)
+ {
+   PanelPluginExternalPrivate *priv = get_instance_private (external);
+-  GtkWidget *toplevel;
++  guint delay = 100;
+ 
+-  panel_return_val_if_fail (PANEL_IS_PLUGIN_EXTERNAL (external), FALSE);
++  if (priv->restart_timer != NULL
++      && g_timer_elapsed (priv->restart_timer, NULL) < PANEL_PLUGIN_AUTO_RESTART)
++    delay = 1000;
+ 
+-  toplevel = gtk_widget_get_toplevel (GTK_WIDGET (external));
+-  panel_return_val_if_fail (PANEL_IS_WINDOW (toplevel), FALSE);
+-
+-  if (priv->restart_timer == NULL
+-      || g_timer_elapsed (priv->restart_timer, NULL) > PANEL_PLUGIN_AUTO_RESTART)
+-    {
+-      g_message ("Plugin %s-%d has been automatically restarted after crash.",
+-                 panel_module_get_name (priv->module),
+-                 priv->unique_id);
+-    }
+-  else if (!panel_plugin_external_child_ask_restart_dialog (GTK_WINDOW (toplevel),
+-                                                            panel_module_get_display_name (priv->module)))
+-    {
+-      if (priv->watch_id != 0)
+-        {
+-          /* remove the child watch and don't leave zombies */
+-          g_source_remove (priv->watch_id);
+-          priv->watch_id = 0;
+-          if (priv->pid != 0)
+-            g_child_watch_add (priv->pid,
+-                               (GChildWatchFunc) (void (*) (void)) g_spawn_close_pid,
+-                               NULL);
+-        }
+-
+-      /* delay this until we get out of any other idle func, as this triggers the
+-       * finalization of 'external' */
+-      g_idle_add_full (G_PRIORITY_HIGH, panel_plugin_external_remove, external, NULL);
+-
+-      return FALSE;
+-    }
++  g_message ("Plugin %s-%d crashed; restarting automatically in %u ms.",
++             panel_module_get_name (priv->module), priv->unique_id, delay);
+ 
+-  /* create or reset the restart timer */
+   if (priv->restart_timer == NULL)
+     priv->restart_timer = g_timer_new ();
+   else
+     g_timer_reset (priv->restart_timer);
+ 
+-  return TRUE;
++  return delay;
+ }
+ 
+ 
+@@ -663,7 +606,8 @@ panel_plugin_external_child_respawn_dest
+ 
+ 
+ static void
+-panel_plugin_external_child_respawn_schedule (PanelPluginExternal *external)
++panel_plugin_external_child_respawn_schedule (PanelPluginExternal *external,
++                                              guint delay)
+ {
+   PanelPluginExternalPrivate *priv = get_instance_private (external);
+ 
+@@ -676,7 +620,7 @@ panel_plugin_external_child_respawn_sche
+                    panel_module_get_name (priv->module), priv->unique_id);
+ 
+       /* schedule a restart timeout */
+-      priv->spawn_timeout_id = g_timeout_add_full (G_PRIORITY_LOW, 100, panel_plugin_external_child_respawn,
++      priv->spawn_timeout_id = g_timeout_add_full (G_PRIORITY_LOW, delay, panel_plugin_external_child_respawn,
+                                                    external, panel_plugin_external_child_respawn_destroyed);
+     }
+ }
+@@ -748,10 +692,10 @@ panel_plugin_external_child_watch (GPid
+         }
+     }
+ 
+-  if (gtk_widget_get_realized (GTK_WIDGET (external))
+-      && (auto_restart || panel_plugin_external_child_ask_restart (external)))
++  if (gtk_widget_get_realized (GTK_WIDGET (external)))
+     {
+-      panel_plugin_external_child_respawn_schedule (external);
++      guint delay = auto_restart ? 100 : panel_plugin_external_restart_delay (external);
++      panel_plugin_external_child_respawn_schedule (external, delay);
+     }
+ 
+ close_pid:
