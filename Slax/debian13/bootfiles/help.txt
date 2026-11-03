@@ -29,5 +29,8 @@
    from which is Slax started. For example, from=/slax, from=/dev/sr1/data
    or from=http://some_url/to_iso_file.iso, or from=ask to select from list
 
+ * bootuuid=[filesystem_UUID]: GRUB supplies this automatically to prefer
+   data on the filesystem containing the kernel. An explicit from= overrides it.
+
  * noload=[regex] is used to specify what modules will not be loaded. Use
    a regular expression, for example noload=04-chromium or noload=firmware|chromium

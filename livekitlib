@@ -593,15 +593,23 @@ download_data_pxe()
 # If found, keep mounted, else unmount
 # $1 = data directory target (mount here)
 # $2 = data directory which contains compressed bundles
+# $3 = optional filesystem UUID supplied by the bootloader
 #
 find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS MOUNT ISOMNT
+   local DEVICE FS FROM OPTIONS MOUNT ISOMNT DEVICES BOOTDEVICE
 
    mkdir -p "$1"
-   blkid | sort | cut -d: -f 1 | grep -E -v "/loop|/ram|/zram" | while read DEVICE; do
+   DEVICES=$(blkid | sort | cut -d: -f 1)
+   if [ "${3:-}" != "" ]; then
+      # Wait for the boot filesystem rather than selecting another installation too early.
+      BOOTDEVICE=$(blkid -U "$3") || return 0
+      DEVICES=$(printf '%s\n%s\n' "$BOOTDEVICE" "$DEVICES" | awk '!seen[$0]++')
+   fi
+
+   printf '%s\n' "$DEVICES" | grep -E -v "^$|/loop|/ram|/zram" | while read DEVICE; do
       FROM="$2"
       ISOMNT=""
 
@@ -665,9 +673,12 @@ find_data()
 {
    debug_log "find_data" "$*"
 
-   local DATA FROM TIMEOUT ASKPID
+   local DATA FROM TIMEOUT ASKPID BOOTUUID
 
    FROM="$(cmdline_value from)"
+   # An explicit from= keeps its existing behavior and overrides the bootloader hint.
+   BOOTUUID=""
+   if [ "$FROM" = "" ]; then BOOTUUID=$(cmdline_value bootuuid); fi
 
    # boot parameter specified as from=http://server.com/file.iso
    if [ "$(echo $FROM | grep 'http://')" != "" ]; then
@@ -710,7 +721,11 @@ find_data()
    for TIMEOUT in $(seq 1 $1); do
       echo -n "." >&2
       refresh_devs
-      DATA="$(find_data_try "$2" "$FROM")"
+      DATA="$(find_data_try "$2" "$FROM" "$BOOTUUID")"
+      # Resume ordinary discovery if the boot filesystem never became available.
+      if [ "$DATA" = "" -a "$TIMEOUT" = "$1" -a "$BOOTUUID" != "" ]; then
+         DATA="$(find_data_try "$2" "$FROM")"
+      fi
       if [ "$DATA" != "" ]; then
          echo "" >&2
          echo "* Found on $(mounted_device "$2")" >&2
