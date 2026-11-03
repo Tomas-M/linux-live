@@ -112,8 +112,10 @@ reporting progress.
   pinned and verified through `guest-tools.versions`. Do not create a separate module.
   Start desktop agents from Fluxbox startup only on their matching hypervisor;
   Slax does not install a general XDG autostart runner. VBoxService also launches
-  VBoxDRMClient; do not start a second DRM daemon. VirtualBox automounts host
-  shares under `/media/sf_*`; VMware exposes its shares under `/mnt/hgfs`.
+  VBoxDRMClient; do not start a second DRM daemon. Its service explicitly loads
+  `vboxguest`: waiting for systemd-modules-load alone does not cover udev's
+  asynchronous coldplug. VirtualBox automounts host shares under `/media/sf_*`;
+  VMware exposes its shares under `/mnt/hgfs`.
   Host clipboard and folder sharing still require the host owner's settings.
   Preserve Fluxbox startup's initial 1440x900 then 1280x800 resolution switch
   in VirtualBox and VMware. Guest tools still handle later host resize requests.
