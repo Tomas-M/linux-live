@@ -1270,13 +1270,12 @@ union_append_bundles()
 
 # Create empty fstab properly
 # $1 = root directory
-# $2 = directory where boot disk is mounted
 #
 fstab_create()
 {
    debug_log "fstab_create" "$*"
 
-   local FSTAB DEVICE FS LABEL BOOTDEVICE OPTS
+   local FSTAB DEVICE FS LABEL MOUNTPOINT OPTS
 
    FSTAB="$1/etc/fstab"
    echo aufs / aufs defaults 0 0 > $FSTAB
@@ -1285,11 +1284,13 @@ fstab_create()
    echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
    echo tmpfs /dev/shm tmpfs defaults 0 0 >> $FSTAB
 
-   if grep -vq automount /proc/cmdline; then
+   # Keep generated media paths out of persistent changes on every boot.
+   mkdir -p "$1/media"
+   mount -t tmpfs -o mode=755 tmpfs "$1/media"
+
+   if grep -qw noautomount /proc/cmdline || ! grep -qw automount /proc/cmdline; then
       return
    fi
-
-   BOOTDEVICE=$(df "$2" | tail -n 1 | cut -d " " -f 1)
 
    echo >> $FSTAB
 
@@ -1298,9 +1299,16 @@ fstab_create()
       LABEL="$(basename $DEVICE)"
       OPTS="defaults,noatime,nofail,x-systemd.device-timeout=10"
 
-      if [ "$FS" != "" -a "$FS" != "swap" -a "$FS" != "squashfs" -a "$DEVICE" != "$BOOTDEVICE" ]; then
-         mkdir -p "$1/media/$LABEL"
-         echo "$DEVICE" "/media/$LABEL" $FS $OPTS 0 0 >> $FSTAB
+      if [ "$FS" != "" -a "$FS" != "swap" -a "$FS" != "squashfs" ]; then
+         MOUNTPOINT=$(awk -v dev="$DEVICE" '$1==dev {print $2; exit}' /proc/mounts)
+
+         if [ "$MOUNTPOINT" != "" ]; then
+            # Keep boot and session storage mounted until initramfs shutdown.
+            ln -s "/run/initramfs$MOUNTPOINT" "$1/media/$LABEL"
+         else
+            mkdir -p "$1/media/$LABEL"
+            echo "$DEVICE" "/media/$LABEL" $FS $OPTS 0 0 >> $FSTAB
+         fi
       fi
    done
 }

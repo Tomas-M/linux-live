@@ -523,6 +523,16 @@ must follow the general Slax repair rules above.
 - The automount udev rule queues a transient systemd service with `--no-block`.
   Pass ACTION, DEVNAME and ID_FS_TYPE as arguments to `slax-automount`; do not
   mount synchronously inside udev, which blocks GParted's `udevadm settle`.
+- Initramfs exposes already mounted boot and session filesystems through
+  `/media/DEVICE` symlinks into `/run/initramfs`, without duplicate fstab or
+  systemd mounts. Automount only refreshes their file-manager bookmarks.
+  Keep their real mounts for initramfs shutdown, after the live root is released.
+  Mount `/media` as a fresh tmpfs before creating these paths, even without
+  automount. Device directories and symlinks must not enter persistent changes
+  or reappear when a session is used on another computer.
+  Generate ordinary automount units only under `/run/systemd/system`; udev
+  starts them without persistent enablement. Boot cleanup cancels queued starts
+  of saved generated units before removing them and reloading systemd.
 - xlunch keeps each fitted label and its measured width until the cell width
   changes. Repeated Imlib2 measurements shifted `Terminal` by one pixel on hover;
   partial redraws must preserve label geometry, including for the first entry.

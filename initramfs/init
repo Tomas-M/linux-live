@@ -66,7 +66,7 @@ union_append_bundles "$BUNDLES" "$UNION"
 copy_rootcopy_content "$DATA" "$UNION"
 
 # create fstab
-fstab_create "$UNION" "$DATAMNT"
+fstab_create "$UNION"
                                                                                                                                                       debug_shell
 # run user custom preinit
 user_preinit "$DATA" "$UNION"
