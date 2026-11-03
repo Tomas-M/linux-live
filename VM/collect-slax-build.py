@@ -16,7 +16,7 @@ while True:
     client=paramiko.SSHClient()
     client.load_host_keys(str(folder/'known_hosts'))
     try:
-        client.connect('10.0.0.48',port=22,username='root',key_filename=str(folder/'id_ed25519'),timeout=30,banner_timeout=60,auth_timeout=60,allow_agent=False,look_for_keys=False)
+        client.connect('10.0.0.63',port=22,username='root',key_filename=str(folder/'id_ed25519'),timeout=30,banner_timeout=60,auth_timeout=60,allow_agent=False,look_for_keys=False)
         _,stdout,_=client.exec_command('systemctl show slax-autobuild.service -p ActiveState -p SubState -p Result; test ! -s '+remote+'/SHA256SUMS || echo BUILD_COMPLETE',timeout=30)
         status=stdout.read().decode()
         if status!=previous:
