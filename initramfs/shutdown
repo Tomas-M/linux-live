@@ -6,6 +6,11 @@
 # Author: Tomas M <http://www.linux-live.org/>
 #
 
+# Reacquire graphics after systemd reset the console for this handoff.
+if [ -S /fbmenu-shutdown.sock ]; then
+   /bin/fbmenu --start /fbmenu-shutdown.sock
+fi
+
 . /lib/config
 . /lib/livekitlib
 

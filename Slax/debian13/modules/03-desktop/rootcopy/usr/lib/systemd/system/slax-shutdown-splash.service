@@ -1,0 +1,21 @@
+[Unit]
+Description=Shutdown splash
+DefaultDependencies=no
+# Slax starts X directly; wait for it to release the console before painting.
+After=xorg.service getty@tty1.service display-manager.service
+Before=shutdown.target
+# The renderer holds files only in the initramfs while the live root is unmounted.
+SurviveFinalKillSignal=yes
+ConditionKernelCommandLine=quiet
+ConditionKernelCommandLine=!debug
+ConditionKernelCommandLine=!text
+ConditionPathExists=/run/initramfs/lib/bootsplash/config
+
+[Service]
+ExecStart=/usr/sbin/chroot /run/initramfs /bin/fbmenu --shutdown /lib/bootsplash
+StandardInput=null
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=poweroff.target reboot.target halt.target kexec.target
