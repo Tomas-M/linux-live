@@ -897,6 +897,15 @@ must follow the general Slax repair rules above.
 
 ## Boot and session UI
 
+- GRUB checks the BIOS El Torito boot alias `(cd)` or its firmware-reported
+  boot device before searching other disks; an existing root alone must not
+  override that device. Debian calls the firmware path `fw_path`; upstream
+  uses `cmdpath`. Pass the kernel filesystem's UUID as `bootuuid=` through
+  both menu environments. Automatic initramfs discovery tries that
+  filesystem first, waiting for it during the normal device-detection timeout;
+  an explicit `from=` overrides this preference. If the preferred filesystem
+  is unavailable or lacks data, retain discovery on other devices. Keep PXE
+  and HTTP boot behavior unchanged.
 - Use GRUB 2 for BIOS and UEFI CD/USB boot, plus GRUB PXE boot. Preserve the
   `/slax` layout and the generic `mylinux` layout; do not hardcode Slax into
   shared loader generation.

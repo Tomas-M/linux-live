@@ -8,7 +8,26 @@ BOOT="$DATA/$NAME/boot"
 mkdir -p "$BOOT/grub/net" "$BOOT/EFI/BOOT"
 cp /usr/share/grub/unicode.pf2 "$BOOT/grub/"
 cat > "$BOOT/grub/grub.cfg" <<EOF
-search --no-floppy --file --set=root /$NAME/boot/grub.cfg
+insmod regexp
+# Debian names the firmware path fw_path; upstream GRUB uses cmdpath.
+set boot_path=\$cmdpath
+if [ -n "\$fw_path" ]; then set boot_path=\$fw_path; fi
+# BIOS exposes only the El Torito boot device as (cd), not other optical drives.
+if [ "\$grub_platform" = pc -a -f (cd)/$NAME/boot/grub.cfg ]; then
+   set root=cd
+elif regexp --set=1:boot_device '^\(([^)]+)\)' "\$boot_path"; then
+   regexp --set=1:boot_disk '^([^,]+)' "\$boot_device"
+   if [ -f "(\$boot_device)/$NAME/boot/grub.cfg" ]; then
+      set root=\$boot_device
+   elif [ -f "(\$boot_disk)/$NAME/boot/grub.cfg" ]; then
+      set root=\$boot_disk
+   else
+      search --no-floppy --file --hint="\$boot_device" --hint="\$boot_disk" --hint="\$boot_disk," --set=root /$NAME/boot/grub.cfg
+   fi
+elif [ ! -f /$NAME/boot/grub.cfg ]; then
+   search --no-floppy --file --set=root /$NAME/boot/grub.cfg
+fi
+insmod probe
 set prefix=(\$root)/$NAME/boot/grub
 configfile /$NAME/boot/grub.cfg
 EOF
@@ -17,11 +36,12 @@ if [ -z "$net_default_server" ]; then net_bootp; fi
 configfile (tftp,$net_default_server)/grub.cfg
 EOF
 
+# Load local identification modules from the embedded filesystem instead of duplicating them in the core.
 MODULES="part_gpt part_msdos fat iso9660 search search_fs_file normal configfile linux test gfxterm gfxmenu gfxterm_background png font"
 if [ -d /usr/lib/grub/i386-pc ]; then
    cp /usr/lib/grub/i386-pc/boot_hybrid.img "$BOOT/grub/"
    grub-mkstandalone -O i386-pc-eltorito --modules="biosdisk all_video $MODULES" \
-      --install-modules="biosdisk all_video $MODULES" --locales="" --fonts="" --themes="" \
+      --install-modules="biosdisk all_video probe regexp $MODULES" --locales="" --fonts="" --themes="" \
       -o "$BOOT/grub/cdboot.img" "boot/grub/grub.cfg=$BOOT/grub/grub.cfg"
    grub-mkstandalone -O i386-pc-pxe -d /usr/lib/grub/i386-pc \
       --modules="pxe tftp http all_video $MODULES" --install-modules="pxe tftp http all_video $MODULES" \
@@ -44,7 +64,7 @@ for PLATFORM in /usr/lib/grub/*-efi; do
       *) continue ;;
    esac
    grub-mkstandalone -O "$(basename "$PLATFORM")" -d "$PLATFORM" \
-      --modules="efi_gop $MODULES" --install-modules="efi_gop $MODULES" --locales="" --fonts="" --themes="" \
+      --modules="efi_gop $MODULES" --install-modules="efi_gop probe regexp $MODULES" --locales="" --fonts="" --themes="" \
       -o "$BOOT/EFI/BOOT/$FILE" "boot/grub/grub.cfg=$BOOT/grub/grub.cfg"
    grub-mkstandalone -O "$(basename "$PLATFORM")" -d "$PLATFORM" \
       --modules="efinet tftp http efi_gop $MODULES" --install-modules="efinet tftp http efi_gop $MODULES" \
