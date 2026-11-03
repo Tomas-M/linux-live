@@ -4,6 +4,8 @@ ConditionVirtualization=oracle
 After=systemd-modules-load.service
 
 [Service]
+# Coldplug may still be loading the driver when this service starts.
+ExecStartPre=/usr/sbin/modprobe vboxguest
 ExecStart=/usr/sbin/VBoxService --foreground --only-automount --enable-vminfo
 
 [Install]
