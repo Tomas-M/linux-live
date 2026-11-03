@@ -947,12 +947,15 @@ restore_perch_session()
             NAME=$(head -n 1 "$CHANDIR/$SOURCE/boot/$NAMEFILE" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' ')
             TITLE='Name the duplicated session'
          fi
-         NAME="$(fbmenu --input "$TITLE" "$NAME")" || {
-            if [ "$?" != 2 ]; then return 1; fi
-            if [ "${2:-}" != "" ]; then return 2; fi
-            PERCHDIR=ask
-            continue
-         }
+         # Automatic resume creates the first session with its suggested name.
+         if [ "$NEW" != "" -o "$PERCHDIR" != "" ]; then
+            NAME="$(fbmenu --input "$TITLE" "$NAME")" || {
+               if [ "$?" != 2 ]; then return 1; fi
+               if [ "${2:-}" != "" ]; then return 2; fi
+               PERCHDIR=ask
+               continue
+            }
+         fi
          NEW=$(($NEW + 1))
          mkdir -p "$CHANDIR" || return 1
          TEMP=$(mktemp -d "$CHANDIR/.new.XXXXXX") || return 1

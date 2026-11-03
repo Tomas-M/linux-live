@@ -157,7 +157,10 @@ must follow the general Slax repair rules above.
 - SSH can disconnect during save/resume. If necessary, thaw from the existing
   guest terminal with `fsfreeze -u /` and restart `networking` if DHCP was lost.
 - Network: bridged through `Realtek PCIe GbE Family Controller #2`.
-  Guest address last verified as `10.0.0.48`; this is a DHCP lease.
+  Guest address last verified as `10.0.0.63`; this is a DHCP lease.
+- Reinstalled from the verified official Debian 13.7 netinst image on 2026-11-03.
+  The previous work disk and build data were removed. Restore only the verified
+  current kernel packages and current host source into a fresh installation.
 - Guest checkout: `/root/linux-live`. Local and guest checkouts are separate;
   transfer relevant changes before building and verify their contents match.
 - SSH uses root and the local `VM/id_ed25519` key. Host keys are stored in
@@ -171,16 +174,15 @@ must follow the general Slax repair rules above.
   temporary data to disk grows the dynamic VDI, and deleting it afterward
   does not shrink that host file; recovering the space requires compaction.
 - Swap is permanently disabled, including initramfs resume. Keep it disabled.
-- The work VM may still have the old vmwgfx module loaded and a local software
-  cursor override. Remove that override when activating the corrected module;
-  do not ship it in Slax. Get approval before restarting an active work desktop
-  session with open applications.
+- The fresh work VM has no local software cursor override. Preserve normal graphics
+  autodetection. Get approval before restarting an active work desktop session
+  with open applications, except for a rebuild/reinstall Tomas has requested.
 - Stop only our unneeded test VMs/processes. Leave unrelated VMs untouched.
 - Keep only one ISO under `VM`: the latest verified image at
   `VM/slax-build-trixie/slax-amd64.iso`. Replace this file for subsequent builds
   instead of retaining differently named copies, and keep the test VM attached
   to this path. Remove superseded ISO files, preserving kernel packages and disks.
-- Always include the resulting ISO size in MB when reporting a build or ISO update.
+- Always include the resulting ISO size in MiB when reporting a build or ISO update.
 
 ## Kernel and full Slax build
 
@@ -854,8 +856,9 @@ must follow the general Slax repair rules above.
   themes or desktop configuration, one VM startup is sufficient.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
   or `-Firmware uefi`. Stop it and allow VirtualBox to release its session
-  before changing firmware. Tomas authorizes normal shutdowns, ISO replacements
-  and restarts of this Slax test VM without asking again. Leave its GUI window
+  before changing firmware. Tomas authorizes overwriting the canonical Slax ISO,
+  normal shutdowns, restarts and VirtualBox resets of this Slax test VM as needed,
+  without asking again. Prefer a normal shutdown when it responds. Leave its GUI window
   accessible and the VM running after requested boots and tests. Stop other
   temporary test VMs after verification. This does not authorize restarting the
   separate Debian work desktop. Use Slax's normal
@@ -939,6 +942,29 @@ must follow the general Slax repair rules above.
   always unmount before removing temporary files, including on errors or signals.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
+  Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
+  FAT16 setup partition after the ESP, with Windows preparation tools from shared
+  `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
+  Mark the ISO partition with the Linux filesystem GUID so Windows does not
+  assign it a drive letter. Append the 300 KiB CD read-ahead padding inside the setup partition,
+  beyond its FAT filesystem, and disable xorriso's separate trailing padding to
+  avoid a Windows-visible `Gap1` partition with xorriso 1.5.6.
+  `disk-setup.exe` is a separate, manually launched Windows 10/11 tool. It must
+  resolve its own USB disk, reject system disks and unexpected layouts, validate
+  both GPT copies, and confirm before formatting only the unused tail as FAT32.
+  Preserve the first three partitions and BIOS/UEFI loaders, relocate the backup
+  GPT to the physical disk end, and leave an existing data partition unchanged.
+  Support FAT32 above 32 GiB without depending on Windows' native formatter.
+  Ship only the native Win32 executable and README on DISK-SETUP. Keep its source
+  and manifest under `tools`; rebuild the bundled 32-bit executable manually with
+  `sh tools/disk-setup.build` and MinGW-w64 after source changes, never during ISO builds.
+  Work exclusively on the physical USB disk containing the executable; never
+  select a different disk. Reject unexpected layouts and concurrent instances.
+  Use exact-sized Win32 sector reads, including the final sector. Derive the data start from the ISO volume size,
+  not the backup GPT address, because Windows may already have relocated GPT.
+  Test writes on disposable dynamic VHDs, not large raw files on the Windows
+  system disk. Extending a sparse file alone does not avoid NTFS valid-data
+  zero filling when later writes target its end; a 64 GiB test caused heavy host I/O.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
   UEFI without `bootinst`, while the existing file-copy USB setup remains valid.
@@ -972,6 +998,16 @@ must follow the general Slax repair rules above.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
+  Shutdown uses `fbmenu --shutdown` from the retained initramfs after Xorg, getty
+  and the display manager stop. Its shutdown-only systemd unit survives final
+  process termination without holding files on the live root or session disks.
+  Reuse the logo and dots timing. Esc restores the console's existing shutdown
+  output and kernel verbosity while shutdown continues. Quiet text/debug boots
+  keep their console, and unavailable framebuffer graphics must not block shutdown.
+  Keep shutdown IPC at `/fbmenu-shutdown.sock`: systemd overlays `/run` during
+  the exitrd pivot and resets the console to KD_TEXT. At the start of `shutdown`,
+  before sourcing configuration, call `fbmenu --start /fbmenu-shutdown.sock` to
+  synchronously reacquire graphics. Do not restart a splash dismissed with Esc.
 - Keep tty1's getty ordered after `xorg.service`, whose `ExecStartPost` waits
   for X client connections. `Xdetect` must pass the service's display and VT
   arguments to `startx`. Try native hardware autodetection first; if startup
@@ -1014,9 +1050,10 @@ must follow the general Slax repair rules above.
   for Slax); create `boot` when saving a new or duplicated session. Show the
   name without a numeric prefix.
   Unnamed sessions use `Session #ID`. Empty and duplicate names are allowed.
-  New and duplicated sessions ask for a name using `fbmenu --input` under the
-  logo. Suggest `Initial session` for the first session and the source name
-  for a duplicate. Use `New session name` for new sessions and
+  Automatic resume creates its first session as `Initial session` without
+  prompting. Explicit new and duplicated sessions ask for a name using
+  `fbmenu --input` under the logo. Suggest `Initial session` for the first
+  session and the source name for a duplicate. Use `New session name` for new sessions and
   `Name the duplicated session` for copies. Esc in the name input returns to
   the session picker without creating a session or updating `last_session.txt`. Only Esc
   in the session picker cancels persistence. Left/Right move the input caret

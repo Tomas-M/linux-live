@@ -11,6 +11,7 @@
  * --input TITLE [DEFAULT] edits UTF-8 text; Esc returns status 2, Enter accepts empty.
  * --status TEXT shows a boot activity below the logo; empty text clears it.
  * --pause/--continue bracket driver loading; overlapping pauses are counted.
+ * --shutdown BRANDDIR shows the same animation from the retained initramfs.
  * One process owns both rendering and keyboard input; clients use a local socket.
  */
 #define _GNU_SOURCE
@@ -26,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/klog.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -36,12 +38,13 @@
 #include <unistd.h>
 #include "fbmenu-font.h"
 
-#define SOCKET "/run/fbmenu.sock"
+static const char *socket_path="/run/fbmenu.sock";
 #define DISABLED "/run/bootsplash.disabled"
 struct request { char operation, cancel, duplicate; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail; };
 /* Keep navigation keys outside the Unicode range. */
 enum { KEY_UP=0x110000, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F4 };
+enum phase { BOOT, HANDOFF, SHUTDOWN };
 static int tty=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
 static struct termios saved;
 static struct fb_var_screeninfo screen;
@@ -441,10 +444,10 @@ static void disable_splash(void)
    disabled=1; graphics=0;
    close(open(DISABLED,O_WRONLY|O_CREAT,0600));
    ioctl(tty,KDSETMODE,KD_TEXT);
-   const char clear[]="\033[2J\033[H\033[?25h";
-   write_all(tty,clear,sizeof(clear)-1);
-   int printk=open("/proc/sys/kernel/printk",O_WRONLY);
-   if (printk>=0) { write_all(printk,"7\n",2); close(printk); }
+   /* Shutdown messages already live in the console buffer; preserve them on Esc. */
+   const char *clear=logfd>=0?"\033[2J\033[H\033[?25h":"\033[?25h";
+   write_all(tty,clear,strlen(clear));
+   klogctl(8,NULL,7);
    show_log();
    if (menu_client>=0) draw_menu(); else keyboard(0);
 }
@@ -537,13 +540,30 @@ static void resume_graphics(unsigned frame, int wait_for_driver)
    if (menu_client>=0) draw_menu(); else draw_splash(frame);
 }
 
-/* Own the tty for the whole initramfs phase, so Esc works during blocking jobs. */
-static int serve(const char *directory, const char *log, int resumed, int ready_fd, unsigned frame)
+/* Own the tty during boot or shutdown, so Esc works during blocking jobs. */
+static int serve(const char *directory, const char *log, enum phase phase, int ready_fd, unsigned frame)
 {
+   int resumed=phase==HANDOFF, shutting_down=phase==SHUTDOWN;
    signal(SIGTERM,stop_server); signal(SIGINT,stop_server); signal(SIGHUP,stop_server); signal(SIGPIPE,SIG_IGN);
    signal(SIGUSR1,stop_server);
    tty=open("/dev/tty1",O_RDWR|O_NOCTTY);
    if (tty<0 || tcgetattr(tty,&saved)) return 1;
+   /* Run from the initramfs again, taking over only after X and getty have stopped. */
+   if (shutting_down) {
+      unlink(DISABLED);
+      if (open_graphics() || ioctl(tty,VT_ACTIVATE,1)) return 0;
+      /* A refused or stalled VT switch must not hold up shutdown. */
+      for (int attempt=0;attempt<50;attempt++) {
+         struct vt_stat vt;
+         if (ioctl(tty,VT_GETSTATE,&vt)) return 0;
+         if (vt.v_active==1) break;
+         if (attempt==49) return 0;
+         usleep(20000);
+      }
+      /* Discard the old login screen; subsequent shutdown messages remain for Esc. */
+      const char clear[]="\033[2J\033[H\033[?25l";
+      write_all(tty,clear,sizeof(clear)-1);
+   }
    animation=ready_fd>=0?6:timerfd_create(CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK);
    if (animation<0) return 1;
    if (directory) branding(directory);
@@ -552,19 +572,21 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
    unsigned pauses=0;
    int coordinated=resumed && !access("/usr/libexec/fbmenu-driver",X_OK);
    ioctl(tty,KDGKBMODE,&keyboard_mode);
-   struct sockaddr_un address={.sun_family=AF_UNIX,.sun_path=SOCKET};
-   unlink(SOCKET);
+   struct sockaddr_un address={.sun_family=AF_UNIX};
+   snprintf(address.sun_path,sizeof(address.sun_path),"%s",socket_path);
+   unlink(socket_path);
    if (bind(listener,(struct sockaddr *)&address,sizeof(address)) || listen(listener,4)) return 1;
-   chmod(SOCKET,0600); keyboard(1);
+   chmod(socket_path,0600); keyboard(1);
    if (!access(DISABLED,F_OK)) disable_splash();
-   else if (resumed) {
+   else if (resumed || shutting_down) {
       if (open_graphics()) disable_splash();
       else {
          ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1;
+         if (shutting_down) clear_screen();
          if (ready_fd<0) draw_splash(frame);
       }
    }
-   if (resumed && disabled) running=0;
+   if ((resumed || shutting_down) && disabled) running=0;
    /* Allow X to request the VT while the splash still owns graphics mode. */
    struct vt_mode vt_mode={.mode=VT_PROCESS,.relsig=SIGUSR1,.acqsig=SIGUSR1};
    if (resumed && graphics) {
@@ -622,7 +644,7 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
             if (request.operation=='r') {
                /* Re-exec from /run in the real root, releasing all initrd files. */
                if (disabled) { write_all(client,"error\n",6); close(client); break; }
-               unlink(SOCKET);
+               unlink(socket_path);
                if (chroot(request.file) || chdir("/")) {
                   write_all(client,"error\n",6); close(client); break;
                }
@@ -641,9 +663,14 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
                ioctl(console,KDSETMODE,KD_TEXT);
                _exit(1);
             }
-            if (request.operation=='s' && !disabled && !graphics && !pauses) {
-               if (open_graphics()) disable_splash();
-               else { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; keyboard(1); clear_screen(); draw_splash(frame); }
+            if (request.operation=='s' && !disabled && !pauses) {
+               /* systemd restores KD_TEXT before handing shutdown to the initramfs. */
+               int mode=KD_TEXT;
+               ioctl(tty,KDGETMODE,&mode);
+               if (!graphics || mode!=KD_GRAPHICS) {
+                  if (open_graphics()) disable_splash();
+                  else { ioctl(tty,KDSETMODE,KD_GRAPHICS); graphics=1; keyboard(1); clear_screen(); draw_splash(frame); }
+               }
             }
             if (request.operation=='q' || request.operation=='h') { keep=request.operation=='h' && graphics; running=0; }
             write_all(client,"\n",1);
@@ -655,7 +682,7 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          if (pressed==27) {
             if (menu_client>=0 && menu.operation=='i') finish_menu("\033",frame);
             else if (menu_client>=0 && menu.cancel) finish_menu("",frame);
-            else { disable_splash(); if (resumed) running=0; }
+            else { disable_splash(); if (resumed || shutting_down) running=0; }
          }
          else if (menu_client>=0 && menu.operation=='i') {
             if (pressed=='\r' || pressed=='\n') finish_menu(input,frame);
@@ -699,7 +726,7 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
          ioctl(tty,VT_SETMODE,&vt_mode);
       }
    }
-   unlink(SOCKET); close(listener); close(tty); close(animation);
+   unlink(socket_path); close(listener); close(tty); close(animation);
    return 0;
 }
 
@@ -707,7 +734,8 @@ static int serve(const char *directory, const char *log, int resumed, int ready_
 static int connect_server(void)
 {
    int fd=socket(AF_UNIX,SOCK_STREAM,0);
-   struct sockaddr_un address={.sun_family=AF_UNIX,.sun_path=SOCKET};
+   struct sockaddr_un address={.sun_family=AF_UNIX};
+   snprintf(address.sun_path,sizeof(address.sun_path),"%s",socket_path);
    if (!connect(fd,(struct sockaddr *)&address,sizeof(address))) return fd;
    close(fd); return -1;
 }
@@ -715,10 +743,15 @@ static int connect_server(void)
 /* Request an action; selected values alone go to stdout for shell substitution. */
 int main(int argc, char **argv)
 {
+   if (argc==3 && !strcmp(argv[1],"--shutdown")) {
+      /* systemd overlays /run at shutdown handoff; retain IPC in the initramfs root. */
+      socket_path="/fbmenu-shutdown.sock";
+      return serve(argv[2],NULL,SHUTDOWN,-1,0);
+   }
    if (argc==4 && (!strcmp(argv[1],"--serve") || !strcmp(argv[1],"--resume")))
-      return serve(argv[2],argv[3],!strcmp(argv[1],"--resume"),-1,0);
+      return serve(argv[2],argv[3],!strcmp(argv[1],"--resume")?HANDOFF:BOOT,-1,0);
    if (argc==6 && !strcmp(argv[1],"--resume") && !strcmp(argv[4],"--ready"))
-      return serve(argv[2],argv[3],1,5,strtoul(argv[5],NULL,10));
+      return serve(argv[2],argv[3],HANDOFF,5,strtoul(argv[5],NULL,10));
    struct request request={0};
    while (argc>2 && argv[argc-1][0]=='-' && !strcmp(argv[1],"--menu")) {
       if (!strcmp(argv[argc-1],"--cancel")) request.cancel=1;
@@ -746,6 +779,8 @@ int main(int argc, char **argv)
       request.operation='p'; snprintf(request.title,sizeof(request.title),"%s",argv[2]);
    } else if (argc==3 && !strcmp(argv[1],"--handoff")) {
       request.operation='r'; snprintf(request.file,sizeof(request.file),"%s",argv[2]);
+   } else if (argc==3 && !strcmp(argv[1],"--start")) {
+      request.operation='s'; socket_path=argv[2];
    } else if (argc==2) {
       if (!strcmp(argv[1],"--start")) request.operation='s';
       if (!strcmp(argv[1],"--pause")) request.operation='a';
@@ -755,14 +790,14 @@ int main(int argc, char **argv)
       if (!strcmp(argv[1],"--keep")) request.operation='h';
    }
    if (!request.operation) {
-      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --menu TITLE FILE [--cancel] [--duplicate] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start | --pause | --continue | --disable | --stop | --keep\n");
+      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--duplicate] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
       return 1;
    }
    int fd=connect_server(), child=0;
    if (fd<0 && (request.operation=='p' || request.operation=='a' || request.operation=='c')) return 1;
    if (fd<0 && (request.operation=='m' || request.operation=='i')) {
       child=fork();
-      if (!child) _exit(serve(NULL,NULL,0,-1,0));
+      if (!child) _exit(serve(NULL,NULL,BOOT,-1,0));
    }
    for (int i=0;fd<0 && i<50;i++) { usleep(20000); fd=connect_server(); }
    if (fd<0 || write_all(fd,&request,sizeof(request))) return 1;
