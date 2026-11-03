@@ -38,7 +38,8 @@ VERSION=$(apt-cache show --no-all-versions xfce4-panel | sed -n 's/^Version: //p
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 cp "$CWD/patches/panel-clear-focus.diff" debian/patches/
 cp "$CWD/patches/panel-tray-spacing.diff" debian/patches/
-printf 'panel-clear-focus.diff\npanel-tray-spacing.diff\n' >> debian/patches/series
+cp "$CWD/patches/panel-plugin-restart.diff" debian/patches/
+printf 'panel-clear-focus.diff\npanel-tray-spacing.diff\npanel-plugin-restart.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 cp ../xfce4-panel_*.deb "$OUTPUT/"
@@ -68,7 +69,7 @@ VERSION=$(apt-cache show --no-all-versions xfce4-docklike-plugin | sed -n 's/^Ve
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\ndocklike-window-removal.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 # Reject incomplete plugin packages before they enter the runtime branch.

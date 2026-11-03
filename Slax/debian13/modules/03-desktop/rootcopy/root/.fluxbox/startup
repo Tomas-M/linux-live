@@ -59,8 +59,14 @@ if [ "$(virt-what | egrep -i "virtualbox|vmware|qemu|kvm")" != "" ]; then
    fbscreensize 1280x800 -n
 fi
 
-# start xfce4 panel in background
-xfce4-panel --disable-wm-check --sm-client-disable &
+# Restart a crashed panel while preserving clean exits and the X session lifetime.
+(
+   while true; do
+      if xfce4-panel --disable-wm-check --sm-client-disable; then break; fi
+      if ! xdpyinfo >/dev/null 2>&1; then break; fi
+      sleep 1
+   done
+) &
 
 (
    while [ "$(wmctrl -l | grep xfce4-panel)" = "" ]; do

@@ -1,0 +1,64 @@
+Description: Keep group selection and preview hover valid while windows are removed
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -246,7 +246,14 @@
+ 
+ void Group::remove(GroupWindow* window)
+ {
++	// Preserve the selected window as earlier entries shift, or select the first survivor.
++	uint removedIndex = mWindows.getIndex(window);
+ 	mWindows.pop(window);
++	if (mTopWindowIndex > removedIndex)
++		--mTopWindowIndex;
++	else if (mTopWindowIndex == removedIndex)
++		mTopWindowIndex = 0;
++
+ 	mWindowsCount.updateState();
+ 	if (!mWindowsCount && Dock::mSelectedGroup == this)
+ 		Dock::selectGroup(nullptr);
+--- a/src/GroupMenuItem.cpp
++++ b/src/GroupMenuItem.cpp
+@@ -156,7 +156,11 @@
+ 				me->mGroupWindow->activate(event->time);
+ 			else
+ 			{
+-				me->updatePeekArea();
++				// Keep the cancelled hit area through synthetic enters caused by relayout.
++				if (me->mPeekBlocked && !me->pointerInsidePeek())
++					me->mPeekBlocked = false;
++				if (!me->mPeekBlocked)
++					me->updatePeekArea();
+ 				me->mPeekLeaveIdle.stop();
+ 				if (peekItem)
+ 					me->peek(true);
+@@ -293,10 +297,26 @@
+ // Stop on real window changes; child crossings must not restart a cancelled hover.
+ void GroupMenuItem::cancelPeek()
+ {
+-	Xfw::mGroupWindows.forEach([](std::pair<XfwWindow*, std::shared_ptr<GroupWindow>> window) {
++	GroupMenuItem* hovered = peekItem;
++	if (!hovered)
++	{
++		auto pending = Xfw::mGroupWindows.findIf([](std::pair<XfwWindow*, std::shared_ptr<GroupWindow>> window) {
++			return window.second->mGroupMenuItem->mPeekTimeout.mTimeoutId != 0;
++		});
++		if (pending)
++			hovered = pending->mGroupMenuItem;
++	}
++	GdkRectangle area = {};
++	if (hovered)
++		area = hovered->mPeekArea;
++	Xfw::mGroupWindows.forEach([hovered, area](std::pair<XfwWindow*, std::shared_ptr<GroupWindow>> window) {
+ 		GroupMenuItem* item = window.second->mGroupMenuItem;
+-		if (item->mPeekTimeout.mTimeoutId)
++		// A removed card can move another visible card under a stationary pointer.
++		if (hovered && gtk_widget_get_mapped(GTK_WIDGET(item->mItem)))
++		{
+ 			item->mPeekBlocked = true;
++			item->mPeekArea = area;
++		}
+ 		item->mPeekTimeout.stop();
+ 		item->mPeekLeaveIdle.stop();
+ 	});
