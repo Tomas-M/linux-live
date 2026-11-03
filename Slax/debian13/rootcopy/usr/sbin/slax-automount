@@ -44,6 +44,11 @@ fi
 
 
 if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
+   # Mount the partitions, not a whole disk with a duplicate filesystem signature.
+   if ls "/sys/class/block/$BAS"/*/partition >/dev/null 2>&1; then
+      exit
+   fi
+
    if [ ! -r "$TARGET" ]; then # skip if exists
 
       if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
