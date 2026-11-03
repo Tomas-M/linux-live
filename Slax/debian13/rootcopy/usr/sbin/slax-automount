@@ -22,7 +22,7 @@ ID_FS_TYPE=$3
 BAS="$(basename "$DEVNAME")"
 UNIT="media-$BAS.mount"
 MNT="/media/$BAS"
-TARGET="/etc/systemd/system/$UNIT"
+TARGET="/run/systemd/system/$UNIT"
 
 
 # exit if noautomount boot parameter is present
@@ -35,13 +35,20 @@ if ! cat /proc/cmdline | grep -q automount; then
    exit
 fi
 
+# Initramfs already owns boot and session disks; expose them without a second mount
+if [ -L "$MNT" ] && readlink "$MNT" | grep -q '^/run/initramfs/'; then
+   if [ "$ACTION" = "remove" ]; then rm "$MNT"; fi
+   gtk-bookmarks-update
+   exit
+fi
+
 
 if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
    if [ ! -r "$TARGET" ]; then # skip if exists
 
       if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
 
-         mkdir -p "$MNT"
+         mkdir -p /run/systemd/system "$MNT"
 
          echo "# Slax skip savechanges" >$TARGET
          echo "[Unit]" >>$TARGET
@@ -52,11 +59,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          echo "Where=$MNT" >>$TARGET
          echo "Type=$ID_FS_TYPE" >>$TARGET
          echo "Options=defaults" >>$TARGET
-         echo "" >>$TARGET
-         echo "[Install]" >>$TARGET
-         echo "WantedBy=multi-user.target" >>$TARGET
-
-         systemctl enable $UNIT
+         systemctl daemon-reload
          systemctl start $UNIT
 
          gtk-bookmarks-update
@@ -66,8 +69,9 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
 fi
 
 if [ "$ACTION" = "remove" ]; then
-   systemctl disable $UNIT
+   systemctl stop $UNIT
    rm "$TARGET"
+   systemctl daemon-reload
    rmdir "$MNT"
    gtk-bookmarks-update
 fi

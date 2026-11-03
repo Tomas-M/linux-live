@@ -1,4 +1,10 @@
 #!/bin/bash
 
 # remove mount services created by slax-automount before udev starts
-grep "Slax skip savechanges" /etc/systemd/system/multi-user.*/* /etc/systemd/system/* 2>/dev/null | cut -d : -f 1 | xargs -r rm -f
+MOUNTS=$(grep -l "Slax skip savechanges" /etc/systemd/system/multi-user.*/* /etc/systemd/system/* 2>/dev/null)
+# PID 1 may already have queued these saved units before this service starts.
+for MOUNT in $MOUNTS; do
+   systemctl stop --no-block "$(basename "$MOUNT")"
+done
+printf '%s\n' "$MOUNTS" | xargs -r rm -f
+systemctl daemon-reload
