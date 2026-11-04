@@ -26,10 +26,11 @@ XTerm*activeIcon: true
 XTerm*iconHint: /usr/share/pixmaps/xterm-color_48x48.xpm
 XTerm*fullscreen: never
 
+! Match Fontconfig's smooth defaults without assuming a monitor's subpixel order.
 Xft.antialias:  true
 Xft.hinting:    true
-Xft.hintstyle:  hintfull
-Xft.lcdfilter:  lcdlegacy
-Xft.rgba:       rgb
+Xft.hintstyle:  hintslight
+Xft.lcdfilter:  lcddefault
+Xft.rgba:       none
 
 XTerm*selectToClipboard: true
