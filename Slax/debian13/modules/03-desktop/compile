@@ -7,7 +7,7 @@ sh "$CWD/build-gtk" "$OUTPUT"
 sh "$CWD/build-volumeicon" "$OUTPUT"
 sh "$CWD/build-skippy" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
-apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev
+apt-get install --yes --no-install-recommends build-essential dpkg-dev quilt libimlib2-dev libgtk2.0-dev libjson-glib-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
 apt-get source fluxbox
@@ -69,7 +69,7 @@ VERSION=$(apt-cache show --no-all-versions xfce4-docklike-plugin | sed -n 's/^Ve
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\ndocklike-window-removal.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\ndocklike-window-removal.diff\ndocklike-multi-window-indicator.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 # Reject incomplete plugin packages before they enter the runtime branch.
@@ -85,6 +85,14 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cfla
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
+# Compile the current upstream Partition Manager in the disposable branch's tmpfs.
+PARTITION_MANAGER_BUILD=$(mktemp -d /tmp/partition-manager-build.XXXXXX)
+wget -O "$PARTITION_MANAGER_BUILD/source.tar.gz" https://github.com/Tomas-M/partition-manager/archive/HEAD.tar.gz
+mkdir "$PARTITION_MANAGER_BUILD/source"
+tar -mxf "$PARTITION_MANAGER_BUILD/source.tar.gz" -C "$PARTITION_MANAGER_BUILD/source" --strip-components=1
+make -C "$PARTITION_MANAGER_BUILD/source" CFLAGS='-Os -Wall -Wextra -Wno-deprecated-declarations' LDFLAGS=-s
+make -C "$PARTITION_MANAGER_BUILD/source" check
+make -C "$PARTITION_MANAGER_BUILD/source" DESTDIR="$PACKAGE" install
 # Scope application-specific GTK adjustments to the selected programs.
 cc -Os -shared -fPIC -s -o "$OUTPUT/libslax-app-style.so" \
    "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)
@@ -140,7 +148,7 @@ Architecture: any
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
 DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
-   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard")
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard" "$PACKAGE/usr/bin/partition-manager")
 cat > "$PACKAGE/DEBIAN/control" <<EOF
 Package: slax-desktop-tools
 Version: 1
