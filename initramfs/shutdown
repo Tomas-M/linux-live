@@ -43,6 +43,12 @@ mdev -s
 detach_free_loops
 
 # do it the dirty way, simply try to umount everything to get rid of most mounts
+debug_log "- Stopping AUFS xino maintenance"
+# Unlinking pseudo-links during unmount must not queue new inode-index workers.
+awk '$3 == "aufs" { print $2 }' /proc/mounts | while read LINE; do
+   mount -i -o remount,notrunc_xino "$LINE"
+done
+
 debug_log "- Unmounting union"
 umount_all /oldroot
 
