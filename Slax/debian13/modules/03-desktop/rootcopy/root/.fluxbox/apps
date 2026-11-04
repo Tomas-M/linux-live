@@ -18,7 +18,14 @@
 [end]
 
 [app] (class=slax-ai) (role=pop-up)
-  [Dimensions]	{90% 90%}
+  [Dimensions]	{999 666}
+  [Position]	(WINCENTER)	{0 0}
+  [Maximized]	{no}
+  [Fullscreen]	{no}
+[end]
+
+[app] (class=PartitionManager)
+  [Dimensions]	{999 666}
   [Position]	(WINCENTER)	{0 0}
   [Maximized]	{no}
   [Fullscreen]	{no}
