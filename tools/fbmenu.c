@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/timerfd.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -45,7 +46,7 @@ struct item { char *value, *title, *detail; };
 /* Keep navigation keys outside the Unicode range. */
 enum { KEY_UP=0x110000, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F4 };
 enum phase { BOOT, HANDOFF, SHUTDOWN };
-static int tty=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
+static int tty=-1, keyboard_fd=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
 static struct termios saved;
 static struct fb_var_screeninfo screen;
 static struct fb_fix_screeninfo layout;
@@ -460,9 +461,9 @@ static int read_character(unsigned char value)
    unsigned code=value&31, remaining=1, minimum=0x80;
    if (value>=0xf0) { code=value&7; remaining=3; minimum=0x10000; }
    else if (value>=0xe0) { code=value&15; remaining=2; minimum=0x800; }
-   struct pollfd pending={tty,POLLIN,0};
+   struct pollfd pending={keyboard_fd,POLLIN,0};
    while (remaining--) {
-      if (poll(&pending,1,40)<=0 || read(tty,&value,1)!=1 || (value&0xc0)!=0x80) return 0;
+      if (poll(&pending,1,40)<=0 || read(keyboard_fd,&value,1)!=1 || (value&0xc0)!=0x80) return 0;
       code=(code<<6)|(value&63);
    }
    if (code<minimum || code>0x10ffff || (code>=0xd800 && code<=0xdfff)) return 0;
@@ -473,17 +474,17 @@ static int read_character(unsigned char value)
 static int key(void)
 {
    unsigned char value;
-   if (read(tty,&value,1)!=1) return 0;
+   if (read(keyboard_fd,&value,1)!=1) return 0;
    if (value!=27) return read_character(value);
-   struct pollfd pending={tty,POLLIN,0};
+   struct pollfd pending={keyboard_fd,POLLIN,0};
    if (poll(&pending,1,100)<=0) return 27;
-   if (read(tty,&value,1)!=1) return 0;
+   if (read(keyboard_fd,&value,1)!=1) return 0;
    if (value==27) return 27;
    if (value!='[' && value!='O') { read_character(value); return 0; }
    char sequence[16]={0};
    int length=1;
    sequence[0]=value;
-   while (poll(&pending,1,100)>0 && read(tty,&value,1)==1) {
+   while (poll(&pending,1,100)>0 && read(keyboard_fd,&value,1)==1) {
       if (length<(int)sizeof(sequence)-1) sequence[length]=value;
       length++;
       /* Linux function keys start with ESC [[; other ANSI keys end at 0x40..0x7e. */
@@ -548,6 +549,9 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
    signal(SIGUSR1,stop_server);
    tty=open("/dev/tty1",O_RDWR|O_NOCTTY);
    if (tty<0 || tcgetattr(tty,&saved)) return 1;
+   /* Console resets can invalidate poll readiness; keyboard reads must never block IPC. */
+   keyboard_fd=open("/dev/tty1",O_RDONLY|O_NOCTTY|O_NONBLOCK);
+   if (keyboard_fd<0) return 1;
    /* Run from the initramfs again, taking over only after X and getty have stopped. */
    if (shutting_down) {
       unlink(DISABLED);
@@ -598,7 +602,6 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
    while (running) {
       if (resumed) {
          struct vt_stat vt;
-         struct termios mode;
          int current_mode=keyboard_mode;
          ioctl(tty,KDGKBMODE,&current_mode);
          if (current_mode!=keyboard_mode && (current_mode==K_RAW || current_mode==K_MEDIUMRAW || current_mode==K_OFF)) { taken=1; break; }
@@ -606,12 +609,15 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
          if (!ioctl(tty,VT_GETSTATE,&vt) && vt.v_active!=1) { keep=!disabled; break; }
          int display_mode=KD_GRAPHICS;
          if (!ioctl(tty,KDGETMODE,&display_mode) && display_mode==KD_TEXT) break;
-         if (tcgetattr(tty,&mode)) break;
-         /* Init may reset termios without taking the display away from us. */
-         if (raw && (mode.c_lflag&ICANON)) keyboard(1);
          if (!disabled && !pauses) resume_graphics(frame,!coordinated);
       }
-      struct pollfd events[]={{listener,POLLIN,0},{tty,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};
+      /* Init also resets termios during shutdown's exitrd handoff. */
+      if (raw) {
+         struct termios mode;
+         if (tcgetattr(tty,&mode)) break;
+         if (mode.c_lflag&ICANON) keyboard(1);
+      }
+      struct pollfd events[]={{listener,POLLIN,0},{keyboard_fd,raw?POLLIN:0,0},{menu_client,POLLHUP,0},{animation,POLLIN,0}};
       int ready=poll(events,4,250);
       if (ready<0 && errno!=EINTR) break;
       if (events[0].revents&POLLIN) {
@@ -726,7 +732,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
          ioctl(tty,VT_SETMODE,&vt_mode);
       }
    }
-   unlink(socket_path); close(listener); close(tty); close(animation);
+   unlink(socket_path); close(listener); close(keyboard_fd); close(tty); close(animation);
    return 0;
 }
 
@@ -801,6 +807,11 @@ int main(int argc, char **argv)
    }
    for (int i=0;fd<0 && i<50;i++) { usleep(20000); fd=connect_server(); }
    if (fd<0 || write_all(fd,&request,sizeof(request))) return 1;
+   /* Rendering must not indefinitely delay boot or shutdown if its owner stalls. */
+   if (request.operation!='m' && request.operation!='i') {
+      struct timeval timeout={.tv_sec=2};
+      setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));
+   }
    char buffer[1024]; ssize_t size; int failed=0, replied=0;
    while ((size=read(fd,buffer,sizeof(buffer)))>0) {
       replied=1;
