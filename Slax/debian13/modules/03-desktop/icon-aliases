@@ -19,7 +19,7 @@ org.gnome.SimpleScan slax-simple-scan
 com.github.maoschanz.drawing slax-drawing
 org.gnome.Mines slax-gnome-mines
 org.gnome.Sudoku slax-gnome-sudoku
-gparted slax-gparted
+partition-manager slax-partition-manager
 org.remmina.Remmina slax-remmina
 vlc slax-vlc
 vlc-xmas slax-vlc

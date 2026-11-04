@@ -50,6 +50,10 @@ reporting progress.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `03-desktop/rootcopy/root/.Xresources`.
+- Keep Xft antialiasing enabled with slight hinting and grayscale rendering,
+  matching Fontconfig's defaults without assuming a monitor's RGB subpixel order.
+  GTK reads these shared X resources at startup; do not override font rendering
+  separately in Partition Manager.
 - `03-desktop/fbkeyboard.c` supplies the GTK 3 keyboard tray and `fbsetkb` selection.
   Start in US English, displayed as white `EN`; other layouts use two-letter
   uppercase identifiers. Share the existing labels and flags through
@@ -249,8 +253,33 @@ must follow the general Slax repair rules above.
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
 - Core includes `lvm2` and `cryptsetup-bin` for accessing LVM volumes and LUKS
-  encrypted disks offline. Desktop includes GParted as the ready-to-use Partition
-  Manager; its launcher must not require a download on a clean Slax boot.
+  encrypted disks offline. Desktop includes the native Partition Manager;
+  its launcher must not require a download on a clean Slax boot.
+- Maintain Partition Manager in the sibling `../partition-manager` repository
+  and publish it to `Tomas-M/partition-manager`. Slax downloads current HEAD
+  without version or hash pins, runs `make check` and builds it into
+  `slax-desktop-tools`. Do not keep duplicate application sources or a design
+  mockup in Slax. Reuse Slax's drive artwork for its embedded app icon and
+  `slax-partition-manager` launcher icons.
+  Do not install GParted or its otherwise unused libparted libraries; retain
+  GTKmm libraries needed by the VMware guest tools. Preserve the native
+  Workspace's frame, colors, table alignment and graphical creation editor.
+  Keep the side panes fixed in width while the center adapts to window size;
+  use automatic overlay scrollbars for details and the device and partition
+  lists in short windows. Give partition names more width than filesystem types.
+  Hide loop and zram devices
+  by default; `--include-loop` includes loops only. Disks without GPT/MBR offer
+  a new table on double-click. Keep selected GTK list rows alive during pointer
+  events. Use square bottom window corners and centered toolbar icons.
+  Use sfdisk for table operations and the installed filesystem tools for
+  formatting/growth, with runtime type catalogues and tool discovery.
+  In-use disks remain editable after an explicit review acknowledgement; do
+  not automatically unmount them. Update individual kernel entries with partx,
+  report deferred changes as requiring restart, and verify kernel geometry
+  before filesystem operations. Keep tests on owned sparse files and Linux
+  loop devices; never use host disks or Windows VHDs for development tests.
+  The dedicated `Slax boot test` VM also has an owned 4 GiB VDI fixture at
+  `VM/virtualbox/partition-manager-test.vdi` for interactive application checks.
 - Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
   the official binary package without recompiling. Remove `xfs_scrub`, its
   scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
@@ -723,6 +752,8 @@ must follow the general Slax repair rules above.
   Keep the panel's `icon-size` automatic so xlunch retains its launcher size;
   set only Docklike's icons to 32 px. Its native indicator uses the same blue
   for every running group; pinned launchers without windows have no indicator.
+  `docklike-multi-window-indicator.diff` gives groups with multiple windows a
+  shaded tail occupying 22 percent of the bar, in either panel orientation.
   Keep the notification area's icons at 22 px with `square-icons=false`.
   `panel-tray-spacing.diff` gives compact XEmbed icons 12 px between items,
   avoiding both full-height square slots and the crowded upstream 2 px gap.

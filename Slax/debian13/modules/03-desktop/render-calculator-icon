@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")"
+
+# Export every launcher size directly from the editable vector artwork.
+for SIZE in 16 22 24 32 48 64 96 128; do
+   DIR=rootcopy/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps
+   rsvg-convert -w "$SIZE" -h "$SIZE" calculator-icon.svg -o "$DIR/slax-calculator.png"
+   if [ -f "$DIR/calculator.png" ]; then
+      cp "$DIR/slax-calculator.png" "$DIR/calculator.png"
+   fi
+done
