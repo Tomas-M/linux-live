@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+VERSION=$(dpkg-query -W -f='${Version}' connman-gtk)
+SOURCEVERSION=$(dpkg-query -W -f='${source:Version}' connman-gtk)
+apt-get build-dep --yes --no-install-recommends "connman-gtk=$SOURCEVERSION"
+mkdir -p /tmp/connman-gtk-rebuild
+cd /tmp/connman-gtk-rebuild
+apt-get source "connman-gtk=$SOURCEVERSION"
+cd connman-gtk-*/
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
+# Use GTK's session-local activation to reopen the existing tray application's window.
+patch -p1 < "$CWD/patches/connman-gtk-activation.diff"
+dpkg-buildpackage -b -us -uc
+cp ../connman-gtk_*.deb "$OUTPUT/"

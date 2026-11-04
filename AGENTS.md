@@ -261,6 +261,8 @@ must follow the general Slax repair rules above.
   `slax-desktop-tools`. Do not keep duplicate application sources or a design
   mockup in Slax. Reuse Slax's drive artwork for its embedded app icon and
   `slax-partition-manager` launcher icons.
+  Resolve HEAD before downloading its commit archive so GitHub's cached HEAD archive
+  cannot package an older revision.
   Do not install GParted or its otherwise unused libparted libraries; retain
   GTKmm libraries needed by the VMware guest tools. Preserve the native
   Workspace's frame, colors, table alignment and graphical creation editor.
@@ -344,9 +346,9 @@ must follow the general Slax repair rules above.
   local URL through `fbliveapp` in a dedicated Chromium app profile.
   Set `assistant-image` in that configuration to `/usr/share/slax/slax-assistant.png`.
   Keep this transparent PNG in `03-desktop` rootcopy, fitted within 512 by 512 pixels.
-  The Fluxbox apps rule for `class=slax-ai`, `role=pop-up` opens its main window
-  centered at 90 percent of the monitor's available width and height, excluding
-  panel struts. Override saved maximized/fullscreen states only on opening;
+  The Fluxbox apps rules for `class=slax-ai`, `role=pop-up` and
+  `class=PartitionManager` open their main windows centered at 999 by 666 pixels.
+  Override saved maximized/fullscreen states only on opening;
   users can still resize and maximize it afterward.
 - `03-desktop/fbinstall.c` is the GTK2 one-click APT installer, built into
   `slax-desktop-tools`. Use `fbinstall [--user guest] APP_ID ICON NAME "PACKAGE..."
@@ -429,6 +431,12 @@ must follow the general Slax repair rules above.
   Keep the glyphs white, with a red `#ff4d4d` X badge on disconnected icons.
   Fluxbox startup runs `connman-gtk --tray` after the panel appears, without
   opening Network Settings. The tray still opens the settings on demand.
+  Rebuild ConnMan GTK with `build-connman-gtk` and hold its original Debian
+  package version. `connman-gtk-activation.diff` supplies the GTK application ID
+  `net.connman.gtk` and presents its window on activation. The menu launcher
+  calls `connman-gtk` directly with native startup notification. Subsequent
+  launches reopen the session's tray
+  process without duplicate icons or agents, including after closing the window.
   Keep PNGs at 16, 22, 24, 32 and 48 px in hicolor and Adwaita's matching `legacy`
   directories. Register the extra Adwaita sizes in `03-desktop/copy`; GTK otherwise
   selects its 16 px legacy artwork even when hicolor contains a native-size PNG.
@@ -663,6 +671,21 @@ must follow the general Slax repair rules above.
   and adjacent separator when the main toolbar is realized, identifying the
   stock warning icon without translated text. Do not rebuild PCManFM for this.
 - Use Docklike Taskbar for grouped application icons and hover previews.
+  `docklike-drag-reorder.diff` reorders pinned and running groups with an ordinary
+  primary-button drag. The source slides only along the panel; hide GTK's external
+  drag visual, including on non-composited X11. Animate real button allocations on
+  the frame clock for 180 ms, retargeting from their displayed positions.
+  Neighbours yield on the first overlap in either direction, using the moving
+  button's edges and grab offset. Allocate reordered slots immediately during
+  native drags; an embedded panel can defer unchanged-size layout until drop.
+  Recheck the pointer on each animation frame: the moving input window can mask
+  GTK destination motion events before a neighbour yields.
+  Keep preview popups suppressed during a drag and require a matching press for clicks.
+  Commit pinned order only on a valid internal drop. Escape and outside drops
+  restore surviving original groups in their original order, keeping new groups.
+  Cancel safely when the source disappears, groups are rebuilt or the plugin exits;
+  stale drag callbacks must not affect a newer drag. Test real native pointer
+  events with new and closing windows, pinned and unpinned groups, and Escape.
   `docklike-window-removal.diff` adjusts the selected window index whenever a
   group member leaves, including SIGTERM, SIGKILL and workspace changes. Keep
   the selected surviving window when earlier entries shift; if it leaves,
@@ -1050,6 +1073,13 @@ must follow the general Slax repair rules above.
   the exitrd pivot and resets the console to KD_TEXT. At the start of `shutdown`,
   before sourcing configuration, call `fbmenu --start /fbmenu-shutdown.sock` to
   synchronously reacquire graphics. Do not restart a splash dismissed with Esc.
+  Read keyboard input through a separate nonblocking descriptor and restore raw
+  termios after console resets in every phase. A reset can invalidate poll
+  readiness; a blocking read then deadlocks the exitrd's splash request. Bound
+  noninteractive control replies to two seconds; interactive menus still wait.
+  Initramfs shutdown remounts AUFS unions with `notrunc_xino` before unmounting.
+  This stops cleanup of pseudo-links from queuing inode-index truncation after
+  AUFS has cleared its branch xino pointers, which otherwise crashes the worker.
 - Keep tty1's getty ordered after `xorg.service`, whose `ExecStartPost` waits
   for X client connections. `Xdetect` must pass the service's display and VT
   arguments to `startx`. Try native hardware autodetection first; if startup

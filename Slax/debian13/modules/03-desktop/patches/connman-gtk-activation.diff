@@ -1,0 +1,19 @@
+--- a/src/main.c
++++ b/src/main.c
+@@ -638,6 +638,7 @@ static void activate(GtkApplication *app, gpointer user_data)
+ 		else
+ 			gtk_widget_show_all(main_window);
+ 
++		gtk_window_present(GTK_WINDOW(main_window));
+ 		window_has_shown = TRUE;
+ 	}
+ 	launch_to_tray = FALSE;
+@@ -691,7 +692,7 @@ int main(int argc, char *argv[])
+ 	services = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+ 					 (GDestroyNotify)remove_service_struct);
+ 
+-	app = gtk_application_new(NULL, G_APPLICATION_FLAGS_NONE);
++	app = gtk_application_new("net.connman.gtk", G_APPLICATION_FLAGS_NONE);
+ 	config_load(app);
+ 	g_application_add_main_option_entries(G_APPLICATION(app), options);
+ 	g_signal_connect(app, "startup", G_CALLBACK(startup), NULL);
