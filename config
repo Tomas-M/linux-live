@@ -11,9 +11,11 @@
 LIVEKITNAME="linux"
 
 # Kernel file, will be copied to your Live Kit
-# Your kernel must support aufs and squashfs. Debian Jessie's kernel is ready
-# out of the box.
+# Your kernel must support SquashFS and either OverlayFS or AUFS.
 VMLINUZ=/vmlinuz
+
+# Union filesystem: auto prefers AUFS when available; overlay selects OverlayFS.
+UNIONFS=auto
 
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running

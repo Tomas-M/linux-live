@@ -52,7 +52,7 @@ while [ "$MOUNT" != / ]; do
    MOUNT=$PARENT
 done
 mkdir -p "$MOUNT/EFI/BOOT"
-cp "$BOOT/EFI/BOOT/"*.EFI "$MOUNT/EFI/BOOT/"
+cp -a "$BOOT/EFI/." "$MOUNT/EFI/"
 # Identify the existing FAT partition as an ESP without changing its layout.
 STYLE=$(grub-probe --target=partmap "$BOOT")
 if [ "$STYLE" = gpt ]; then

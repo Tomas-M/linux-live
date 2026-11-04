@@ -20,9 +20,29 @@ die()
 }
 
 
+# Live module changes require both an available AUFS driver and an AUFS root.
+require_aufs()
+{
+   if ! grep -qw aufs /proc/filesystems && ! modprobe aufs 2>/dev/null; then
+      die "Live module activation and deactivation are not available on this system: the AUFS kernel module is unavailable."
+   fi
+   if ! grep -q ' aufs / aufs ' /proc/mounts; then
+      die "Live module activation and deactivation require an AUFS root filesystem. This system uses a different filesystem."
+   fi
+}
+
+
 print_branches()
 {
    local SI BUNDLE LOOP CWD
+
+   if ! grep -q ' aufs / aufs ' /proc/mounts; then
+      find "$LIVE/bundles" -mindepth 1 -maxdepth 1 -type d | sort -V | while read BUNDLE; do
+         LOOP=$(findmnt -n -o SOURCE --target "$BUNDLE")
+         printf '%s\t%s\n' "$BUNDLE" "$(losetup -n -O BACK-FILE "$LOOP")"
+      done
+      return
+   fi
 
    SI="/sys/fs/aufs/$(cat /proc/mounts | grep 'aufs / aufs' | egrep -o 'si=([^,) ]+)' | tr = _)"
    CWD="$(pwd)"
@@ -156,11 +176,13 @@ usage()
 
 
 if [ "$1" = "activate" ]; then
+   require_aufs
    activate "$2"
    exit
 fi
 
 if [ "$1" = "deactivate" ]; then
+   require_aufs
    deactivate "$2"
    exit
 fi

@@ -1,0 +1,26 @@
+#!/bin/sh
+# Use Debian's signed UEFI chain and its unmodified BIOS GRUB modules.
+set -e
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+KIT=$(CDPATH= cd "$THIS/../.." && pwd)
+MEDIA=${1:?Usage: build-boot media-dir workdir}
+WORK=${2:?}
+BOOT=$MEDIA/slax/boot
+SIGNED=$WORK/signed-boot
+mkdir -p "$SIGNED"
+(cd "$SIGNED"; apt-get download shim-signed shim-helpers-amd64-signed grub-efi-amd64-signed)
+for PACKAGE in "$SIGNED"/*.deb; do
+   dpkg-deb -x "$PACKAGE" "$SIGNED/files"
+   dpkg-deb -f "$PACKAGE" Package Version >> "$WORK/manifests/boot.packages"
+done
+GRUB_EFI=false sh "$KIT/tools/grub.create" "$MEDIA" slax
+install -m 644 "$SIGNED/files/usr/lib/shim/shimx64.efi.signed" "$BOOT/EFI/BOOT/BOOTX64.EFI"
+install -m 644 "$SIGNED/files/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed" "$BOOT/EFI/BOOT/grubx64.efi"
+install -m 644 "$SIGNED/files/usr/lib/shim/mmx64.efi.signed" "$BOOT/EFI/BOOT/mmx64.efi"
+mkdir -p "$BOOT/EFI/debian"
+cp "$BOOT/grub/grub.cfg" "$BOOT/EFI/debian/grub.cfg"
+# The same bootstrap also supports removable-media paths used by firmware.
+cp "$BOOT/grub/grub.cfg" "$BOOT/EFI/BOOT/grub.cfg"
+for FILE in "$BOOT/EFI/BOOT/BOOTX64.EFI" "$BOOT/EFI/BOOT/grubx64.efi" "$BOOT/EFI/BOOT/mmx64.efi" "$BOOT/vmlinuz"; do
+   sbverify --list "$FILE"
+done
