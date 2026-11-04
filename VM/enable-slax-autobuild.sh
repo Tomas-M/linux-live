@@ -8,4 +8,4 @@ systemctl enable slax-autobuild.service
 systemctl start --no-block slax-autobuild.service
 systemctl show slax-autobuild.service -p ActiveState -p SubState -p MainPID
 systemctl is-enabled slax-autobuild.service
-tail -n 4 /root/slax-autobuild.log
+tail -n 4 /tmp/slax-autobuild.log
