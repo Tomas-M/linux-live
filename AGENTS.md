@@ -38,15 +38,8 @@ reporting progress.
   assume a VM name, screen size or local pointer position. Other systems and
   relative input are unaffected. Do not synthesize clicks or change mouse modes.
 - Preserve graphics driver and cursor autodetection; do not force software
-  cursors or a particular GPU driver. The kernel recipe applies
-  `vmwgfx-legacy-cursor-limit.patch`: guest-backed cursors on older SVGA hosts
-  retain their 64px limit when the newer cursor-MOB limit register is absent.
-  Keep MOB cursor validation unchanged. This fixes invisible hardware cursors
-  without the software rendering that caused cursor clipping in VirtualBox.
-  `vmwgfx-legacy-cursor-hotspot.patch` also includes Xorg's legacy cursor-bypass
-  hotspot in guest-backed cursor images, matching the position calculation.
-  Keep theme hotspots and Fluxbox border cursors unchanged; the driver must pass
-  the actual hotspot to the host instead of shifting the artwork.
+  cursors or a particular GPU driver. Slax uses Debian's standard signed kernel
+  and its matching signed modules without private kernel patches.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `03-desktop/rootcopy/root/.Xresources`.
@@ -188,38 +181,35 @@ must follow the general Slax repair rules above.
   to this path. Remove superseded ISO files, preserving kernel packages and disks.
 - Always include the resulting ISO size in MiB when reporting a build or ISO update.
 
-## Kernel and full Slax build
+## Slax build and signed boot
 
-- Version pins and hashes live in `Slax/debian13/aufs-kernel-compile/versions`.
-  Read that file rather than assuming a version is still the latest.
-  Kernel 7.3.1 uses the matching `aufs7.3` source. Both vmwgfx cursor patches
-  remain necessary and apply without context fuzz; keep their behavior intact.
-- `KERNELPACKAGEVERSION` distinguishes patched kernel packages from stale cached
-  builds without changing the kernel ABI release. Advance it when kernel patches
-  change, and keep image, headers and libc-dev package versions together.
-- AUFS is built into the custom Slax kernel. Compile and install this kernel
-  on the build host, reboot into it, then build Slax with matching modules.
-  Hold the installed kernel image package in Slax, deriving its name from the
-  kernel artifact. Preserve its custom ABI release and package version.
-- The production configuration excludes DWARF, BTF and other auxiliary debug
-  metadata. Keep compilation in tmpfs and retain completed `.deb` packages
-  on the guest's persistent Linux filesystem.
-- The custom release has a `-slax` suffix. Use its rebuilt modules; do not
-  promise compatibility with binary modules for Debian's stock kernel.
-  Tomas declined a universal external-module ABI audit during each build.
+- Slax uses Debian 13's standard `linux-image-amd64` kernel from the configured
+  Debian repositories. Do not compile a private kernel or require AUFS.
+  Keep the kernel image and shipped modules unchanged so Debian's signatures
+  remain valid. Generate the initramfs against the target root's modules;
+  the development host need not run the same kernel.
+- UEFI boot uses Debian's Microsoft-signed shim, Debian-signed GRUB and the
+  Debian-signed kernel. Keep verification enabled; do not enroll a Slax MOK,
+  patch GRUB, load private GRUB modules or disable Secure Boot enforcement.
+  BIOS uses unmodified Debian GRUB tools and modules.
 - Run as root on amd64 Debian:
 
   ```sh
   sh Slax/debian13/build trixie /var/tmp/slax-build-trixie
   ```
 
-- This reuses completed kernel packages. If it installs a kernel, reboot and
-  run the command again. The optional VM service automates that sequence.
 - `buildmods` creates a minimal Debian with `debootstrap --variant=minbase`
-  inside a private mount namespace and an AUFS union. Cleanup preserves English
-  man pages and removes info, documentation and most translations. Each module
-  gets its own filesystem branch.
-  Service startup inside the chroot is blocked with `policy-rc.d`.
+  inside a private mount namespace and an OverlayFS root. Changing layers
+  unmounts the root and all helper mounts, then remounts the complete new stack.
+  Use a disposable compiler upper layer and discard it before runtime cleanup.
+  Disable index, metacopy, redirects and xino in build overlays; the resulting
+  layers are repacked as SquashFS, with whiteouts and opaque xattrs preserved.
+  Cleanup preserves English man pages and removes info, documentation and most
+  translations. Service startup inside the chroot is blocked with `policy-rc.d`.
+- Slax boots with OverlayFS. Generic Live Kit still supports AUFS when available,
+  and `UNIONFS=overlay` explicitly selects OverlayFS. `slax activate/deactivate`
+  require an available AUFS driver and an AUFS root; otherwise explain that live
+  module changes are unavailable. `slax list` also works with OverlayFS.
 - Slax has four runtime modules: `01-core`, `02-firmware`, `03-desktop` and
   `04-chromium`. Desktop includes Xorg, Fluxbox and the bundled X applications;
   do not install Blackbox. Install all desktop runtime packages before its
@@ -285,7 +275,7 @@ must follow the general Slax repair rules above.
 - Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
   the official binary package without recompiling. Remove `xfs_scrub`, its
   scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
-  The current kernel lacks online scrub support. Drop ICU and Python runtime
+  Keep automatic scrub helpers out of the compact live image. Drop ICU and Python runtime
   dependencies after removing these tools; preserve the unrelated XFS udev rule.
   Install the resulting package after discarding the compiler branch, before
   cleanup, and hold it so an ordinary upgrade cannot reintroduce Python.
@@ -328,9 +318,8 @@ must follow the general Slax repair rules above.
   captions, including their icon. This one setting controls both axes.
   Workspace labels sit inside their previews. Set their `[desktop-label]` padding,
   margin and radius in screen pixels; keep their rounded masks and Pango layouts cached.
-- Back up completed kernel `.deb` packages and their checksums to
-  `VM/slax-build-trixie/kernel` on the Windows host. Restore that directory to
-  the build output's `kernel` directory when reinstalling the work VM.
+- Record the selected Debian kernel release and package versions with each build.
+  Keep the signed kernel image paired with its matching modules in the ISO.
 - Application compilation happens in disposable branches. Copy out the
   resulting packages, remove those branches, then install the packages into
   the runtime branch. Compiler dependencies must not enter the final modules.
@@ -846,24 +835,18 @@ must follow the general Slax repair rules above.
   In `03-desktop/copy`, set all commands from `rootcopy/usr/bin` to mode 755;
   checkout permissions alone cannot guarantee that helpers such as
   `fbscreensize` remain executable.
-- Keep functional AUFS whiteouts. Omit only bookkeeping and mounted build
+- Keep functional union-filesystem whiteouts. Omit only bookkeeping and mounted build
   data when creating SquashFS modules.
-- `auplink flush` is a build-time operation needed before freezing/detaching
-  branches. It is not needed in the shipped initramfs or Slax runtime.
-  Exported UAPI headers for compiling `auplink` are userspace headers, not
-  kernel `EXPORT_SYMBOL` exports. Use the packaged `linux-libc-dev` headers.
-- Current util-linux remount options use `mod=PATH=ro+wh`, `add=0:PATH=rw`
-  and `del=PATH`. Live Kit's BusyBox mount uses its existing colon syntax;
-  that syntax was tested with the new kernel and must not be changed blindly.
+- Generic AUFS runtime remounts retain BusyBox's existing colon syntax.
+  Slax's OverlayFS build does not use AUFS tools or exported AUFS headers.
 - Final output is `/var/tmp/slax-build-trixie/slax-amd64.iso`, plus package
-  manifests and `kernel/*.deb`. Staging `/tmp/slax-build.*/media/slax/modules`
+  manifests and the selected Debian kernel release. Staging `/tmp/slax-build.*/media/slax/modules`
   is retained after a successful Slax build, together with filesystem branches,
   artifacts and other build files. Print the build directory at completion;
   do not delete it automatically. Failed Slax builds still clean their staging.
   Finished `.sb` modules are also inside the ISO at `/slax/modules`.
 - Keep output directories on the persistent filesystem, not dangling links
-  to temporary build trees. Kernel compilation still cleans its temporary
-  sources and objects. Retained Slax files in tmpfs disappear on reboot.
+  to temporary build trees. Retained Slax files in tmpfs disappear on reboot.
 
 ## VM automation and incremental changes
 
@@ -906,8 +889,8 @@ must follow the general Slax repair rules above.
 - Slax's module command is `sb`, with `sb2dir` and `dir2sb` underneath it.
   Install these existing tools on the host when useful. A directory ending
   in `.sb` is packed without adding its directory name inside the module.
-  `sb2dir` uses `-no-xattrs`; if a module has meaningful extended attributes,
-  unpack with plain `unsquashfs` to preserve them, then use `sb` to repack.
+  Preserve xattrs while unpacking and repacking: OverlayFS uses opaque-directory
+  markers and whiteout devices. `sb2dir` retains these attributes.
 - Absolute symlinks in unpacked modules can resolve into the build host.
   Do not copy a regular file onto one blindly. Use `update-alternatives --root`
   for module alternatives and replace links explicitly when needed.
@@ -1054,19 +1037,11 @@ must follow the general Slax repair rules above.
   background: using only `desktop-color` caused `null src bitmap` when Enter
   interrupted the countdown or selected a menu entry. The logo remains a
   separate unscaled image.
-- During the five-second countdown, show only `Press any key` with the timer
-  below the logo. Enter immediately boots the configured default; any other
-  key opens the full menu. Both screens source `grub/entries.cfg` and inherit
-  the same exported default, which need not be the first entry.
-- The full menu has only `[Enter] boot` and `[Tab] cmdline` on the penultimate
-  row. The small `anykey.mod` extension handles countdown keys and maps Tab to
-  GRUB's editor only while the graphical menu owns input. Restore input before
-  the editor or kernel starts and re-arm it when the menu refreshes. Each boot
-  entry also calls `anykey stop`. Its source and build helper are
-  `tools/grub-anykey.c` and `tools/grub-anykey.create`. Compile against the
-  matching GRUB version and platform flags. Keep bundled modules in
-  `Slax/debian13/bootfiles/grub/extra/{i386-pc,x86_64-efi}` so USB boot setup
-  does not remove them when replacing GRUB's standard module directories.
+- During the five-second countdown, show the centered Slax logo and timeout
+  message. Use only stock GRUB: Enter boots the selected default and Escape
+  leaves the nested countdown menu for the full menu. The full menu uses
+  `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
+  Both menus source `grub/entries.cfg` and preserve the configured default.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.

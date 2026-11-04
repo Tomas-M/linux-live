@@ -91,7 +91,7 @@ Sub Install
         " --boot-directory=" & Quote(boot) & " --recheck --locales= --fonts= --themes= " & Quote("\\?\PhysicalDrive" & partition.DiskIndex),1,True)
     If Not files.FolderExists(drive & "\EFI") Then files.CreateFolder drive & "\EFI"
     If Not files.FolderExists(drive & "\EFI\BOOT") Then files.CreateFolder drive & "\EFI\BOOT"
-    files.CopyFile boot & "\EFI\BOOT\*.EFI",drive & "\EFI\BOOT\",True
+    files.CopyFolder boot & "\EFI\*",drive & "\EFI\",True
     ' MBR retains its FAT type for XP; GPT needs the EFI System Partition GUID.
     If gpt Then
         If modern Then

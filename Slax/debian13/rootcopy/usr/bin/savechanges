@@ -38,8 +38,8 @@ if [ ! "$2" = "" ]; then
    CHANGES="$2"
 fi
 
-# Overlayfs requires one more subdir. Detect it this way
-if [ -d "$CHANGES/changes" -a -d "$CHANGES/workdir" -a "$(ls -1 "$CHANGES" | egrep -v '^changes$' | egrep -v '^workdir')" = "" ]; then
+# OverlayFS keeps its writable files below the persistent-session metadata.
+if [ "$(findmnt -n -o FSTYPE /)" = overlay ] && [ -d "$CHANGES/changes" ]; then
    CHANGES="$CHANGES/changes"
 fi
 

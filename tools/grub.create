@@ -49,6 +49,9 @@ if [ -d /usr/lib/grub/i386-pc ]; then
       -o "$BOOT/grub/net/pxe.0" "boot/grub/grub.cfg=$BOOT/grub/net/grub.cfg"
 fi
 
+# Signed-loader builds supply their already signed EFI images separately.
+if [ "${GRUB_EFI:-true}" = false ]; then exit 0; fi
+
 FILE=''
 for PLATFORM in /usr/lib/grub/*-efi; do
    [ -d "$PLATFORM" ] || continue

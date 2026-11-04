@@ -261,6 +261,7 @@ init_zram()
 
 aufs_is_supported()
 {
+   if [ "${UNIONFS:-auto}" = overlay ]; then return 1; fi
    cat /proc/filesystems | grep aufs
 }
 
@@ -271,7 +272,9 @@ aufs_is_supported()
 init_aufs()
 {
    debug_log "init_aufs" "$*"
-   modprobe aufs 2>/dev/null
+   if [ "${UNIONFS:-auto}" != overlay ]; then
+      modprobe aufs 2>/dev/null
+   fi
    if ! aufs_is_supported >/dev/null; then
       modprobe overlay 2>/dev/null
    fi
@@ -299,7 +302,9 @@ init_union()
       echo "Setting up union using overlayfs"
       mkdir -p "$1/changes"
       mkdir -p "$1/workdir"
-      mount -t overlay overlay -o lowerdir=$(find "$3" -mindepth 1 -maxdepth 1 | sortmod | tac | tr '\n' ':' | sed -r 's/:$//'),upperdir=$1/changes,workdir=$1/workdir $2
+      local LOWER
+      LOWER=$(find "$3" -mindepth 1 -maxdepth 1 -type d | sortmod | tac | tr '\n' ':' | sed -r 's/:$//')
+      mount -t overlay overlay -o "lowerdir=$LOWER,upperdir=$1/changes,workdir=$1/workdir,index=off,metacopy=off,redirect_dir=off,xino=off" "$2"
    fi
 }
 
@@ -1296,7 +1301,11 @@ fstab_create()
    local FSTAB DEVICE FS LABEL MOUNTPOINT OPTS
 
    FSTAB="$1/etc/fstab"
-   echo aufs / aufs defaults 0 0 > $FSTAB
+   if aufs_is_supported >/dev/null; then
+      echo aufs / aufs defaults 0 0 > "$FSTAB"
+   else
+      echo overlay / overlay defaults 0 0 > "$FSTAB"
+   fi
    echo proc /proc proc defaults 0 0 >> $FSTAB
    echo sysfs /sys sysfs defaults 0 0 >> $FSTAB
    echo devpts /dev/pts devpts gid=5,mode=620 0 0 >> $FSTAB
@@ -1367,7 +1376,11 @@ change_root()
    if [ ! -e dev/tty0 ]; then mknod dev/tty0 c 4 0; fi
    if [ ! -e dev/tty1 ]; then mknod dev/tty1 c 4 1; fi
    if [ ! -e dev/null ]; then mknod dev/null c 1 3; fi
-   if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
+   if aufs_is_supported >/dev/null; then
+      if [ ! -e sbin/fsck.aufs ]; then ln -s /bin/true sbin/fsck.aufs; fi
+   else
+      if [ ! -e sbin/fsck.overlay ]; then ln -s /bin/true sbin/fsck.overlay; fi
+   fi
 
    # find chroot and init
    if [ -x bin/chroot -o -L bin/chroot ]; then  CHROOT=bin/chroot; fi
@@ -1395,7 +1408,9 @@ change_root()
       SPLASH_PID=
    fi
    mkdir -p run/initramfs
-   mount -n -o remount,ro aufs .
+   if aufs_is_supported >/dev/null; then
+      mount -n -o remount,ro aufs .
+   fi
    pivot_root . run/initramfs
    # The system init must not inherit the initrd's saved console descriptors.
    if [ "$SPLASH_LOG" ]; then exec 3>&- 4>&-; SPLASH_LOG=; fi

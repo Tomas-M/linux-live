@@ -86,4 +86,6 @@ set -- -as mkisofs -J -R -A "$NAME" -V "$NAME" -c "$NAME/boot/grub/boot.cat" "$@
 if [ -n "${XORRISO_PATH_LIST:-}" ]; then
    set -- "$@" -- -pathspecs on -backslash_codes with_quoted_input -quoted_path_list "$XORRISO_PATH_LIST"
 fi
+# Stock signed loaders can read their bootstrap through either EFI or ISO media.
+set -- "$@" "EFI=$BOOT/EFI"
 xorriso "$@"

@@ -9,7 +9,7 @@ desktop-image: "black.png"
    top = "100%-64"
    width = "100%-16"
    height = 16
-   text = "Press any key, automatic boot in %d s ..."
+   text = "Press Esc for boot menu, automatic boot in %d s ..."
    font = "Unifont Regular 16"
    color = "#FFFFFF"
    align = "center"

@@ -1,94 +1,109 @@
 #!/bin/sh
 set -e
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
-SUITE=${1:?Usage: buildmods suite workdir kernel.deb media-dir}
+KIT=$(CDPATH= cd "$THIS/../.." && pwd)
+SUITE=${1:?Usage: buildmods suite workdir media-dir}
 WORK=${2:?}
-IMAGE=${3:?}
-MEDIA=${4:?}
+MEDIA=${3:?}
 RUN=$(mktemp -d "$WORK/rootfs.XXXXXX")
 UNION=$RUN/root
 BRANCH=$RUN/branches/01-core
+LOWER=$RUN/empty
 ARTIFACTS=$RUN/artifacts
-mkdir -p "$UNION" "$BRANCH" "$MEDIA/slax/modules" "$ARTIFACTS" "$WORK/manifests"
+mkdir -p "$UNION" "$BRANCH" "$LOWER" "$RUN/work" "$MEDIA/slax/modules" "$ARTIFACTS" "$WORK/manifests"
+printf '%s\n' "$RUN" > "$WORK/rootfs-directory.txt"
 
-# Unmount only this build's mounts, including after a failed recipe.
+# Unmount this build's root and every bind mount before changing its layer stack.
+close_root()
+{
+   if mountpoint -q "$UNION"; then
+      umount -R "$UNION"
+   fi
+}
+
+# Failed recipes must leave no mounted overlay or bind mounts behind.
 finish()
 {
    STATUS=$?
    trap - 0
-   if mountpoint -q "$UNION"; then
-      auplink "$UNION" flush || STATUS=1
-      umount -R "$UNION" || STATUS=1
-   fi
+   close_root || STATUS=1
    exit "$STATUS"
 }
 trap finish 0
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Freeze the previous module and put a fresh writable branch above it.
-new_branch()
+# Disable inode-dependent copy-up metadata because completed layers become SquashFS.
+open_root()
 {
-   auplink "$UNION" flush
-   mount -i -t aufs -o "remount,mod=$BRANCH=ro+wh" none "$UNION"
-   BRANCH=$RUN/branches/$1
-   mkdir "$BRANCH"
-   mount -i -t aufs -o "remount,add=0:$BRANCH=rw" none "$UNION"
+   mkdir -p "$RUN/work/$(basename "$BRANCH")"
+   mount -t overlay overlay -o "lowerdir=$LOWER,upperdir=$BRANCH,workdir=$RUN/work/$(basename "$BRANCH"),index=off,metacopy=off,redirect_dir=off,xino=off" "$UNION"
+   for DIR in dev proc sys run tmp boot build kit artifacts var/cache/apt var/lib/apt/lists; do
+      mkdir -p "$UNION/$DIR"
+   done
+   mount --rbind /dev "$UNION/dev"
+   mount --make-rslave "$UNION/dev"
+   mount -t proc proc "$UNION/proc"
+   mount --bind /sys "$UNION/sys"
+   mount -t tmpfs tmpfs "$UNION/run"
+   for DIR in tmp boot var/cache/apt var/lib/apt/lists; do
+      mkdir -p "$RUN/$DIR"
+      mount --bind "$RUN/$DIR" "$UNION/$DIR"
+   done
+   chmod 1777 "$RUN/tmp"
+   mount --bind "$THIS" "$UNION/build"
+   mount -o remount,bind,ro "$UNION/build"
+   mount --bind "$KIT" "$UNION/kit"
+   mount -o remount,bind,ro "$UNION/kit"
+   mount --bind "$ARTIFACTS" "$UNION/artifacts"
 }
 
-# Every package operation runs in the target root, with service startup blocked.
+# Every new layer sees the frozen preceding runtime layers in priority order.
+new_branch()
+{
+   close_root
+   LOWER=$BRANCH:$LOWER
+   BRANCH=$RUN/branches/$1
+   mkdir "$BRANCH"
+   open_root
+}
+
+# Discard compiler changes and restore the previous writable runtime layer.
+discard_build()
+{
+   close_root
+   rm -rf "$BRANCH" "$RUN/work/$(basename "$BRANCH")"
+   BRANCH=$RUNTIME
+   LOWER=${LOWER#*:}
+   open_root
+}
+
+# Every package operation runs in the target root with service startup blocked.
 in_root()
 {
    chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive LC_ALL=C TMPDIR=/tmp /bin/sh -ec \
       'cd "$1"; shift; exec sh "$@"' sh "$@"
 }
 
-# Directory redirects refer to source inode numbers, which change in SquashFS.
-mount -i -t aufs -o "br=$BRANCH=rw,xino=$RUN/xino,nodirren" none "$UNION"
+open_root
 debootstrap --variant=minbase --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
    "$SUITE" "$UNION" https://deb.debian.org/debian
-
-# Build files, caches and runtime mounts never become part of a module.
-for DIR in dev proc sys run tmp boot build artifacts var/cache/apt var/lib/apt/lists; do
-   mkdir -p "$UNION/$DIR"
-done
-mount --rbind /dev "$UNION/dev"
-mount -t proc proc "$UNION/proc"
-mount --bind /sys "$UNION/sys"
-mount -t tmpfs tmpfs "$UNION/run"
-for DIR in tmp boot var/cache/apt var/lib/apt/lists; do
-   mkdir -p "$RUN/$DIR"
-   mount --bind "$RUN/$DIR" "$UNION/$DIR"
-done
-# Preserve the standard writable, sticky temporary directory inside the chroot.
-chmod 1777 "$RUN/tmp"
-mount --bind "$THIS" "$UNION/build"
-mount -o remount,bind,ro "$UNION/build"
-mount --bind "$ARTIFACTS" "$UNION/artifacts"
 printf '#!/bin/sh\nexit 101\n' > "$UNION/usr/sbin/policy-rc.d"
 chmod 755 "$UNION/usr/sbin/policy-rc.d"
-cp "$IMAGE" "$ARTIFACTS/kernel.deb"
-
 sed "s/trixie/$SUITE/g" "$THIS/rootcopy/etc/apt/sources.list" > "$RUN/sources.list"
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
 in_root /build install
-# Compile core tools in a disposable branch so build dependencies stay out of Slax.
+
 RUNTIME=$BRANCH
 new_branch 01-core-build
 mkdir -p "$ARTIFACTS/01-core"
 in_root /build compile
-auplink "$UNION" flush
-mount -i -t aufs -o "remount,del=$BRANCH" none "$UNION"
-rm -rf "$BRANCH"
-BRANCH=$RUNTIME
-mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
+discard_build
 
-# Install the native XFS tools without their optional Python helpers.
 chroot "$UNION" env DEBIAN_FRONTEND=noninteractive LC_ALL=C apt-get install -y --no-install-recommends /artifacts/01-core/xfsprogs.deb
 chroot "$UNION" apt-mark hold xfsprogs
 in_root /build cleanup
 in_root /build copy
-# Use the selected suite after rootcopy has applied the Slax defaults.
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
 chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/01-core.packages"
 
@@ -101,13 +116,7 @@ for RECIPE in "$THIS"/modules/*; do
       new_branch "$NAME-build"
       mkdir -p "$ARTIFACTS/$NAME"
       in_root "/build/modules/$NAME" compile
-      auplink "$UNION" flush
-      mount -i -t aufs -o "remount,del=$BRANCH" none "$UNION"
-      rm -rf "$BRANCH"
-      BRANCH=$RUNTIME
-      mount -i -t aufs -o "remount,mod=$BRANCH=rw" none "$UNION"
-      # Install any compiled packages; other artifacts are installed by the copy phase.
-      # APT treats locally rebuilt packages with unchanged versions as downgrades.
+      discard_build
       chroot "$UNION" /usr/bin/env DEBIAN_FRONTEND=noninteractive TMPDIR=/tmp /bin/sh -ec \
          'set -- /artifacts/"$1"/*.deb
           if [ -f "$1" ]; then apt-get install -y --no-install-recommends --reinstall --allow-downgrades "$@"; fi' sh "$NAME"
@@ -116,7 +125,6 @@ for RECIPE in "$THIS"/modules/*; do
    if [ -f "$RECIPE/cleanup" ]; then
       in_root "/build/modules/$NAME" cleanup
    fi
-   # Restore module defaults only after package installation and cleanup.
    if [ -f "$RECIPE/copy" ]; then
       in_root "/build/modules/$NAME" copy
    elif [ -d "$RECIPE/rootcopy" ]; then
@@ -124,16 +132,24 @@ for RECIPE in "$THIS"/modules/*; do
    fi
    chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/$NAME.packages"
 done
-auplink "$UNION" flush
-umount -R "$UNION"
 
-# Keep functional whiteouts; omit only AUFS bookkeeping and mounted build data.
+# Build the initramfs against the target Debian modules, independently of the host kernel.
+KERNEL=$(basename "$RUN"/boot/vmlinuz-*)
+KERNEL=${KERNEL#vmlinuz-}
+cp "$KIT/config" "$RUN/tmp/slax-build-config"
+printf '\nLIVEKITNAME=slax\nUNIONFS=overlay\nNETWORK=true\nKERNEL=%s\nLMK=lib/modules/$KERNEL\nBEXT=sb\n' "$KERNEL" >> "$RUN/tmp/slax-build-config"
+INITRAMFS=$(chroot "$UNION" env LIVEKITCONFIG=/tmp/slax-build-config SPLASH=/kit/Slax/debian13/bootsplash sh -c 'cd /kit/initramfs; sh ./initramfs_create')
+mkdir -p "$MEDIA/slax/boot"
+mv "$RUN/$INITRAMFS" "$MEDIA/slax/boot/initrfs.img"
+cp "$RUN/boot/vmlinuz-$KERNEL" "$MEDIA/slax/boot/vmlinuz"
+printf '%s\n' "$KERNEL" > "$WORK/kernel-release.txt"
+close_root
+
+# Preserve OverlayFS whiteout devices and opaque-directory xattrs in each lower layer.
 for BRANCH in "$RUN"/branches/*; do
-   # Rootcopy must not leave module roots group-writable.
    chmod 755 "$BRANCH"
    mksquashfs "$BRANCH" "$MEDIA/slax/modules/$(basename "$BRANCH").sb" \
       -noappend -comp xz -Xbcj x86 -b 1024k -always-use-fragments \
-      -e .wh..wh.aufs .wh..wh.plnk .wh..wh.orph boot dev proc sys run tmp build artifacts \
-      var/cache/apt var/lib/apt/lists usr/sbin/policy-rc.d
+      -e boot dev proc sys run tmp build kit artifacts var/cache/apt var/lib/apt/lists usr/sbin/policy-rc.d
 done
-printf 'Filesystem branches: %s/branches\n' "$RUN"
+printf 'Filesystem layers: %s/branches\n' "$RUN"
