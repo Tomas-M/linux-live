@@ -1,0 +1,20 @@
+Description: Widen the shaded tail of multi-window bar indicators
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -435,12 +435,12 @@
+ 
+ 			if (orientation == ORIENTATION_BOTTOM || orientation == ORIENTATION_TOP)
+ 			{
+-				pat0 = (int)w * 0.88;
++				pat0 = (int)w * 0.78;
+ 				pat = cairo_pattern_create_linear(pat0, 0, w, 0);
+ 			}
+ 			else
+ 			{
+-				pat0 = (int)h * 0.90;
++				pat0 = (int)h * 0.78;
+ 				pat = cairo_pattern_create_linear(0, pat0, 0, h);
+ 			}
+ 
