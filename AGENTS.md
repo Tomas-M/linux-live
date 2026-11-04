@@ -675,12 +675,18 @@ must follow the general Slax repair rules above.
   primary-button drag. The source slides only along the panel; hide GTK's external
   drag visual, including on non-composited X11. Animate real button allocations on
   the frame clock for 180 ms, retargeting from their displayed positions.
+  After release, animate the source from its displayed position into its committed slot.
   Neighbours yield on the first overlap in either direction, using the moving
   button's edges and grab offset. Allocate reordered slots immediately during
   native drags; an embedded panel can defer unchanged-size layout until drop.
   Recheck the pointer on each animation frame: the moving input window can mask
   GTK destination motion events before a neighbour yields.
   Keep preview popups suppressed during a drag and require a matching press for clicks.
+  XEmbed forwards drops through another process: do not use `GTK_TARGET_SAME_APP`
+  or require `gtk_drag_get_source_widget()` to identify the destination context.
+  Match the active drag's pointer device and target type, keeping an opaque payload.
+  Verify committed drops in the real external panel plugin, in both directions;
+  a standalone GTK window does not exercise the XEmbed proxy.
   Commit pinned order only on a valid internal drop. Escape and outside drops
   restore surviving original groups in their original order, keeping new groups.
   Cancel safely when the source disappears, groups are rebuilt or the plugin exits;
