@@ -25,7 +25,7 @@ line belongs to the main [Desktop Entry] group.
    Added: Categories=Network;Settings;HardwareSettings;GTK;
    Expected menus: Internet and System (the latter includes Settings).
    ConnMan GTK configures connections; its upstream entry also uses Settings
-   and HardwareSettings. Slax's Exec=connman-gtk-start and icon are unchanged.
+   and HardwareSettings.
 
 4. Slax/debian13/modules/03-desktop/rootcopy/usr/local/share/applications/SciTE.desktop
    Added: Categories=Utility;TextEditor;GTK;

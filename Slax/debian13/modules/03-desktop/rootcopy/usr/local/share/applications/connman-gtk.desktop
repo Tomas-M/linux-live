@@ -1,8 +1,9 @@
 [Desktop Entry]
-Exec=connman-gtk-start
+Exec=connman-gtk
 Icon=slax-net-manager
 Name=Net Manager
 Comment=Connect to wired or Wi-Fi networks and configure connections
 Terminal=false
+StartupNotify=true
 Type=Application
 Categories=Network;Settings;HardwareSettings;GTK;

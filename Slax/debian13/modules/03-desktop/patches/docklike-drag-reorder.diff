@@ -1,0 +1,539 @@
+Description: Animate native taskbar reordering with in-panel dragging and safe cancellation
+Author: Tomas-M
+Forwarded: not-needed
+
+--- a/src/Dock.cpp
++++ b/src/Dock.cpp
+@@ -6,6 +6,8 @@
+  */
+ 
+ #include "Dock.hpp"
++#include <map>
++#include <vector>
+ #ifdef ENABLE_X11
+ #include "Hotkeys.hpp"
+ #endif
+@@ -18,11 +20,284 @@
+ 
+ 	int mPanelSize;
+ 	int mIconSize;
++	struct ButtonMotion
++	{
++		GtkAllocation shown, from, target;
++		gint64 started;
++	};
++	static std::map<GtkWidget*, ButtonMotion> motions;
++	static std::shared_ptr<Group> dragging;
++	static std::vector<std::weak_ptr<Group>> originalOrder;
++	static GdkDragContext* dragContext = nullptr;
++	static guint motionTick = 0;
++	static double dragOffset;
++	static bool paintingDrag = false;
++	static GtkTargetEntry dragTargets[] = {{(gchar*)"application/docklike_group", GTK_TARGET_SAME_APP, 0}};
++
++	// Enumerate current children instead of keeping pointers to closed applications.
++	static std::vector<GtkWidget*> buttons(bool visible = false)
++	{
++		std::vector<GtkWidget*> result;
++		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
++		for (GList* child = children; child; child = child->next)
++			if (!visible || gtk_widget_get_visible(GTK_WIDGET(child->data)))
++				result.push_back(GTK_WIDGET(child->data));
++		g_list_free(children);
++		return result;
++	}
++
++	static void reorderButtons();
++
++	// Move real allocations, including their input windows, on GTK's frame clock.
++	static gboolean animateButtons(GtkWidget*, GdkFrameClock* clock, gpointer)
++	{
++		// Moving input windows can suppress native destination motion notifications.
++		if (dragging)
++			reorderButtons();
++		bool active = false;
++		gint64 now = gdk_frame_clock_get_frame_time(clock);
++		for (auto& entry : motions)
++		{
++			ButtonMotion& motion = entry.second;
++			double progress = std::min(1., std::max(0., (now - motion.started) / 180000.));
++			double eased = 1. - pow(1. - progress, 3.);
++			motion.shown = motion.target;
++			motion.shown.x = lround(motion.from.x + (motion.target.x - motion.from.x) * eased);
++			motion.shown.y = lround(motion.from.y + (motion.target.y - motion.from.y) * eased);
++			if (dragging && entry.first == dragging->mButton)
++			{
++				int x, y; GtkAllocation box;
++				gtk_widget_get_allocation(mBox, &box);
++				gdk_window_get_device_position(gtk_widget_get_window(mBox), gdk_drag_context_get_device(dragContext), &x, &y, nullptr);
++				if (gtk_orientable_get_orientation(GTK_ORIENTABLE(mBox)) == GTK_ORIENTATION_HORIZONTAL)
++					motion.shown.x = std::max(box.x, std::min(box.x + box.width - motion.target.width, (int)lround(x - dragOffset)));
++				else
++					motion.shown.y = std::max(box.y, std::min(box.y + box.height - motion.target.height, (int)lround(y - dragOffset)));
++			}
++			gtk_widget_size_allocate(entry.first, &motion.shown);
++			active |= progress < 1. && (motion.from.x != motion.target.x || motion.from.y != motion.target.y);
++		}
++		gtk_widget_queue_draw(mBox);
++		active |= dragging != nullptr;
++		if (!active)
++			motionTick = 0;
++		return active;
++	}
++
++	// Retarget from the currently displayed position when order or visibility changes.
++	static void layoutButtons()
++	{
++		auto visible = buttons(true);
++		for (auto it = motions.begin(); it != motions.end();)
++			if (std::find(visible.begin(), visible.end(), it->first) == visible.end())
++				it = motions.erase(it);
++			else
++				++it;
++		for (GtkWidget* widget : visible)
++		{
++			GtkAllocation target;
++			gtk_widget_get_allocation(widget, &target);
++			auto entry = motions.find(widget);
++			if (entry == motions.end())
++				motions.emplace(widget, ButtonMotion{target, target, target, g_get_monotonic_time()});
++			else
++			{
++				ButtonMotion& motion = entry->second;
++				if (target.x != motion.target.x || target.y != motion.target.y)
++				{
++					motion.from = motion.shown;
++					motion.started = g_get_monotonic_time();
++				}
++				motion.target = target;
++				motion.shown.width = target.width;
++				motion.shown.height = target.height;
++				gtk_widget_size_allocate(widget, &motion.shown);
++			}
++		}
++		if (!motionTick)
++			motionTick = gtk_widget_add_tick_callback(mBox, animateButtons, nullptr, nullptr);
++	}
++
++	// A valid internal drag is identified by GTK, never by deserializing a pointer.
++	bool isGroupDrag(GdkDragContext* context)
++	{
++		return dragging && gtk_drag_get_source_widget(context) == dragging->mButton;
++	}
++
++	// Preview and click handlers share the active native transaction.
++	bool isDragging()
++	{
++		return dragging != nullptr;
++	}
++
++	// Only a successful internal drop commits; cancellation restores surviving originals.
++	void finishDrag(bool commit)
++	{
++		if (!dragging)
++			return;
++		auto source = dragging;
++		auto motion = motions.find(source->mButton);
++		if (motion != motions.end())
++		{
++			motion->second.from = motion->second.shown;
++			motion->second.started = g_get_monotonic_time();
++		}
++		dragging.reset();
++		g_clear_object(&dragContext);
++		if (!commit)
++		{
++			int position = 0;
++			for (auto& weak : originalOrder)
++				if (auto group = weak.lock())
++					if (gtk_widget_get_parent(group->mButton) == mBox && gtk_widget_get_visible(group->mButton))
++						gtk_box_reorder_child(GTK_BOX(mBox), group->mButton, position++);
++		}
++		originalOrder.clear();
++		source->mPreviewSuppressed = true;
++		savePinned();
++	}
++
++	// Late GTK completion signals belong only to their original source transaction.
++	void endDrag(GdkDragContext* context)
++	{
++		if (context == dragContext)
++			finishDrag(false);
++	}
++
++	// Keep the source alive until GTK releases its drag, even if its last window closes.
++	void beginDrag(Group* group, GdkDragContext* context)
++	{
++		finishDrag(false);
++		dismissPreviews();
++		dragging = mGroups.get(group->mAppInfo);
++		dragContext = GDK_DRAG_CONTEXT(g_object_ref(context));
++		for (GtkWidget* widget : buttons(true))
++		{
++			Group* item = (Group*)g_object_get_data(G_OBJECT(widget), "group");
++			originalOrder.push_back(mGroups.get(item->mAppInfo));
++		}
++		dragOffset = gtk_orientable_get_orientation(GTK_ORIENTABLE(mBox)) == GTK_ORIENTATION_HORIZONTAL ? group->mDragPressX : group->mDragPressY;
++		gtk_widget_queue_resize(mBox);
++	}
++
++	// GTK owns the pointer and Escape handling; cancel without resurrecting closed groups.
++	void cancelDrag()
++	{
++		if (dragContext)
++		{
++			GdkDragContext* context = GDK_DRAG_CONTEXT(g_object_ref(dragContext));
++			gtk_drag_cancel(context);
++			finishDrag(false);
++			g_object_unref(context);
++		}
++	}
++
++	// Target slots remain stable while their displayed buttons slide toward them.
++	static GtkAllocation buttonSlot(GtkWidget* widget)
++	{
++		auto entry = motions.find(widget);
++		if (entry != motions.end())
++			return entry->second.target;
++		GtkAllocation slot;
++		gtk_widget_get_allocation(widget, &slot);
++		return slot;
++	}
++
++	// Yield when the moving button overlaps a neighbour, accounting for its grab offset.
++	static void reorderButtons()
++	{
++		int x, y;
++		gdk_window_get_device_position(gtk_widget_get_window(mBox), gdk_drag_context_get_device(dragContext), &x, &y, nullptr);
++		bool horizontal = gtk_orientable_get_orientation(GTK_ORIENTABLE(mBox)) == GTK_ORIENTATION_HORIZONTAL;
++		auto visible = buttons(true);
++		int current = std::find(visible.begin(), visible.end(), dragging->mButton) - visible.begin();
++		int position = current;
++		GtkAllocation source = buttonSlot(dragging->mButton);
++		double size = horizontal ? source.width : source.height;
++		double start = (horizontal ? x : y) - dragOffset;
++		double centre = start + size / 2.;
++		double slotCentre = horizontal ? source.x + source.width / 2. : source.y + source.height / 2.;
++		if (centre > slotCentre)
++		{
++			while (position + 1 < (int)visible.size())
++			{
++				GtkAllocation next = buttonSlot(visible[position + 1]);
++				if (start + size < (horizontal ? next.x + next.width / 2. : next.y + next.height / 2.))
++					break;
++				++position;
++			}
++		}
++		else if (centre < slotCentre)
++		{
++			while (position > 0)
++			{
++				GtkAllocation previous = buttonSlot(visible[position - 1]);
++				if (start > (horizontal ? previous.x + previous.width / 2. : previous.y + previous.height / 2.))
++					break;
++				--position;
++			}
++		}
++		if (position != current)
++		{
++			auto children = buttons();
++			int index = std::find(children.begin(), children.end(), visible[position]) - children.begin();
++			gtk_box_reorder_child(GTK_BOX(mBox), dragging->mButton, index);
++			// Allocate now: an embedded panel may defer an unchanged size until the drop.
++			GtkAllocation allocation;
++			gtk_widget_get_allocation(mBox, &allocation);
++			gtk_widget_size_allocate(mBox, &allocation);
++		}
++	}
++
++	// Acknowledge GTK destination events separately from source-frame position updates.
++	bool dragMotion(GdkDragContext* context, guint time)
++	{
++		if (!isGroupDrag(context))
++			return false;
++		reorderButtons();
++		gdk_drag_status(context, GDK_ACTION_MOVE, time);
++		return true;
++	}
++
++	// Sources can disappear when an application closes during a drag.
++	void groupHidden(Group* group)
++	{
++		if (dragging.get() == group)
++			cancelDrag();
++	}
++
++	// Accept only our active transaction, including drops between button hit areas.
++	void dropGroup(GdkDragContext* context)
++	{
++		if (isGroupDrag(context))
++			finishDrag(true);
++	}
++
++	// Draw the moving button once, above its neighbours, while retaining native hit testing.
++	bool skipDragDraw(GtkWidget* widget)
++	{
++		return dragging && widget == dragging->mButton && !paintingDrag;
++	}
++
+ 
+ 	void init()
+ 	{
+ 		mBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+ 		gtk_widget_set_name(mBox, "docklike-plugin");
++		gtk_drag_dest_set(mBox, GTK_DEST_DEFAULT_DROP, dragTargets, 1, GDK_ACTION_MOVE);
++		g_signal_connect_after(mBox, "size-allocate", G_CALLBACK(+[](GtkWidget*, GtkAllocation*, gpointer) { layoutButtons(); }), nullptr);
++		g_signal_connect(mBox, "remove", G_CALLBACK(+[](GtkContainer*, GtkWidget* child, gpointer) { motions.erase(child); }), nullptr);
++		g_signal_connect(mBox, "drag-motion", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, int, int, guint time, gpointer) { return dragMotion(context, time); }), nullptr);
++		g_signal_connect(mBox, "drag-data-received", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, int, int, GtkSelectionData*, guint, guint, gpointer) { dropGroup(context); }), nullptr);
++		g_signal_connect_after(mBox, "draw", G_CALLBACK(+[](GtkWidget*, cairo_t* cr, gpointer) {
++			if (dragging)
++			{
++				paintingDrag = true;
++				gtk_container_propagate_draw(GTK_CONTAINER(mBox), dragging->mButton, cr);
++				paintingDrag = false;
++			}
++			return false;
++		}), nullptr);
+ 
+ 		if (Settings::dockSize)
+ 			gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
+@@ -45,21 +320,10 @@
+ 		return group.get();
+ 	}
+ 
+-	void moveButton(Group* moving, Group* dest)
+-	{
+-		int startpos = Help::Gtk::getChildPosition(GTK_CONTAINER(mBox), moving->mButton);
+-		int destpos = Help::Gtk::getChildPosition(GTK_CONTAINER(mBox), dest->mButton);
+-
+-		if (startpos == destpos)
++	void savePinned()
++	{
++		if (isDragging())
+ 			return;
+-
+-		gtk_box_reorder_child(GTK_BOX(mBox), moving->mButton, destpos);
+-
+-		savePinned();
+-	}
+-
+-	void savePinned()
+-	{
+ 		std::list<std::string> pinnedList;
+ 		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
+ 
+@@ -98,6 +362,7 @@
+ 
+ 	void drawGroups()
+ 	{
++		cancelDrag();
+ 		selectGroup(nullptr);
+ 		// Remove old groups
+ 		Xfw::mGroupWindows.clear();
+@@ -220,6 +485,7 @@
+ 
+ 	void onPanelOrientationChange(GtkOrientation orientation)
+ 	{
++		cancelDrag();
+ 		gtk_orientable_set_orientation(GTK_ORIENTABLE(mBox), orientation);
+ 
+ 		if (Settings::dockSize)
+--- a/src/Dock.hpp
++++ b/src/Dock.hpp
+@@ -29,7 +29,16 @@
+ 
+ 	Group* prepareGroup(std::shared_ptr<AppInfo> appInfo);
+ 
+-	void moveButton(Group* moving, Group* dest);
++	bool isDragging();
++	bool isGroupDrag(GdkDragContext* context);
++	bool skipDragDraw(GtkWidget* widget);
++	void beginDrag(Group* group, GdkDragContext* context);
++	void finishDrag(bool commit);
++	void endDrag(GdkDragContext* context);
++	void cancelDrag();
++	bool dragMotion(GdkDragContext* context, guint time);
++	void dropGroup(GdkDragContext* context);
++	void groupHidden(Group* group);
+ 	void savePinned();
+ 	void drawGroups();
+ 	void selectGroup(Group* group);
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -7,8 +7,7 @@
+ 
+ #include "Group.hpp"
+ 
+-static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", 0, 0}};
+-static GtkTargetList* targetList = gtk_target_list_new(entries, 1);
++static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", GTK_TARGET_SAME_APP, 0}};
+ 
+ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mGroupMenu(this)
+ {
+@@ -74,14 +73,23 @@
+ 	g_object_set_data(G_OBJECT(mButton), "group", this);
+ 	gtk_button_set_relief(GTK_BUTTON(mButton), GTK_RELIEF_NONE);
+ 	gtk_drag_dest_set(mButton, GTK_DEST_DEFAULT_DROP, entries, 1, GDK_ACTION_MOVE);
++	gtk_drag_source_set(mButton, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_MOVE);
++	g_signal_connect(mButton, "hide", G_CALLBACK(+[](GtkWidget*, Group* me) { Dock::groupHidden(me); }), this);
++	g_signal_connect(mButton, "draw", G_CALLBACK(+[](GtkWidget* widget, cairo_t*, gpointer) { return Dock::skipDragDraw(widget); }), nullptr);
++	g_signal_connect(mButton, "drag-failed", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, GtkDragResult, gpointer) { Dock::finishDrag(false); return true; }), nullptr);
++	g_signal_connect(mButton, "drag-end", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, gpointer) { Dock::endDrag(context); }), nullptr);
+ 	gtk_widget_add_events(mButton, GDK_SCROLL_MASK);
+ 
+ 	//--------------------------------------------------
+ 
+ 	g_signal_connect(G_OBJECT(mButton), "button-press-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventButton* event, Group* me) {
+-			if (event->button != GDK_BUTTON_SECONDARY && event->state & GDK_CONTROL_MASK)
+-				gtk_drag_begin_with_coordinates(widget, targetList, GDK_ACTION_MOVE, event->button, (GdkEvent*)event, -1, -1);
++			me->mPressedButton = event->button;
++			if (event->button == GDK_BUTTON_PRIMARY)
++			{
++				me->mDragPressX = event->x;
++				me->mDragPressY = event->y;
++			}
+ 
+ 			if (event->state & GDK_CONTROL_MASK)
+ 			{
+@@ -98,6 +106,11 @@
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventButton* event, Group* me) {
+ 			if (event->button != GDK_BUTTON_PRIMARY && event->button != GDK_BUTTON_MIDDLE)
+ 				return false;
++			// A cancelled drag may release over a different icon that was never pressed.
++			bool pressedHere = me->mPressedButton == event->button;
++			me->mPressedButton = 0;
++			if (!pressedHere || Dock::isDragging() || (event->state & GDK_CONTROL_MASK))
++				return true;
+ 			me->onButtonRelease(event);
+ 			return true;
+ 		}),
+@@ -143,6 +156,8 @@
+ 	g_signal_connect(G_OBJECT(mButton), "enter-notify-event",
+ 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, Group* me) {
+ 			if (event->mode != GDK_CROSSING_NORMAL || event->detail == GDK_NOTIFY_INFERIOR)
++				return false;
++			if (Dock::isDragging())
+ 				return false;
+ 			Help::Gtk::cssClassAdd(me->mButton, "hover_group");
+ 			me->mLeaveTimeout.stop();
+@@ -216,6 +231,8 @@
+ 
+ Group::~Group()
+ {
++	// GTK can retain the source widget until its cancelled drag has fully ended.
++	g_signal_handlers_disconnect_by_data(mButton, this);
+ 	mLeaveTimeout.stop();
+ 	mMenuShowTimeout.stop();
+ 
+@@ -771,6 +788,8 @@
+ 
+ void Group::onMouseEnter()
+ {
++	if (Dock::isDragging())
++		return;
+ 	mGroupMenu.popup();
+ }
+ 
+@@ -973,12 +992,8 @@
+ 
+ bool Group::onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time)
+ {
+-	GdkModifierType mask;
+-	GdkDevice* device = gdk_drag_context_get_device(context);
+-	gdk_window_get_device_position(gtk_widget_get_window(widget), device, nullptr, nullptr, &mask);
+-
+-	if (mask & GDK_CONTROL_MASK)
+-		gtk_drag_cancel(context);
++	if (Dock::isGroupDrag(context))
++		return Dock::dragMotion(context, time);
+ 
+ 	GList* tmp_list = gdk_drag_context_list_targets(context);
+ 
+@@ -1004,9 +1019,8 @@
+ 		}
+ 	}
+ 
+-	gtk_drag_highlight(mButton);
+-	gdk_drag_status(context, GDK_ACTION_MOVE, time);
+-	return true;
++	gdk_drag_status(context, (GdkDragAction)0, time);
++	return false;
+ }
+ 
+ void Group::onDragLeave(const GdkDragContext* context, guint time)
+@@ -1016,33 +1030,28 @@
+ 
+ void Group::onDragDataGet(const GdkDragContext* context, GtkSelectionData* selectionData, guint info, guint time)
+ {
+-	gtk_selection_data_set(selectionData, gdk_atom_intern("button", false), 32, (const guchar*)this, sizeof(gpointer) * 32);
++	gtk_selection_data_set(selectionData, gdk_atom_intern("application/docklike_group", false), 8, (const guchar*)"1", 1);
+ }
+ 
+ void Group::onDragDataReceived(const GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time)
+ {
+-	Dock::moveButton((Group*)(gpointer)gtk_selection_data_get_data(selectionData), this);
+-}
+-
++	Dock::dropGroup(const_cast<GdkDragContext*>(context));
++}
++
++// Keep the drag visual inside the panel; GTK's external drag icon is transparent.
+ void Group::onDragBegin(GdkDragContext* context)
+ {
+-	if (mIconPixbuf != nullptr)
+-	{
+-		gint scale_factor = gtk_widget_get_scale_factor(mButton);
+-		gint size;
+-		if (!gtk_icon_size_lookup(GTK_ICON_SIZE_DND, &size, NULL))
+-			size = 32;
+-		size *= scale_factor;
+-		GdkPixbuf* scaled = gdk_pixbuf_scale_simple(mIconPixbuf, size, size, GDK_INTERP_BILINEAR);
+-		cairo_surface_t* surface = gdk_cairo_surface_create_from_pixbuf(scaled, scale_factor, NULL);
+-		gtk_drag_set_icon_surface(context, surface);
+-		cairo_surface_destroy(surface);
+-		g_object_unref(scaled);
+-	}
+-	else
+-	{
+-		const gchar* icon_name;
+-		gtk_image_get_icon_name(GTK_IMAGE(mImage), &icon_name, nullptr);
+-		gtk_drag_set_icon_name(context, icon_name, 0, 0);
+-	}
+-}
++	mPressedButton = 0;
++	Dock::beginDrag(this, context);
++	cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
++	gtk_drag_set_icon_surface(context, surface);
++	cairo_surface_destroy(surface);
++	// Non-composited X11 would otherwise paint GTK's empty drag window as a white square.
++	GdkWindow* window = gdk_drag_context_get_drag_window(context);
++	if (window)
++	{
++		cairo_region_t* empty = cairo_region_create();
++		gdk_window_shape_combine_region(window, empty, 0, 0);
++		cairo_region_destroy(empty);
++	}
++}
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -84,6 +84,8 @@
+ 	void onDragDataReceived(const GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time);
+ 	void onDragBegin(GdkDragContext* context);
+ 
++	guint mPressedButton = 0;
++	double mDragPressX = 0, mDragPressY = 0;
+ 	bool mPinned;
+ 	bool mActive;
+ 	bool mPreviewSuppressed = false;
+--- a/src/Plugin.cpp
++++ b/src/Plugin.cpp
+@@ -74,6 +74,7 @@
+ 
+ 		g_signal_connect(G_OBJECT(mXfPlugin), "free-data",
+ 			G_CALLBACK(+[](XfcePanelPlugin* plugin) {
++				Dock::cancelDrag();
+ 				Xfw::finalize();
+ 				Dock::mGroups.clear();
+ 				AppInfos::finalize();
