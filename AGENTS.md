@@ -675,6 +675,7 @@ must follow the general Slax repair rules above.
   primary-button drag. The source slides only along the panel; hide GTK's external
   drag visual, including on non-composited X11. Animate real button allocations on
   the frame clock for 180 ms, retargeting from their displayed positions.
+  Keep the normal pointer cursor throughout panel reordering instead of GTK's move cursor.
   After release, animate the source from its displayed position into its committed slot.
   Neighbours yield on the first overlap in either direction, using the moving
   button's edges and grab offset. Allocate reordered slots immediately during
