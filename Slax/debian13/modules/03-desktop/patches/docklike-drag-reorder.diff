@@ -13,7 +13,7 @@ Forwarded: not-needed
  #ifdef ENABLE_X11
  #include "Hotkeys.hpp"
  #endif
-@@ -18,11 +20,288 @@
+@@ -18,11 +20,290 @@
  
  	int mPanelSize;
  	int mIconSize;
@@ -172,6 +172,8 @@ Forwarded: not-needed
 +		dismissPreviews();
 +		dragging = mGroups.get(group->mAppInfo);
 +		dragContext = GDK_DRAG_CONTEXT(g_object_ref(context));
++		// Keep the default pointer instead of GTK's action cursor for this panel drag.
++		g_signal_connect(context, "action-changed", G_CALLBACK(+[](GdkDragContext* source, GdkDragAction, gpointer) { g_signal_stop_emission_by_name(source, "action-changed"); }), nullptr);
 +		for (GtkWidget* widget : buttons(true))
 +		{
 +			Group* item = (Group*)g_object_get_data(G_OBJECT(widget), "group");
@@ -302,7 +304,7 @@ Forwarded: not-needed
  
  		if (Settings::dockSize)
  			gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
-@@ -45,21 +324,10 @@
+@@ -45,21 +326,10 @@
  		return group.get();
  	}
  
@@ -327,7 +329,7 @@ Forwarded: not-needed
  		std::list<std::string> pinnedList;
  		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
  
-@@ -98,6 +366,7 @@
+@@ -98,6 +368,7 @@
  
  	void drawGroups()
  	{
@@ -335,7 +337,7 @@ Forwarded: not-needed
  		selectGroup(nullptr);
  		// Remove old groups
  		Xfw::mGroupWindows.clear();
-@@ -220,6 +489,7 @@
+@@ -220,6 +491,7 @@
  
  	void onPanelOrientationChange(GtkOrientation orientation)
  	{
