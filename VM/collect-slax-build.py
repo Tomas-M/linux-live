@@ -11,7 +11,7 @@ previous=''
 # Keep the host awake while the VM compiles and transfers the final files.
 ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
 
-# Reconnect through the kernel reboot and wait for the one-shot build result.
+# Reconnect after VM startup and wait for the one-shot build result.
 while True:
     client=paramiko.SSHClient()
     client.load_host_keys(str(folder/'known_hosts'))
@@ -25,7 +25,7 @@ while True:
         if 'BUILD_COMPLETE' in status:
             break
         if 'ActiveState=failed' in status:
-            _,stdout,_=client.exec_command('tail -n 60 /root/slax-autobuild.log',timeout=30)
+            _,stdout,_=client.exec_command('tail -n 60 /tmp/slax-autobuild.log',timeout=30)
             raise RuntimeError(stdout.read().decode())
     except (OSError,paramiko.SSHException,EOFError) as error:
         print('Waiting for the work VM:',error,flush=True)
