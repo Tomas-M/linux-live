@@ -13,7 +13,7 @@ Forwarded: not-needed
  #ifdef ENABLE_X11
  #include "Hotkeys.hpp"
  #endif
-@@ -18,11 +20,284 @@
+@@ -18,11 +20,288 @@
  
  	int mPanelSize;
  	int mIconSize;
@@ -29,7 +29,7 @@ Forwarded: not-needed
 +	static guint motionTick = 0;
 +	static double dragOffset;
 +	static bool paintingDrag = false;
-+	static GtkTargetEntry dragTargets[] = {{(gchar*)"application/docklike_group", GTK_TARGET_SAME_APP, 0}};
++	static GtkTargetEntry dragTargets[] = {{(gchar*)"application/docklike_group", 0, 0}};
 +
 +	// Enumerate current children instead of keeping pointers to closed applications.
 +	static std::vector<GtkWidget*> buttons(bool visible = false)
@@ -115,10 +115,14 @@ Forwarded: not-needed
 +			motionTick = gtk_widget_add_tick_callback(mBox, animateButtons, nullptr, nullptr);
 +	}
 +
-+	// A valid internal drag is identified by GTK, never by deserializing a pointer.
++	// XEmbed proxies hide the source widget; match our active pointer and drag target.
 +	bool isGroupDrag(GdkDragContext* context)
 +	{
-+		return dragging && gtk_drag_get_source_widget(context) == dragging->mButton;
++		if (!dragging)
++			return false;
++		GdkAtom target = gdk_atom_intern_static_string("application/docklike_group");
++		return gdk_drag_context_get_device(context) == gdk_drag_context_get_device(dragContext)
++			&& g_list_find(gdk_drag_context_list_targets(context), target);
 +	}
 +
 +	// Preview and click handlers share the active native transaction.
@@ -298,7 +302,7 @@ Forwarded: not-needed
  
  		if (Settings::dockSize)
  			gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
-@@ -45,21 +320,10 @@
+@@ -45,21 +324,10 @@
  		return group.get();
  	}
  
@@ -323,7 +327,7 @@ Forwarded: not-needed
  		std::list<std::string> pinnedList;
  		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
  
-@@ -98,6 +362,7 @@
+@@ -98,6 +366,7 @@
  
  	void drawGroups()
  	{
@@ -331,7 +335,7 @@ Forwarded: not-needed
  		selectGroup(nullptr);
  		// Remove old groups
  		Xfw::mGroupWindows.clear();
-@@ -220,6 +485,7 @@
+@@ -220,6 +489,7 @@
  
  	void onPanelOrientationChange(GtkOrientation orientation)
  	{
@@ -361,13 +365,11 @@ Forwarded: not-needed
  	void selectGroup(Group* group);
 --- a/src/Group.cpp
 +++ b/src/Group.cpp
-@@ -7,8 +7,7 @@
- 
+@@ -8,7 +8,6 @@
  #include "Group.hpp"
  
--static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", 0, 0}};
+ static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", 0, 0}};
 -static GtkTargetList* targetList = gtk_target_list_new(entries, 1);
-+static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", GTK_TARGET_SAME_APP, 0}};
  
  Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mGroupMenu(this)
  {
@@ -378,7 +380,7 @@ Forwarded: not-needed
 +	gtk_drag_source_set(mButton, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_MOVE);
 +	g_signal_connect(mButton, "hide", G_CALLBACK(+[](GtkWidget*, Group* me) { Dock::groupHidden(me); }), this);
 +	g_signal_connect(mButton, "draw", G_CALLBACK(+[](GtkWidget* widget, cairo_t*, gpointer) { return Dock::skipDragDraw(widget); }), nullptr);
-+	g_signal_connect(mButton, "drag-failed", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, GtkDragResult, gpointer) { Dock::finishDrag(false); return true; }), nullptr);
++	g_signal_connect(mButton, "drag-failed", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, GtkDragResult, gpointer) { Dock::endDrag(context); return true; }), nullptr);
 +	g_signal_connect(mButton, "drag-end", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, gpointer) { Dock::endDrag(context); }), nullptr);
  	gtk_widget_add_events(mButton, GDK_SCROLL_MASK);
  
