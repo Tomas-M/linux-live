@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 apt-get update
+# Install the native loaders without pulling in the PostScript rendering stack.
+sh ./build-imlib2 /tmp/libimlib2.deb
+apt-get install --no-install-recommends --yes --allow-downgrades /tmp/libimlib2.deb
 apt-get install --no-install-recommends --yes \
    xserver-xorg xserver-xorg-video-all xserver-xorg-video-intel \
    xinit xterm xinput libxcursor1 x11-utils wmctrl xdotool \

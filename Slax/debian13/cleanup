@@ -47,6 +47,11 @@ rm -f /usr/share/gtk-3.0/emoji/*.gresource
 
 # Kernel self-tests are not hardware drivers; regenerate indexes after removing them.
 for DIR in /lib/modules/*; do
+   # Preserve signed module contents and let SquashFS compress them together.
+   if [ -n "$(find "$DIR" -type f -name '*.ko.xz' -print -quit)" ]; then
+      find "$DIR" -type f -name '*.ko.xz' -exec xz -d {} +
+      depmod "${DIR##*/}"
+   fi
    if [ -d "$DIR/kernel/lib" ]; then
       if [ -n "$(find "$DIR/kernel/lib" -type f -name 'test_*.ko*' -print -delete)" ]; then
          depmod "${DIR##*/}"

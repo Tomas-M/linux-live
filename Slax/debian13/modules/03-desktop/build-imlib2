@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+OUTPUT=$1
+WORK=$(mktemp -d /tmp/imlib2-repack.XXXXXX)
+trap 'rm -rf "$WORK"' 0
+cd "$WORK"
+apt-get download libimlib2t64
+dpkg-deb --raw-extract libimlib2t64_*.deb package
+
+# Keep Debian's library and image loaders unchanged except for PostScript support.
+rm package/usr/lib/*/imlib2/loaders/ps.so
+sed -i -E 's/, libspectre1( \([^)]*\))?//' package/DEBIAN/control
+sed -i "s/^Installed-Size:.*/Installed-Size: $(du -sk --exclude=DEBIAN package | cut -f1)/" package/DEBIAN/control
+cd package
+find . -type f ! -path './DEBIAN/*' -printf '%P\0' | sort -z | xargs -0 md5sum > DEBIAN/md5sums
+cd ..
+dpkg-deb --build --root-owner-group package "$OUTPUT"
