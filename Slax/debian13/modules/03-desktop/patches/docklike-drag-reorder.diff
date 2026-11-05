@@ -131,7 +131,7 @@ Forwarded: not-needed
 +		return dragging != nullptr;
 +	}
 +
-+	// Only a successful internal drop commits; cancellation restores surviving originals.
++	// Commit completed reorders; cancellation restores surviving originals.
 +	void finishDrag(bool commit)
 +	{
 +		if (!dragging)
@@ -159,10 +159,10 @@ Forwarded: not-needed
 +	}
 +
 +	// Late GTK completion signals belong only to their original source transaction.
-+	void endDrag(GdkDragContext* context)
++	void endDrag(GdkDragContext* context, bool commit)
 +	{
 +		if (context == dragContext)
-+			finishDrag(false);
++			finishDrag(commit);
 +	}
 +
 +	// Keep the source alive until GTK releases its drag, even if its last window closes.
@@ -357,7 +357,7 @@ Forwarded: not-needed
 +	bool skipDragDraw(GtkWidget* widget);
 +	void beginDrag(Group* group, GdkDragContext* context);
 +	void finishDrag(bool commit);
-+	void endDrag(GdkDragContext* context);
++	void endDrag(GdkDragContext* context, bool commit = false);
 +	void cancelDrag();
 +	bool dragMotion(GdkDragContext* context, guint time);
 +	void dropGroup(GdkDragContext* context);
@@ -382,7 +382,7 @@ Forwarded: not-needed
 +	gtk_drag_source_set(mButton, GDK_BUTTON1_MASK, entries, 1, GDK_ACTION_MOVE);
 +	g_signal_connect(mButton, "hide", G_CALLBACK(+[](GtkWidget*, Group* me) { Dock::groupHidden(me); }), this);
 +	g_signal_connect(mButton, "draw", G_CALLBACK(+[](GtkWidget* widget, cairo_t*, gpointer) { return Dock::skipDragDraw(widget); }), nullptr);
-+	g_signal_connect(mButton, "drag-failed", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, GtkDragResult, gpointer) { Dock::endDrag(context); return true; }), nullptr);
++	g_signal_connect(mButton, "drag-failed", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, GtkDragResult result, gpointer) { Dock::endDrag(context, result == GTK_DRAG_RESULT_NO_TARGET); return true; }), nullptr);
 +	g_signal_connect(mButton, "drag-end", G_CALLBACK(+[](GtkWidget*, GdkDragContext* context, gpointer) { Dock::endDrag(context); }), nullptr);
  	gtk_widget_add_events(mButton, GDK_SCROLL_MASK);
  
