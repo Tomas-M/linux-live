@@ -285,8 +285,9 @@ must follow the general Slax repair rules above.
   report deferred changes as requiring restart, and verify kernel geometry
   before filesystem operations. Keep tests on owned sparse files and Linux
   loop devices; never use host disks or Windows VHDs for development tests.
-  The dedicated `Slax boot test` VM also has an owned 4 GiB VDI fixture at
-  `VM/virtualbox/partition-manager-test.vdi` for interactive application checks.
+  The dedicated `Slax boot test` VM currently has no hard disks and boots only
+  from CD. Create and attach an owned disposable fixture explicitly when disk
+  operations need interactive checks; its previous test disks were deleted.
 - Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
   the official binary package without recompiling. Remove `xfs_scrub`, its
   scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
@@ -1081,6 +1082,11 @@ must follow the general Slax repair rules above.
   leaves the nested countdown menu for the full menu. The full menu uses
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
+  Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
+  the nested countdown configuration and again after returning to the full menu.
+  Initializing only the parent configuration can leave the countdown in text
+  mode. Verify the clover, countdown and graphical Escape menu in BIOS and UEFI
+  for both CD and USB boot; a text GRUB menu is a failure.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
