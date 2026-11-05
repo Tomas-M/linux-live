@@ -77,7 +77,7 @@ dd if=/dev/zero bs=1024 count=300 >> "$TEMP/setup.img" 2>/dev/null
 set -- -m "$NAME/boot/grub/efi.img" -e --interval:appended_partition_2::: -no-emul-boot -o "$TARGET" -graft-points "$@" .
 # Expose the ISO filesystem and EFI loader as separate, non-overlapping partitions.
 set -- -partition_offset 16 -append_partition 2 0xef "$TEMP/efi.img" -append_partition 3 0x06 "$TEMP/setup.img" -appended_part_as_gpt "$@"
-set -- -no-pad -iso_mbr_part_type 0FC63DAF-8483-4772-8E79-3D69D8477DE4 "$@"
+set -- -no-pad -iso_mbr_part_type EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 "$@"
 if [ -f "$NAME/boot/grub/cdboot.img" ]; then
    set -- -b "$NAME/boot/grub/cdboot.img" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info -eltorito-alt-boot "$@"
    set -- --grub2-mbr "$BOOT/grub/boot_hybrid.img" --mbr-force-bootable "$@"
@@ -89,3 +89,10 @@ fi
 # Stock signed loaders can read their bootstrap through either EFI or ISO media.
 set -- "$@" "EFI=$BOOT/EFI"
 xorriso "$@"
+
+# Windows honors hidden/no-drive-letter bits only for its Basic Data partition type.
+# Preserve GRUB's exact MBR, including the active dummy entry sfdisk would remove.
+dd if="$TARGET" of="$TEMP/mbr" bs=512 count=1 2>/dev/null
+ATTRS=$(sfdisk --part-attrs "$TARGET" 1)
+sfdisk --part-attrs "$TARGET" 1 "$ATTRS,GUID:62,GUID:63" >/dev/null
+dd if="$TEMP/mbr" of="$TARGET" bs=512 count=1 conv=notrunc 2>/dev/null

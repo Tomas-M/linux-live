@@ -1019,13 +1019,24 @@ must follow the general Slax repair rules above.
   `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
   Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
   the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
-  Mark the ISO partition with the Linux filesystem GUID so Windows does not
-  assign it a drive letter. Append the 300 KiB CD read-ahead padding inside the setup partition,
+  Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
+  and 63 (no default drive letter), preserving xorriso's existing attributes.
+  Windows ignores these bits on the generic Linux filesystem GUID, even after
+  clearing Mount Manager aliases and using fresh partition identities.
+  ISO recreation requires util-linux `sfdisk` to update both GPT copies.
+  Save and restore the complete MBR around that update: sfdisk removes GRUB's
+  active dummy entry, which some BIOS implementations require.
+  GPT has no timestamp or generation counter. Flashing a smaller image can leave
+  an old backup GPT at the physical disk end. Clearing old signatures before a
+  raw write and relocating the new backup afterward belong to disk-writing tools;
+  ISO creation cannot know the eventual target disk's capacity.
+  Append the 300 KiB CD read-ahead padding inside the setup partition,
   beyond its FAT filesystem, and disable xorriso's separate trailing padding to
   avoid a Windows-visible `Gap1` partition with xorriso 1.5.6.
   `disk-setup.exe` is a separate, manually launched Windows 10/11 tool. It must
   resolve its own USB disk, reject system disks and unexpected layouts, validate
   both GPT copies, and confirm before formatting only the unused tail as FAT32.
+  Validate the ISO's Basic Data type, hidden attributes and ISO9660 signature.
   Preserve the ISO and EFI partitions and BIOS/UEFI loaders, relocate the backup
   GPT to the physical disk end, and leave an existing data partition unchanged.
   First format, mount and verify file writes/reads on USB-DATA, then lock and
