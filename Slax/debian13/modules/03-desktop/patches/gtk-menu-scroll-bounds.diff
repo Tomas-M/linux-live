@@ -1,7 +1,8 @@
 Description: Keep constrained combo box popups inside their scrollable contents
  Sliding a popup to fit the monitor must not preserve an item alignment that
  scrolls before the first item or past the last one, leaving an empty viewport.
- Keep the active item clear of scroll arrows and short menus fully visible.
+ Keep the active item clear of scroll arrows. Reset scrolling after allocation
+ when the complete menu fits, including offsets computed before final sizing.
 Author: Slax <build@slax.org>
 
 --- a/gtk/gtkmenu.c
@@ -27,8 +28,19 @@ Author: Slax <build@slax.org>
                        GTK_MENU_SCROLL_FLAG_ADAPT);
 +
 +  /* Newly visible scroll arrows must not cover the selected item. */
-+  if (gtk_menu_get_active (menu))
++  if (gtk_widget_get_realized (GTK_WIDGET (menu)) && gtk_menu_get_active (menu))
 +    gtk_menu_scroll_item_visible (GTK_MENU_SHELL (menu), gtk_menu_get_active (menu));
  }
  
  /**
+@@ -5408,6 +5412,10 @@
+   view_height -= (2 * border_width) + padding.top + padding.bottom;
+   menu_height = priv->requested_height - (2 * border_width) - padding.top - padding.bottom;
+ 
++  /* Popup positioning can scroll before the final size has been allocated. */
++  if (!priv->tearoff_active && view_height >= menu_height)
++    offset = 0;
++
+   x = border_width + padding.left;
+   y = border_width + padding.top;
+ 

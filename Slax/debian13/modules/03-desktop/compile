@@ -8,7 +8,7 @@ sh "$CWD/build-volumeicon" "$OUTPUT"
 sh "$CWD/build-connman-gtk" "$OUTPUT"
 sh "$CWD/build-skippy" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
-apt-get install --yes --no-install-recommends build-essential dpkg-dev git quilt libimlib2-dev libgtk2.0-dev libjson-glib-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev
+apt-get install --yes --no-install-recommends build-essential dpkg-dev git quilt libimlib2-dev libgtk2.0-dev libjson-glib-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev libfontconfig-dev libxkbcommon-dev
 mkdir -p /tmp/fluxbox-rebuild
 cd /tmp/fluxbox-rebuild
 apt-get source fluxbox
@@ -85,7 +85,7 @@ mkdir -p "$PACKAGE/usr/bin" "$PACKAGE/usr/share/icons/hicolor/48x48/apps" "$PACK
 cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cflags --libs gtk+-2.0)
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
-cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi)
+cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi fontconfig xkbcommon)
 # Compile the current upstream Partition Manager in the disposable branch's tmpfs.
 PARTITION_MANAGER_BUILD=$(mktemp -d /tmp/partition-manager-build.XXXXXX)
 PARTITION_MANAGER_COMMIT=$(git ls-remote https://github.com/Tomas-M/partition-manager.git HEAD | cut -f1)

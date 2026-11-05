@@ -11,6 +11,7 @@ apt-get source "gtk+3.0=$SOURCEVERSION"
 cd gtk+3.0-*/
 patch -p1 < "$CWD/patches/gtk-chromium-file-activation.diff"
 patch -p1 < "$CWD/patches/gtk-menu-scroll-bounds.diff"
+patch -p1 < "$CWD/patches/gtk-combo-dropdown-position.diff"
 
 # Rebuild only the runtime library, retaining Debian's features and hardening.
 export DEB_BUILD_MAINT_OPTIONS=hardening=+all

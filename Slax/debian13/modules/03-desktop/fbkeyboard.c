@@ -6,10 +6,12 @@
 #include <X11/XKBlib.h>
 #include <X11/extensions/XInput2.h>
 #include <X11/keysym.h>
+#include <fontconfig/fontconfig.h>
+#include <xkbcommon/xkbcommon.h>
 #include <stdio.h>
 #include <string.h>
 
-typedef struct { char *code, *name, *flag; } Layout;
+typedef struct { char *code, *name, *flag; gboolean available; } Layout;
 static GArray *layouts;
 static Display *display;
 static Window window;
@@ -23,16 +25,66 @@ static int current, preferred=-1, input_opcode;
 static guint remember_timer;
 static gboolean pressed[256], chord, cancelled, super_tap;
 static char *saved_path;
+static GSubprocess *font_process;
 
 /* Find the canonical XKB identifier in the shared catalog. */
 static int find_layout(const char *code)
 {
     for (guint i=0; i<layouts->len; i++)
-        if (!strcmp(g_array_index(layouts, Layout, i).code, code)) return i;
+        if (g_array_index(layouts, Layout, i).available && !strcmp(g_array_index(layouts, Layout, i).code, code)) return i;
     return -1;
 }
 
-/* Keep existing labels and flags first, then include every installed XKB layout. */
+/* Require font fallback for normal/Shift text; optional symbols do not hide a language. */
+static gboolean layout_has_font(struct xkb_context *context, FcCharSet *coverage, const char *code)
+{
+    struct xkb_rule_names names={.layout=code, .variant="", .options=""};
+    struct xkb_keymap *keymap=xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (!keymap) return FALSE;
+    gboolean supported=TRUE;
+    for (xkb_keycode_t key=xkb_keymap_min_keycode(keymap); supported && key<=xkb_keymap_max_keycode(keymap); key++)
+        for (xkb_level_index_t level=0; supported && level<MIN(2, xkb_keymap_num_levels_for_key(keymap, key, 0)); level++)
+        {
+            const xkb_keysym_t *symbols;
+            int count=xkb_keymap_key_get_syms_by_level(keymap, key, 0, level, &symbols);
+            for (int i=0; i<count; i++)
+            {
+                gunichar character=xkb_keysym_to_utf32(symbols[i]);
+                gboolean text=g_unichar_isalnum(character) || g_unichar_ismark(character);
+                if (text && !FcCharSetHasChar(coverage, character)) supported=FALSE;
+            }
+        }
+    xkb_keymap_unref(keymap);
+    return supported;
+}
+
+/* Inspect font fallback only in the background worker or an explicit CLI request. */
+static void check_layout_fonts(void)
+{
+    FcPattern *pattern=FcPatternCreate();
+    FcObjectSet *objects=FcObjectSetBuild(FC_CHARSET, NULL);
+    FcFontSet *fonts=FcFontList(NULL, pattern, objects);
+    FcCharSet *coverage=FcCharSetCreate();
+    for (int i=0; i<fonts->nfont; i++)
+    {
+        FcCharSet *characters;
+        if (FcPatternGetCharSet(fonts->fonts[i], FC_CHARSET, 0, &characters)==FcResultMatch)
+            FcCharSetMerge(coverage, characters, NULL);
+    }
+    FcFontSetDestroy(fonts);
+    FcObjectSetDestroy(objects);
+    FcPatternDestroy(pattern);
+    struct xkb_context *context=xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
+    for (guint i=0; i<layouts->len; i++)
+    {
+        Layout *layout=&g_array_index(layouts, Layout, i);
+        layout->available=layout_has_font(context, coverage, layout->code);
+    }
+    xkb_context_unref(context);
+    FcCharSetDestroy(coverage);
+}
+
+/* Load the lightweight catalog before showing EN; font analysis must not delay docking. */
 static void load_layouts(void)
 {
     layouts=g_array_new(FALSE, FALSE, sizeof(Layout));
@@ -45,7 +97,7 @@ static void load_layouts(void)
     {
         if (!**line) continue;
         char **fields=g_strsplit(*line, "\t", 3);
-        Layout layout={g_strdup(fields[0]), g_strdup(fields[1]), g_strdup(fields[2])};
+        Layout layout={g_strdup(fields[0]), g_strdup(fields[1]), g_strdup(fields[2]), TRUE};
         g_array_append_val(layouts, layout);
         g_strfreev(fields);
     }
@@ -64,19 +116,20 @@ static void load_layouts(void)
         if (!*name) continue;
         *name++=0;
         if (find_layout(text)>=0) continue;
-        Layout layout={g_strdup(text), g_strdup(g_strstrip(name)), g_strdup("")};
+        Layout layout={g_strdup(text), g_strdup(g_strstrip(name)), g_strdup(""), TRUE};
         g_array_append_val(layouts, layout);
     }
     g_strfreev(lines);
     g_free(contents);
-    /* Rules can advertise a custom layout even when no symbols file exists. */
+    /* Exclude missing symbols and IME placeholders that only provide Latin keys. */
     for (guint i=0; i<layouts->len;)
     {
         Layout *layout=&g_array_index(layouts, Layout, i);
         char *path=g_build_filename("/usr/share/X11/xkb/symbols", layout->code, NULL);
         gboolean available=g_file_test(path, G_FILE_TEST_IS_REGULAR);
+        gboolean needs_input_method=!strcmp(layout->code, "cn") || !strcmp(layout->code, "kr");
         g_free(path);
-        if (available) { i++; continue; }
+        if (available && !needs_input_method) { i++; continue; }
         g_free(layout->code);
         g_free(layout->name);
         g_free(layout->flag);
@@ -98,7 +151,7 @@ static void draw_label(void)
 /* Persist only the alternate; English remains the initial layout on every login. */
 static void remember_layout(void)
 {
-    if (!current) return;
+    if (!current || !g_array_index(layouts, Layout, current).available) return;
     preferred=current;
     GError *error=NULL;
     if (!g_file_set_contents(saved_path, g_array_index(layouts, Layout, preferred).code, -1, &error))
@@ -129,6 +182,7 @@ static void show_layout(int index)
 static gboolean select_layout(int index, gboolean remember)
 {
     Layout *layout=&g_array_index(layouts, Layout, index);
+    if (!layout->available) return FALSE;
     char *argv[]={"setxkbmap", "-layout", layout->code, "-variant", "", NULL};
     int status;
     GError *error=NULL;
@@ -210,7 +264,7 @@ static void key_event(XIRawEvent *event)
             else
             {
                 /* Explore only the flagged layouts from the main menu. */
-                while (!*g_array_index(layouts, Layout, next).flag)
+                while (!g_array_index(layouts, Layout, next).available || !*g_array_index(layouts, Layout, next).flag)
                     next=(next+1)%layouts->len;
             }
             select_layout(next, FALSE);
@@ -278,6 +332,8 @@ static GtkWidget *layout_button(guint index, gboolean show_flag)
 {
     Layout *layout=&g_array_index(layouts, Layout, index);
     GtkWidget *entry=gtk_button_new();
+    g_object_set_data(G_OBJECT(entry), "layout-index", GUINT_TO_POINTER(index+1));
+    gtk_widget_set_no_show_all(entry, !layout->available);
     gtk_button_set_relief(GTK_BUTTON(entry), GTK_RELIEF_NONE);
     GtkWidget *row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_container_add(GTK_CONTAINER(entry), row);
@@ -326,6 +382,63 @@ static void position_popup(void)
     gtk_window_resize(GTK_WINDOW(popup), width, height);
     gtk_window_move(GTK_WINDOW(popup), left, top);
     gtk_widget_queue_draw(popup);
+}
+
+/* Hide unsupported entries without replacing widgets or invalidating callback indexes. */
+static void update_font_buttons(GtkWidget *widget, gpointer data)
+{
+    (void)data;
+    guint index=GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(widget), "layout-index"));
+    if (index)
+    {
+        gboolean available=g_array_index(layouts, Layout, index-1).available;
+        gtk_widget_set_no_show_all(widget, !available);
+        gtk_widget_set_visible(widget, available);
+    }
+    if (GTK_IS_CONTAINER(widget)) gtk_container_foreach(GTK_CONTAINER(widget), update_font_buttons, NULL);
+}
+
+/* Apply completed font results on GTK's thread while preserving the selected layout. */
+static void fonts_checked(GObject *source, GAsyncResult *result, gpointer data)
+{
+    (void)data;
+    char *output=NULL;
+    GError *error=NULL;
+    gboolean ok=g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, &output, NULL, &error);
+    if (ok && g_subprocess_get_successful(G_SUBPROCESS(source)))
+    {
+        char **codes=g_strsplit(output, "\n", -1);
+        for (guint i=0; i<layouts->len; i++)
+        {
+            Layout *layout=&g_array_index(layouts, Layout, i);
+            layout->available=g_strv_contains((const char *const *)codes, layout->code);
+        }
+        g_strfreev(codes);
+        if (preferred>=0 && !g_array_index(layouts, Layout, preferred).available) preferred=-1;
+        if (popup)
+        {
+            update_font_buttons(popup, NULL);
+            if (gtk_widget_get_visible(popup)) position_popup();
+        }
+    }
+    else g_warning("Cannot check keyboard fonts: %s", error ? error->message : "worker failed");
+    g_clear_error(&error);
+    g_free(output);
+    g_clear_object(&font_process);
+}
+
+/* Start after initial GTK events; nice and idle I/O keep font work out of startup's way. */
+static gboolean start_font_filter(gpointer data)
+{
+    (void)data;
+    char *executable=g_file_read_link("/proc/self/exe", NULL);
+    GError *error=NULL;
+    font_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_PIPE, &error,
+                                  "nice", "-n", "19", "ionice", "-c", "3", executable, "--font-layouts", NULL);
+    g_free(executable);
+    if (font_process) g_subprocess_communicate_utf8_async(font_process, NULL, NULL, fonts_checked, NULL);
+    else { g_warning("Cannot start keyboard font check: %s", error->message); g_clear_error(&error); }
+    return G_SOURCE_REMOVE;
 }
 
 /* Model-button navigation can change the bubble's natural width and height. */
@@ -562,6 +675,13 @@ static void dock_tray(void)
 int main(int argc, char **argv)
 {
     load_layouts();
+    if (argc==2 && !strcmp(argv[1], "--font-layouts"))
+    {
+        check_layout_fonts();
+        for (guint i=0; i<layouts->len; i++)
+            if (g_array_index(layouts, Layout, i).available) puts(g_array_index(layouts, Layout, i).code);
+        return 0;
+    }
     display=XOpenDisplay(NULL);
     if (!display) { g_printerr("Cannot open X display.\n"); return 1; }
     char *selection_name=g_strdup_printf("_SLAX_KEYBOARD_S%d", DefaultScreen(display));
@@ -571,6 +691,7 @@ int main(int argc, char **argv)
     Window owner=XGetSelectionOwner(display, selection);
     if (argc==3 && !strcmp(argv[1], "--select"))
     {
+        check_layout_fonts();
         if (find_layout(argv[2])<0 || !owner) { g_printerr("Unknown layout or keyboard tray is not running.\n"); return 1; }
         XEvent event={0};
         event.xclient.type=ClientMessage;
@@ -620,7 +741,9 @@ int main(int argc, char **argv)
     GIOChannel *channel=g_io_channel_unix_new(ConnectionNumber(display));
     g_io_add_watch(channel, G_IO_IN|G_IO_HUP|G_IO_ERR, x_events, NULL);
     x_events(channel, G_IO_IN, NULL);
+    g_idle_add(start_font_filter, NULL);
     gtk_main();
+    if (font_process) { g_subprocess_force_exit(font_process); g_clear_object(&font_process); }
     XCloseDisplay(display);
     return 0;
 }
