@@ -15,6 +15,8 @@ remove_unused_firmware()
 }
 
 cd /usr/lib/firmware
+# These Qualcomm SoCs use ath11k's AHB driver, not its PCI transport.
+remove_unused_firmware CONFIG_ATH11K_AHB ath11k/WCN6750 ath11k/IPQ5018 ath11k/IPQ6018 ath11k/IPQ8074
 remove_unused_firmware CONFIG_VIDEO_MEDIATEK_VPU mediatek/mt8173 vpu_d.bin vpu_p.bin
 remove_unused_firmware CONFIG_MTK_SCP mediatek/mt8183 mediatek/mt8186 mediatek/mt8188 mediatek/mt8192 mediatek/mt8195
 remove_unused_firmware 'CONFIG_SND_SOC_SOF_MT[0-9]+' mediatek/sof mediatek/sof-tplg

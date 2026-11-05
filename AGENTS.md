@@ -155,9 +155,10 @@ must follow the general Slax repair rules above.
   guest terminal with `fsfreeze -u /` and restart `networking` if DHCP was lost.
 - Network: bridged through `Realtek PCIe GbE Family Controller #2`.
   Guest address last verified as `10.0.0.63`; this is a DHCP lease.
-- Reinstalled from the verified official Debian 13.7 netinst image on 2026-11-03.
-  The previous work disk and build data were removed. Restore only the verified
-  current kernel packages and current host source into a fresh installation.
+- Reinstalled from the verified official Debian 13.7 netinst image on 2026-11-04.
+  The previous work disk and build data were removed at Tomas's request.
+  Use Debian's updated stock kernel and current host sources; do not restore
+  custom AUFS kernel packages.
 - Guest checkout: `/root/linux-live`. Local and guest checkouts are separate;
   transfer relevant changes before building and verify their contents match.
 - SSH uses root and the local `VM/id_ed25519` key. Host keys are stored in
@@ -226,9 +227,10 @@ must follow the general Slax repair rules above.
   including MediaTek/Ralink and Atheros USB adapters. Do not add dedicated
   graphics or audio firmware packages to the base image; users can install
   those after connecting. Keep small legacy network packages for compatibility.
-  Its cleanup removes only the known MediaTek MT81xx VPU, SCP and SOF payloads
+  Its cleanup removes Qualcomm WCN6750 and IPQ5018/6018/8074 firmware when
+  every bundled kernel lacks `CONFIG_ATH11K_AHB`, plus known MediaTek MT81xx VPU, SCP and SOF payloads
   when every bundled kernel configuration lacks the corresponding driver.
-  Preserve network firmware and retain these payloads if their driver is enabled,
+  Preserve supported network firmware and retain these payloads if their driver is enabled,
   whether built in or modular. Do not infer unused firmware solely from modinfo:
   some drivers construct firmware names dynamically.
 - Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
@@ -373,6 +375,8 @@ must follow the general Slax repair rules above.
 - Run an optional module `cleanup` after shared cleanup and before `copy`.
   Shared cleanup removes packaging/reporting metadata, API documentation,
   translated GTK emoji names and kernel self-test modules (then runs depmod).
+  Decompress Debian's `.ko.xz` modules before SquashFS packing and regenerate
+  their indexes. Preserve their signed contents; never strip signed modules.
   Chromium cleanup removes only Vulkan development test libraries and GN symbol
   tables; preserve its real Vulkan loader, SwiftShader, sandbox and runtime data.
   Exclude syscall/library manuals (`man2*`, `man3*`) and OpenSSL `*.7ssl`
@@ -380,10 +384,11 @@ must follow the general Slax repair rules above.
   Keep other English manuals.
 - Keep UTF-8's source charmap; other source charmaps are omitted. Preserve gconv
   modules and compiled C.UTF-8 so runtime text conversion remains available.
-  Desktop cleanup retains DejaVu, URW OpenType and Ghostscript's Type1 fonts,
-  removing only corresponding duplicate X11 PFB copies. Keep Identity CMaps;
-  CJK Poppler collections are omitted, including their broken
-  Ghostscript CMap links. Chromium uses its own PDFium PDF renderer.
+  Desktop retains DejaVu, Micro Hei and Noto emoji fonts. Repack Debian's
+  `libimlib2t64` with `03-desktop/build-imlib2`, removing only its PostScript
+  loader and `libspectre1` dependency. Hold the original package version.
+  Do not bundle the otherwise unused Ghostscript stack, URW fonts or CMaps.
+  Chromium uses its own PDFium PDF renderer.
 - Apply core and module `rootcopy` only after cleanup and runtime package
   installation. Keep setup that depends on copied files in the `copy` phase.
 - Bundle Noto COLRv1 2.051 and its SIL OFL license in `03-desktop/rootcopy`
@@ -861,7 +866,8 @@ must follow the general Slax repair rules above.
   its SHA-256 before publishing `VM/slax-build-trixie/slax-amd64.iso`.
 - Guest helper: `/root/continue-slax-build.sh`; service:
   `/etc/systemd/system/slax-autobuild.service`. Their local sources are in
-  `VM`. The service disables itself after successful completion.
+  `VM`. The service builds from `/root/linux-live`, logs to
+  `/tmp/slax-autobuild.log` and disables itself after successful completion.
 - Clear the old `SHA256SUMS` completion marker before a new automated build.
   Publish it only after the replacement ISO is complete.
 - Before replacing a local ISO, detach it from the stopped test VM and check
