@@ -13,7 +13,7 @@ Forwarded: not-needed
  #ifdef ENABLE_X11
  #include "Hotkeys.hpp"
  #endif
-@@ -18,11 +20,290 @@
+@@ -18,11 +20,292 @@
  
  	int mPanelSize;
  	int mIconSize;
@@ -170,6 +170,8 @@ Forwarded: not-needed
 +	{
 +		finishDrag(false);
 +		dismissPreviews();
++		// Reordering belongs to the panel, without an active application highlight.
++		Xfw::clearFocus();
 +		dragging = mGroups.get(group->mAppInfo);
 +		dragContext = GDK_DRAG_CONTEXT(g_object_ref(context));
 +		// Keep the default pointer instead of GTK's action cursor for this panel drag.
@@ -304,7 +306,7 @@ Forwarded: not-needed
  
  		if (Settings::dockSize)
  			gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
-@@ -45,21 +326,10 @@
+@@ -45,21 +328,10 @@
  		return group.get();
  	}
  
@@ -329,7 +331,7 @@ Forwarded: not-needed
  		std::list<std::string> pinnedList;
  		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
  
-@@ -98,6 +368,7 @@
+@@ -98,6 +370,7 @@
  
  	void drawGroups()
  	{
@@ -337,7 +339,7 @@ Forwarded: not-needed
  		selectGroup(nullptr);
  		// Remove old groups
  		Xfw::mGroupWindows.clear();
-@@ -220,6 +491,7 @@
+@@ -220,6 +493,7 @@
  
  	void onPanelOrientationChange(GtkOrientation orientation)
  	{
