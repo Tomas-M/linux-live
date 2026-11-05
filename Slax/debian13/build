@@ -20,7 +20,7 @@ modprobe overlay
 grep -qw overlay /proc/filesystems
 apt-get update
 apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso mtools \
-   grub-pc-bin grub-efi-amd64-bin grub-common xz-utils cpio git make gcc libc6-dev sbsigntool
+   grub-pc-bin grub-efi-amd64-bin grub-common fdisk xz-utils cpio git make gcc libc6-dev sbsigntool
 
 BUILD=$(mktemp -d /tmp/slax-build.XXXXXX)
 trap 'rm -r "$BUILD"' 0

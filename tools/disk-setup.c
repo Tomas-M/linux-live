@@ -12,7 +12,6 @@
 #include <string.h>
 #include <wchar.h>
 
-static const GUID linux_type={0x0fc63daf,0x8483,0x4772,{0x8e,0x79,0x3d,0x69,0xd8,0x47,0x7d,0xe4}};
 static const GUID efi_type={0xc12a7328,0xf81f,0x11d2,{0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b}};
 static const GUID data_type={0xebd0a0a2,0xb9e5,0x4433,{0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7}};
 static const GUID empty_type={0};
@@ -170,9 +169,11 @@ static BOOL read_plan(HANDLE disk,uint64_t bytes,uint64_t source_offset,Plan *pl
       BOOL range=last>=first && last<sectors && last<=get64(header+48);
       if (!ordered || !range) return fail(L"The disk has unexpected or overlapping partitions.");
       const GUID *type=&data_type;
-      if (used==0) type=&linux_type;
       if (used==1) type=&efi_type;
       if (used>3 || memcmp(entry,type,16)) return fail(L"The disk contains an unexpected partition type.");
+      // The ISO stays hidden in Windows; ordinary writable data entries must not match it.
+      uint64_t hidden=(1ULL<<62)|(1ULL<<63);
+      if (used==0 && (get64(entry+48)&hidden)!=hidden) return fail(L"The ISO partition is missing its hidden attributes.");
       if (used<3)
       {
          if (!read_at(disk,first*512,sector,512)) return FALSE;
