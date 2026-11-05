@@ -1145,9 +1145,12 @@ must follow the general Slax repair rules above.
   unit (including `0.0 KB`); scale larger values to MB, GB and at most TB.
   Menu column positions and pixel rendering belong to `draw_menu()` in fbmenu.
 - Numeric session directories remain their identifiers. Store the display name
-  in each directory's `boot/${LIVEKITNAME}_session.txt` (`boot/slax_session.txt`
-  for Slax); create `boot` when saving a new or duplicated session. Show the
-  name without a numeric prefix.
+  in each native session directory's `boot/session.txt`; container sessions use
+  `session.txt` alongside `changes.dat`, without creating a metadata-only `boot`
+  directory. Share native-storage detection between metadata creation and
+  persistence activation; an existing `changes.dat` keeps its container layout
+  even on a Linux filesystem. Read and duplicate names from the matching path.
+  Show the name without a numeric prefix.
   Unnamed sessions use `Session #ID`. Empty and duplicate names are allowed.
   Automatic resume creates its first session as `Initial session` without
   prompting. Explicit new and duplicated sessions ask for a name using
