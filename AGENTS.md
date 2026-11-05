@@ -682,8 +682,9 @@ must follow the general Slax repair rules above.
   Match the active drag's pointer device and target type, keeping an opaque payload.
   Verify committed drops in the real external panel plugin, in both directions;
   a standalone GTK window does not exercise the XEmbed proxy.
-  Commit pinned order only on a valid internal drop. Escape and outside drops
-  restore surviving original groups in their original order, keeping new groups.
+  Commit the displayed order on internal drops and button release outside the panel.
+  Distinguish GTK's no-target result from explicit cancellation and real drag errors.
+  Escape restores surviving original groups in their original order, keeping new groups.
   Cancel safely when the source disappears, groups are rebuilt or the plugin exits;
   stale drag callbacks must not affect a newer drag. Test real native pointer
   events with new and closing windows, pinned and unpinned groups, and Escape.
