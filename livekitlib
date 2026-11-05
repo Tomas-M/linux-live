@@ -1144,7 +1144,7 @@ persistent_changes()
    echo "- mounting dynamically enlarged storage"
 
    # Keep FUSE visible so shutdown uses its own filesystem options.
-   DYNMNT="$2.dynfilefs"
+   DYNMNT="$2.dfs"
    mkdir -p "$DYNMNT"
    @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$DYNMNT" -p 4000
    if [ ! "$EXISTS" ]; then

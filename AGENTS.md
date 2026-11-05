@@ -1210,8 +1210,8 @@ must follow the general Slax repair rules above.
   Slax's initramfs. The current static 32-bit x86 binary is DynFileFS 5.01,
   using storage format 500. It cannot open the old format 400 sessions.
 - Keep dynfilefs's FUSE mount separate from the loopback XFS mount. In
-  `persistent_changes`, FUSE mounts at `$2.dynfilefs` and XFS at `$2`. For the
-  usual live root these are `/memory/changes.dynfilefs` and `/memory/changes`.
+  `persistent_changes`, FUSE mounts at `$2.dfs` and XFS at `$2`. For the
+  usual live root these are `/memory/changes.dfs` and `/memory/changes`.
   This prevents shutdown from remounting XFS with the hidden FUSE mount's
   `user_id` and `group_id` options. The storage format and session files stay
   unchanged; filesystem creation and growth use the separate `virtual.dat`.
