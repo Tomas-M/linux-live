@@ -1,0 +1,89 @@
+Description: Open combo menus below or above their field
+ Prefer below when the whole menu fits. Otherwise use the roomier side and
+ resize within it, keeping the selection visible without covering the field.
+ Preserve entry and grid combo positioning and ordinary popup menus.
+Author: Slax <build@slax.org>
+
+--- a/gtk/gtkcombobox.c
++++ b/gtk/gtkcombobox.c
+@@ -2169,47 +2169,30 @@
+     }
+   else
+     {
+-      /* FIXME handle nested menus better */
+-      gint rect_anchor_dy = -2;
+-      GList *i;
+-      GtkWidget *child;
+-
+-      active = gtk_menu_get_active (GTK_MENU (priv->popup_widget));
+-
+-      if (!(active && gtk_widget_get_visible (active)))
+-        {
+-          for (i = GTK_MENU_SHELL (priv->popup_widget)->priv->children; i && !active; i = i->next)
+-            {
+-              child = i->data;
+-
+-              if (child && gtk_widget_get_visible (child))
+-                active = child;
+-            }
+-        }
+-
+-      if (active)
+-        {
+-          gint child_height;
+-
+-          for (i = GTK_MENU_SHELL (priv->popup_widget)->priv->children; i && i->data != active; i = i->next)
+-            {
+-              child = i->data;
+-
+-              if (child && gtk_widget_get_visible (child))
+-                {
+-                  gtk_widget_get_preferred_height (child, &child_height, NULL);
+-                  rect_anchor_dy -= child_height;
+-                }
+-            }
+-
+-          gtk_widget_get_preferred_height (active, &child_height, NULL);
+-          rect_anchor_dy -= child_height / 2;
+-        }
++      GtkAllocation allocation;
++      GdkRectangle area;
++      GdkWindow *window = gtk_widget_get_window (GTK_WIDGET (combo_box));
++      GdkMonitor *monitor;
++      gint x, y, height, space_above, space_below;
++      gboolean above;
++
++      /* Prefer below; constrain oversized menus to the roomier side of the field. */
++      gtk_widget_get_allocation (GTK_WIDGET (combo_box), &allocation);
++      gdk_window_get_root_coords (window, allocation.x, allocation.y, &x, &y);
++      monitor = gdk_display_get_monitor_at_point (gtk_widget_get_display (GTK_WIDGET (combo_box)), x + allocation.width / 2, y + allocation.height / 2);
++      gdk_monitor_get_workarea (monitor, &area);
++      gtk_window_set_transient_for (GTK_WINDOW (gtk_widget_get_toplevel (priv->popup_widget)),
++                                    GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (combo_box))));
++      gtk_widget_show (priv->popup_widget);
++      gtk_widget_get_preferred_height (priv->popup_widget, &height, NULL);
++      space_above = MAX (0, y - area.y);
++      space_below = MAX (0, area.y + area.height - y - allocation.height);
++      above = height > space_below && space_above > space_below;
+ 
+       g_object_set (priv->popup_widget,
+-                    "anchor-hints", (GDK_ANCHOR_SLIDE |
+-                                     GDK_ANCHOR_RESIZE),
+-                    "rect-anchor-dy", rect_anchor_dy,
++                    "anchor-hints", GDK_ANCHOR_FLIP_Y | GDK_ANCHOR_SLIDE_X | GDK_ANCHOR_RESIZE,
++                    "rect-anchor-dx", 0,
++                    "rect-anchor-dy", 0,
+                     NULL);
+ 
+       g_signal_connect (priv->popup_widget,
+@@ -2219,8 +2202,8 @@
+ 
+       gtk_menu_popup_at_widget (GTK_MENU (priv->popup_widget),
+                                 GTK_WIDGET (combo_box),
+-                                GDK_GRAVITY_WEST,
+-                                GDK_GRAVITY_NORTH_WEST,
++                                above ? GDK_GRAVITY_NORTH_WEST : GDK_GRAVITY_SOUTH_WEST,
++                                above ? GDK_GRAVITY_SOUTH_WEST : GDK_GRAVITY_NORTH_WEST,
+                                 trigger_event);
+     }
+ 

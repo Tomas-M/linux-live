@@ -53,8 +53,19 @@ reporting progress.
   `/usr/share/slax/keyboard-layouts.tsv`, supplementing them from installed XKB
   layouts. Keep layout selection in the tray only; do not generate a Fluxbox submenu.
   Ctrl+Shift, Alt+Shift and Super+Space initially cycle only layouts with flags.
-  Show all lists every available layout alphabetically without flags; unflagged layouts
+  Show all lists available direct-input layouts alphabetically without flags; unflagged layouts
   can be the remembered alternate. Keep concise display names in the shared catalog.
+  Omit missing XKB symbols and the `cn`/`kr` default maps: they provide Latin
+  keys and IME triggers, not Chinese or Hangul input. This applet does not select
+  input methods. Keep Japanese JIS and Taiwanese layouts explicitly labeled as Latin.
+  Filter the catalog against the combined Fontconfig coverage of installed fonts
+  and each default XKB layout's normal/Shift letters, numbers and combining marks. Hide layouts
+  whose basic text would render as missing-glyph boxes. Leave optional AltGr
+  and isolated decorative/currency symbols out of this filter; retain font fallback
+  across multiple families.
+  Dock EN before font analysis. Run the font/XKB check in a separate worker
+  with nice 19 and idle I/O priority, then update entry visibility on GTK's thread
+  without rebuilding the tray or changing layout indexes, selection or input.
   Align the Show all label with the main list's flags and use a separate themed arrow.
   A menu selection or thirty continuous
   seconds on a non-English layout remembers the alternate in `~/.fluxbox/kblayout`;
@@ -97,6 +108,8 @@ reporting progress.
   its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
   requiring PowerShell. Keep Slax's optional text installer logo.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
+- Tomas has authorized focused testing and a combined final deployment of the
+  current source changes. CJK input remains a proposal, not an installation.
 - For a small change in an existing module, update the source and repack only
   that module in tmpfs, then recreate the ISO. Do not rebuild Debian and every
   application merely to change one configuration file.
@@ -642,7 +655,13 @@ must follow the general Slax repair rules above.
   Apply `gtk-menu-scroll-bounds.diff` too: when monitor bounds move or resize a
   combo popup, clamp its initial scrolling to the actual menu contents. Avoid
   blank space before the first item or after the last while keeping selection,
-  scrolling and ordinary menu placement intact.
+  scrolling and ordinary menu placement intact. After final allocation, reset
+  scrolling whenever the complete menu fits so stale offsets cannot retain arrows.
+  Do not inspect item visibility before the menu has a realized GDK window.
+  `gtk-combo-dropdown-position.diff` opens plain menu-mode combo boxes below
+  their field when they fit, otherwise on the roomier side with scrolling.
+  Never align the popup's selected row over the field or slide it across the
+  field. Preserve entry/grid combo positioning and ordinary popup menus.
 - GTK 3/4 file choosers default to 832 by 576 pixels through
   `03-desktop/rootcopy/usr/share/glib-2.0/schemas/90-slax-filechooser.gschema.override`.
   GTK 3 also needs a nonnegative `window-position` default to use the saved size;
@@ -670,6 +689,8 @@ must follow the general Slax repair rules above.
   drag visual, including on non-composited X11. Animate real button allocations on
   the frame clock for 180 ms, retargeting from their displayed positions.
   Keep the normal pointer cursor throughout panel reordering instead of GTK's move cursor.
+  Starting a reorder clears application focus and preview selection so no group
+  stays highlighted as the active application during the drag.
   After release, animate the source from its displayed position into its committed slot.
   Neighbours yield on the first overlap in either direction, using the moving
   button's edges and grab offset. Allocate reordered slots immediately during
