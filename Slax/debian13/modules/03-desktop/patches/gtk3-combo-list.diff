@@ -1,0 +1,158 @@
+Description: Configure list dropdown row limits and place below, above, then below
+
+--- a/gtk/gtkcombobox.c
++++ b/gtk/gtkcombobox.c
+@@ -1191,6 +1191,14 @@
+                                                                  FALSE,
+                                                                  GTK_PARAM_READABLE));
+ 
++  /* Allow the list limit to be configured through GTK CSS or gtkrc. */
++  gtk_widget_class_install_style_property (widget_class,
++                                           g_param_spec_int ("popup-max-rows",
++                                                             P_("Maximum popup rows"),
++                                                             P_("Maximum visible dropdown rows; zero means unlimited"),
++                                                             0, G_MAXINT, 0,
++                                                             GTK_PARAM_READABLE));
++
+   /**
+    * GtkComboBox:arrow-size:
+    *
+@@ -1920,6 +1928,7 @@
+   GdkRectangle area;
+   GtkRequisition popup_req;
+   GtkPolicyType hpolicy, vpolicy;
++  gint max_rows;
+   GdkWindow *window;
+ 
+   /* under windows, the drop down list is as wide as the combo box itself.
+@@ -1962,6 +1971,40 @@
+ 
+   *height = popup_req.height;
+ 
++  /* Bound the popup to the configured visible rows, including expanded children. */
++  gtk_widget_style_get (GTK_WIDGET (combo_box), "popup-max-rows", &max_rows, NULL);
++  if (max_rows > 0)
++    {
++      GtkTreePath *path = gtk_tree_path_new_first ();
++      GtkTreeIter iter;
++      GtkRequisition tree_req;
++      GdkRectangle row;
++      gint rows, rows_height = 0;
++
++      gtk_widget_get_preferred_size (priv->tree_view, &tree_req, NULL);
++      for (rows = 0; rows < max_rows && priv->model &&
++           gtk_tree_model_get_iter (priv->model, &iter, path); rows++)
++        {
++          gtk_tree_view_get_background_area (GTK_TREE_VIEW (priv->tree_view), path, NULL, &row);
++          rows_height += row.height;
++          if (gtk_tree_view_row_expanded (GTK_TREE_VIEW (priv->tree_view), path))
++            gtk_tree_path_down (path);
++          else
++            {
++              gtk_tree_path_next (path);
++              while (gtk_tree_path_get_depth (path) > 1 &&
++                     !gtk_tree_model_get_iter (priv->model, &iter, path))
++                {
++                  gtk_tree_path_up (path);
++                  gtk_tree_path_next (path);
++                }
++            }
++        }
++      if (rows_height > 0)
++        *height = MIN (*height, rows_height + MAX (0, popup_req.height - tree_req.height));
++      gtk_tree_path_free (path);
++    }
++
+   display = gtk_widget_get_display (widget);
+   monitor = gdk_display_get_monitor_at_window (display, window);
+   gdk_monitor_get_workarea (monitor, &area);
+@@ -1978,15 +2021,10 @@
+     *y += content_allocation.height;
+   else if (*y - *height >= area.y)
+     *y -= *height;
+-  else if (area.y + area.height - (*y + content_allocation.height) > *y - area.y)
++  else
+     {
+       *y += content_allocation.height;
+-      *height = area.y + area.height - *y;
+-    }
+-  else
+-    {
+-      *height = *y - area.y;
+-      *y = area.y;
++      *height = MAX (1, area.y + area.height - *y);
+     }
+ 
+   if (popup_req.height > *height)
+@@ -2270,6 +2308,27 @@
+     g_signal_emit (combo_box, combo_box_signals[POPUP], 0);
+ }
+ 
++/* Reveal the active row after the list receives its constrained viewport. */
++static void
++gtk_combo_box_list_scroll_active (GtkWidget     *tree_view,
++                                 GtkAllocation *allocation,
++                                 GtkComboBox   *combo_box)
++{
++  GtkComboBoxPrivate *priv = combo_box->priv;
++  gint height;
++
++  gtk_widget_get_size_request (priv->popup_window, NULL, &height);
++  if (allocation->height > height)
++    return;
++  g_signal_handlers_disconnect_by_func (tree_view, gtk_combo_box_list_scroll_active, combo_box);
++  if (gtk_tree_row_reference_valid (priv->active_row))
++    {
++      GtkTreePath *path = gtk_tree_row_reference_get_path (priv->active_row);
++      gtk_tree_view_scroll_to_cell (GTK_TREE_VIEW (tree_view), path, NULL, FALSE, 0.0, 0.0);
++      gtk_tree_path_free (path);
++    }
++}
++
+ /**
+  * gtk_combo_box_popup_for_device:
+  * @combo_box: a #GtkComboBox
+@@ -2325,11 +2384,6 @@
+       gtk_window_set_transient_for (GTK_WINDOW (priv->popup_window),
+                                     GTK_WINDOW (toplevel));
+     }
+-
+-  gtk_combo_box_list_position (combo_box, &x, &y, &width, &height);
+-
+-  gtk_widget_set_size_request (priv->popup_window, width, height);
+-  gtk_window_move (GTK_WINDOW (priv->popup_window), x, y);
+ 
+   if (gtk_tree_row_reference_valid (priv->active_row))
+     {
+@@ -2340,18 +2394,29 @@
+                                       ppath);
+       gtk_tree_path_free (ppath);
+     }
++  gtk_window_set_screen (GTK_WINDOW (priv->popup_window),
++                         gtk_widget_get_screen (GTK_WIDGET (combo_box)));
++  /* Realize the hidden list before measuring rows and choosing the popup side. */
++  gtk_widget_realize (priv->tree_view);
++  gtk_combo_box_list_position (combo_box, &x, &y, &width, &height);
++
++  gtk_widget_set_size_request (priv->popup_window, width, height);
++  gtk_window_move (GTK_WINDOW (priv->popup_window), x, y);
++
+   gtk_tree_view_set_hover_expand (GTK_TREE_VIEW (priv->tree_view),
+                                   TRUE);
+ 
+   /* popup */
+-  gtk_window_set_screen (GTK_WINDOW (priv->popup_window),
+-                         gtk_widget_get_screen (GTK_WIDGET (combo_box)));
+   gtk_widget_show (priv->popup_window);
+ 
+   if (path)
+     {
+       gtk_tree_view_set_cursor (GTK_TREE_VIEW (priv->tree_view),
+                                 path, NULL, FALSE);
++      g_signal_handlers_disconnect_by_func (priv->tree_view, gtk_combo_box_list_scroll_active, combo_box);
++      g_signal_connect_object (priv->tree_view, "size-allocate",
++                               G_CALLBACK (gtk_combo_box_list_scroll_active), combo_box, G_CONNECT_AFTER);
++      gtk_widget_queue_allocate (priv->tree_view);
+       gtk_tree_path_free (path);
+     }
+ 

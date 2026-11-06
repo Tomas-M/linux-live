@@ -4,9 +4,9 @@ title-text: ""
 desktop-image: "black.png"
 
 + boot_menu {
-   left = "50%-144"
+   left = "50%-180"
    top = "50%+100"
-   width = 288
+   width = 360
    height = 64
    item_font = "Unifont Regular 16"
    item_color = "#FFFFFF"

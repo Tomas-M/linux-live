@@ -4,6 +4,7 @@ CWD=$(pwd)
 OUTPUT=/artifacts/03-desktop
 apt-get update
 sh "$CWD/build-gtk" "$OUTPUT"
+sh "$CWD/build-gtk2" "$OUTPUT"
 sh "$CWD/build-volumeicon" "$OUTPUT"
 sh "$CWD/build-connman-gtk" "$OUTPUT"
 sh "$CWD/build-libfm" "$OUTPUT"

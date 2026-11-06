@@ -812,13 +812,14 @@ perch_session_rows()
 # Choose a session across writable filesystems and return its full path.
 select_perch_session()
 {
-   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED LASTSESSION
 
    SCAN=$(mktemp -d "$MEMORY/session-disks.XXXXXX") || return 1
    BOOTDEVICE=$(mounted_device "$1")
    BOOTDIR=$(mounted_dir "$1")
    printf 'new\tStart a new session\n' > "$SCAN/sessions.txt"
    touch "$SCAN/disks.txt"
+   touch "$SCAN/resume.txt"
    refresh_devs
    blkid | sort | cut -d: -f 1 | grep -E -v '/loop|/ram|/zram' | while IFS= read -r DEVICE; do
       FS=$(device_bestfs "$DEVICE")
@@ -832,6 +833,13 @@ select_perch_session()
 
       CHANDIR="$DIR/$LIVEKITNAME/changes"
       if [ "$DEVICE" = "$BOOTDEVICE" ]; then CHANDIR="$DIR/${1#"$BOOTDIR/"}"; fi
+      if [ "${2:-}" = resume ]; then
+         LASTSESSION=$(cat "$CHANDIR/last_session.txt" 2>/dev/null || true)
+         if echo "$LASTSESSION" | grep -qE '^[0-9]+$' && [ -d "$CHANDIR/$LASTSESSION" ]; then
+            printf '%s\t%s/%s\n' "$(date -r "$CHANDIR/last_session.txt" +%s)" "$CHANDIR" "$LASTSESSION" >> "$SCAN/resume.txt"
+         fi
+         continue
+      fi
       LABEL=$(blkid -s LABEL -o value "$DEVICE" | tr -d '\r\n' | tr '\000-\037\177' ' ')
       FREE=$(perch_size $(df -Pk "$DIR" | awk 'END {print $4, $2}'))
       printf '%s/new\t%s (%s)\t%s  %s free\n' "$CHANDIR" "$DEVICE" "${LABEL:-No label}" "$FS" "$FREE" >> "$SCAN/disks.txt"
@@ -839,9 +847,11 @@ select_perch_session()
    done | sort -r | cut -f 2- >> "$SCAN/sessions.txt"
 
    CHOICE="${2:-}"
+   # Compare each disk's last-used marker before updating the selected session.
+   if [ "$CHOICE" = resume ]; then CHOICE=$(sort -nr "$SCAN/resume.txt" | head -n 1 | cut -f 2-); fi
    SELECTED=""
    while true; do
-      if [ "$CHOICE" != new ]; then
+      if [ "$CHOICE" != new -a "${2:-}" != resume ]; then
          CHOICE=$(fbmenu --menu 'Select session' "$SCAN/sessions.txt" --cancel --duplicate) || break
       fi
       if [ "$CHOICE" = "" ]; then break; fi
@@ -863,6 +873,7 @@ select_perch_session()
          SELECTED="$MEMORY/persistence/${CHANDIR#"$DIR/"}/$SESSION"
          break
       fi
+      if [ "${2:-}" = resume ]; then break; fi
       CHOICE=""
    done
 
@@ -870,7 +881,7 @@ select_perch_session()
    for DIR in "$SCAN"/disk.*; do
       if mountpoint -q "$DIR" 2>/dev/null; then umount "$DIR" >&2; fi
    done
-   rm -f "$SCAN/disks.txt" "$SCAN/sessions.txt"
+   rm -f "$SCAN/disks.txt" "$SCAN/sessions.txt" "$SCAN/resume.txt"
    rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
    if [ "$SELECTED" = "" ]; then return 1; fi
    echo "$SELECTED"
@@ -1083,7 +1094,15 @@ persistent_changes()
    fi
 
    PERCHDIR=$(cmdline_value perchdir)
-   if [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
+   if [ "$PERCHDIR" = resume ]; then
+      T1=$(select_perch_session "$CHANGES" resume) || T1=""
+      if [ "$T1" != "" ]; then
+         CHANGES=${T1%/*}
+         PERCHDIR=${T1##*/}
+      else
+         PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
+      fi
+   elif [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
       CHANGES=$(select_perch_session "$CHANGES" "$PERCHDIR") || CHANGES=""
       PERCHDIR=${CHANGES##*/}
       CHANGES=${CHANGES%/*}

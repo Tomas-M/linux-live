@@ -1,0 +1,16 @@
+#!/bin/sh
+# Preserve Debian's GTK 2 build and runtime package with Slax's list dropdowns.
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+VERSION=$(dpkg-query -W -f='${Version}' libgtk2.0-0t64)
+SOURCEVERSION=$(dpkg-query -W -f='${source:Version}' libgtk2.0-0t64)
+apt-get build-dep --yes --no-install-recommends "gtk+2.0=$SOURCEVERSION"
+mkdir -p /tmp/gtk2-rebuild
+cd /tmp/gtk2-rebuild
+apt-get source "gtk+2.0=$SOURCEVERSION"
+cd gtk+2.0-*/
+patch -p1 < "$CWD/patches/gtk2-combo-list.diff"
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
+DEB_BUILD_OPTIONS="parallel=$(nproc) nocheck" dpkg-buildpackage -B -us -uc
+cp ../libgtk2.0-0t64_*.deb "$OUTPUT/"

@@ -49,7 +49,7 @@ umount "$TEMP/mnt"
 SIZE=$(du -sk "$BOOT/usb-setup" | cut -f1)
 SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
 if [ "$SIZE" -lt 2112 ]; then
-   SIZE=2555 # could be 2112 but this is nicer number
+   SIZE=2112
 fi
 SECTORS=1
 while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
