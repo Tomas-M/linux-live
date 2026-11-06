@@ -1,8 +1,6 @@
-/* Follow optional host display preferences and restore wallpaper after resizing. */
+/* Follow optional host display preferences and synchronize the guest pointer. */
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
-#include <limits.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -60,8 +58,6 @@ int main(int argc, char **argv)
       follow_preferred(display, root);
    }
    else follow=0;
-   char wallpaper[PATH_MAX];
-   snprintf(wallpaper, sizeof(wallpaper), "%s/.fehbg", getenv("HOME"));
    while (1)
    {
       XEvent event;
@@ -71,10 +67,10 @@ int main(int argc, char **argv)
       if (event.xconfigure.width==size.width && event.xconfigure.height==size.height) continue;
       size.width=event.xconfigure.width;
       size.height=event.xconfigure.height;
-      if (access(wallpaper, R_OK)!=0) continue;
+      /* PCManFM handles wallpaper resizing; only refresh the guest pointer here. */
       if (fork()==0)
       {
-         execl("/bin/sh", "sh", wallpaper, (char *)NULL);
+         execlp("fbvboxpointer", "fbvboxpointer", (char *)NULL);
          _exit(127);
       }
       wait(NULL);

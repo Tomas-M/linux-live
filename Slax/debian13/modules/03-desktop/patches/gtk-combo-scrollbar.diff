@@ -1,0 +1,16 @@
+Description: Keep dropdown scrollbars visible when the list is constrained
+ List-mode combo popups use a regular scrollbar instead of an auto-hiding
+ overlay, without changing scrolling in ordinary application content.
+Author: Slax <build@slax.org>
+
+--- a/gtk/gtkcombobox.c
++++ b/gtk/gtkcombobox.c
+@@ -1884,6 +1884,8 @@
+           gtk_window_set_resizable (GTK_WINDOW (priv->popup_window), FALSE);
+ 
+           priv->scrolled_window = gtk_scrolled_window_new (NULL, NULL);
++          gtk_scrolled_window_set_overlay_scrolling (GTK_SCROLLED_WINDOW (priv->scrolled_window),
++                                                    FALSE);
+ 
+           gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (priv->scrolled_window),
+                                           GTK_POLICY_NEVER,

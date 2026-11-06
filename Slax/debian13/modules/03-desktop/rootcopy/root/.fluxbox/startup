@@ -48,15 +48,13 @@ fi
 # Start desktop integration only on its matching hypervisor.
 slax-guest-desktop &
 
-# gen screen resolutions to fluxbox menu
-xrandr 2>/dev/null | fgrep x | fgrep . | sort -n | tr -s " " | cut -d " " -f 2 \
-| sed -r "s:(.*):[exec] (\\1) {fbscreensize \\1}:" > ~/.fluxbox/menu_resolution
-
-# If we are running inside VirtualBox or vmware,
-# switch to predefined screen size
-if [ "$(virt-what | egrep -i "virtualbox|vmware|qemu|kvm")" != "" ]; then
-   fbscreensize 1440x900 -n
-   fbscreensize 1280x800 -n
+# Apply the startup modes directly; SPICE follows the host's preferred mode.
+if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ] && [ "$(virt-what | grep -Ei 'virtualbox|vmware|qemu|kvm')" != "" ]; then
+   SCREEN_OUTPUT=$(xrandr --query | awk '$2 == "connected" { print $1; exit }')
+   for MODE in 1440x900 1280x800; do
+      xrandr --output "$SCREEN_OUTPUT" --mode "$MODE"
+      fbvboxpointer
+   done
 fi
 
 # Restart a crashed panel while preserving clean exits and the X session lifetime.
@@ -104,8 +102,8 @@ fi
       sleep 0.1
    done
 
-   # Finish the panel's initial redraw on black before showing the wallpaper.
-   fbsetbg -f /usr/share/wallpapers/slax_wallpaper.jpg
+   # Finish the panel's initial redraw on black before showing the icon desktop.
+   pcmanfm --desktop &
 
    # Announce the completed desktop instead of delaying its startup with sound.
    SND=/usr/share/sounds/startup.wav

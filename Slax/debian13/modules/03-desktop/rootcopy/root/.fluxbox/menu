@@ -8,9 +8,6 @@
    [exec] (Run) { fbappselect }
    [separator]
    [workspaces] (Workspaces                ...)
-   [submenu] (Screen resolution        ...) {}
-      [include] (~/.fluxbox/menu_resolution)
-   [end]
    [exec] (Exit / Logout) { fblogout }
 
 [end]

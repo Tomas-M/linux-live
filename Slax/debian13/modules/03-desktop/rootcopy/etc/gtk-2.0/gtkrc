@@ -1,2 +1,12 @@
 gtk-cursor-theme-name="Windows-Modern-Light"
 gtk-cursor-theme-size=32
+
+# Use GTK's list popup and a scrollbar without steppers for long dropdowns.
+style "slax-combo-list" { GtkComboBox::appears-as-list = 1 }
+class "GtkComboBox" style "slax-combo-list"
+style "slax-combo-scrollbar"
+{
+   GtkScrollbar::has-backward-stepper = 0
+   GtkScrollbar::has-forward-stepper = 0
+}
+widget "gtk-combobox-popup-window.*" style "slax-combo-scrollbar"

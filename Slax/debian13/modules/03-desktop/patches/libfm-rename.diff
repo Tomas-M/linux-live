@@ -1,0 +1,78 @@
+--- a/src/base/fm-folder.c
++++ b/src/base/fm-folder.c
+@@ -722,6 +722,26 @@
+      * check for duplications ourselves here. */
+     switch(evt)
+     {
++    case G_FILE_MONITOR_EVENT_RENAMED:
++    {
++        /* Keep the same file info and model row when its basename changes. */
++        GList *item = _fm_folder_get_file_by_path(folder, path);
++        FmPath *renamed = fm_path_new_for_gfile(other);
++        if(item)
++        {
++            GList *replaced = _fm_folder_get_file_by_path(folder, renamed);
++            if(replaced && replaced != item)
++                _fm_folder_event_file_deleted(folder, renamed);
++            fm_file_info_set_path(item->data, renamed);
++            if(!_fm_folder_event_file_changed(folder, renamed))
++                fm_path_unref(renamed);
++        }
++        else if(!_fm_folder_event_file_added(folder, renamed))
++            fm_path_unref(renamed);
++        fm_path_unref(path);
++        break;
++    }
++    case G_FILE_MONITOR_EVENT_MOVED_IN:
+     case G_FILE_MONITOR_EVENT_CREATED:
+         if (!_fm_folder_event_file_added(folder, path))
+             fm_path_unref(path);
+@@ -731,6 +751,7 @@
+         if (!_fm_folder_event_file_changed(folder, path))
+             fm_path_unref(path);
+         break;
++    case G_FILE_MONITOR_EVENT_MOVED_OUT:
+     case G_FILE_MONITOR_EVENT_DELETED:
+         _fm_folder_event_file_deleted(folder, path);
+         fm_path_unref(path);
+--- a/src/base/fm-monitor.c
++++ b/src/base/fm-monitor.c
+@@ -81,7 +81,7 @@
+     else
+     {
+         GError* e = NULL;
+-        ret = g_file_monitor_directory(gf, G_FILE_MONITOR_WATCH_MOUNTS, NULL, &e);
++        ret = g_file_monitor_directory(gf, G_FILE_MONITOR_WATCH_MOUNTS | G_FILE_MONITOR_WATCH_MOVES, NULL, &e);
+         if(ret)
+         {
+             g_object_weak_ref(G_OBJECT(ret), on_monitor_destroy, gf);
+--- a/src/base/fm-templates.c
++++ b/src/base/fm-templates.c
+@@ -602,6 +602,11 @@
+     g_object_unref(gfile);
+     switch(evt)
+     {
++    case G_FILE_MONITOR_EVENT_RENAMED:
++        /* Templates still need separate removal and addition notifications. */
++        on_dir_changed(mon, gf, NULL, G_FILE_MONITOR_EVENT_DELETED, dir);
++        on_dir_changed(mon, other, NULL, G_FILE_MONITOR_EVENT_CREATED, dir);
++        break;
+     case G_FILE_MONITOR_EVENT_CHANGED:
+         basename = g_file_get_basename(gf);
+         if (basename == NULL)
+@@ -620,6 +625,7 @@
+             g_warning("templates monitor: change for unknown file");
+         G_UNLOCK(templates);
+         break;
++    case G_FILE_MONITOR_EVENT_MOVED_OUT:
+     case G_FILE_MONITOR_EVENT_DELETED:
+         basename = g_file_get_basename(gf);
+         if (basename == NULL)
+@@ -644,6 +650,7 @@
+             G_UNLOCK(templates);
+             /* else it is already deleted */
+         break;
++    case G_FILE_MONITOR_EVENT_MOVED_IN:
+     case G_FILE_MONITOR_EVENT_CREATED:
+         basename = g_file_get_basename(gf);
+         G_LOCK(templates);
