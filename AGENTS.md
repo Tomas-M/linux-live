@@ -108,6 +108,8 @@ reporting progress.
   its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
   requiring PowerShell. Keep Slax's optional text installer logo.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
+- Add an item to `TODO.md` only when Tomas explicitly requests a TODO entry.
+  Other change requests are work to complete, not backlog items.
 - Tomas has authorized focused testing and a combined final deployment of the
   current source changes. CJK input remains a proposal, not an installation.
 - For a small change in an existing module, update the source and repack only
@@ -301,6 +303,10 @@ must follow the general Slax repair rules above.
   by default; `--include-loop` includes loops only. Disks without GPT/MBR offer
   a new table on double-click. Keep selected GTK list rows alive during pointer
   events. Use square bottom window corners and centered toolbar icons.
+  Review changes sizes the plan to its content within the monitor's work area,
+  with a shared feedback panel for checking, ready and warning states. Preserve
+  readable plan height after asynchronous checks. Plaintext logs retain long
+  lines and provide automatic scrollbars on both axes.
   Use sfdisk for table operations and the installed filesystem tools for
   formatting/growth, with runtime type catalogues and tool discovery.
   In-use disks remain editable after an explicit review acknowledgement; do
@@ -308,9 +314,11 @@ must follow the general Slax repair rules above.
   report deferred changes as requiring restart, and verify kernel geometry
   before filesystem operations. Keep tests on owned sparse files and Linux
   loop devices; never use host disks or Windows VHDs for development tests.
-  The dedicated `Slax boot test` VM currently has no hard disks and boots only
-  from CD. Create and attach an owned disposable fixture explicitly when disk
-  operations need interactive checks; its previous test disks were deleted.
+  The dedicated `Slax boot test` VM boots only from CD and has two owned 4 GiB
+  persistence fixtures: `VM/virtualbox/slax-sessions-native-20261106.vdi` (ext4,
+  `SLAX_NATIVE`) and `slax-sessions-fat-20261106.vdi` (FAT32, `SLAX_FAT`).
+  Identify them by disk serial or filesystem UUID, since Linux device names
+  can change between boots. Create a separate owned fixture for partition-write tests.
 - Core also includes Debian's native `xfsprogs` tools. `build-xfsprogs` repacks
   the official binary package without recompiling. Remove `xfs_scrub`, its
   scripts, services, timer and manuals, plus the Python-only `xfs_protofile`.
@@ -599,6 +607,11 @@ must follow the general Slax repair rules above.
 - The automount udev rule queues a transient systemd service with `--no-block`.
   Pass ACTION, DEVNAME and ID_FS_TYPE as arguments to `slax-automount`; do not
   mount synchronously inside udev, which blocks GParted's `udevadm settle`.
+  Serialize events per device and take a shared lock on its parent disk before
+  probing or mounting, respecting partitioning tools' exclusive locks. Probe
+  the current filesystem after waiting; event metadata may already be stale.
+  Ignore queued removals when the device node is present, and open PCManFM only
+  for a new successful mount. Keep the mount unit if unmounting fails.
 - Initramfs exposes already mounted boot and session filesystems through
   `/media/DEVICE` symlinks into `/run/initramfs`, without duplicate fstab or
   systemd mounts. Automount only refreshes their file-manager bookmarks.
@@ -1010,14 +1023,13 @@ must follow the general Slax repair rules above.
   Shut the Debian work VM down normally.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
-  Slax. To test sessions on the separate FAT32 disk while booting from CD,
-  append `perchdir=/dev/sda1/changes` in GRUB's command-line editor.
-- The scratch VM boots the current distribution ISO at SATA port 0 without
-  a hard disk. Attach separate disposable media explicitly for persistence
-  tests; the launcher must not create or format disks. Never use the work
-  VM's disk for those tests. Do not create a separate local test ISO or add
-  VM-specific arguments to the distribution boot configuration. Use GRUB's
-  command-line editor for an external target such as `perchdir=/dev/sda1/changes`.
+  Slax. Use `Choose session during startup` to select or create sessions on
+  the attached fixtures while booting from CD.
+- The scratch VM boots the current distribution ISO at SATA port 0, with its
+  two disposable persistence fixtures at ports 1 and 2. The launcher must not
+  create or format disks. Never use the work VM's disk for these tests. Do not
+  create a separate local test ISO or add VM-specific arguments to the
+  distribution boot configuration.
 - Enable the test VM's audio output with the host's default audio driver and
   an HDA controller. Audio was previously disabled in its local launcher.
 - Enable the test VM's bridged network through the active Ethernet adapter,
@@ -1082,6 +1094,8 @@ must follow the general Slax repair rules above.
   below its declared filesystem size or inflate it to FAT32's larger minimum.
   Use `mkfs.fat` and a temporary loop mount for both FAT images;
   always unmount before removing temporary files, including on errors or signals.
+  Keep the root `/EFI` copy available in ISO9660/Rock Ridge for signed GRUB,
+  but hide it from Joliet. Keep `/slax/boot/EFI` visible for file-copy USB setup.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
   Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
@@ -1218,7 +1232,7 @@ must follow the general Slax repair rules above.
 - Session selection retains the Slax logo and shows each session's name,
   date and size on one row. Highlight the entire selected row. No frame,
   arrow-only selection or `1/20` counters. Footer:
-  `Up/Down: select     Enter: confirm     F4: duplicate     Esc: cancel`.
+  `Up/Down: select     Enter: confirm     F4: duplicate     F6: rename     Esc: cancel`.
 - Embed DejaVu Sans Mono at 12 px in fbmenu. Use 28 px row spacing, 16 px
   horizontal row padding and a 28 px gap below the logo. Center the menu within
   the available display; keep its width between 480 and 720 px where it fits.
@@ -1279,6 +1293,12 @@ must follow the general Slax repair rules above.
   reveal the log. Use `cp -a` without verbose filename output; keep copy errors
   on stderr without corrupting the returned session ID. Check both native
   storage and FAT-backed session files.
+- `fbmenu --menu ... --rename` returns `rename:ID` on F6 and ignores F6 on
+  the new-session row. Both session pickers prompt with the current name and
+  return to the selected row after confirmation or cancellation. Replace only
+  the matching native/container metadata file atomically, retaining Unicode,
+  literal backslashes and empty names. Renaming never activates the session or
+  changes `last_session.txt`; refresh the displayed name without reinterpreting it.
 - During duplication, record `df -Pk` used space on the target filesystem before
   copying and subtract that baseline from subsequent measurements. Show
   `Duplicating session... N.N MB` through `fbmenu --status` every five seconds; write

@@ -8,6 +8,7 @@
  * Menu files contain: value<TAB>title<TAB>detail (or a plain value per line).
  * Add --cancel to a menu request to return an empty selection when Esc is pressed.
  * Add --duplicate to return duplicate:VALUE on F4 (the value new stays new).
+ * Add --rename to return rename:VALUE on F6 (ignored for the value new).
  * --input TITLE [DEFAULT] edits UTF-8 text; Esc returns status 2, Enter accepts empty.
  * --status TEXT shows a boot activity below the logo; empty text clears it.
  * --pause/--continue bracket driver loading; overlapping pauses are counted.
@@ -41,10 +42,10 @@
 
 static const char *socket_path="/run/fbmenu.sock";
 #define DISABLED "/run/bootsplash.disabled"
-struct request { char operation, cancel, duplicate; char title[128]; char file[1024]; };
+struct request { char operation, cancel, duplicate, rename; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail; };
 /* Keep navigation keys outside the Unicode range. */
-enum { KEY_UP=0x110000, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F4 };
+enum { KEY_UP=0x110000, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F4, KEY_F6 };
 enum phase { BOOT, HANDOFF, SHUTDOWN };
 static int tty=-1, keyboard_fd=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
 static struct termios saved;
@@ -336,8 +337,8 @@ static void draw_menu(void)
 {
    if (menu.operation=='i') { draw_input(1); return; }
    char hint[160];
-   snprintf(hint,sizeof(hint),"Up/Down: select     Enter: confirm%s     Esc: %s",
-      menu.duplicate?"     F4: duplicate":"",menu.cancel?"cancel":"text mode");
+   snprintf(hint,sizeof(hint),"Up/Down: select     Enter: confirm%s%s     Esc: %s",
+      menu.duplicate?"     F4: duplicate":"",menu.rename?"     F6: rename":"",menu.cancel?"cancel":"text mode");
    if (!graphics) {
       dprintf(tty,"\033[2J\033[H%s\r\n\r\n\r\n",menu.title);
       int first=selected>8?selected-8:0;
@@ -499,6 +500,7 @@ static int key(void)
    if (!strcmp(sequence,"[5~")) return KEY_PAGEUP;
    if (!strcmp(sequence,"[6~")) return KEY_PAGEDOWN;
    if (!strcmp(sequence,"[[D") || !strcmp(sequence,"OS") || !strcmp(sequence,"[14~")) return KEY_F4;
+   if (!strcmp(sequence,"[17~")) return KEY_F6;
    return 0;
 }
 
@@ -702,9 +704,13 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
             if (pressed=='G' || pressed==KEY_END) selected=count-1;
             if (pressed=='u' || pressed==KEY_PAGEUP) selected=selected<5?0:selected-5;
             if (pressed=='d' || pressed==KEY_PAGEDOWN) selected=selected+5>=count?count-1:selected+5;
-            if (pressed==KEY_F4 && menu.duplicate && strcmp(items[selected].value,"new"))
+            int duplicate=pressed==KEY_F4 && menu.duplicate;
+            int rename=pressed==KEY_F6 && menu.rename && strcmp(items[selected].value,"new");
+            int confirm=pressed=='\r' || pressed=='\n';
+            if (duplicate && strcmp(items[selected].value,"new"))
                write_all(menu_client,"duplicate:",10);
-            if (pressed=='\r' || pressed=='\n' || (pressed==KEY_F4 && menu.duplicate)) {
+            if (rename) write_all(menu_client,"rename:",7);
+            if (confirm || duplicate || rename) {
                finish_menu(items[selected].value,frame);
             } else if (selected!=previous) draw_menu();
          }
@@ -762,6 +768,7 @@ int main(int argc, char **argv)
    while (argc>2 && argv[argc-1][0]=='-' && !strcmp(argv[1],"--menu")) {
       if (!strcmp(argv[argc-1],"--cancel")) request.cancel=1;
       else if (!strcmp(argv[argc-1],"--duplicate")) request.duplicate=1;
+      else if (!strcmp(argv[argc-1],"--rename")) request.rename=1;
       else break;
       argc--;
    }
@@ -796,7 +803,7 @@ int main(int argc, char **argv)
       if (!strcmp(argv[1],"--keep")) request.operation='h';
    }
    if (!request.operation) {
-      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--duplicate] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
+      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--duplicate] [--rename] | --input TITLE [DEFAULT] | --status TEXT | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
       return 1;
    }
    int fd=connect_server(), child=0;

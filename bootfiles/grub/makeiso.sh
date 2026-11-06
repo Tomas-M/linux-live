@@ -71,12 +71,13 @@ if [ -f "$NAME/boot/grub/cdboot.img" ]; then
    set -- -b "$NAME/boot/grub/cdboot.img" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info -eltorito-alt-boot "$@"
    set -- --grub2-mbr "$BOOT/grub/boot_hybrid.img" --mbr-force-bootable "$@"
 fi
-set -- -as mkisofs -J -R -A "$NAME" -V "$NAME" -c "$NAME/boot/grub/boot.cat" "$@"
+set -- -as mkisofs -J -R -A "$NAME" -V "$NAME" -c "$NAME/boot/grub/boot.cat" "$@" --
 if [ -n "${XORRISO_PATH_LIST:-}" ]; then
-   set -- "$@" -- -pathspecs on -backslash_codes with_quoted_input -quoted_path_list "$XORRISO_PATH_LIST"
+   set -- "$@" -pathspecs on -backslash_codes with_quoted_input -quoted_path_list "$XORRISO_PATH_LIST"
 fi
 # Stock signed loaders can read their bootstrap through either EFI or ISO media.
-set -- "$@" "EFI=$BOOT/EFI"
+# Hide only the root copy from Joliet; keep boot/EFI available for USB setup.
+set -- "$@" -map "$BOOT/EFI" /EFI -hide joliet /EFI --
 xorriso "$@"
 
 # Windows honors hidden/no-drive-letter bits only for its Basic Data partition type.
