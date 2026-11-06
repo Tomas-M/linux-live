@@ -20,4 +20,4 @@ In Slax
 3. Select "Unallocated space", click New, and choose FAT32 as the filesystem.
 4. Click "Add to plan", then "Review changes" and "Apply changes".
 
-Leave the existing partitions unchanged so Slax can still start.
+Slax partition remains hidden in this setup.

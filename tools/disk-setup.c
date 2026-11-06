@@ -540,22 +540,12 @@ static BOOL verify_data(const Job *job)
    return TRUE;
 }
 
-// Remove only the original setup entry after locking its volume and rechecking GPT.
-static BOOL remove_setup(const Job *job,const Plan *expected)
+// Remove only the original setup entry while its volume remains locked.
+static BOOL remove_setup(const Job *job,const Plan *expected,HANDLE volume)
 {
-   DISK_EXTENT extent;
-   if (!volume_extent(job->volume,&extent)) return fail(L"USB-DATA is ready, but DISK-SETUP could not be located and was kept.");
-   if (extent.DiskNumber!=job->number || (uint64_t)extent.StartingOffset.QuadPart!=job->source_offset)
-      return fail(L"The setup volume changed. No partition was removed.");
-   WCHAR path[128];
-   wcscpy(path,job->volume); path[wcslen(path)-1]=0;
-   HANDLE volume=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
-   if (volume==INVALID_HANDLE_VALUE) return windows_error(L"USB-DATA is ready, but DISK-SETUP could not be opened and was kept.");
    DWORD returned;
-   BOOL ok=DeviceIoControl(volume,FSCTL_LOCK_VOLUME,NULL,0,NULL,0,&returned,NULL);
-   if (!ok) windows_error(L"USB-DATA is ready. DISK-SETUP is still in use and was kept. Close its files and run Disk Setup again.");
    Plan fresh={0};
-   if (ok) ok=read_plan(job->disk,expected->disk_bytes,job->source_offset,&fresh) && same_plan(&fresh,expected);
+   BOOL ok=read_plan(job->disk,expected->disk_bytes,job->source_offset,&fresh) && same_plan(&fresh,expected);
    if (ok && !DeviceIoControl(volume,FSCTL_DISMOUNT_VOLUME,NULL,0,NULL,0,&returned,NULL))
       ok=windows_error(L"USB-DATA is ready, but DISK-SETUP could not be unmounted and was kept.");
    if (ok)
@@ -564,9 +554,6 @@ static BOOL remove_setup(const Job *job,const Plan *expected)
       ok=publish_plan(job->disk,&fresh);
    }
    free(fresh.table);
-   CloseHandle(volume);
-   if (ok && !DeviceIoControl(job->disk,IOCTL_DISK_UPDATE_PROPERTIES,NULL,0,NULL,0,&returned,NULL))
-      ok=windows_error(L"USB-DATA is ready, but Windows could not refresh the removed setup partition. Reconnect the USB drive.");
    return ok;
 }
 
@@ -574,17 +561,31 @@ static BOOL remove_setup(const Job *job,const Plan *expected)
 static DWORD WINAPI prepare_worker(void *data)
 {
    Job *job=data;
+   WCHAR path[128];
+   wcscpy(path,job->volume); path[wcslen(path)-1]=0;
+   HANDLE volume=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+   if (volume==INVALID_HANDLE_VALUE) { windows_error(L"Could not open DISK-SETUP. No changes were made."); return 0; }
+   VOLUME_DISK_EXTENTS extents;
+   DWORD returned;
+   BOOL ok=DeviceIoControl(volume,IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,NULL,0,&extents,sizeof(extents),&returned,NULL);
+   if (ok) ok=extents.NumberOfDiskExtents==1 && extents.Extents[0].DiskNumber==job->number && (uint64_t)extents.Extents[0].StartingOffset.QuadPart==job->source_offset;
+   if (!ok) fail(L"The setup volume changed or could not be verified. No changes were made.");
+   // Acquire the removal lock before the first write and retain it across data verification.
+   if (ok && !DeviceIoControl(volume,FSCTL_LOCK_VOLUME,NULL,0,NULL,0,&returned,NULL))
+      ok=windows_error(L"DISK-SETUP is in use or could not be locked. Close files and programs using this USB drive and run Disk Setup again. No changes were made.");
    Plan fresh={0};
-   BOOL ok=read_plan(job->disk,job->plan->disk_bytes,job->source_offset,&fresh);
+   if (ok) ok=read_plan(job->disk,job->plan->disk_bytes,job->source_offset,&fresh);
    if (ok) ok=same_plan(&fresh,job->plan);
    if (ok && fresh.size) ok=prepare_data(job->disk,&fresh);
-   DWORD returned;
    if (ok && !DeviceIoControl(job->disk,IOCTL_DISK_UPDATE_PROPERTIES,NULL,0,NULL,0,&returned,NULL))
       ok=windows_error(L"The data partition was created, but Windows could not refresh the disk. Reconnect the USB drive.");
    if (ok) ok=mount_data(job->number,job->plan->start,job->drive);
    if (ok) ok=verify_data(job);
    fresh.size=0;
-   if (ok) ok=remove_setup(job,&fresh);
+   if (ok) ok=remove_setup(job,&fresh,volume);
+   CloseHandle(volume);
+   if (ok && !DeviceIoControl(job->disk,IOCTL_DISK_UPDATE_PROPERTIES,NULL,0,NULL,0,&returned,NULL))
+      ok=windows_error(L"USB-DATA is ready, but Windows could not refresh the removed setup partition. Reconnect the USB drive.");
    if (ok) ok=mount_data(job->number,job->plan->start,job->drive);
    free(fresh.table);
    job->success=ok;
