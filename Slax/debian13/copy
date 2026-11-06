@@ -5,6 +5,9 @@ set -e
 rm -f /etc/localtime
 cp -a /build/rootcopy/. /
 install -m 755 /artifacts/01-core/linux-assistant /usr/bin/linux-assistant
+# Repair Debian's duplicate restore label and avoid restoring absent first-boot state.
+sed -i '0,/LABEL="alsa_restore_go"/! s/LABEL="alsa_restore_go"/LABEL="alsa_restore_std"/' /usr/lib/udev/rules.d/90-alsa-restore.rules
+sed -i '/RUN+=.* restore /s/^TEST!=/TEST=="\/var\/lib\/alsa\/asound.state", TEST!=/' /usr/lib/udev/rules.d/90-alsa-restore.rules
 # Copied service files must not be writable by other users.
 for FILE in /build/rootcopy/usr/lib/systemd/system/*.service; do
    chmod 644 "/usr/lib/systemd/system/$(basename "$FILE")"

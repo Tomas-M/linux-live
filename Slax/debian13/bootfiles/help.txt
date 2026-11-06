@@ -10,7 +10,8 @@
 
  * nosound: If specified, sound devices are muted during startup
 
- * text: Start in the text console without Xorg or the desktop.
+ * text: Start in the text console without the boot splash, Xorg or the desktop.
+   The text-only menu entry shows warnings and errors; boot details remain in the journal.
 
  * nomodeset: Keep the firmware display mode without accelerated graphics.
    The text-only menu entry uses this to preserve a visible UEFI console.

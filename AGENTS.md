@@ -235,6 +235,14 @@ must follow the general Slax repair rules above.
   Publish only the current build's manifest set when module names change.
 - ConnMan provides NTP synchronization. Do not install `ntpsec-ntpdate` in core;
   it pulls in an otherwise unused Python runtime and its dependencies.
+  Its service uses `slax-connmand` to omit the VPN plugin only while the optional
+  `connman-vpnd` daemon is absent; installing the daemon restores VPN support
+  on the next service start.
+- Core includes `alsa-ucm-conf` for hardware audio profiles. Repair Debian's
+  duplicate `alsa_restore_go` label to `alsa_restore_std`, and let the udev rule
+  restore only existing mixer state. `slax-alsa-restore` initializes fresh audio
+  instead of trying to restore a missing state file; existing state is preserved.
+  Keep acpid's empty `OPTIONS` explicit in `/etc/default/acpid`.
 - Install the dependency-free `libwacom-common` data package in `01-core` so
   udev builds the complete hardware database there. Keep its `.hwdb` sources
   for later package updates; Xorg must reuse the database instead of shipping
@@ -1037,8 +1045,8 @@ must follow the general Slax repair rules above.
   missing AF_VSOCK CID also occur when resuming without duplication. The copied
   session reaches the desktop with no failed systemd units. The ALSA restore
   rule in Debian's unmodified `alsa-utils` 1.2.14-1 has a missing
-  `alsa_restore_std` label. These are separate findings, not failures of
-  session copying. The copied service and module-root permission warnings
+  `alsa_restore_std` label; Slax repairs it during core copy. These are separate
+  findings, not failures of session copying. The copied service and module-root permission warnings
   are fixed in the build recipes.
 - For boot videos, VirtualBox's built-in recording can capture the visible
   scratch VM from power-on. Stop recording after the desktop appears, then
@@ -1079,7 +1087,7 @@ must follow the general Slax repair rules above.
   Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
   FAT16 setup partition after the ESP, with Windows preparation tools from shared
   `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
-  Small setup payloads use a 2112 KiB FAT16 image.
+  Small setup payloads use a 2222 KiB FAT16 image.
   Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
   the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
@@ -1149,8 +1157,14 @@ must follow the general Slax repair rules above.
   The first three entries are `Resume previous session automatically`,
   `Choose session during startup` and `Run Slax from RAM (copy to ram)`.
   The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
-  without persistence, automount or copy-to-RAM flags. On BIOS set `gfxpayload=text`;
+  without splash, quiet, hidden cursor, persistence, automount or copy-to-RAM flags.
+  Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
+  non-quiet boots preserve the kernel's console log level. On BIOS set `gfxpayload=text`;
   on UEFI preserve the firmware framebuffer so the console stays visible.
+  Use `loglevel=5 systemd.show_status=auto` for the text entry: keep warnings and
+  errors visible without routine kernel/systemd messages. Keep full kernel and
+  journal records; `debug` still enables verbose console output. Omit obsolete
+  `load_ramdisk` and `prompt_ramdisk` flags from Slax entries.
   Keep new-session creation in the session picker, not in the boot menu.
   Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
   the nested countdown configuration and again after returning to the full menu.

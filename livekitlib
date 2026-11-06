@@ -12,7 +12,8 @@
 splash_listen()
 {
    [ "$SPLASH_LOG" ] || return 0
-   if ! grep -qw quiet /proc/cmdline; then splash_disable; return; fi
+   # Text boots keep the console even when quiet was supplied explicitly.
+   if grep -qw text /proc/cmdline || ! grep -qw quiet /proc/cmdline; then splash_disable; return; fi
    chvt 1
    fbmenu --serve /lib/bootsplash "$SPLASH_LOG" &
    SPLASH_PID=$!
@@ -196,7 +197,9 @@ init_proc_sysfs()
    debug_log "init_proc_sysfs" "$*"
    mkdir -p /proc /sys /etc $MEMORY
    mount -n -t proc proc /proc
-   echo "0" >/proc/sys/kernel/printk
+   if grep -qw quiet /proc/cmdline; then
+      echo "0" >/proc/sys/kernel/printk
+   fi
    mount -n -t sysfs sysfs /sys
    mount -n -o remount,rw rootfs /
    ln -sf /proc/mounts /etc/mtab
@@ -237,6 +240,9 @@ init_devs()
    modprobe loop 2>/dev/null
    modprobe squashfs 2>/dev/null
    modprobe fuse 2>/dev/null
+   # High-speed USB controllers must initialize before their companion drivers.
+   modprobe ehci-hcd 2>/dev/null
+   modprobe ehci-pci 2>/dev/null
    refresh_devs
 }
 
@@ -402,6 +408,11 @@ fs_options()
    debug_log "fs_options" "$*"
 
    echo -n "-t $1 "
+   # ISO9660 cannot be writable; avoid a failed read-write probe of optical media.
+   if [ "$1" = "iso9660" ]; then
+      echo "-o ro"
+      return
+   fi
    echo -n "-o rw"
 
    if [ "$1" = "vfat" ]; then
