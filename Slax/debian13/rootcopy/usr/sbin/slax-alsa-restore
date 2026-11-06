@@ -1,0 +1,6 @@
+#!/bin/sh
+# Initialize first-boot audio when no saved mixer state exists yet.
+if [ -f /var/lib/alsa/asound.state ]; then
+   exec /usr/sbin/alsactl -E HOME=/run/alsa -E XDG_RUNTIME_DIR=/run/alsa/runtime restore "$@"
+fi
+exec /usr/sbin/alsactl -E HOME=/run/alsa -E XDG_RUNTIME_DIR=/run/alsa/runtime init "$@"

@@ -30,8 +30,8 @@ trap 'exit 143' TERM
 SIZE=$(du -sk "$BOOT/EFI" | cut -f1)
 # Allow both FATs plus 128 KiB for directories and free space, rounded to 64 KiB.
 SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
-if [ "$SIZE" -lt 2112 ]; then
-   SIZE=2112
+if [ "$SIZE" -lt 2222 ]; then
+   SIZE=2222
 fi
 # Keep the cluster count in the FAT16 range, including larger generic loader sets.
 SECTORS=1
@@ -48,8 +48,8 @@ umount "$TEMP/mnt"
 # Keep the CD read-ahead padding inside the setup partition, not in a GPT Gap entry.
 SIZE=$(du -sk "$BOOT/usb-setup" | cut -f1)
 SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
-if [ "$SIZE" -lt 2112 ]; then
-   SIZE=2112
+if [ "$SIZE" -lt 2222 ]; then
+   SIZE=2222
 fi
 SECTORS=1
 while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do

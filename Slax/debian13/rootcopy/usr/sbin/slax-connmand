@@ -1,0 +1,6 @@
+#!/bin/sh
+# The VPN plugin needs the separately installed ConnMan VPN daemon.
+if [ ! -x /usr/sbin/connman-vpnd ]; then
+   set -- "$@" --noplugin=vpn
+fi
+exec /usr/sbin/connmand "$@"
