@@ -368,9 +368,13 @@ must follow the general Slax repair rules above.
   Missing applications install immediately, without a size threshold or confirmation.
   Launchers pass the application name; the installer supplies the shared explanation
   that it will be downloaded and installed, followed by "please wait...".
-  Closing the installer cancels preparation, downloads or installation. Terminate
-  its APT process group, including dpkg and package scripts, and force termination
-  after one second if needed. Cancellation must not retry or launch the application.
+  Closing the installer queues a close while `apt-get` is running. Never terminate
+  APT, dpkg or package scripts in response to closing, including ordinary TERM,
+  INT or HUP signals sent to the installer. Keep APT in its own process group.
+  Dim the content, explain that closing waits for the current operation, and keep
+  progress updating. Exit after that child finishes, without retrying, updating,
+  installing another phase or launching the application. Before APT starts, closing
+  exits immediately and prevents the queued installation from starting.
   Run APT directly rather than a separate size calculation or simulated installation.
   File and URL arguments stay separate from command quoting.
   It uses existing package lists, refreshes once if a package cannot be resolved
