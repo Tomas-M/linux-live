@@ -1124,8 +1124,10 @@ must follow the general Slax repair rules above.
   Validate the ISO's Basic Data type, hidden attributes and ISO9660 signature.
   Preserve the ISO and EFI partitions and BIOS/UEFI loaders, relocate the backup
   GPT to the physical disk end, and leave an existing data partition unchanged.
-  First format, mount and verify file writes/reads on USB-DATA, then lock and
-  remove only DISK-SETUP. Keep DISK-SETUP if data preparation or verification fails.
+  In the temporary copy, lock DISK-SETUP before any disk writes and abort without
+  partition changes if it is in use or cannot be locked. Retain that lock while
+  formatting, mounting and verifying file writes/reads on USB-DATA, then remove
+  only DISK-SETUP. Keep DISK-SETUP if data preparation or verification fails.
   After confirmation, relaunch a plain EXE copy in a separate local temporary
   folder. Transfer the original open disk handle, volume identity, mutex and
   complete approved GPT snapshot through inherited handles; revalidate them
