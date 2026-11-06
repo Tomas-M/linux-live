@@ -4,51 +4,55 @@
  * Commands use shell quoting for arguments, but are executed without a shell.
  */
 #include <gtk/gtk.h>
+#include <glib-unix.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
-static GtkWidget *window, *progress, *status_label;
+static GtkWidget *window, *progress, *status_label, *message_label;
 static gchar **packages, **command;
 static GString *output;
 static enum { INSTALL, UPDATE } phase=INSTALL;
-static gboolean updated, guest, cancelled;
+static gboolean updated, guest, close_requested;
 static GPid apt_child;
 static guint pulse_timer;
 static struct { GIOChannel *channel; guint watch; } pipes[3];
 
 static gboolean start_apt(gpointer data);
 
-/* Keep APT, dpkg and package scripts in one cancellable process group. */
+/* Isolate APT and its package scripts from the launcher's terminal signals. */
 static void setup_apt(gpointer data)
 {
     (void)data;
     setpgid(0, 0);
 }
 
-/* Stop package processes that did not respond to the initial termination request. */
-static gboolean kill_apt(gpointer data)
+/* Keep package operations alive and close only after the current APT child exits. */
+static gboolean close_install(GtkWidget *widget, GdkEvent *event, gpointer data)
 {
-    (void)data;
-    if (apt_child) kill(-apt_child, SIGKILL);
-    return FALSE;
-}
-
-/* Closing the installer cancels every installation phase, including preparation. */
-static gboolean cancel_install(GtkWidget *widget, GdkEvent *event, gpointer data)
-{
+    (void)widget;
     (void)event;
     (void)data;
-    cancelled=TRUE;
-    gtk_widget_hide(widget);
-    if (apt_child)
+    if (close_requested) return TRUE;
+    close_requested=TRUE;
+    if (!apt_child) gtk_main_quit();
+    else
     {
-        kill(-apt_child, SIGTERM);
-        g_timeout_add(1000, kill_apt, NULL);
+        gtk_window_set_title(GTK_WINDOW(window), "Closing after current operation");
+        gtk_label_set_text(GTK_LABEL(message_label), "This window will close when the current package operation finishes.");
+        gtk_widget_set_sensitive(gtk_dialog_get_content_area(GTK_DIALOG(window)), FALSE);
     }
-    else gtk_main_quit();
+    return TRUE;
+}
+
+/* Defer ordinary process termination too; with no APT child, exiting is safe. */
+static gboolean close_on_signal(gpointer data)
+{
+    (void)data;
+    if (!apt_child) _exit(1);
+    close_install(window, NULL, NULL);
     return TRUE;
 }
 
@@ -150,7 +154,6 @@ static void apt_finished(GPid pid, gint status, gpointer data)
 {
     GError *error=NULL;
     (void)data;
-    if (cancelled) kill(-pid, SIGKILL);
     for (guint i=0; i<G_N_ELEMENTS(pipes); i++)
     {
         if (pipes[i].watch) g_source_remove(pipes[i].watch);
@@ -164,7 +167,7 @@ static void apt_finished(GPid pid, gint status, gpointer data)
     apt_child=0;
     if (pulse_timer) g_source_remove(pulse_timer);
     pulse_timer=0;
-    if (cancelled)
+    if (close_requested)
     {
         gtk_main_quit();
         return;
@@ -209,6 +212,11 @@ static void apt_finished(GPid pid, gint status, gpointer data)
 /* Run APT asynchronously, keeping fd 3 for progress and the original application environment. */
 static gboolean start_apt(gpointer data)
 {
+    if (close_requested)
+    {
+        gtk_main_quit();
+        return FALSE;
+    }
     GError *error=NULL;
     GPid child;
     gint status_pipe[2], fds[3], target=3;
@@ -343,20 +351,23 @@ int main(int argc, char **argv)
     gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER_ALWAYS);
     gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
     gtk_window_set_default_icon(icon);
-    g_signal_connect(window, "delete-event", G_CALLBACK(cancel_install), NULL);
+    g_signal_connect(window, "delete-event", G_CALLBACK(close_install), NULL);
+    g_unix_signal_add(SIGTERM, close_on_signal, NULL);
+    g_unix_signal_add(SIGINT, close_on_signal, NULL);
+    g_unix_signal_add(SIGHUP, close_on_signal, NULL);
     GtkWidget *box=gtk_vbox_new(FALSE, 12);
     GtkWidget *header=gtk_hbox_new(FALSE, 16);
     GtkWidget *image=gtk_image_new_from_pixbuf(icon);
     gchar *message=g_strdup_printf("%s will be downloaded and installed, please wait...", argv[3]);
-    GtkWidget *label=gtk_label_new(message);
+    message_label=gtk_label_new(message);
     g_free(message);
     g_object_unref(icon);
     gtk_widget_set_size_request(image, 64, 64);
-    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
-    gtk_misc_set_alignment(GTK_MISC(label), 0, 0.5);
-    gtk_widget_set_size_request(label, 320, -1);
+    gtk_label_set_line_wrap(GTK_LABEL(message_label), TRUE);
+    gtk_misc_set_alignment(GTK_MISC(message_label), 0, 0.5);
+    gtk_widget_set_size_request(message_label, 320, -1);
     gtk_box_pack_start(GTK_BOX(header), image, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(header), label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(header), message_label, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(box), header, FALSE, FALSE, 0);
     status_label=gtk_label_new("");
     gtk_label_set_line_wrap(GTK_LABEL(status_label), TRUE);
