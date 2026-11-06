@@ -101,9 +101,9 @@ make -C "$PARTITION_MANAGER_BUILD/source" DESTDIR="$PACKAGE" install
 cc -Os -shared -fPIC -s -o "$OUTPUT/libslax-app-style.so" \
    "$CWD/gtk-app-style.c" $(pkg-config --cflags --libs gtk+-3.0)
 cd /tmp
-wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.4.tar.gz
+wget -O xlunch.tar.gz https://github.com/Tomas-M/xlunch/archive/v5.10.5.tar.gz
 tar -xf xlunch.tar.gz
-cd xlunch-5.10.4
+cd xlunch-5.10.5
 make
 # Reject releases without Focus support before packaging the launcher profile.
 ./xlunch --check-ui-config "$CWD/rootcopy/etc/xlunch/focus.ini"

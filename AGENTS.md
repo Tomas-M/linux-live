@@ -260,6 +260,9 @@ must follow the general Slax repair rules above.
 - Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.
+- Core includes `7zip` with `7zip-rar` for offline archive extraction, `partclone`
+  for partition backups, `testdisk` with PhotoRec for recovery, and `nvme-cli`
+  for NVMe diagnostics. Install these without recommends in the core recipe.
 - Core includes `lvm2` and `cryptsetup-bin` for accessing LVM volumes and LUKS
   encrypted disks offline. Desktop includes the native Partition Manager;
   its launcher must not require a download on a clean Slax boot.
@@ -466,7 +469,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.4`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.5`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   Fullscreen xlunch sets `_NET_WM_STATE_FULLSCREEN` and `_NET_WM_STATE_SKIP_PAGER`
@@ -519,6 +522,8 @@ must follow the general Slax repair rules above.
 - Slax's `fbappselect` starts xlunch with `/etc/xlunch/focus.ini` by default.
   Keep Slax branding, Session commands and terminal/GUI command routing in its
   profile and `fbcommand`; xlunch itself must remain distribution-independent.
+  Ignore the exact executable name `X` during command detection, so searches
+  such as `X Archiver` activate an application instead of starting an X server.
 - The xlunch header shows only `/etc/xlunch/slax_text.png`, with empty text
   and caption. Keep `icon_size=140` for the wordmark's native 140x49 size;
   12 px padding aligns its canvas with the sidebar items. The header follows
@@ -664,8 +669,9 @@ must follow the general Slax repair rules above.
   imported by root, guest and new users. GTK 2 uses the same `appears-as-list`
   setting in `/etc/gtk-2.0/gtkrc`. Long lists show a native scrollbar only when
   needed, without popup scroll arrows or scrollbar steppers. Short lists show
-  all their rows. `gtk-combo-scrollbar.diff` disables scrollbar auto-hiding only
-  inside GTK 3 combo popups. Keep the built-in below/above placement, keyboard navigation,
+  all their rows. GTK 3 combo popups retain native overlay scrolling: scrollbars
+  hide at rest and appear on pointer interaction, like other GTK content.
+  Keep the built-in below/above placement, keyboard navigation,
   wheel scrolling and ordinary context menus. Do not restore the old GtkMenu
   scrolling/position patches; dropdowns use GtkTreeView and GtkScrolledWindow.
 - GTK 3/4 file choosers default to 832 by 576 pixels through
