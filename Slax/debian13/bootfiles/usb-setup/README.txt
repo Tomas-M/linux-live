@@ -1,33 +1,23 @@
-USB Disk Setup - use the remaining space on your Slax USB drive
+If you wrote the Slax ISO directly to your USB drive using dd, Rawrite or a
+similar tool, Windows shows only a small drive with this README and the
+setup tool. The Slax partition is hidden and the remaining space is not yet
+available for your own files. Most of the drive's capacity therefore appears
+to be missing.
 
-If you are reading this file on the DISK-SETUP drive, the Slax download
-(an ISO file, also used to create a CD or DVD) was written directly to
-your USB flash drive. This lets you start Slax from the USB drive, but
-only the space needed by the image is ready to use. On a larger USB drive,
-much of its capacity is left unused.
+Follow the steps below to make it available for documents, photos and other files.
+Slax will still start from the USB drive.
 
-After writing the Slax image, your USB drive is arranged like this:
+In Windows
 
-  START OF USB                                                 END OF USB
-  +------------------+-----------+------------+--------------------------+
-  | Slax             | UEFI boot | DISK-SETUP | Unused space             |
-  | ISO9660          | FAT16     | FAT16      | No partition yet         |
-  | ~512MiB          | ~4MiB     | ~2 MiB     | Most of a larger USB     |
-  +------------------+-----------+------------+--------------------------+
-                                  You are here
+1. Double-click disk-setup.exe in the same folder as this file.
+2. Follow the prompts and wait for setup to finish.
+3. Open the new USB-DATA drive in File Explorer and copy your files to it.
 
-  Schematic only: widths are not proportional to actual sizes.
-  Small areas used for boot information and spacing are omitted.
+In Slax
 
-You can make this remaining space available for your own files:
+1. Open Partition Manager and select your USB drive.
+2. If a "Repair layout" button appears, click it first.
+3. Select "Unallocated space", click New, and choose FAT32 as the filesystem.
+4. Click "Add to plan", then "Review changes" and "Apply changes".
 
-- In Windows, double-click disk-setup.exe on this drive. After you confirm,
-  it prepares the unused space and makes it available as a new drive named
-  USB-DATA. Slax and its boot files are kept. Once the program has checked
-  that USB-DATA works, it removes the small DISK-SETUP drive you are reading
-  this file from.
-
-- In Linux, use a partition editor to create a new partition in the unused
-  space, then format it as FAT32 to share files with both Linux and Windows.
-  Keep the existing Slax and UEFI boot partitions. Using the terminal, you
-  can use cfdisk command to create the partition, then format it with mkfs.fat.
+Leave the existing partitions unchanged so Slax can still start.

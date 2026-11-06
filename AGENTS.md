@@ -250,7 +250,7 @@ must follow the general Slax repair rules above.
   whether built in or modular. Do not infer unused firmware solely from modinfo:
   some drivers construct firmware names dynamically.
 - Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
-  `grub-efi-amd64-bin` and `mtools` only on the build host: UEFI USB setup copies
+  `grub-efi-amd64-bin` only on the build host: UEFI USB setup copies
   the bundled loader, and ISO recreation builds a temporary FAT image with
   the existing `mkfs.fat` and loop-mount tools.
 - Core also needs `fdisk` for `bootinst.sh`'s GPT ESP setup through `sfdisk`.
@@ -1060,13 +1060,14 @@ must follow the general Slax repair rules above.
   free space, rounding up to 64 KiB. Keep at least 2112 KiB, use 512-byte sectors
   and select cluster sizes within FAT16's valid range. Never truncate a formatted image
   below its declared filesystem size or inflate it to FAT32's larger minimum.
-  Use mtools when available, otherwise `mkfs.fat` and a temporary loop mount;
+  Use `mkfs.fat` and a temporary loop mount for both FAT images;
   always unmount before removing temporary files, including on errors or signals.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
   Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
   FAT16 setup partition after the ESP, with Windows preparation tools from shared
   `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
+  Small setup payloads use a 2555 KiB FAT16 filesystem.
   Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
   the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
