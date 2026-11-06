@@ -3,6 +3,7 @@ set -e
 apt-get update
 apt-get install --yes --no-install-recommends build-essential git curl
 sh /build/build-xfsprogs /artifacts/01-core/xfsprogs.deb
+sh /build/build-cifs-utils /artifacts/01-core/cifs-utils.deb
 
 # Keep the pinned Rust toolchain, sources and Cargo cache in temporary build storage.
 export CARGO_HOME=/tmp/linux-assistant-cargo RUSTUP_HOME=/tmp/linux-assistant-rustup

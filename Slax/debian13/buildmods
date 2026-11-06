@@ -100,8 +100,8 @@ mkdir -p "$ARTIFACTS/01-core"
 in_root /build compile
 discard_build
 
-chroot "$UNION" env DEBIAN_FRONTEND=noninteractive LC_ALL=C apt-get install -y --no-install-recommends /artifacts/01-core/xfsprogs.deb
-chroot "$UNION" apt-mark hold xfsprogs
+chroot "$UNION" env DEBIAN_FRONTEND=noninteractive LC_ALL=C apt-get install -y --no-install-recommends /artifacts/01-core/xfsprogs.deb /artifacts/01-core/cifs-utils.deb keyutils
+chroot "$UNION" apt-mark hold xfsprogs cifs-utils
 in_root /build cleanup
 in_root /build copy
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
