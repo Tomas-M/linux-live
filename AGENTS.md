@@ -266,6 +266,9 @@ must follow the general Slax repair rules above.
 - Core includes `lvm2` and `cryptsetup-bin` for accessing LVM volumes and LUKS
   encrypted disks offline. Desktop includes the native Partition Manager;
   its launcher must not require a download on a clean Slax boot.
+- Core includes `tmux`. Shared defaults in `/etc/tmux.conf` apply to root and
+  guest: Ctrl+A prefix, mouse support, `_`/`|` splits, Alt+arrow pane selection
+  and PageUp/PageDown copy mode bindings.
 - Core includes `cifs-utils` and `keyutils` for mounting SMB/CIFS shares.
   `build-cifs-utils` repacks Debian's binary package without recompiling: remove
   the Python-only `smbinfo` and `smb2-quota`, their manuals and smbinfo completion,
@@ -664,7 +667,9 @@ must follow the general Slax repair rules above.
   Enable `gtk-dialogs-use-header` in GTK 3 and GTK 4 settings so native file
   dialogs retain the same header style. No XSettings daemon is needed.
 - `03-desktop/build-gtk` rebuilds GTK 3's runtime library with
-  `gtk-chromium-file-activation.diff`. Chromium 156 uses a custom Open response
+  `gtk-chromium-file-activation.diff` and `gtk3-combo-list.diff`.
+  `build-gtk2` rebuilds Debian's GTK 2 runtime with `gtk2-combo-list.diff`.
+  Keep both original package versions on hold. Chromium 156 uses a custom Open response
   and makes Cancel the keyboard default. On X11, recognize its custom response
   so Enter and double-click select files, Enter opens folders, Open is blue and
   Cancel is gray. Query physical activation keys at map time; block held Enter
@@ -674,10 +679,17 @@ must follow the general Slax repair rules above.
   GTK 3 select boxes use the built-in list popup through shared `comboboxes.css`,
   imported by root, guest and new users. GTK 2 uses the same `appears-as-list`
   setting in `/etc/gtk-2.0/gtkrc`. Long lists show a native scrollbar only when
-  needed, without popup scroll arrows or scrollbar steppers. Short lists show
-  all their rows. GTK 3 combo popups retain native overlay scrolling: scrollbars
+  needed, without popup scroll arrows or scrollbar steppers. Set `popup-max-rows`
+  to 10 through GTK 3's shared `comboboxes.css` and GTK 2's `/etc/gtk-2.0/gtkrc`.
+  Zero means unlimited; keep the limit configurable without recompiling GTK.
+  Account for rendered row heights and expanded children. Short lists show
+  all their rows. Prefer the full capped list below the field, then above if it
+  fits there; otherwise shorten the popup below the field. GTK 3 combo popups retain native overlay scrolling: scrollbars
   hide at rest and appear on pointer interaction, like other GTK content.
-  Keep the built-in below/above placement, keyboard navigation,
+  Expand the active path and realize the hidden list before measuring and positioning
+  the popup. Its first mapped geometry must match its settled geometry; never show
+  it below first and then move it above. Test the first map, not just the final position.
+  Keep native keyboard navigation,
   wheel scrolling and ordinary context menus. Do not restore the old GtkMenu
   scrolling/position patches; dropdowns use GtkTreeView and GtkScrolledWindow.
 - GTK 3/4 file choosers default to 832 by 576 pixels through
@@ -1067,7 +1079,7 @@ must follow the general Slax repair rules above.
   Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
   FAT16 setup partition after the ESP, with Windows preparation tools from shared
   `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
-  Small setup payloads use a 2555 KiB FAT16 filesystem.
+  Small setup payloads use a 2112 KiB FAT16 image.
   Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
   the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
@@ -1121,6 +1133,8 @@ must follow the general Slax repair rules above.
   or change its partition layout as part of boot setup.
 - Use `gfxmode=auto`, retain the framebuffer mode, and center the unscaled
   Slax logo with menu items below it. Avoid frames, tables and extra decoration.
+  Keep the four-entry menu centered at 360 px wide, 100 px below the screen center.
+  Its 16 px footer labels keep a 16 px bottom margin, also fitting 400 px-high BIOS modes.
   Keep the boot help/countdown near the bottom across the available display.
   F1 help is deferred; do not add a visible F1 menu entry.
 - Both Slax GRUB themes use `desktop-image: "black.png"`. Keep this tiny black
@@ -1132,6 +1146,12 @@ must follow the general Slax repair rules above.
   leaves the nested countdown menu for the full menu. The full menu uses
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
+  The first three entries are `Resume previous session automatically`,
+  `Choose session during startup` and `Run Slax from RAM (copy to ram)`.
+  The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
+  without persistence, automount or copy-to-RAM flags. On BIOS set `gfxpayload=text`;
+  on UEFI preserve the firmware framebuffer so the console stays visible.
+  Keep new-session creation in the session picker, not in the boot menu.
   Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
   the nested countdown configuration and again after returning to the full menu.
   Initializing only the parent configuration can leave the countdown in text
@@ -1230,8 +1250,11 @@ must follow the general Slax repair rules above.
   confirmed. Keep this flow in `livekitlib`; `fbmenu` remains a generic menu.
   Release unselected scan mounts and retain the chosen disk at
   `/memory/persistence`. Duplication stays on the source disk. Automatic
-  `perchdir=resume` still uses the boot medium; explicit device paths stay scoped
-  to their selected directory. Never format or repartition a discovery target.
+  `perchdir=resume` compares valid `last_session.txt` markers across writable
+  disks and resumes the session from the marker with the newest modification
+  time. Do not use directory dates or change unselected markers. With no previous
+  session, retain first-session creation on the boot medium. Explicit device paths
+  stay scoped to their selected directory. Never format or repartition a discovery target.
 - `fbmenu --menu ... --duplicate` returns `duplicate:ID` on F4. F4 on the new
   session row returns `new`. Copy an existing session only after its new name
   is confirmed, stage it in a hidden directory and activate it after the copy
