@@ -266,6 +266,12 @@ must follow the general Slax repair rules above.
 - Core includes `lvm2` and `cryptsetup-bin` for accessing LVM volumes and LUKS
   encrypted disks offline. Desktop includes the native Partition Manager;
   its launcher must not require a download on a clean Slax boot.
+- Core includes `cifs-utils` and `keyutils` for mounting SMB/CIFS shares.
+  `build-cifs-utils` repacks Debian's binary package without recompiling: remove
+  the Python-only `smbinfo` and `smb2-quota`, their manuals and smbinfo completion,
+  then drop the Python dependency. Preserve the package name, version, native
+  binaries, permissions, mount.smb3 link and package hooks. Install it after
+  discarding the compiler branch and hold it so upgrades cannot restore Python.
 - Maintain Partition Manager in the sibling `../partition-manager` repository
   and publish it to `Tomas-M/partition-manager`. Slax downloads current HEAD
   without version or hash pins, runs `make check` and builds it into
