@@ -1,0 +1,1242 @@
+--- a/src/desktop.c
++++ b/src/desktop.c
+@@ -59,6 +59,7 @@
+ struct _FmDesktopItem
+ {
+     FmFileInfo* fi;
++    FmPath* path; /* Last displayed path, before shared file info is renamed. */
+     GdkRectangle area; /* position of the item on the desktop */
+     GdkRectangle icon_rect;
+     GdkRectangle text_rect;
+@@ -202,6 +203,7 @@
+     fm_folder_model_set_item_userdata(model, it, item);
+     gtk_tree_model_get(GTK_TREE_MODEL(model), it, FM_FOLDER_MODEL_COL_INFO, &item->fi, -1);
+     fm_file_info_ref(item->fi);
++    item->path = fm_path_ref(fm_file_info_get_path(item->fi));
+ #if FM_CHECK_VERSION(1, 2, 0)
+     if ((trash_can && trash_can->fi == item->fi) ||
+         (documents && documents->fi == item->fi))
+@@ -219,6 +221,7 @@
+ 
+ static inline void desktop_item_free(FmDesktopItem* item)
+ {
++    fm_path_unref(item->path);
+     if(item->fi)
+         fm_file_info_unref(item->fi);
+     g_slice_free(FmDesktopItem, item);
+@@ -253,9 +256,9 @@
+     pango_layout_set_text(desktop->pl, NULL, 0);
+ 
+     /* FIXME: RTL */
+-    item->text_rect.x = item->area.x + (desktop->cell_w - rc2.width - 4) / 2;
++    item->text_rect.x = item->area.x + (desktop->cell_w - rc2.width - 8) / 2;
+     item->text_rect.y = item->area.y + desktop->ypad + fm_config->big_icon_size + desktop->spacing;
+-    item->text_rect.width = rc2.width + 4;
++    item->text_rect.width = rc2.width + 8;
+     item->text_rect.height = rc2.y + rc2.height + 4;
+     item->area.width = (desktop->cell_w + MAX(item->icon_rect.width, item->text_rect.width)) / 2;
+     item->area.height = item->text_rect.y + item->text_rect.height - item->area.y;
+@@ -358,7 +361,6 @@
+     desktop->focus = NULL;
+     desktop->drop_hilight = NULL;
+     desktop->hover_item = NULL;
+-    g_object_set(G_OBJECT(desktop), "tooltip-text", NULL, NULL);
+ }
+ 
+ static inline void reload_items(FmDesktop *desktop)
+@@ -1852,7 +1854,7 @@
+     pango_layout_set_text(self->pl, fm_file_info_get_disp_name(item->fi), -1);
+ 
+     /* FIXME: do we need to cache this? */
+-    text_x = item->area.x + (self->cell_w - self->text_w)/2 + 2;
++    text_x = item->area.x + (self->cell_w - self->text_w)/2;
+     text_y = item->text_rect.y + 2;
+ 
+     if(item->is_selected || item == self->drop_hilight) /* draw background for text label */
+@@ -1860,7 +1862,13 @@
+         state = GTK_CELL_RENDERER_SELECTED;
+ 
+         cairo_save(cr);
+-        gdk_cairo_rectangle(cr, &item->text_rect);
++        /* A small radius softens the label without changing its text layout. */
++        cairo_new_sub_path(cr);
++        cairo_arc(cr, item->text_rect.x + item->text_rect.width - 3, item->text_rect.y + 3, 3, -G_PI / 2, 0);
++        cairo_arc(cr, item->text_rect.x + item->text_rect.width - 3, item->text_rect.y + item->text_rect.height - 3, 3, 0, G_PI / 2);
++        cairo_arc(cr, item->text_rect.x + 3, item->text_rect.y + item->text_rect.height - 3, 3, G_PI / 2, G_PI);
++        cairo_arc(cr, item->text_rect.x + 3, item->text_rect.y + 3, 3, G_PI, 3 * G_PI / 2);
++        cairo_close_path(cr);
+ #if GTK_CHECK_VERSION(3, 0, 0)
+         gtk_style_context_get_background_color(style, GTK_STATE_FLAG_SELECTED, &rgba);
+         gdk_cairo_set_source_rgba(cr, &rgba);
+@@ -1899,11 +1907,6 @@
+                         expose_area, widget, "icon_view",
+ #endif
+                         item->text_rect.x, item->text_rect.y, item->text_rect.width, item->text_rect.height);
+-
+-    if(item == self->hover_item) /* hovered */
+-        g_object_set(G_OBJECT(self), "tooltip-text", fm_file_info_get_disp_name(item->fi), NULL);
+-    else
+-        g_object_set(G_OBJECT(self), "tooltip-text", NULL, NULL);
+ 
+     /* draw the icon */
+     g_object_set(self->icon_render, "pixbuf", icon, "info", item->fi, NULL);
+@@ -2465,11 +2468,7 @@
+     if((gpointer)desktop->drop_hilight == data)
+         desktop->drop_hilight = NULL;
+     if((gpointer)desktop->hover_item == data)
+-    {
+         desktop->hover_item = NULL;
+-        /* bug #3615015: after deleting the item tooltip stuck on the desktop */
+-        g_object_set(G_OBJECT(desktop), "tooltip-text", NULL, NULL);
+-    }
+     fm_desktop_accessible_item_deleted(desktop, data);
+     desktop_item_free(data);
+ }
+@@ -2498,6 +2497,19 @@
+                        FM_FOLDER_MODEL_COL_INFO, &item->fi,
+                        FM_FOLDER_MODEL_COL_ICON, &icon, -1);
+     fm_file_info_ref(item->fi);
++
++    /* A rename keeps the current position and saves it under the new name. */
++    if(!fm_path_equal(item->path, fm_file_info_get_path(item->fi)))
++    {
++        fm_path_unref(item->path);
++        item->path = fm_path_ref(fm_file_info_get_path(item->fi));
++        if(!item->fixed_pos)
++        {
++            item->fixed_pos = TRUE;
++            desktop->fixed_items = g_list_prepend(desktop->fixed_items, item);
++        }
++        queue_config_save(desktop);
++    }
+ 
+     /* we need to redraw old area as we changing data */
+     redraw_item(desktop, item);
+@@ -2623,6 +2635,8 @@
+ static void on_screen_size_changed(GdkScreen* screen, FmDesktop* desktop)
+ {
+     GdkRectangle geom;
++    if(desktop->monitor < 0)
++        return;
+     if (desktop->monitor >= gdk_screen_get_n_monitors(screen))
+     {
+         gint i;
+@@ -2636,6 +2650,8 @@
+         return;
+     }
+     gdk_screen_get_monitor_geometry(screen, desktop->monitor, &geom);
++    /* Update the geometry hints as well as this non-resizable window's size. */
++    gtk_widget_set_size_request(GTK_WIDGET(desktop), geom.width, geom.height);
+     gtk_window_resize((GtkWindow*)desktop, geom.width, geom.height);
+     /* bug #3614780: if monitor was moved desktop should be moved too */
+     gtk_window_move((GtkWindow*)desktop, geom.x, geom.y);
+@@ -2650,10 +2666,12 @@
+             gtk_widget_queue_resize(GTK_WIDGET(desktops[i]));
+ }
+ 
+-static void on_big_icon_size_changed(FmConfig* cfg, FmFolderModel* model)
+-{
+-    fm_folder_model_set_icon_size(model, fm_config->big_icon_size);
+-    reload_icons();
++static void on_big_icon_size_changed(FmConfig* cfg, FmDesktop* desktop)
++{
++    /* Keep the renderer and model in sync when the icon size changes. */
++    fm_cell_renderer_pixbuf_set_fixed_size(desktop->icon_render, cfg->big_icon_size, cfg->big_icon_size);
++    fm_folder_model_set_icon_size(desktop->model, cfg->big_icon_size);
++    gtk_widget_queue_resize(GTK_WIDGET(desktop));
+ }
+ 
+ static void on_icon_theme_changed(GtkIconTheme* theme, gpointer user_data)
+@@ -3344,7 +3362,7 @@
+ static gboolean on_button_press(GtkWidget* w, GdkEventButton* evt)
+ {
+     FmDesktop* self = (FmDesktop*)w;
+-    FmDesktopItem *item = NULL, *clicked_item = NULL;
++    FmDesktopItem *clicked_item = NULL;
+     GtkTreeIter it;
+     FmFolderViewClickType clicked = FM_FV_CLICK_NONE;
+ 
+@@ -3399,18 +3417,7 @@
+                 clicked_item->is_selected = TRUE;
+             fm_desktop_item_selected_changed(self, clicked_item);
+ 
+-            if(self->focus && self->focus != item)
+-            {
+-                FmDesktopItem* old_focus = self->focus;
+-                self->focus = NULL;
+-                if(old_focus)
+-                {
+-                    redraw_item(self, old_focus);
+-                    fm_desktop_accessible_focus_unset(self, old_focus);
+-                }
+-            }
+-            self->focus = clicked_item;
+-            fm_desktop_accessible_focus_set(self, clicked_item);
++            set_focused_item(self, clicked_item);
+             redraw_item(self, clicked_item);
+ 
+             if(evt->button == 3)  /* right click, context menu */
+@@ -3463,7 +3470,7 @@
+         fm_folder_view_item_clicked(FM_FOLDER_VIEW(self), tp, clicked);
+         if(tp)
+             gtk_tree_path_free(tp);
+-        /* SF bug #929: after click the tooltip is still set to the item name */
++        /* Clear hover state after activating an item. */
+         self->hover_item = NULL;
+     }
+     /* forward the event to root window */
+@@ -4307,7 +4314,7 @@
+     update_background(self, -1);
+     /* set a proper desktop font if needed */
+     if (self->conf.desktop_font == NULL)
+-        self->conf.desktop_font = g_strdup("Sans 12");
++        self->conf.desktop_font = g_strdup("Sans 10");
+     font_desc = pango_font_description_from_string(self->conf.desktop_font);
+     pc = gtk_widget_get_pango_context(w);
+     pango_context_set_font_description(pc, font_desc);
+@@ -4382,7 +4389,7 @@
+     /* handle moving desktop items */
+     if(!item)
+     {
+-        if(fm_drag_context_has_target(drag_context, desktop_atom)
++        if(gtk_drag_get_source_widget(drag_context) == dest_widget
+            && (gdk_drag_context_get_actions(drag_context) & GDK_ACTION_MOVE))
+         {
+             /* desktop item is being dragged */
+@@ -4403,11 +4410,13 @@
+     }
+     gdk_drag_status(drag_context, action, time);
+ 
++    /* A target that no longer accepts the drag must lose its highlight. */
++    if(!action)
++        item = NULL;
+     if(desktop->drop_hilight != item)
+     {
+         FmDesktopItem* old_drop = desktop->drop_hilight;
+-        if(action) /* don't hilight non-dropable item, see #3591767 */
+-            desktop->drop_hilight = item;
++        desktop->drop_hilight = item;
+         if(old_drop)
+             redraw_item(desktop, old_drop);
+         if(item && action)
+@@ -4445,7 +4454,7 @@
+     /* handle moving desktop items */
+     if(!item)
+     {
+-        if(fm_drag_context_has_target(drag_context, desktop_atom)
++        if(gtk_drag_get_source_widget(drag_context) == dest_widget
+            && (gdk_drag_context_get_actions(drag_context) & GDK_ACTION_MOVE))
+         {
+             /* desktop item is being dragged */
+@@ -4496,7 +4505,7 @@
+     cairo_t *cr;
+     GdkPixbuf *icon;
+     GtkTreeIter it;
+-    GdkRectangle area, icon_rect;
++    GdkRectangle area, item_rect;
+ #if !GTK_CHECK_VERSION(3, 0, 0)
+     guchar *dest_data, *src_data;
+     int dest_stride, src_stride, _x, _y;
+@@ -4515,25 +4524,11 @@
+         item = fm_folder_model_get_item_userdata(desktop->model, &it);
+         if (!item->is_selected)
+             continue;
++        get_item_rect(item, &item_rect);
+         if (area.width == 0)
+-            area = item->icon_rect;
++            area = item_rect;
+         else
+-        {
+-            if (item->icon_rect.x < area.x)
+-            {
+-                area.width += (area.x - item->icon_rect.x);
+-                area.x = item->icon_rect.x;
+-            }
+-            if (item->icon_rect.x + item->icon_rect.width > area.x + area.width)
+-                area.width = item->icon_rect.x + item->icon_rect.width - area.x;
+-            if (item->icon_rect.y < area.y)
+-            {
+-                area.height += (area.y - item->icon_rect.y);
+-                area.y = item->icon_rect.y;
+-            }
+-            if (item->icon_rect.y + item->icon_rect.height > area.y + area.height)
+-                area.height = item->icon_rect.y + item->icon_rect.height - area.y;
+-        }
++            gdk_rectangle_union(&area, &item_rect, &area);
+     }
+     while(gtk_tree_model_iter_next(model, &it));
+ 
+@@ -4544,6 +4539,7 @@
+     area.height += 2;
+     s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, area.width, area.height);
+     cr = cairo_create(s);
++    cairo_translate(cr, 1 - area.x, 1 - area.y);
+ 
+     gtk_tree_model_get_iter_first(model, &it);
+     do
+@@ -4551,22 +4547,15 @@
+         item = fm_folder_model_get_item_userdata(desktop->model, &it);
+         if (!item->is_selected)
+             continue;
+-        /* FIXME: should we render name too, or is it too heavy? */
+         icon = NULL;
+         gtk_tree_model_get(model, &it, FM_FOLDER_MODEL_COL_ICON, &icon, -1);
+-        /* draw the icon */
++        /* Keep the selected caption without its keyboard focus outline. */
++        {
++            FmDesktopItem preview = *item;
++            paint_item(desktop, &preview, cr, &area, icon);
++        }
+         if (icon)
+-        {
+-            icon_rect.x = item->icon_rect.x - area.x + 1;
+-            icon_rect.width = item->icon_rect.width;
+-            icon_rect.y = item->icon_rect.y - area.y + 1;
+-            icon_rect.height = item->icon_rect.height;
+-//g_debug("icon at %d %d %d %d",icon_rect.x,icon_rect.y,icon_rect.width,icon_rect.height);
+-            gdk_cairo_set_source_pixbuf(cr, icon, icon_rect.x, icon_rect.y);
+-            gdk_cairo_rectangle(cr, &icon_rect);
+-            cairo_fill(cr);
+             g_object_unref(icon);
+-        }
+     }
+     while(gtk_tree_model_iter_next(model, &it));
+ 
+@@ -4612,9 +4601,28 @@
+     }
+ #endif
+     cairo_surface_destroy(s);
+-    *x = area.x;
+-    *y = area.y;
++    *x = area.x - 1;
++    *y = area.y - 1;
+     return pixbuf;
++}
++
++#if GTK_CHECK_VERSION(3, 0, 0)
++/* Keep the inherited pointer instead of GTK's move/copy action cursor. */
++static void on_drag_action_changed(GdkDragContext *context, GdkDragAction action, gpointer data)
++{
++    g_signal_stop_emission_by_name(context, "action-changed");
++}
++#endif
++
++/* Managed GTK drags consume button-release, including failed and cancelled drops. */
++static void on_drag_end(GtkWidget *widget, GdkDragContext *context)
++{
++    FmDesktop *desktop = FM_DESKTOP(widget);
++    desktop->dragging = FALSE;
++    desktop->button_pressed = 0;
++    desktop->forward_pending = FALSE;
++    desktop->drop_hilight = NULL;
++    gtk_widget_queue_draw(widget);
+ }
+ 
+ static void on_drag_begin (GtkWidget *widget, GdkDragContext *drag_context)
+@@ -4625,6 +4633,10 @@
+     GdkPixbuf *pix = _create_drag_icon(desktop, &x, &y);
+ 
+     desktop->dragging = TRUE;
++    gdk_window_set_cursor(gtk_widget_get_window(widget), NULL);
++#if GTK_CHECK_VERSION(3, 0, 0)
++    g_signal_connect(drag_context, "action-changed", G_CALLBACK(on_drag_action_changed), NULL);
++#endif
+ 
+     /* set drag cursor to selected items */
+     if (pix)
+@@ -4759,7 +4771,7 @@
+     g_signal_connect(folder, "error", G_CALLBACK(on_folder_error), desktop);
+     fm_folder_model_set_icon_size(desktop->model, fm_config->big_icon_size);
+     g_signal_connect(app_config, "changed::big_icon_size",
+-                     G_CALLBACK(on_big_icon_size_changed), desktop->model);
++                     G_CALLBACK(on_big_icon_size_changed), desktop);
+     g_signal_connect(desktop->model, "row-deleting", G_CALLBACK(on_row_deleting), desktop);
+     g_signal_connect(desktop->model, "row-inserted", G_CALLBACK(on_row_inserted), desktop);
+     g_signal_connect(desktop->model, "row-deleted", G_CALLBACK(on_row_deleted), desktop);
+@@ -4789,7 +4801,7 @@
+     g_signal_handlers_disconnect_by_func(folder, on_folder_start_loading, desktop);
+     g_signal_handlers_disconnect_by_func(folder, on_folder_finish_loading, desktop);
+     g_signal_handlers_disconnect_by_func(folder, on_folder_error, desktop);
+-    g_signal_handlers_disconnect_by_func(app_config, on_big_icon_size_changed, desktop->model);
++    g_signal_handlers_disconnect_by_func(app_config, on_big_icon_size_changed, desktop);
+     g_signal_handlers_disconnect_by_func(desktop->model, on_row_deleting, desktop);
+     g_signal_handlers_disconnect_by_func(desktop->model, on_row_inserted, desktop);
+     g_signal_handlers_disconnect_by_func(desktop->model, on_row_deleted, desktop);
+@@ -4980,6 +4992,7 @@
+     gdk_window_set_events(root, gdk_window_get_events(root)|GDK_PROPERTY_CHANGE_MASK);
+     gdk_window_add_filter(root, on_root_event, self);
+     g_signal_connect(screen, "monitors-changed", G_CALLBACK(on_screen_size_changed), self);
++    g_signal_connect(screen, "size-changed", G_CALLBACK(on_screen_size_changed), self);
+ 
+     n = get_desktop_for_root_window(root);
+     if(n < 0)
+@@ -5076,6 +5089,7 @@
+     widget_class->drag_drop = on_drag_drop;
+     widget_class->drag_data_received = on_drag_data_received;
+     widget_class->drag_leave = on_drag_leave;
++    widget_class->drag_end = on_drag_end;
+ #if FM_CHECK_VERSION(1, 2, 1)
+     widget_class->drag_begin = on_drag_begin;
+ #endif
+@@ -5349,6 +5363,244 @@
+ 
+ static GtkWindow* desktop_pref_dlg = NULL;
+ 
++/* Run xrandr with separate arguments and stable, locale-independent output. */
++static gboolean screen_command(gchar **argv, gchar **output, GError **error)
++{
++    gchar **env = g_get_environ();
++    gchar *details = NULL;
++    gint status;
++    gboolean success;
++
++    env = g_environ_setenv(env, "LC_ALL", "C", TRUE);
++    success = g_spawn_sync(NULL, argv, env, G_SPAWN_SEARCH_PATH, NULL, NULL,
++                           output, &details, &status, error);
++    g_strfreev(env);
++    if(success && status != 0)
++    {
++        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                            details && *details ? g_strstrip(details) : _("The display settings command failed."));
++        success = FALSE;
++    }
++    g_free(details);
++    if(!success && output)
++        g_clear_pointer(output, g_free);
++    return success;
++}
++
++/* Query only this monitor's modes, including its current mode and refresh rate. */
++static gboolean screen_modes(const gchar *output, GtkComboBoxText *combo,
++                             gchar **mode, gchar **rate, GError **error)
++{
++    gchar *argv[] = {"xrandr", "--query", NULL};
++    gchar *text = NULL, *current = NULL, *refresh = NULL;
++    gchar **lines;
++    gboolean active = FALSE;
++    guint i, j;
++
++    if(!screen_command(argv, &text, error))
++        return FALSE;
++    if(combo)
++        gtk_combo_box_text_remove_all(combo);
++    lines = g_strsplit(text, "\n", -1);
++    for(i = 0; lines[i]; i++)
++    {
++        gchar **words;
++        if(*lines[i] && !g_ascii_isspace(*lines[i]))
++        {
++            words = g_strsplit(lines[i], " ", 3);
++            active = g_strcmp0(words[0], output) == 0 && g_strcmp0(words[1], "connected") == 0;
++            g_strfreev(words);
++            continue;
++        }
++        if(!active)
++            continue;
++        words = g_strsplit_set(g_strstrip(lines[i]), " \t", -1);
++        if(!words[0])
++        {
++            g_strfreev(words);
++            continue;
++        }
++        if(*words[0] && combo)
++            gtk_combo_box_text_append(combo, words[0], words[0]);
++        for(j = 1; words[j]; j++)
++            if(strchr(words[j], '*'))
++            {
++                g_free(current);
++                g_free(refresh);
++                current = g_strdup(words[0]);
++                refresh = g_strndup(words[j], strcspn(words[j], "*+"));
++            }
++        g_strfreev(words);
++    }
++    g_strfreev(lines);
++    g_free(text);
++    if(!current)
++    {
++        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, _("No active display was found for this monitor."));
++        return FALSE;
++    }
++    if(combo)
++        gtk_combo_box_set_active_id(GTK_COMBO_BOX(combo), current);
++    if(mode) *mode = current;
++    else g_free(current);
++    if(rate) *rate = refresh;
++    else g_free(refresh);
++    return TRUE;
++}
++
++/* Preserve the other outputs and restore the original refresh rate on rollback. */
++static gboolean set_screen_mode(const gchar *output, const gchar *mode,
++                                const gchar *rate, GError **error)
++{
++    gchar *argv[] = {"xrandr", "--output", (gchar*)output, "--mode", (gchar*)mode,
++                    rate ? "--rate" : NULL, (gchar*)rate, NULL};
++    if(!screen_command(argv, NULL, error))
++        return FALSE;
++    g_spawn_command_line_async("fbvboxpointer", NULL);
++    return TRUE;
++}
++
++typedef struct
++{
++    GtkWidget *dialog;
++    gint64 deadline;
++} ScreenConfirmation;
++
++/* Use monotonic time so delays and clock corrections cannot extend the trial. */
++static gboolean screen_confirmation_tick(gpointer user_data)
++{
++    ScreenConfirmation *confirmation = user_data;
++    gint seconds = MAX(0, (confirmation->deadline - g_get_monotonic_time() + G_USEC_PER_SEC - 1) / G_USEC_PER_SEC);
++    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(confirmation->dialog),
++        ngettext("The previous resolution will be restored in %d second.",
++                 "The previous resolution will be restored in %d seconds.", seconds), seconds);
++    if(seconds == 0)
++        gtk_dialog_response(GTK_DIALOG(confirmation->dialog), GTK_RESPONSE_REJECT);
++    return G_SOURCE_CONTINUE;
++}
++
++static void on_screen_resolution_changed(GtkComboBoxText *combo, gpointer user_data);
++
++/* Keep the selector synchronized with hotplug and external resolution changes. */
++static void on_screen_modes_changed(GdkScreen *screen, GtkComboBoxText *combo)
++{
++    const gchar *output = g_object_get_data(G_OBJECT(combo), "screen-output");
++    gboolean available;
++    /* Resolution changes must not leave the preferences outside the work area. */
++    if(screen && desktop_pref_dlg && gtk_widget_get_realized(GTK_WIDGET(desktop_pref_dlg)))
++    {
++        GdkRectangle frame, bounds;
++        GdkWindow *window = gtk_widget_get_window(GTK_WIDGET(desktop_pref_dlg));
++        gint x, y;
++        gdk_window_get_frame_extents(window, &frame);
++        gdk_screen_get_monitor_workarea(screen, gdk_screen_get_monitor_at_window(screen, window), &bounds);
++        x = CLAMP(frame.x, bounds.x, MAX(bounds.x, bounds.x + bounds.width - frame.width));
++        y = CLAMP(frame.y, bounds.y, MAX(bounds.y, bounds.y + bounds.height - frame.height));
++        if(x != frame.x || y != frame.y)
++            gtk_window_move(desktop_pref_dlg, x, y);
++        /* Anchor the confirmation at the parent's visible upper-left corner. */
++        GtkWidget *confirmation = g_object_get_data(G_OBJECT(combo), "screen-confirmation");
++        if(confirmation)
++        {
++            GtkRequisition size;
++            gint width, height;
++            gtk_widget_get_preferred_size(confirmation, &size, NULL);
++            width = size.width + frame.width - gdk_window_get_width(window);
++            height = size.height + frame.height - gdk_window_get_height(window);
++            gtk_window_move(GTK_WINDOW(confirmation),
++                CLAMP(x + 8, bounds.x, MAX(bounds.x, bounds.x + bounds.width - width)),
++                CLAMP(y + 8, bounds.y, MAX(bounds.y, bounds.y + bounds.height - height)));
++        }
++    }
++    g_signal_handlers_block_by_func(combo, on_screen_resolution_changed, NULL);
++    available = output && screen_modes(output, combo, NULL, NULL, NULL);
++    if(!available)
++    {
++        gtk_combo_box_text_remove_all(combo);
++        gtk_combo_box_text_append_text(combo, _("Unavailable"));
++        gtk_combo_box_set_active(GTK_COMBO_BOX(combo), 0);
++    }
++    gtk_widget_set_sensitive(GTK_WIDGET(combo), available);
++    g_signal_handlers_unblock_by_func(combo, on_screen_resolution_changed, NULL);
++}
++
++/* Every unconfirmed change, including closing either dialog, restores the old mode. */
++static gboolean on_screen_resolution_apply(gpointer user_data)
++{
++    GtkComboBoxText *combo = user_data;
++    const gchar *output = g_object_get_data(G_OBJECT(combo), "screen-output");
++    gchar *selected = gtk_combo_box_text_get_active_text(combo);
++    gchar *previous = NULL, *rate = NULL;
++    GError *error = NULL;
++
++    g_object_set_data(G_OBJECT(combo), "resolution-pending", NULL);
++    if(!selected || !gtk_widget_get_parent(GTK_WIDGET(combo)))
++    {
++        g_free(selected);
++        return G_SOURCE_REMOVE;
++    }
++    if(!screen_modes(output, NULL, &previous, &rate, &error))
++        goto failed;
++    if(g_strcmp0(selected, previous) == 0)
++        goto finished;
++    if(!set_screen_mode(output, selected, NULL, &error))
++    {
++        set_screen_mode(output, previous, rate, NULL);
++        goto failed;
++    }
++    {
++        ScreenConfirmation confirmation;
++        guint timer;
++        gint response;
++        confirmation.dialog = gtk_message_dialog_new(desktop_pref_dlg,
++            GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
++            GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s", _("Keep this resolution?"));
++        g_object_ref(confirmation.dialog);
++        gtk_dialog_add_buttons(GTK_DIALOG(confirmation.dialog), _("_Revert"), GTK_RESPONSE_REJECT,
++                               _("_Keep changes"), GTK_RESPONSE_ACCEPT, NULL);
++        gtk_window_set_title(GTK_WINDOW(confirmation.dialog), _("Display settings"));
++        gtk_button_box_set_layout(GTK_BUTTON_BOX(gtk_dialog_get_action_area(GTK_DIALOG(confirmation.dialog))), GTK_BUTTONBOX_END);
++        gtk_box_set_spacing(GTK_BOX(gtk_dialog_get_action_area(GTK_DIALOG(confirmation.dialog))), 8);
++        gtk_container_set_border_width(GTK_CONTAINER(gtk_dialog_get_action_area(GTK_DIALOG(confirmation.dialog))), 12);
++        gtk_style_context_remove_class(gtk_widget_get_style_context(gtk_dialog_get_action_area(GTK_DIALOG(confirmation.dialog))), "linked");
++        gtk_dialog_set_default_response(GTK_DIALOG(confirmation.dialog), GTK_RESPONSE_REJECT);
++        gtk_window_set_position(GTK_WINDOW(confirmation.dialog), GTK_WIN_POS_NONE);
++        confirmation.deadline = g_get_monotonic_time() + 10 * G_USEC_PER_SEC;
++        screen_confirmation_tick(&confirmation);
++        g_object_set_data(G_OBJECT(combo), "screen-confirmation", confirmation.dialog);
++        on_screen_modes_changed(gtk_widget_get_screen(GTK_WIDGET(desktop_pref_dlg)), combo);
++        timer = g_timeout_add(100, screen_confirmation_tick, &confirmation);
++        response = gtk_dialog_run(GTK_DIALOG(confirmation.dialog));
++        g_source_remove(timer);
++        g_object_set_data(G_OBJECT(combo), "screen-confirmation", NULL);
++        gtk_widget_destroy(confirmation.dialog);
++        g_object_unref(confirmation.dialog);
++        if(response != GTK_RESPONSE_ACCEPT && !set_screen_mode(output, previous, rate, &error))
++            goto failed;
++    }
++    goto finished;
++failed:
++    fm_show_error(desktop_pref_dlg, _("Display settings"), error->message);
++    g_clear_error(&error);
++finished:
++    if(gtk_widget_get_parent(GTK_WIDGET(combo)))
++        on_screen_modes_changed(NULL, combo);
++    g_free(selected);
++    g_free(previous);
++    g_free(rate);
++    return G_SOURCE_REMOVE;
++}
++
++/* Let the combo popup finish closing and release its grab before opening a dialog. */
++static void on_screen_resolution_changed(GtkComboBoxText *combo, gpointer user_data)
++{
++    guint pending = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(combo), "resolution-pending"));
++    if(pending)
++        g_source_remove(pending);
++    pending = g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, on_screen_resolution_apply, g_object_ref(combo), g_object_unref);
++    g_object_set_data(G_OBJECT(combo), "resolution-pending", GUINT_TO_POINTER(pending));
++}
++
+ static void on_response(GtkDialog* dlg, int res, GtkWindow** pdlg)
+ {
+     *pdlg = NULL;
+@@ -5687,6 +5939,16 @@
+         builder = gtk_builder_new();
+         gtk_builder_add_from_file(builder, PACKAGE_UI_DIR "/desktop-pref.ui", NULL);
+         desktop_pref_dlg = GTK_WINDOW(gtk_builder_get_object(builder, "dlg"));
++        item = gtk_builder_get_object(builder, "screen_resolution");
++        g_object_set_data(G_OBJECT(desktop_pref_dlg), "resolution-selector", item);
++        g_object_set_data_full(item, "screen-output",
++                              gdk_screen_get_monitor_plug_name(gtk_widget_get_screen(GTK_WIDGET(desktop)), desktop->monitor), g_free);
++        on_screen_modes_changed(NULL, GTK_COMBO_BOX_TEXT(item));
++        g_signal_connect(item, "changed", G_CALLBACK(on_screen_resolution_changed), NULL);
++        g_signal_connect_object(gtk_widget_get_screen(GTK_WIDGET(desktop)), "monitors-changed",
++                                G_CALLBACK(on_screen_modes_changed), item, 0);
++        g_signal_connect_object(gtk_widget_get_screen(GTK_WIDGET(desktop)), "size-changed",
++                                G_CALLBACK(on_screen_modes_changed), item, 0);
+         item = gtk_builder_get_object(builder, "wallpaper");
+         g_signal_connect(item, "file-set", G_CALLBACK(on_wallpaper_set), desktop);
+         img_preview = gtk_image_new();
+@@ -5792,11 +6054,18 @@
+         g_object_unref(builder);
+ 
+         pcmanfm_ref();
++        g_signal_connect(desktop_pref_dlg, "destroy", G_CALLBACK(gtk_widget_destroyed), &desktop_pref_dlg);
+         g_signal_connect(desktop_pref_dlg, "destroy", G_CALLBACK(pcmanfm_unref), NULL);
+-        /* make dialog be valid only before the desktop is destroyed */
+-        gtk_window_set_transient_for(desktop_pref_dlg, GTK_WINDOW(desktop));
+-        gtk_window_set_destroy_with_parent(desktop_pref_dlg, TRUE);
+-    }
++        /* A desktop transient inherits its bottom layer; keep only the lifetime link. */
++        gtk_window_set_screen(desktop_pref_dlg, gtk_widget_get_screen(GTK_WIDGET(desktop)));
++        g_signal_connect_object(desktop, "destroy", G_CALLBACK(gtk_widget_destroy), desktop_pref_dlg, G_CONNECT_SWAPPED);
++    }
++    /* Reopening preferences retries a transient display-query failure. */
++    GtkComboBoxText *resolution = g_object_get_data(G_OBJECT(desktop_pref_dlg), "resolution-selector");
++    gboolean pending = g_object_get_data(G_OBJECT(resolution), "resolution-pending") != NULL;
++    gboolean confirming = g_object_get_data(G_OBJECT(resolution), "screen-confirmation") != NULL;
++    if(!pending && !confirming)
++        on_screen_modes_changed(NULL, resolution);
+     gtk_window_present(desktop_pref_dlg);
+ }
+ 
+--- a/data/ui/desktop-pref.glade
++++ b/data/ui/desktop-pref.glade
+@@ -1,6 +1,6 @@
+ <?xml version="1.0" encoding="UTF-8"?>
+ <interface>
+-  <requires lib="gtk+" version="2.18"/>
++  <requires lib="gtk+" version="3.10"/>
+   <!-- interface-naming-policy toplevel-contextual -->
+   <object class="GtkDialog" id="dlg">
+     <property name="can_focus">False</property>
+@@ -47,392 +47,188 @@
+             <property name="visible">True</property>
+             <property name="can_focus">True</property>
+             <child>
+-              <object class="GtkVBox" id="vbox1">
++              <object class="GtkGrid" id="appearance_grid">
+                 <property name="visible">True</property>
+-                <property name="can_focus">False</property>
+                 <property name="border_width">12</property>
+-                <property name="spacing">18</property>
+-                <child>
+-                  <object class="GtkVBox" id="vbox3">
+-                    <property name="visible">True</property>
+-                    <property name="can_focus">False</property>
++                <property name="row_spacing">6</property>
++                <property name="column_spacing">12</property>
++                <child>
++                  <object class="GtkLabel" id="label14">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">&lt;b&gt;Background&lt;/b&gt;</property>
++                    <property name="use_markup">True</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">0</property><property name="width">2</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label4">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">Wallpaper _mode:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">wallpaper_mode</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">1</property></packing>
++                </child>
++                <child>
++                  <object class="GtkComboBox" id="wallpaper_mode">
++                    <property name="visible">True</property>
++                    <property name="hexpand">True</property>
++                    <property name="model">wp_modes</property>
++                    <child>
++                      <object class="GtkCellRendererText" id="cellrenderertext1"/>
++                      <attributes><attribute name="text">0</attribute></attributes>
++                    </child>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">1</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label3">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="valign">start</property>
++                    <property name="margin_top">8</property>
++                    <property name="label" translatable="yes">_Wallpaper:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">wallpaper</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">2</property></packing>
++                </child>
++                <child>
++                  <object class="GtkBox" id="wallpaper_box">
++                    <property name="visible">True</property>
++                    <property name="orientation">vertical</property>
+                     <property name="spacing">6</property>
+                     <child>
+-                      <object class="GtkLabel" id="label14">
++                      <object class="GtkFileChooserButton" id="wallpaper">
+                         <property name="visible">True</property>
+-                        <property name="can_focus">False</property>
+-                        <property name="xalign">0</property>
+-                        <property name="label" translatable="yes">&lt;b&gt;Background&lt;/b&gt;</property>
+-                        <property name="use_markup">True</property>
++                        <property name="title" translatable="yes">Please select an image file</property>
++                        <property name="width_chars">24</property>
+                       </object>
+-                      <packing>
+-                        <property name="expand">False</property>
+-                        <property name="fill">True</property>
+-                        <property name="position">0</property>
+-                      </packing>
+-                    </child>
+-                    <child>
+-                      <object class="GtkAlignment" id="alignment3">
++                    </child>
++                    <child>
++                      <object class="GtkCheckButton" id="wallpaper_common">
++                        <property name="label" translatable="yes">_Use the same wallpaper on all desktops</property>
+                         <property name="visible">True</property>
+-                        <property name="can_focus">False</property>
+-                        <property name="left_padding">12</property>
+-                        <child>
+-                          <object class="GtkVBox" id="vbox5">
+-                            <property name="visible">True</property>
+-                            <property name="can_focus">False</property>
+-                            <property name="spacing">6</property>
+-                            <child>
+-                              <object class="GtkHBox" id="hbox2">
+-                                <property name="visible">True</property>
+-                                <property name="can_focus">False</property>
+-                                <property name="spacing">12</property>
+-                                <child>
+-                                  <object class="GtkLabel" id="label4">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="xalign">0</property>
+-                                    <property name="label" translatable="yes">Wallpaper _mode:</property>
+-                                    <property name="use_underline">True</property>
+-                                    <property name="mnemonic_widget">wallpaper_mode</property>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">0</property>
+-                                  </packing>
+-                                </child>
+-                                <child>
+-                                  <object class="GtkComboBox" id="wallpaper_mode">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="model">wp_modes</property>
+-                                    <child>
+-                                      <object class="GtkCellRendererText" id="cellrenderertext1"/>
+-                                      <attributes>
+-                                        <attribute name="text">0</attribute>
+-                                      </attributes>
+-                                    </child>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">True</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">1</property>
+-                                  </packing>
+-                                </child>
+-                              </object>
+-                              <packing>
+-                                <property name="expand">False</property>
+-                                <property name="fill">True</property>
+-                                <property name="position">0</property>
+-                              </packing>
+-                            </child>
+-                            <child>
+-                              <object class="GtkVBox" id="wallpaper_box">
+-                                <property name="visible">True</property>
+-                                <property name="can_focus">False</property>
+-                                <property name="spacing">6</property>
+-                                <child>
+-                                  <object class="GtkHBox" id="hbox3">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="spacing">12</property>
+-                                    <child>
+-                                      <object class="GtkLabel" id="label3">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">False</property>
+-                                        <property name="xalign">0</property>
+-                                        <property name="label" translatable="yes">_Wallpaper:</property>
+-                                        <property name="use_underline">True</property>
+-                                        <property name="mnemonic_widget">wallpaper</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">False</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">0</property>
+-                                      </packing>
+-                                    </child>
+-                                    <child>
+-                                      <object class="GtkFileChooserButton" id="wallpaper">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">False</property>
+-                                        <property name="title" translatable="yes">Please select an image file</property>
+-                                        <property name="width_chars">40</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">True</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">1</property>
+-                                      </packing>
+-                                    </child>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">0</property>
+-                                  </packing>
+-                                </child>
+-                                <child>
+-                                  <object class="GtkAlignment" id="alignment5">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="left_padding">24</property>
+-                                    <child>
+-                                      <object class="GtkCheckButton" id="wallpaper_common">
+-                                        <property name="label" translatable="yes">_Use the same wallpaper on all desktops</property>
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">True</property>
+-                                        <property name="receives_default">False</property>
+-                                        <property name="use_action_appearance">False</property>
+-                                        <property name="use_underline">True</property>
+-                                        <property name="draw_indicator">True</property>
+-                                      </object>
+-                                    </child>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">1</property>
+-                                  </packing>
+-                                </child>
+-                              </object>
+-                              <packing>
+-                                <property name="expand">False</property>
+-                                <property name="fill">True</property>
+-                                <property name="position">1</property>
+-                              </packing>
+-                            </child>
+-                            <child>
+-                              <object class="GtkHBox" id="hbox1">
+-                                <property name="visible">True</property>
+-                                <property name="can_focus">False</property>
+-                                <property name="spacing">12</property>
+-                                <child>
+-                                  <object class="GtkLabel" id="label10">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="xalign">0</property>
+-                                    <property name="label" translatable="yes">_Background color:</property>
+-                                    <property name="use_underline">True</property>
+-                                    <property name="mnemonic_widget">desktop_bg</property>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">0</property>
+-                                  </packing>
+-                                </child>
+-                                <child>
+-                                  <object class="GtkColorButton" id="desktop_bg">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">True</property>
+-                                    <property name="receives_default">True</property>
+-                                    <property name="use_action_appearance">False</property>
+-                                    <property name="color">#000000000000</property>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">1</property>
+-                                  </packing>
+-                                </child>
+-                              </object>
+-                              <packing>
+-                                <property name="expand">True</property>
+-                                <property name="fill">True</property>
+-                                <property name="position">2</property>
+-                              </packing>
+-                            </child>
+-                          </object>
+-                        </child>
++                        <property name="can_focus">True</property>
++                        <property name="use_underline">True</property>
+                       </object>
+-                      <packing>
+-                        <property name="expand">False</property>
+-                        <property name="fill">True</property>
+-                        <property name="position">1</property>
+-                      </packing>
+-                    </child>
+-                  </object>
+-                  <packing>
+-                    <property name="expand">False</property>
+-                    <property name="fill">True</property>
+-                    <property name="position">0</property>
+-                  </packing>
+-                </child>
+-                <child>
+-                  <object class="GtkVBox" id="vbox4">
+-                    <property name="visible">True</property>
+-                    <property name="can_focus">False</property>
+-                    <property name="spacing">6</property>
+-                    <child>
+-                      <object class="GtkLabel" id="label6">
+-                        <property name="visible">True</property>
+-                        <property name="can_focus">False</property>
+-                        <property name="xalign">0</property>
+-                        <property name="label" translatable="yes">&lt;b&gt;Text&lt;/b&gt;</property>
+-                        <property name="use_markup">True</property>
+-                      </object>
+-                      <packing>
+-                        <property name="expand">False</property>
+-                        <property name="fill">True</property>
+-                        <property name="position">0</property>
+-                      </packing>
+-                    </child>
+-                    <child>
+-                      <object class="GtkAlignment" id="alignment4">
+-                        <property name="visible">True</property>
+-                        <property name="can_focus">False</property>
+-                        <property name="left_padding">12</property>
+-                        <child>
+-                          <object class="GtkVBox" id="vbox6">
+-                            <property name="visible">True</property>
+-                            <property name="can_focus">False</property>
+-                            <property name="spacing">6</property>
+-                            <child>
+-                              <object class="GtkHBox" id="hbox4">
+-                                <property name="visible">True</property>
+-                                <property name="can_focus">False</property>
+-                                <property name="spacing">12</property>
+-                                <child>
+-                                  <object class="GtkLabel" id="label5">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="label" translatable="yes">_Font of label text:</property>
+-                                    <property name="use_underline">True</property>
+-                                    <property name="mnemonic_widget">desktop_font</property>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">False</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">0</property>
+-                                  </packing>
+-                                </child>
+-                                <child>
+-                                  <object class="GtkFontButton" id="desktop_font">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">True</property>
+-                                    <property name="receives_default">True</property>
+-                                    <property name="use_action_appearance">False</property>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">True</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">1</property>
+-                                  </packing>
+-                                </child>
+-                              </object>
+-                              <packing>
+-                                <property name="expand">True</property>
+-                                <property name="fill">True</property>
+-                                <property name="position">0</property>
+-                              </packing>
+-                            </child>
+-                            <child>
+-                              <object class="GtkHBox" id="hbox6">
+-                                <property name="visible">True</property>
+-                                <property name="can_focus">False</property>
+-                                <property name="spacing">12</property>
+-                                <child>
+-                                  <object class="GtkHBox" id="hbox9">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="spacing">12</property>
+-                                    <child>
+-                                      <object class="GtkLabel" id="label11">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">False</property>
+-                                        <property name="label" translatable="yes">C_olor of label text:</property>
+-                                        <property name="use_underline">True</property>
+-                                        <property name="mnemonic_widget">desktop_fg</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">False</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">0</property>
+-                                      </packing>
+-                                    </child>
+-                                    <child>
+-                                      <object class="GtkColorButton" id="desktop_fg">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">True</property>
+-                                        <property name="receives_default">True</property>
+-                                        <property name="use_action_appearance">False</property>
+-                                        <property name="color">#000000000000</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">False</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">1</property>
+-                                      </packing>
+-                                    </child>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">True</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">0</property>
+-                                  </packing>
+-                                </child>
+-                                <child>
+-                                  <object class="GtkHBox" id="hbox5">
+-                                    <property name="visible">True</property>
+-                                    <property name="can_focus">False</property>
+-                                    <property name="spacing">12</property>
+-                                    <child>
+-                                      <object class="GtkLabel" id="label13">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">False</property>
+-                                        <property name="label" translatable="yes">Color of _shadow:</property>
+-                                        <property name="use_underline">True</property>
+-                                        <property name="mnemonic_widget">desktop_shadow</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">False</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">0</property>
+-                                      </packing>
+-                                    </child>
+-                                    <child>
+-                                      <object class="GtkColorButton" id="desktop_shadow">
+-                                        <property name="visible">True</property>
+-                                        <property name="can_focus">True</property>
+-                                        <property name="receives_default">True</property>
+-                                        <property name="use_action_appearance">False</property>
+-                                        <property name="color">#000000000000</property>
+-                                      </object>
+-                                      <packing>
+-                                        <property name="expand">False</property>
+-                                        <property name="fill">True</property>
+-                                        <property name="position">1</property>
+-                                      </packing>
+-                                    </child>
+-                                  </object>
+-                                  <packing>
+-                                    <property name="expand">True</property>
+-                                    <property name="fill">True</property>
+-                                    <property name="position">1</property>
+-                                  </packing>
+-                                </child>
+-                              </object>
+-                              <packing>
+-                                <property name="expand">True</property>
+-                                <property name="fill">True</property>
+-                                <property name="position">1</property>
+-                              </packing>
+-                            </child>
+-                          </object>
+-                        </child>
+-                      </object>
+-                      <packing>
+-                        <property name="expand">True</property>
+-                        <property name="fill">True</property>
+-                        <property name="position">1</property>
+-                      </packing>
+-                    </child>
+-                  </object>
+-                  <packing>
+-                    <property name="expand">False</property>
+-                    <property name="fill">True</property>
+-                    <property name="position">1</property>
+-                  </packing>
++                    </child>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">2</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label10">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">_Background color:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">desktop_bg</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">3</property></packing>
++                </child>
++                <child>
++                  <object class="GtkColorButton" id="desktop_bg">
++                    <property name="visible">True</property>
++                    <property name="can_focus">True</property>
++                    <property name="halign">start</property>
++                    <property name="color">#000000000000</property>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">3</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label6">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="margin_top">10</property>
++                    <property name="label" translatable="yes">&lt;b&gt;Text&lt;/b&gt;</property>
++                    <property name="use_markup">True</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">4</property><property name="width">2</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label5">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">_Font of label text:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">desktop_font</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">5</property></packing>
++                </child>
++                <child>
++                  <object class="GtkFontButton" id="desktop_font">
++                    <property name="visible">True</property>
++                    <property name="can_focus">True</property>
++                    <property name="hexpand">True</property>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">5</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label11">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">C_olor of label text:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">desktop_fg</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">6</property></packing>
++                </child>
++                <child>
++                  <object class="GtkColorButton" id="desktop_fg">
++                    <property name="visible">True</property>
++                    <property name="can_focus">True</property>
++                    <property name="halign">start</property>
++                    <property name="color">#ffffffffffff</property>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">6</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="label13">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">Color of _shadow:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">desktop_shadow</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">7</property></packing>
++                </child>
++                <child>
++                  <object class="GtkColorButton" id="desktop_shadow">
++                    <property name="visible">True</property>
++                    <property name="can_focus">True</property>
++                    <property name="halign">start</property>
++                    <property name="color">#000000000000</property>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">7</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="display_heading">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="margin_top">10</property>
++                    <property name="label" translatable="yes">&lt;b&gt;Display&lt;/b&gt;</property>
++                    <property name="use_markup">True</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">8</property><property name="width">2</property></packing>
++                </child>
++                <child>
++                  <object class="GtkLabel" id="resolution_label">
++                    <property name="visible">True</property>
++                    <property name="xalign">0</property>
++                    <property name="label" translatable="yes">Screen _resolution:</property>
++                    <property name="use_underline">True</property>
++                    <property name="mnemonic_widget">screen_resolution</property>
++                  </object>
++                  <packing><property name="left_attach">0</property><property name="top_attach">9</property></packing>
++                </child>
++                <child>
++                  <object class="GtkComboBoxText" id="screen_resolution">
++                    <property name="visible">True</property>
++                    <property name="hexpand">True</property>
++                  </object>
++                  <packing><property name="left_attach">1</property><property name="top_attach">9</property></packing>
+                 </child>
+               </object>
+             </child>

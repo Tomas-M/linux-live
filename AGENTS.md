@@ -128,13 +128,16 @@ reporting progress.
   VMware exposes its shares under `/mnt/hgfs`.
   Host clipboard and folder sharing still require the host owner's settings.
   Preserve Fluxbox startup's initial 1440x900 then 1280x800 resolution switch
-  in VirtualBox and VMware. Guest tools still handle later host resize requests.
-  The small X11 resize listener restores the selected wallpaper after automatic
-  screen changes without polling.
+  in VirtualBox and VMware through direct, per-output `xrandr` commands, followed
+  by `fbvboxpointer`. Desktop Preferences owns manual resolution selection;
+  do not add a separate Fluxbox resolution submenu or helper script.
+  Guest tools still handle later host resize requests.
+  The small X11 resize listener synchronizes the guest pointer after automatic
+  screen changes without polling. PCManFM resizes its desktop and wallpaper.
 - QEMU/KVM desktop integration uses Debian's `spice-vdagent` in `03-desktop`.
   Start its X11 agent when `/dev/virtio-ports/com.redhat.spice.0` is present;
   Debian's udev rule activates the system daemon's socket. Keep the shared
-  wallpaper resize listener active for this session too. The host must expose
+  guest resize listener active for this session too. The host must expose
   the agent channel and enable clipboard/display integration.
   Set `SPICE_VDAGENTD_EXTRA_ARGS="-X"`: Slax starts one X11 session directly
   without an active logind seat, so the daemon must use its single-session mode.
@@ -653,16 +656,14 @@ must follow the general Slax repair rules above.
   and Space until released, and ignore activation keys during the first 500 ms.
   Preserve ordinary GTK applications and backends without queryable key state.
   Do not add desktop portals and their multimedia dependencies for this fix.
-  Apply `gtk-menu-scroll-bounds.diff` too: when monitor bounds move or resize a
-  combo popup, clamp its initial scrolling to the actual menu contents. Avoid
-  blank space before the first item or after the last while keeping selection,
-  scrolling and ordinary menu placement intact. After final allocation, reset
-  scrolling whenever the complete menu fits so stale offsets cannot retain arrows.
-  Do not inspect item visibility before the menu has a realized GDK window.
-  `gtk-combo-dropdown-position.diff` opens plain menu-mode combo boxes below
-  their field when they fit, otherwise on the roomier side with scrolling.
-  Never align the popup's selected row over the field or slide it across the
-  field. Preserve entry/grid combo positioning and ordinary popup menus.
+  GTK 3 select boxes use the built-in list popup through shared `comboboxes.css`,
+  imported by root, guest and new users. GTK 2 uses the same `appears-as-list`
+  setting in `/etc/gtk-2.0/gtkrc`. Long lists show a native scrollbar only when
+  needed, without popup scroll arrows or scrollbar steppers. Short lists show
+  all their rows. `gtk-combo-scrollbar.diff` disables scrollbar auto-hiding only
+  inside GTK 3 combo popups. Keep the built-in below/above placement, keyboard navigation,
+  wheel scrolling and ordinary context menus. Do not restore the old GtkMenu
+  scrolling/position patches; dropdowns use GtkTreeView and GtkScrolledWindow.
 - GTK 3/4 file choosers default to 832 by 576 pixels through
   `03-desktop/rootcopy/usr/share/glib-2.0/schemas/90-slax-filechooser.gschema.override`.
   GTK 3 also needs a nonnegative `window-position` default to use the saved size;
@@ -681,9 +682,43 @@ must follow the general Slax repair rules above.
   Docklike packages with `apt-mark hold` to prevent ordinary upgrades replacing
   the patches. Update and rebuild these packages deliberately for security fixes.
   GTK development dependencies then match without downgrading its patched runtime.
-- Keep PCManFM's standard Debian package. The GTK module hides its root warning
-  and adjacent separator when the main toolbar is realized, identifying the
-  stock warning icon without translated text. Do not rebuild PCManFM for this.
+- Rebuild PCManFM with `03-desktop/build-pcmanfm` and `pcmanfm-desktop.diff`,
+  retaining Debian's package name/version and holding it in `copy`. Desktop
+  drags keep the normal pointer and render their selected captions with the icons. End
+  every GTK drag by resetting the drag/button state, including cancellation and
+  failed drops; successful repositioning retains selection and focus. Keep the
+  icon renderer synchronized with the configured size; Slax's large-icon default
+  is 64 px. Reposition only the originating desktop's own selection and clear
+  stale drop highlights. Do not show desktop icon tooltips. The GTK module still
+  hides the root warning and its adjacent separator by identifying the stock
+  icon; keep that logic out of the PCManFM patch.
+- Rebuild `libfm4t64` with `03-desktop/build-libfm` and `libfm-rename.diff`,
+  preserving Debian's version and holding the package.
+  Monitor rename and move events explicitly; a rename retains the existing file
+  info and model row, while moving in or out still adds or removes the entry.
+  PCManFM keeps the icon's position across a rename and saves it under the new
+  name. Its selected desktop captions have a 3 px corner radius and 4 px padding
+  on both the left and right.
+- Desktop labels default to `Sans 10`. Desktop Preferences uses an aligned form
+  on its Appearance tab and a normal window layer; do not make it transient for
+  the desktop window. Keep its lifetime linked to that desktop without inheriting
+  the desktop's bottom layer. Its resolution selector queries `xrandr` for the
+  selected monitor's output and applies changes to that output only. Confirm each
+  trial with Keep changes or Revert and a ten-second monotonic countdown. Timeout,
+  Escape or closing the confirmation/preferences restores the previous mode and
+  refresh rate; Keep changes leaves the mode active in the current X session.
+  Refresh the available modes when opening preferences and after external display
+  changes, and report failures.
+  Defer changes until the combo popup has released its grab. Keep the preferences
+  inside the monitor's work area after resizing, and resize the desktop window on
+  both monitor topology changes and screen size changes. Anchor the confirmation
+  near the preferences' upper-left corner and keep its entire frame in the work area.
+  Update the fixed-size desktop's size request so its geometry hints follow the mode.
+  Fluxbox startup launches `pcmanfm --desktop` after the panel's initial redraw.
+  Its default profile uses Slax's stretched wallpaper, white labels with black
+  shadows, and the standard desktop context menu with Desktop Preferences.
+  Keep Desktop Preferences out of xlunch. Do not restore wallpaper with feh;
+  PCManFM owns it and adapts it to resolution changes.
 - Use Docklike Taskbar for grouped application icons and hover previews.
   `docklike-drag-reorder.diff` reorders pinned and running groups with an ordinary
   primary-button drag. The source slides only along the panel; hide GTK's external
@@ -821,11 +856,10 @@ must follow the general Slax repair rules above.
   run it only when `/proc/meminfo` reports `MemAvailable` above 524288 KiB
   (512 MiB). Do not add a keep-alive flag implicitly. Keep the panel's 84 percent opacity.
   The Slax theme uses `background: unset`; `none` restores the last
-  background at startup. `fbscreensize` runs `sh ~/.fehbg` to restore the image
-  and scaling mode: Fluxbox menus use `DISPLAY=:0.0` while startup uses `:0`,
-  so `fbsetbg -l` can select a different record. Do not ship a lastwallpaper file.
-- Picom replaces Compton and uses `/etc/picom.conf` at startup and after
-  resolution changes. Keep compositor shadows disabled: XRender's rectangular
+  background at startup. PCManFM owns the wallpaper, including restoration after
+  screen changes; do not overwrite it with feh. Do not ship a lastwallpaper file.
+- Picom replaces Compton and uses `/etc/picom.conf` at startup. Resolution
+  changes do not restart the compositor. Keep compositor shadows disabled: XRender's rectangular
   shadow masks do not follow Slax's rounded window outline.
   `picom-window-outline.diff` adds a cached one-pixel inset XRender outline.
   `xrender-window-outline` is its master switch. `xrender-outline-active-color`
@@ -861,8 +895,7 @@ must follow the general Slax repair rules above.
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.
   In `03-desktop/copy`, set all commands from `rootcopy/usr/bin` to mode 755;
-  checkout permissions alone cannot guarantee that helpers such as
-  `fbscreensize` remain executable.
+  checkout permissions alone cannot guarantee that helper commands remain executable.
 - Keep functional union-filesystem whiteouts. Omit only bookkeeping and mounted build
   data when creating SquashFS modules.
 - Generic AUFS runtime remounts retain BusyBox's existing colon syntax.

@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+CWD=$(pwd)
+OUTPUT=$1
+VERSION=$(dpkg-query -W -f='${Version}' libfm4t64)
+SOURCEVERSION=$(dpkg-query -W -f='${source:Version}' libfm4t64)
+apt-get build-dep --yes --no-install-recommends "libfm=$SOURCEVERSION"
+mkdir -p /tmp/libfm-rebuild
+cd /tmp/libfm-rebuild
+apt-get source "libfm=$SOURCEVERSION"
+cd libfm-*/
+sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
+# Preserve file identity across renames instead of deleting and recreating rows.
+patch -p1 < "$CWD/patches/libfm-rename.diff"
+dpkg-buildpackage -b -us -uc
+cp ../libfm4t64_*.deb "$OUTPUT/"

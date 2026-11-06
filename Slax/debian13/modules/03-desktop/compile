@@ -6,6 +6,8 @@ apt-get update
 sh "$CWD/build-gtk" "$OUTPUT"
 sh "$CWD/build-volumeicon" "$OUTPUT"
 sh "$CWD/build-connman-gtk" "$OUTPUT"
+sh "$CWD/build-libfm" "$OUTPUT"
+sh "$CWD/build-pcmanfm" "$OUTPUT"
 sh "$CWD/build-skippy" "$OUTPUT"
 apt-get build-dep --yes --no-install-recommends fluxbox picom xfce4-panel xfce4-docklike-plugin
 apt-get install --yes --no-install-recommends build-essential dpkg-dev git quilt libimlib2-dev libgtk2.0-dev libjson-glib-dev libnotify-dev libstartup-notification0-dev libxcursor-dev libxfixes-dev libxi-dev libfontconfig-dev libxkbcommon-dev

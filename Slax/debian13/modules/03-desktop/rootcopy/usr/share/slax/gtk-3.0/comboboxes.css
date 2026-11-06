@@ -1,0 +1,3 @@
+/* Use GTK's list popup so constrained dropdowns have a native scrollbar. */
+combobox { -GtkComboBox-appears-as-list: true; }
+#gtk-combobox-popup-window scrollbar { -GtkScrollbar-has-backward-stepper: false; -GtkScrollbar-has-forward-stepper: false; }
