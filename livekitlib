@@ -794,14 +794,40 @@ perch_native_fs()
 }
 
 
-# Read a session name from the metadata path used by its storage layout.
-perch_session_name()
+# Locate existing session metadata without changing its storage layout.
+perch_session_file()
 {
    local FILE
 
    FILE=boot/session.txt
    if [ -e "$1/changes.dat" -o -f "$1/session.txt" ]; then FILE=session.txt; fi
-   head -n 1 "$1/$FILE" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' '
+   echo "$1/$FILE"
+}
+
+
+# Read a session name from the metadata path used by its storage layout.
+perch_session_name()
+{
+   head -n 1 "$(perch_session_file "$1")" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' '
+}
+
+
+# Rename only the selected session's metadata; cancellation leaves it untouched.
+perch_rename_session()
+{
+   local NAME FILE TEMP
+
+   if ! echo "${1##*/}" | grep -qE '^[0-9]+$' || [ ! -d "$1" ]; then return 1; fi
+   NAME=$(perch_session_name "$1")
+   NAME=$(fbmenu --input 'Rename session' "$NAME") || return $?
+   FILE=$(perch_session_file "$1")
+   mkdir -p "${FILE%/*}" || return 1
+   TEMP=$(mktemp "${FILE%/*}/.session.XXXXXX") || return 1
+   if ! printf '%s\n' "$NAME" > "$TEMP" || ! chmod 644 "$TEMP" || ! mv "$TEMP" "$FILE"; then
+      rm -f "$TEMP"
+      echo '* Could not save the session name.' >&2
+      return 1
+   fi
 }
 
 
@@ -823,7 +849,7 @@ perch_session_rows()
 # Choose a session across writable filesystems and return its full path.
 select_perch_session()
 {
-   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED LASTSESSION
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED LASTSESSION NAME
 
    SCAN=$(mktemp -d "$MEMORY/session-disks.XXXXXX") || return 1
    BOOTDEVICE=$(mounted_device "$1")
@@ -863,9 +889,20 @@ select_perch_session()
    SELECTED=""
    while true; do
       if [ "$CHOICE" != new -a "${2:-}" != resume ]; then
-         CHOICE=$(fbmenu --menu 'Select session' "$SCAN/sessions.txt" --cancel --duplicate) || break
+         CHOICE=$(fbmenu --menu 'Select session' "$SCAN/sessions.txt" --cancel --duplicate --rename) || break
       fi
       if [ "$CHOICE" = "" ]; then break; fi
+      if [ "${CHOICE#rename:}" != "$CHOICE" ]; then
+         DIR=${CHOICE#rename:}
+         if perch_rename_session "$DIR"; then
+            NAME=$(perch_session_name "$DIR")
+            SESSION_PATH="$DIR" SESSION_NAME="${NAME:-Session #${DIR##*/}}" awk 'BEGIN {FS=OFS="\t"} $1==ENVIRON["SESSION_PATH"] {$2=ENVIRON["SESSION_NAME"]} {print}' \
+               "$SCAN/sessions.txt" > "$SCAN/sessions.new"
+            mv "$SCAN/sessions.new" "$SCAN/sessions.txt"
+         fi
+         CHOICE=""
+         continue
+      fi
       if [ "$CHOICE" = new ]; then
          TITLE='Select disk for new session'
          if [ ! -s "$SCAN/disks.txt" ]; then TITLE='No writable disks found'; fi
@@ -970,9 +1007,15 @@ restore_perch_session()
       if [ "$PERCHDIR" = "ask" ]; then
          printf 'new\tStart a new session\n' > /tmp/sessions.txt
          perch_session_rows "$CHANDIR" | sort -r | cut -f 2- >> /tmp/sessions.txt
-         PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel --duplicate)" || return 1
+         PERCHDIR="$(fbmenu --menu 'Select session' /tmp/sessions.txt --cancel --duplicate --rename)" || return 1
          # Cancellation must not create a session or update last_session.txt.
          if [ "$PERCHDIR" = "" ]; then return 1; fi
+      fi
+
+      if [ "${PERCHDIR#rename:}" != "$PERCHDIR" ]; then
+         perch_rename_session "$CHANDIR/${PERCHDIR#rename:}" || true
+         PERCHDIR=ask
+         continue
       fi
 
       # restore name for previous session if empty

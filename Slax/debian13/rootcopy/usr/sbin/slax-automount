@@ -14,10 +14,9 @@
 
 PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
 
-# A transient systemd service receives the device metadata from the udev rule.
+# A transient systemd service receives the device event from the udev rule.
 ACTION=$1
 DEVNAME=$2
-ID_FS_TYPE=$3
 
 BAS="$(basename "$DEVNAME")"
 UNIT="media-$BAS.mount"
@@ -35,6 +34,13 @@ if ! cat /proc/cmdline | grep -q automount; then
    exit
 fi
 
+# Serialize events for this path; queued removals may refer to an older device.
+exec 9>"/run/lock/slax-automount-$BAS.lock"
+flock 9
+if [ "$ACTION" = "remove" ] && [ -b "$DEVNAME" ]; then
+   exit
+fi
+
 # Initramfs already owns boot and session disks; expose them without a second mount
 if [ -L "$MNT" ] && readlink "$MNT" | grep -q '^/run/initramfs/'; then
    if [ "$ACTION" = "remove" ]; then rm "$MNT"; fi
@@ -44,39 +50,69 @@ fi
 
 
 if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
+   if [ ! -b "$DEVNAME" ]; then
+      exit
+   fi
+
+   # Wait for partitioning tools holding the parent disk's standard exclusive lock.
+   DISK=$BAS
+   if [ -f "/sys/class/block/$BAS/partition" ]; then
+      DISK=$(basename "$(dirname "$(readlink -f "/sys/class/block/$BAS")")")
+   fi
+   exec 8<"/dev/$DISK" || exit 1
+   flock -s 8
+   if [ ! -b "$DEVNAME" ]; then
+      exit
+   fi
+
    # Mount the partitions, not a whole disk with a duplicate filesystem signature.
    if ls "/sys/class/block/$BAS"/*/partition >/dev/null 2>&1; then
       exit
    fi
 
-   if [ ! -r "$TARGET" ]; then # skip if exists
+   # Reconcile the current state, not the filesystem data captured by an old event.
+   if mountpoint -q "$MNT"; then
+      gtk-bookmarks-update
+      exit
+   fi
+   ID_FS_TYPE=$(blkid -p -s TYPE -o value "$DEVNAME")
 
-      if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
+   if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
 
-         mkdir -p /run/systemd/system "$MNT"
+      mkdir -p /run/systemd/system "$MNT"
 
-         echo "# Slax skip savechanges" >$TARGET
-         echo "[Unit]" >>$TARGET
-         echo "Description=Disk $BAS" >>$TARGET
-         echo "" >>$TARGET
-         echo "[Mount]" >>$TARGET
-         echo "What=$DEVNAME" >>$TARGET
-         echo "Where=$MNT" >>$TARGET
-         echo "Type=$ID_FS_TYPE" >>$TARGET
-         echo "Options=defaults" >>$TARGET
-         systemctl daemon-reload
-         systemctl start $UNIT
-
-         gtk-bookmarks-update
-         DISPLAY=:0.0 pcmanfm -n file://$MNT >/dev/null 2>&1
+      echo "# Slax skip savechanges" >"$TARGET.new"
+      echo "[Unit]" >>"$TARGET.new"
+      echo "Description=Disk $BAS" >>"$TARGET.new"
+      echo "" >>"$TARGET.new"
+      echo "[Mount]" >>"$TARGET.new"
+      echo "What=$DEVNAME" >>"$TARGET.new"
+      echo "Where=$MNT" >>"$TARGET.new"
+      echo "Type=$ID_FS_TYPE" >>"$TARGET.new"
+      echo "Options=defaults" >>"$TARGET.new"
+      mv "$TARGET.new" "$TARGET"
+      systemctl daemon-reload
+      if ! systemctl start "$UNIT"; then
+         exit 1
       fi
+
+      gtk-bookmarks-update
+      # A file-manager process can outlive this event; it must not retain either lock.
+      exec 8<&- 9>&-
+      DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
    fi
 fi
 
 if [ "$ACTION" = "remove" ]; then
-   systemctl stop $UNIT
-   rm "$TARGET"
-   systemctl daemon-reload
-   rmdir "$MNT"
+   if ! systemctl stop "$UNIT"; then
+      exit 1
+   fi
+   if [ -f "$TARGET" ]; then
+      rm "$TARGET"
+      systemctl daemon-reload
+   fi
+   if [ -d "$MNT" ]; then
+      rmdir "$MNT"
+   fi
    gtk-bookmarks-update
 fi
