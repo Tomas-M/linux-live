@@ -3,7 +3,7 @@ set -e
 [ -f /build/buildmods ] || { echo "Run Slax's build script instead of install." >&2; exit 1; }
 
 apt-get update
-# ConnMan handles NTP; the EFI compiler and mtools stay on the build host.
+# ConnMan handles NTP; the EFI compiler stays on the build host.
 # Install Wacom data here so Xorg can reuse the complete hardware database.
 # PXE needs GNU cpio and BusyBox's HTTP server; both reuse the existing libc6.
 # fdisk supplies sfdisk for marking the USB EFI partition on GPT disks.

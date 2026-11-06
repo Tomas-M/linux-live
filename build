@@ -28,7 +28,7 @@ if [ "$(mksquashfs 2>&1 | grep "Xdict-size")" = "" ]; then
    exit 1
 fi
 
-for TOOL in grub-mkstandalone xorriso mformat mcopy; do
+for TOOL in grub-mkstandalone xorriso mkfs.fat; do
    if ! command -v "$TOOL" >/dev/null; then
       echo "Cannot find $TOOL, stop"
       exit 3

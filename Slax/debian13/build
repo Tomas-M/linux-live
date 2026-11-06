@@ -19,7 +19,7 @@ flock -n 9 || { echo "Another build is using $WORK." >&2; exit 1; }
 modprobe overlay
 grep -qw overlay /proc/filesystems
 apt-get update
-apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso mtools \
+apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso dosfstools \
    grub-pc-bin grub-efi-amd64-bin grub-common fdisk xz-utils cpio git make gcc libc6-dev sbsigntool
 
 BUILD=$(mktemp -d /tmp/slax-build.XXXXXX)

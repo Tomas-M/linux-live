@@ -39,22 +39,17 @@ while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
    SECTORS=$(( SECTORS * 2 ))
 done
 dd if=/dev/zero of="$TEMP/efi.img" bs=1024 count="$SIZE" 2>/dev/null
-if command -v mformat >/dev/null 2>&1; then
-   mformat -c "$SECTORS" -M 512 -i "$TEMP/efi.img" ::
-   mcopy -i "$TEMP/efi.img" -s "$BOOT/EFI" ::/
-else
-   mkfs.fat -F 16 -s "$SECTORS" -S 512 "$TEMP/efi.img" >/dev/null
-   mkdir "$TEMP/mnt"
-   mount -o loop "$TEMP/efi.img" "$TEMP/mnt"
-   cp -r "$BOOT/EFI" "$TEMP/mnt/"
-   umount "$TEMP/mnt"
-fi
+mkfs.fat -F 16 -s "$SECTORS" -S 512 "$TEMP/efi.img" >/dev/null
+mkdir "$TEMP/mnt"
+mount -o loop "$TEMP/efi.img" "$TEMP/mnt"
+cp -r "$BOOT/EFI" "$TEMP/mnt/"
+umount "$TEMP/mnt"
 
 # Keep the CD read-ahead padding inside the setup partition, not in a GPT Gap entry.
 SIZE=$(du -sk "$BOOT/usb-setup" | cut -f1)
 SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
 if [ "$SIZE" -lt 2112 ]; then
-   SIZE=2112
+   SIZE=2555 # could be 2112 but this is nicer number
 fi
 SECTORS=1
 while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
@@ -62,16 +57,10 @@ while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
 done
 LABEL=DISK-SETUP
 dd if=/dev/zero of="$TEMP/setup.img" bs=1024 count="$SIZE" 2>/dev/null
-if command -v mformat >/dev/null 2>&1; then
-   mformat -c "$SECTORS" -M 512 -v "$LABEL" -i "$TEMP/setup.img" ::
-   mcopy -i "$TEMP/setup.img" -s "$BOOT/usb-setup/"* ::/
-else
-   mkfs.fat -F 16 -s "$SECTORS" -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
-   mkdir -p "$TEMP/mnt"
-   mount -o loop "$TEMP/setup.img" "$TEMP/mnt"
-   cp -r "$BOOT/usb-setup/"* "$TEMP/mnt/"
-   umount "$TEMP/mnt"
-fi
+mkfs.fat -F 16 -s "$SECTORS" -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
+mount -o loop "$TEMP/setup.img" "$TEMP/mnt"
+cp -r "$BOOT/usb-setup/"* "$TEMP/mnt/"
+umount "$TEMP/mnt"
 dd if=/dev/zero bs=1024 count=300 >> "$TEMP/setup.img" 2>/dev/null
 
 set -- -m "$NAME/boot/grub/efi.img" -e --interval:appended_partition_2::: -no-emul-boot -o "$TARGET" -graft-points "$@" .
