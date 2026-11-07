@@ -104,19 +104,32 @@ reporting progress.
   Inspect nearby code before changing `livekitlib` or other existing scripts.
   Prefer familiar `if ... then ... fi` blocks and `while true`. Do not introduce
   `case`, `while :`, or standalone `[ ... ]` guards in newly written shell code.
-- `bootinst.bat` must remain available as `/slax/boot/bootinst.bat`. Keep
-  both installers, their VBS helper and bundled Windows GRUB files only under
-  `Slax/debian13/bootfiles`; generic Live Kit does not include USB installers.
-  Preserve its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
-  requiring PowerShell. Keep Slax's optional text installer logo.
-  Keep only these two installers, `vmlinuz`, `initrfs.img`, `grub.cfg`, `grub`
-  and `EFI` directly under `slax/boot`. Helper VBS and both logos belong under
-  `grub`. Slax's media README belongs at `/README.txt`; its source is
+- Slax's USB installer is now native: `/slax/boot/bootinst` for Slax and
+  `/slax/boot/bootinst.exe` for Windows XP and later. Sources, original branding
+  and the ICO are in `Slax/debian13/installer`. Use standard GTK 3 and Win32
+  windows, controls, file choosers and confirmation dialogs; retain the supplied
+  wizard's general layout and green branding without recreating native frames
+  or controls. USB entries use rounded cards, a tinted device badge and native
+  radio buttons. Keep the left step panel visible; use a 720 by 400 logical-pixel
+  minimum client size. Reserve one consistently spaced message area under the
+  ISO path for metadata, checking and validation errors.
+  Windows must use only system DLLs; Linux may use libraries
+  already installed in Slax. Do not require a browser or download fonts.
+  Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
+  it strips them, compresses both with `upx --best` (without `--ultra-brute`),
+  and checks their packed integrity. Ordinary ISO builds only copy them.
+  Disk and ISO discovery are real and read-only; all copying, formatting and
+  boot setup remain explicitly simulated until Tomas requests the second step.
+  Keep bundled Windows GRUB tools under `Slax/debian13/bootfiles`; generic
+  Live Kit does not include these installers. The old BAT, shell and VBS
+  installers have been replaced. Keep only the two binaries, `vmlinuz`,
+  `initrfs.img`, `grub.cfg`, `grub` and `EFI` directly under `slax/boot`.
+  Slax's media README belongs at `/README.txt`; its source is
   `Slax/debian13/README.txt`, also installed as `/usr/share/slax-media/README.txt`
   so `genslaxiso` retains it after copy-to-RAM boot.
-  This README describes only copying `slax` to a FAT32 USB drive and running
-  `bootinst`. Keep raw ISO writing instructions and boot parameter documentation
-  out of it. The USB-SPACE partition has its own separate instructions.
+  This README describes the native installer and clearly identifies the current
+  simulation preview. Keep raw ISO writing instructions and boot parameter
+  documentation out of it. USB-SPACE has its own separate instructions.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
 - Add an item to `TODO.md` only when Tomas explicitly requests a TODO entry.
   Other change requests are work to complete, not backlog items.

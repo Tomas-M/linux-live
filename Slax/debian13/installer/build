@@ -1,0 +1,36 @@
+#!/bin/sh
+# Compile both native frontends on Debian; runtime libraries already exist in Slax.
+set -eu
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+OUT=${1:-$THIS/../bootfiles}
+TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer.XXXXXX")
+trap 'rm -r "$TEMP"' 0
+mkdir -p "$OUT"
+
+# Embed the original PNG artwork without an image conversion or runtime data files.
+python3 - "$THIS" "$TEMP/images.h" <<'PY'
+from pathlib import Path
+import sys
+folder=Path(sys.argv[1])
+with Path(sys.argv[2]).open('w') as header:
+    for name in ('clover','wordmark'):
+        data=(folder/(name+'.png')).read_bytes()
+        header.write('static const unsigned char '+name+'_png[]={'+','.join(map(str,data))+'};\n')
+PY
+
+g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
+   -I"$TEMP" "$THIS/main.cpp" "$THIS/linux.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev) \
+   -o "$TEMP/bootinst"
+strip "$TEMP/bootinst"
+
+printf '1 ICON "%s/slax.ico"\n1 24 "%s/installer.manifest"\n' "$THIS" "$THIS" > "$TEMP/resource.rc"
+i686-w64-mingw32-windres "$TEMP/resource.rc" "$TEMP/resource.o"
+i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-function-type \
+   -municode -mwindows -static -D_WIN32_WINNT=0x0501 -I"$TEMP" \
+   -Wl,--nxcompat,--dynamicbase,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1 \
+   "$THIS/main.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
+   -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/bootinst.exe"
+i686-w64-mingw32-strip "$TEMP/bootinst.exe"
+upx --best --no-progress "$TEMP/bootinst" "$TEMP/bootinst.exe"
+upx -t "$TEMP/bootinst" "$TEMP/bootinst.exe"
+install -m 755 "$TEMP/bootinst" "$TEMP/bootinst.exe" "$OUT/"

@@ -3,18 +3,16 @@ Slax
 
 The CD/DVD is already bootable.
 
-To boot Slax from a USB drive:
+USB installer preview
+---------------------
 
-1. Copy the entire slax directory from this disc to the root of a USB drive
-   formatted as FAT32.
+Open the slax/boot directory on this disc and start the installer:
 
-2. Open the slax/boot directory on that USB drive.
+   Windows: double-click bootinst.exe.
+   Slax:    open bootinst, or run ./bootinst from a terminal.
 
-3. Run the installer for your operating system:
+Choose a Slax ISO image and a USB drive, then follow the wizard.
 
-   Windows: double-click bootinst.bat and approve administrator access.
-   Linux:   run sudo sh bootinst.sh from a terminal opened in that directory.
-            GRUB's BIOS installation tools must be installed on the Linux system.
-
-4. Wait for the installer to finish. Restart the computer and select the USB
-   drive in its boot menu.
+This preview only simulates installation. It does not copy files, erase data
+or change boot records, and it cannot prepare a bootable USB drive yet.
+Administrator access and an internet connection are not required.

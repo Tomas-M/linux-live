@@ -1,0 +1,22 @@
+#!/bin/sh
+# Exercise real discovery against mocked USB devices and an owned RAM-backed loop fixture.
+set -eu
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+BINARY=${1:-$THIS/../bootfiles/bootinst}
+TEMP=$(mktemp -d /tmp/slax-installer-usb.XXXXXX)
+
+# Release only the filesystem created by this test, including on interruption.
+cleanup()
+{
+   if mountpoint -q "$TEMP/mount"; then umount "$TEMP/mount"; fi
+   rm -r "$TEMP"
+}
+trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+mkdir "$TEMP/mount"
+truncate -s 32M "$TEMP/disk.img"
+mkfs.ext4 -q -F "$TEMP/disk.img"
+mount -o loop "$TEMP/disk.img" "$TEMP/mount"
+touch "$TEMP/mount/source.iso"
+umockdev-wrapper python3 "$THIS/check-linux.py" "$BINARY" "$TEMP/mount/source.iso"
