@@ -533,7 +533,7 @@ must follow the general Slax repair rules above.
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
   handling with `NoDisplay=true`; xlunch must respect that field.
 - Maintain xlunch changes in the sibling `../xlunch` repository. Slax downloads
-  the tagged upstream release (currently `v5.10.5`); do not carry a duplicate
+  the tagged upstream release (currently `v5.10.6`); do not carry a duplicate
   local xlunch patch. Commit the fix and version update separately there,
   regenerate `docs/usage.txt` from the compiled program and tag the release.
   Fullscreen xlunch sets `_NET_WM_STATE_FULLSCREEN` and `_NET_WM_STATE_SKIP_PAGER`
@@ -557,7 +557,9 @@ must follow the general Slax repair rules above.
   explicit desktop dimensions and ordinary windowed sizing. Recompute layout
   and backgrounds on resize, and refresh root-based backgrounds when the root
   pixmap changes. Bound image reads by the pixmap's actual dimensions while
-  the desktop wallpaper is catching up with a resolution change.
+  the desktop wallpaper is catching up with a resolution change. Ignore stale or
+  disappearing wallpaper pixmaps without hiding unrelated X11 errors. Alt+F5 must
+  not kill clients: terminating PCManFM also destroys its desktop wallpaper.
 - xlunch's desktop catalog and prepared icon pixels live in `~/.cache/xlunch`
   (or `$XDG_CACHE_HOME/xlunch`). Keep the cache uncompressed. Its low-priority
   background refresh must stop before launching a selection.
@@ -584,6 +586,8 @@ must follow the general Slax repair rules above.
   `RemainAfterExit=yes`. Transient automount services otherwise pull in sysinit
   again and repeatedly rerun the cleanup until systemd's start limit is hit.
 - Slax's `fbappselect` starts xlunch with `/etc/xlunch/focus.ini` by default.
+  Use `--focuslostterminate` so Alt+Tab and Alt+F3 close the launcher when focus
+  moves away. Temporary keyboard grabs and focus within its children do not close it.
   Keep Slax branding, Session commands and terminal/GUI command routing in its
   profile and `fbcommand`; xlunch itself must remain distribution-independent.
   Ignore the exact executable name `X` during command detection, so searches

@@ -73,7 +73,6 @@ Control Escape :Exec fbappselect >>/var/log/fbappselect.log 2>&1
 
 # current window commands
 Mod1 F4 :Close
-Mod1 F5 :Kill
 Mod1 F9 :Minimize
 Mod1 F10 :Maximize
 Mod1 F11 :Fullscreen

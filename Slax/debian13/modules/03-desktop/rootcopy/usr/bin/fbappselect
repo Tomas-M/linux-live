@@ -10,4 +10,4 @@ BUTTON=$(mktemp /tmp/fbappselect.XXXXXX.png)
 trap 'rm -f "$BUTTON"' 0
 HEIGHT=$(xrandr --current | sed -n '1s/.*current [0-9]* x \([0-9]*\),.*/\1/p')
 scrot -o -a "0,$((HEIGHT - 52)),52,52" "$BUTTON"
-xlunch --ui-config /etc/xlunch/focus.ini --button "$BUTTON;$BUTTON;0,-0;:quit"
+xlunch --focuslostterminate --ui-config /etc/xlunch/focus.ini --button "$BUTTON;$BUTTON;0,-0;:quit"
