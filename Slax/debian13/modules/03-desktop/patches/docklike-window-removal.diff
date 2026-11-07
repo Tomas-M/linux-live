@@ -62,3 +62,45 @@ Forwarded: no
  		item->mPeekTimeout.stop();
  		item->mPeekLeaveIdle.stop();
  	});
+--- a/src/Xfw.cpp
++++ b/src/Xfw.cpp
+@@ -20,6 +20,8 @@
+ 
+ 	namespace // private:
+ 	{
++		XfwWindow* lastActiveWindow = nullptr;
++
+ 		std::string getGroupNameSys(XfwWindow* xfwWindow)
+ 		{
+ 			// Xfw method const char *
+@@ -114,6 +116,7 @@
+ 	{
+ 		xfw_set_client_type(XFW_CLIENT_TYPE_PAGER);
+ 		mXfwScreen = xfw_screen_get_default();
++		g_set_object(&lastActiveWindow, getActiveWindow());
+ #ifdef ENABLE_X11
+ 		if (GDK_IS_X11_DISPLAY(Plugin::mDisplay))
+ 		{
+@@ -151,7 +154,13 @@
+ 				XfwWindow* activeXfwWindow = getActiveWindow();
++				if (!activeXfwWindow && g_list_find(xfw_screen_get_windows(screen), previousActiveWindow))
++					g_clear_object(&lastActiveWindow);
+ 				if (activeXfwWindow != nullptr)
+ 				{
+-					Dock::dismissPreviews();
++					// Closing the focused client can report None before its automatic successor.
++					bool closed = lastActiveWindow && !g_list_find(xfw_screen_get_windows(screen), lastActiveWindow);
++					if (!closed)
++						Dock::dismissPreviews();
++					g_set_object(&lastActiveWindow, activeXfwWindow);
+ 					std::shared_ptr<GroupWindow> activeWindow = mGroupWindows.get(activeXfwWindow);
+ 					// Focus can be announced before this client enters the window store.
+ 					if (activeWindow)
+@@ -193,6 +202,7 @@
+ 		g_signal_handlers_disconnect_by_data(mXfwWorkspaceGroup, nullptr);
+ 		g_signal_handlers_disconnect_by_data(mXfwScreen, nullptr);
+ 		g_object_unref(mXfwScreen);
++		g_clear_object(&lastActiveWindow);
+ 	}
+ 
+ 	XfwWindow* getActiveWindow()
