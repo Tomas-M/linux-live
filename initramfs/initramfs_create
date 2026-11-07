@@ -89,6 +89,8 @@ copy_including_deps /$LMK/kernel/fs/overlayfs
 copy_including_deps /$LMK/kernel/fs/ext2
 copy_including_deps /$LMK/kernel/fs/ext3
 copy_including_deps /$LMK/kernel/fs/ext4
+copy_including_deps /$LMK/kernel/fs/btrfs
+copy_including_deps /$LMK/kernel/fs/exfat
 copy_including_deps /$LMK/kernel/fs/fat
 copy_including_deps /$LMK/kernel/fs/nls
 copy_including_deps /$LMK/kernel/fs/fuse
