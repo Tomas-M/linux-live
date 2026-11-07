@@ -37,8 +37,10 @@ fi
 # Serialize events for this path; queued removals may refer to an older device.
 exec 9>"/run/lock/slax-automount-$BAS.lock"
 flock 9
-if [ "$ACTION" = "remove" ] && [ -b "$DEVNAME" ]; then
-   exit
+if [ "$ACTION" = "remove" ]; then
+   # Finish queued remove/add pairs before deciding that the device disappeared.
+   udevadm settle || exit 1
+   if [ -b "$DEVNAME" ]; then exit; fi
 fi
 
 # Initramfs already owns boot and session disks; expose them without a second mount
@@ -61,6 +63,8 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
    fi
    exec 8<"/dev/$DISK" || exit 1
    flock -s 8
+   # A later queued remove must not undo a mount made during an earlier add.
+   udevadm settle || exit 1
    if [ ! -b "$DEVNAME" ]; then
       exit
    fi
@@ -99,7 +103,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
       gtk-bookmarks-update
       # A file-manager process can outlive this event; it must not retain either lock.
       exec 8<&- 9>&-
-      DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
+      XDG_RUNTIME_DIR="/run/user/$(id -u)" DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
    fi
 fi
 
