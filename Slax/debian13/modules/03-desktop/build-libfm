@@ -12,5 +12,7 @@ cd libfm-*/
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 # Preserve file identity across renames instead of deleting and recreating rows.
 patch -p1 < "$CWD/patches/libfm-rename.diff"
+# Offer unmount buttons for bookmarks pointing at mounted filesystems.
+patch -p1 < "$CWD/patches/libfm-places.diff"
 dpkg-buildpackage -b -us -uc
-cp ../libfm4t64_*.deb "$OUTPUT/"
+cp ../libfm4t64_*.deb ../libfm-gtk3-4t64_*.deb "$OUTPUT/"

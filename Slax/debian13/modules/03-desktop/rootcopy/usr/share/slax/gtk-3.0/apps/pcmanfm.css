@@ -3,6 +3,10 @@ statusbar frame > border { border: 0; }
 statusbar frame label { padding: 2px 8px; }
 toolbar { padding: 6px 8px; }
 
+/* Keep mount actions recognizable before the native hover highlight appears. */
+button.sidebar-button:not(:hover):not(:active) { border-color: alpha(currentColor, 0.15); }
+button.sidebar-button.selected-place { background: #fff; }
+
 /* Separate path components and keep their buttons compact. */
 toolbar viewport button { margin: 2px 3px; padding: 2px 6px; min-height: 20px; }
 toolbar viewport button:first-child { margin-left: 0; }
