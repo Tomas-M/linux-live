@@ -846,6 +846,9 @@ must follow the general Slax repair rules above.
   group member leaves, including SIGTERM, SIGKILL and workspace changes. Keep
   the selected surviving window when earlier entries shift; if it leaves,
   select the first remaining member. Window counts still derive from the list.
+  Keep previews open when closing the active client transfers focus automatically,
+  including an intermediate no-active-window notification. Explicit focus changes
+  still dismiss previews; release the retained last active client on finalization.
   A removed preview cancels hover across visible-card relayout until the pointer
   leaves its previous hit area; another card must not restart dimming there.
   `panel-plugin-restart.diff` restarts crashed plugins without a dialog or
