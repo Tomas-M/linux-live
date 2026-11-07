@@ -620,6 +620,11 @@ must follow the general Slax repair rules above.
   Serialize events per device and take a shared lock on its parent disk before
   probing or mounting, respecting partitioning tools' exclusive locks. Probe
   the current filesystem after waiting; event metadata may already be stale.
+  Wait for udev's event queue before reconciling add/change/remove events, so
+  queued partition remove/add pairs cannot undo a newly completed mount.
+  Launch PCManFM with the desktop user's standard `/run/user/UID` runtime
+  directory; system services lack `XDG_RUNTIME_DIR` and otherwise create a
+  second PCManFM instance with a different IPC socket.
   Ignore queued removals when the device node is present, and open PCManFM only
   for a new successful mount. Keep the mount unit if unmounting fails.
 - Initramfs exposes already mounted boot and session filesystems through
