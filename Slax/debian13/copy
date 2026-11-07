@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 [ -f /build/buildmods ] || { echo "Run Slax's build script instead of copy." >&2; exit 1; }
+# Hold the kernel and its metapackage to keep upgrades aligned with the boot media.
+apt-mark hold $(dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' 'linux-image-*' | awk '$2 == "installed" {print $1}')
 # Replace the link itself, without overwriting the time zone file it points to.
 rm -f /etc/localtime
 cp -a /build/rootcopy/. /

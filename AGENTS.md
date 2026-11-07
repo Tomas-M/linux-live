@@ -229,6 +229,8 @@ must follow the general Slax repair rules above.
 
 - Slax uses Debian 13's standard `linux-image-amd64` kernel from the configured
   Debian repositories. Do not compile a private kernel or require AUFS.
+  Core `copy` holds all installed `linux-image-*` packages, including the
+  metapackage, so runtime upgrades keep the kernel paired with the boot media.
   Keep the kernel image and shipped modules unchanged so Debian's signatures
   remain valid. Generate the initramfs against the target root's modules;
   the development host need not run the same kernel.
