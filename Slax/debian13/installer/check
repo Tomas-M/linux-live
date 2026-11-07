@@ -1,0 +1,10 @@
+#!/bin/sh
+# Run the shared wizard checks with read-only access to an existing Slax ISO.
+set -eu
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+ISO=${1:?Usage: check /path/to/slax.iso}
+TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer-check.XXXXXX")
+trap 'rm -r "$TEMP"' 0
+g++ -std=c++17 -Wall -Wextra -Werror -pthread -DINSTALLER_TEST \
+   -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/tests.cpp" -o "$TEMP/check"
+"$TEMP/check" "$ISO"
