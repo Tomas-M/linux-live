@@ -3,12 +3,12 @@
 rem The first line is a Windows label; its shell comment tolerates CRLF on Linux.
 setlocal
 rem Display optional installer artwork supplied by the distribution.
-if exist "%~dp0bootlogo.txt" (
+if exist "%~dp0grub\bootlogo.txt" (
     color 2F
     cls
-    type "%~dp0bootlogo.txt"
+    type "%~dp0grub\bootlogo.txt"
 )
-cscript.exe //nologo "%~dp0bootinst.vbs" %*
+cscript.exe //nologo "%~dp0grub\bootinst.vbs" %*
 set "result=%ERRORLEVEL%"
 rem The elevated copy has its own visible console and final status.
 if "%result%"=="740" exit /b 0

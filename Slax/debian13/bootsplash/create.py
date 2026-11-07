@@ -3,7 +3,7 @@ from PIL import Image
 
 # Regenerate the prepared framebuffer data when the original logo changes.
 folder=Path(__file__).resolve().parent
-logo=Image.open(folder.parent/'bootfiles/bootlogo.png').convert('RGB').crop((174,123,474,273))
+logo=Image.open(folder.parent/'bootfiles/grub/bootlogo.png').convert('RGB').crop((174,123,474,273))
 # Fill from the left, then clear from the left: ".", "..", "...", " ..", "  .".
 loader=[(97,202,0) if mask&(1<<(x//12)) and x%12<4 else (0,0,0) for mask in (1,3,7,6,4) for row in range(4) for x in range(28)]
 pixels=logo.tobytes()

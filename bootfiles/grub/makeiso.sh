@@ -46,7 +46,9 @@ cp -r "$BOOT/EFI" "$TEMP/mnt/"
 umount "$TEMP/mnt"
 
 # Keep the CD read-ahead padding inside the setup partition, not in a GPT Gap entry.
-SIZE=$(du -sk "$BOOT/usb-setup" | cut -f1)
+mkdir "$TEMP/usb-space"
+tar -xJf "$BOOT/grub/usb-space.tar.xz" -C "$TEMP/usb-space"
+SIZE=$(du -sk "$TEMP/usb-space" | cut -f1)
 SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
 if [ "$SIZE" -lt 2222 ]; then
    SIZE=2222
@@ -55,11 +57,11 @@ SECTORS=1
 while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
    SECTORS=$(( SECTORS * 2 ))
 done
-LABEL=DISK-SETUP
+LABEL=USB-SPACE
 dd if=/dev/zero of="$TEMP/setup.img" bs=1024 count="$SIZE" 2>/dev/null
 mkfs.fat -F 16 -s "$SECTORS" -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
 mount -o loop "$TEMP/setup.img" "$TEMP/mnt"
-cp -r "$BOOT/usb-setup/"* "$TEMP/mnt/"
+cp -r "$TEMP/usb-space/"* "$TEMP/mnt/"
 umount "$TEMP/mnt"
 dd if=/dev/zero bs=1024 count=300 >> "$TEMP/setup.img" 2>/dev/null
 

@@ -84,7 +84,8 @@ done
 mkdir -p "$TEMP/media/slax/boot/grub" "$TEMP/media/slax/modules" "$TEMP/media/slax/changes"
 cp "$SLAX/boot/grub/makeiso.sh" "$TEMP/media/slax/boot/grub/"
 cp -r "$SLAX/boot/EFI" "$TEMP/media/slax/boot/"
-cp -r "$SLAX/boot/usb-setup" "$TEMP/media/slax/boot/"
+cp "$SLAX/boot/grub/usb-space.tar.xz" "$TEMP/media/slax/boot/grub/"
+cp /usr/share/slax-media/README.txt "$TEMP/media/"
 if [ -f "$SLAX/boot/grub/cdboot.img" ]; then
    cp "$SLAX/boot/grub/cdboot.img" "$SLAX/boot/grub/boot_hybrid.img" "$TEMP/media/slax/boot/grub/"
 fi

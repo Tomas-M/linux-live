@@ -107,6 +107,14 @@ reporting progress.
 - `bootinst.bat` must remain available as `/slax/boot/bootinst.bat`. Preserve
   its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
   requiring PowerShell. Keep Slax's optional text installer logo.
+  Keep only these two installers, `vmlinuz`, `initrfs.img`, `grub.cfg`, `grub`
+  and `EFI` directly under `slax/boot`. Helper VBS and both logos belong under
+  `grub`. Slax's media README belongs at `/README.txt`; its source is
+  `Slax/debian13/README.txt`, also installed as `/usr/share/slax-media/README.txt`
+  so `genslaxiso` retains it after copy-to-RAM boot.
+  This README describes only copying `slax` to a FAT32 USB drive and running
+  `bootinst`. Keep raw ISO writing instructions and boot parameter documentation
+  out of it. The USB-SPACE partition has its own separate instructions.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
 - Add an item to `TODO.md` only when Tomas explicitly requests a TODO entry.
   Other change requests are work to complete, not backlog items.
@@ -1101,12 +1109,14 @@ must follow the general Slax repair rules above.
   but hide it from Joliet. Keep `/slax/boot/EFI` visible for file-copy USB setup.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
-  Stage `boot/usb-setup` in recreated images too. Hybrid images append a small
+  Stage `boot/grub/usb-space.tar.xz` in recreated images too. Hybrid images append a small
   FAT16 setup partition after the ESP, with Windows preparation tools from shared
-  `bootfiles/usb-setup`; makeiso sets the universal `DISK-SETUP` label directly.
+  `bootfiles/grub/usb-space`; makeiso sets the universal `USB-SPACE` label directly.
   Small setup payloads use a 2222 KiB FAT16 image.
-  Slax's `bootfiles/usb-setup/README.txt` overrides the generic README through
-  the existing shared-then-Slax bootfiles copy order. Keep Slax branding there.
+  Slax's `bootfiles/grub/usb-space/README.txt` overrides the generic README through
+  the existing shared-then-Slax bootfiles copy order. `tools/grub.create` packs
+  this payload and removes its loose directory before ISO creation. Keep Slax
+  branding there; the EXE is exposed only on the appended USB-SPACE partition.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
   and 63 (no default drive letter), preserving xorriso's existing attributes.
   Windows ignores these bits on the generic Linux filesystem GUID, even after
@@ -1121,31 +1131,31 @@ must follow the general Slax repair rules above.
   Append the 300 KiB CD read-ahead padding inside the setup partition,
   beyond its FAT filesystem, and disable xorriso's separate trailing padding to
   avoid a Windows-visible `Gap1` partition with xorriso 1.5.6.
-  `disk-setup.exe` is a separate, manually launched Windows 10/11 tool. It must
+  `usb-space.exe`, titled "Use USB Space", is a separate, manually launched Windows 10/11 tool. It must
   resolve its own USB disk, reject system disks and unexpected layouts, validate
   both GPT copies, and confirm before formatting only the unused tail as FAT32.
   Validate the ISO's Basic Data type, hidden attributes and ISO9660 signature.
   Preserve the ISO and EFI partitions and BIOS/UEFI loaders, relocate the backup
   GPT to the physical disk end, and leave an existing data partition unchanged.
-  In the temporary copy, lock DISK-SETUP before any disk writes and abort without
+  In the temporary copy, lock USB-SPACE before any disk writes and abort without
   partition changes if it is in use or cannot be locked. Retain that lock while
   formatting, mounting and verifying file writes/reads on USB-DATA, then remove
-  only DISK-SETUP. Keep DISK-SETUP if data preparation or verification fails.
+  only USB-SPACE. Keep USB-SPACE if data preparation or verification fails.
   After confirmation, relaunch a plain EXE copy in a separate local temporary
   folder. Transfer the original open disk handle, volume identity, mutex and
   complete approved GPT snapshot through inherited handles; revalidate them
   before writing. Never choose a target from the temporary EXE's location or
   a command-line disk number. Schedule temporary files for deletion at restart.
   Support FAT32 above 32 GiB without depending on Windows' native formatter.
-  Ship only the native Win32 executable and README on DISK-SETUP. Keep its source,
+  Ship only the native Win32 executable and README on USB-SPACE. Keep its source,
   manifest, PNG icon master and ICO with multiple resolutions under `tools`;
   rebuild the bundled 32-bit executable manually with
-  `sh tools/disk-setup.build` and MinGW-w64 after source changes, never during ISO builds.
+  `sh tools/usb-space.build` and MinGW-w64 after source changes, never during ISO builds.
   Work exclusively on the physical USB disk of the original launch; never
   select a different disk. Reject unexpected layouts and concurrent instances.
   Use exact-sized Win32 sector reads, including the final sector. Derive the data start from the ISO volume size,
   not the backup GPT address, because Windows may already have relocated GPT.
-  Run Disk Setup write tests only inside an isolated VM, never on this Windows
+  Run USB Space write tests only inside an isolated VM, never on this Windows
   host. Use disposable media, not large raw files on a Windows system disk.
   Extending a sparse file alone does not avoid NTFS valid-data
   zero filling when later writes target its end; a 64 GiB test caused heavy host I/O.

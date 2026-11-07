@@ -184,7 +184,7 @@ static BOOL read_plan(HANDLE disk,uint64_t bytes,uint64_t source_offset,Plan *pl
          }
          else if (memcmp(sector+54,"FAT16   ",8)) return fail(L"The boot or setup partition is not the expected FAT16 image.");
       }
-      if (used==2 && first*512!=source_offset) return fail(L"Run this program from the disk's DISK-SETUP partition.");
+      if (used==2 && first*512!=source_offset) return fail(L"Run this program from the disk's USB-SPACE partition.");
       if (used==3)
       {
          WCHAR name[37]={0};
@@ -299,7 +299,7 @@ static BOOL prepare_data(HANDLE disk,Plan *plan)
    return publish_plan(disk,plan);
 }
 
-#ifdef DISK_SETUP_TEST
+#ifdef USB_SPACE_TEST
 // Test builds exercise the same disk code on explicit disposable images or VHDs.
 int wmain(int argc,WCHAR **argv)
 {
@@ -354,7 +354,7 @@ static BOOL same_plan(const Plan *a,const Plan *b)
    BOOL space=a->disk_bytes==b->disk_bytes && a->start==b->start && a->size==b->size;
    BOOL headers=!memcmp(a->mbr,b->mbr,512) && !memcmp(a->header,b->header,512);
    BOOL partitions=a->table_bytes==b->table_bytes && !memcmp(a->table,b->table,a->table_bytes);
-   if (!space || !headers || !partitions) return fail(L"The USB disk or partition layout changed. No further changes were made. Run Disk Setup again from DISK-SETUP.");
+   if (!space || !headers || !partitions) return fail(L"The USB disk or partition layout changed. No further changes were made. Run usb-space.exe again from USB-SPACE.");
    return TRUE;
 }
 
@@ -371,14 +371,14 @@ static BOOL relaunch(HANDLE disk,HANDLE mutex,const DISK_EXTENT *extent,const WC
       return fail(L"The temporary folder must be on a local disk separate from this USB drive.");
    if (FAILED(CoCreateGuid(&unique))) return fail(L"Could not create a temporary folder name.");
    StringFromGUID2(&unique,id,40);
-   swprintf(folder,260,L"%lsDiskSetup-%ls",temp,id);
-   swprintf(copy,260,L"%ls\\disk-setup.exe",folder);
+   swprintf(folder,260,L"%lsUsbSpace-%ls",temp,id);
+   swprintf(copy,260,L"%ls\\usb-space.exe",folder);
    if (!CreateDirectoryW(folder,NULL)) return windows_error(L"Could not create the temporary folder.");
    BOOL ok=FALSE;
    HANDLE mapping=NULL,parent=NULL;
    Handoff *handoff=NULL;
    STARTUPINFOEXW startup={0};
-   if (!CopyFileW(executable,copy,TRUE)) { windows_error(L"Could not copy Disk Setup to the temporary folder."); goto done; }
+   if (!CopyFileW(executable,copy,TRUE)) { windows_error(L"Could not copy Use USB Space to the temporary folder."); goto done; }
    SECURITY_ATTRIBUTES attributes={sizeof(attributes),NULL,TRUE};
    mapping=CreateFileMappingW(INVALID_HANDLE_VALUE,&attributes,PAGE_READWRITE,0,sizeof(Handoff),NULL);
    parent=OpenProcess(SYNCHRONIZE,TRUE,GetCurrentProcessId());
@@ -393,9 +393,9 @@ static BOOL relaunch(HANDLE disk,HANDLE mutex,const DISK_EXTENT *extent,const WC
    SIZE_T bytes=0;
    InitializeProcThreadAttributeList(NULL,1,0,&bytes);
    startup.lpAttributeList=malloc(bytes);
-   if (!startup.lpAttributeList) { fail(L"Not enough memory to restart Disk Setup."); goto done; }
+   if (!startup.lpAttributeList) { fail(L"Not enough memory to restart Use USB Space."); goto done; }
    if (!InitializeProcThreadAttributeList(startup.lpAttributeList,1,0,&bytes))
-   { free(startup.lpAttributeList); startup.lpAttributeList=NULL; windows_error(L"Could not restart Disk Setup."); goto done; }
+   { free(startup.lpAttributeList); startup.lpAttributeList=NULL; windows_error(L"Could not restart Use USB Space."); goto done; }
    HANDLE handles[]={mapping,disk,mutex,parent};
    if (!SetHandleInformation(disk,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT) || !SetHandleInformation(mutex,HANDLE_FLAG_INHERIT,HANDLE_FLAG_INHERIT) ||
        !UpdateProcThreadAttribute(startup.lpAttributeList,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,handles,sizeof(handles),NULL,NULL))
@@ -407,7 +407,7 @@ static BOOL relaunch(HANDLE disk,HANDLE mutex,const DISK_EXTENT *extent,const WC
    { windows_error(L"Could not schedule temporary file cleanup. No changes were made."); goto done; }
    PROCESS_INFORMATION process;
    if (!CreateProcessW(copy,command,NULL,NULL,TRUE,EXTENDED_STARTUPINFO_PRESENT,NULL,folder,&startup.StartupInfo,&process))
-   { windows_error(L"Could not start the temporary copy of Disk Setup."); goto done; }
+   { windows_error(L"Could not start the temporary copy of Use USB Space."); goto done; }
    CloseHandle(process.hThread); CloseHandle(process.hProcess);
    ok=TRUE;
 done:
@@ -517,14 +517,14 @@ static BOOL verify_data(const Job *job)
    WCHAR name[128],path[260];
    DISK_EXTENT extent;
    if (!GetVolumeNameForVolumeMountPointW(job->drive,name,128) || !volume_extent(name,&extent))
-      return fail(L"Could not verify USB-DATA. DISK-SETUP has been kept.");
+      return fail(L"Could not verify USB-DATA. USB-SPACE has been kept.");
    if (extent.DiskNumber!=job->number || (uint64_t)extent.StartingOffset.QuadPart!=job->plan->start)
-      return fail(L"The data drive no longer belongs to the confirmed USB disk. DISK-SETUP has been kept.");
-   if (!GetTempFileNameW(job->drive,L"llk",0,path)) return windows_error(L"Could not test writing to USB-DATA. DISK-SETUP has been kept.");
+      return fail(L"The data drive no longer belongs to the confirmed USB disk. USB-SPACE has been kept.");
+   if (!GetTempFileNameW(job->drive,L"llk",0,path)) return windows_error(L"Could not test writing to USB-DATA. USB-SPACE has been kept.");
    HANDLE file=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,0,NULL,OPEN_EXISTING,FILE_FLAG_WRITE_THROUGH|FILE_FLAG_DELETE_ON_CLOSE,NULL);
    if (file==INVALID_HANDLE_VALUE)
    {
-      windows_error(L"Could not test USB-DATA. DISK-SETUP has been kept.");
+      windows_error(L"Could not test USB-DATA. USB-SPACE has been kept.");
       DeleteFileW(path);
       return FALSE;
    }
@@ -536,7 +536,7 @@ static BOOL verify_data(const Job *job)
    if (ok) ok=SetFilePointerEx(file,start,NULL,FILE_BEGIN) && ReadFile(file,&read,sizeof(read),&count,NULL) && count==sizeof(read);
    if (ok) ok=!memcmp(&written,&read,sizeof(read));
    CloseHandle(file);
-   if (!ok) return fail(L"The USB-DATA write/read test failed. DISK-SETUP has been kept.");
+   if (!ok) return fail(L"The USB-DATA write/read test failed. USB-SPACE has been kept.");
    return TRUE;
 }
 
@@ -547,7 +547,7 @@ static BOOL remove_setup(const Job *job,const Plan *expected,HANDLE volume)
    Plan fresh={0};
    BOOL ok=read_plan(job->disk,expected->disk_bytes,job->source_offset,&fresh) && same_plan(&fresh,expected);
    if (ok && !DeviceIoControl(volume,FSCTL_DISMOUNT_VOLUME,NULL,0,NULL,0,&returned,NULL))
-      ok=windows_error(L"USB-DATA is ready, but DISK-SETUP could not be unmounted and was kept.");
+      ok=windows_error(L"USB-DATA is ready, but USB-SPACE could not be unmounted and was kept.");
    if (ok)
    {
       memset(fresh.table+2*128,0,128);
@@ -557,14 +557,14 @@ static BOOL remove_setup(const Job *job,const Plan *expected,HANDLE volume)
    return ok;
 }
 
-// Keep DISK-SETUP until the data partition is formatted, mounted and verified.
+// Keep USB-SPACE until the data partition is formatted, mounted and verified.
 static DWORD WINAPI prepare_worker(void *data)
 {
    Job *job=data;
    WCHAR path[128];
    wcscpy(path,job->volume); path[wcslen(path)-1]=0;
    HANDLE volume=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
-   if (volume==INVALID_HANDLE_VALUE) { windows_error(L"Could not open DISK-SETUP. No changes were made."); return 0; }
+   if (volume==INVALID_HANDLE_VALUE) { windows_error(L"Could not open USB-SPACE. No changes were made."); return 0; }
    VOLUME_DISK_EXTENTS extents;
    DWORD returned;
    BOOL ok=DeviceIoControl(volume,IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,NULL,0,&extents,sizeof(extents),&returned,NULL);
@@ -572,7 +572,7 @@ static DWORD WINAPI prepare_worker(void *data)
    if (!ok) fail(L"The setup volume changed or could not be verified. No changes were made.");
    // Acquire the removal lock before the first write and retain it across data verification.
    if (ok && !DeviceIoControl(volume,FSCTL_LOCK_VOLUME,NULL,0,NULL,0,&returned,NULL))
-      ok=windows_error(L"DISK-SETUP is in use or could not be locked. Close files and programs using this USB drive and run Disk Setup again. No changes were made.");
+      ok=windows_error(L"USB-SPACE is in use or could not be locked. Close files and programs using this USB drive and run Use USB Space again. No changes were made.");
    Plan fresh={0};
    if (ok) ok=read_plan(job->disk,job->plan->disk_bytes,job->source_offset,&fresh);
    if (ok) ok=same_plan(&fresh,job->plan);
@@ -633,11 +633,11 @@ static int dialog(const WCHAR *heading,const WCHAR *content,PCWSTR icon,TASKDIAL
 {
    int button=IDCANCEL;
    TASKDIALOGCONFIG config={0};
-   config.cbSize=sizeof(config); config.pszWindowTitle=L"Disk Setup";
+   config.cbSize=sizeof(config); config.pszWindowTitle=L"Use USB Space";
    config.pszMainInstruction=heading; config.pszContent=content;
    config.dwCommonButtons=buttons; config.pszMainIcon=icon; config.pfCallback=dialog_callback;
    if (FAILED(TaskDialogIndirect(&config,&button,NULL,NULL)))
-      button=MessageBoxW(NULL,content,L"Disk Setup",MB_OKCANCEL|MB_ICONINFORMATION);
+      button=MessageBoxW(NULL,content,L"Use USB Space",MB_OKCANCEL|MB_ICONINFORMATION);
    return button;
 }
 
@@ -663,8 +663,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,LPWSTR command,int sho
    WCHAR executable[32768],root[32768],volume[128],device[64],model[256]=L"USB disk";
    DISK_EXTENT extent;
    BOOL ok=FALSE;
-   if (!arguments) { fail(L"Run Disk Setup directly from the USB drive's DISK-SETUP partition."); goto done; }
-   if (!GetModuleFileNameW(NULL,executable,32768)) { windows_error(L"Could not locate Disk Setup."); goto done; }
+   if (!arguments) { fail(L"Run usb-space.exe directly from the USB drive's USB-SPACE partition."); goto done; }
+   if (!GetModuleFileNameW(NULL,executable,32768)) { windows_error(L"Could not locate Use USB Space."); goto done; }
    if (continuation)
    {
       HANDLE mapping=(HANDLE)(uintptr_t)token;
@@ -676,21 +676,21 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE previous,LPWSTR command,int sho
       wcscpy(volume,handoff->volume);
       DWORD waited=WaitForSingleObject(handoff->parent,10000);
       CloseHandle(handoff->parent);
-      if (waited!=WAIT_OBJECT_0) { fail(L"The original Disk Setup process did not close. No changes were made."); goto done; }
+      if (waited!=WAIT_OBJECT_0) { fail(L"The original Use USB Space process did not close. No changes were made."); goto done; }
       goto inspect;
    }
    if (!GetVolumePathNameW(executable,root,32768) || !GetVolumeNameForVolumeMountPointW(root,volume,128))
    {
-      windows_error(L"Could not locate the disk containing Disk Setup.");
+      windows_error(L"Could not locate the disk containing Use USB Space.");
       goto done;
    }
-   if (!volume_extent(volume,&extent)) { fail(L"Run Disk Setup from the USB drive's DISK-SETUP partition."); goto done; }
+   if (!volume_extent(volume,&extent)) { fail(L"Run usb-space.exe from the USB drive's USB-SPACE partition."); goto done; }
    // Serialize preparation on this disk across users and elevated instances.
    WCHAR mutex_name[96];
-   swprintf(mutex_name,96,L"Global\\LinuxLiveKit.DiskSetup.%lu",(unsigned long)extent.DiskNumber);
+   swprintf(mutex_name,96,L"Global\\LinuxLiveKit.UsbSpace.%lu",(unsigned long)extent.DiskNumber);
    mutex=CreateMutexW(NULL,FALSE,mutex_name);
    if (!mutex) { windows_error(L"Could not reserve this disk for preparation."); goto done; }
-   if (GetLastError()==ERROR_ALREADY_EXISTS) { fail(L"Disk Setup is already running for this disk. Close the other window first."); goto done; }
+   if (GetLastError()==ERROR_ALREADY_EXISTS) { fail(L"Use USB Space is already running for this disk. Close the other window first."); goto done; }
    swprintf(device,64,L"\\\\.\\PhysicalDrive%lu",(unsigned long)extent.DiskNumber);
    DWORD access=GENERIC_READ;
    if (!preview) access|=GENERIC_WRITE;
@@ -713,11 +713,11 @@ inspect:
    STORAGE_DEVICE_DESCRIPTOR *storage=(STORAGE_DEVICE_DESCRIPTOR *)descriptor;
    if (returned<sizeof(*storage)) { fail(L"Windows returned incomplete disk hardware information."); goto done; }
    BOOL supported_bus=storage->BusType==BusTypeUsb;
-#ifdef DISK_SETUP_UI_TEST
+#ifdef USB_SPACE_UI_TEST
    supported_bus=storage->BusType==BusTypeFileBackedVirtual || storage->BusType==BusTypeVirtual;
 #endif
    if (!supported_bus)
-   { fail(L"This disk cannot be prepared. Run Disk Setup from DISK-SETUP on your live USB drive."); goto done; }
+   { fail(L"This disk cannot be prepared. Run usb-space.exe from USB-SPACE on your live USB drive."); goto done; }
    if (storage->ProductIdOffset && storage->ProductIdOffset<returned)
    {
       descriptor[returned-1]=0;
@@ -760,7 +760,7 @@ inspect:
    job.disk=disk; job.number=extent.DiskNumber; job.source_offset=extent.StartingOffset.QuadPart; job.plan=&plan;
    job.volume=volume;
    TASKDIALOGCONFIG progress={0};
-   progress.cbSize=sizeof(progress); progress.pszWindowTitle=L"Disk Setup";
+   progress.cbSize=sizeof(progress); progress.pszWindowTitle=L"Use USB Space";
    progress.pszMainInstruction=L"Preparing USB-DATA";
    progress.pszContent=L"Keep the USB drive connected.";
    progress.dwFlags=TDF_SHOW_MARQUEE_PROGRESS_BAR|TDF_CALLBACK_TIMER;
@@ -776,7 +776,7 @@ done:
    if (!ok)
    {
       if (preview) fwprintf(stderr,L"%ls\n",error_text);
-      else dialog(L"Disk Setup could not continue",error_text,TD_ERROR_ICON,TDCBF_OK_BUTTON);
+      else dialog(L"Use USB Space could not continue",error_text,TD_ERROR_ICON,TDCBF_OK_BUTTON);
    }
    free(plan.table);
    if (disk!=INVALID_HANDLE_VALUE) CloseHandle(disk);

@@ -37,7 +37,7 @@ Sub Install
     Set files=CreateObject("Scripting.FileSystemObject")
     Set shell=CreateObject("WScript.Shell")
     Set wmi=GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
-    boot=files.GetParentFolderName(WScript.ScriptFullName)
+    boot=files.GetParentFolderName(files.GetParentFolderName(WScript.ScriptFullName))
     drive=UCase(files.GetDriveName(boot))
     If Len(drive) <> 2 Then Fail "Run this installer from a local USB drive."
     filesystem=files.GetDrive(drive).FileSystem

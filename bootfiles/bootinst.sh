@@ -6,7 +6,7 @@ BOOT=$(cd "$(dirname "$0")" && pwd -P)
 if [ "$(id -u)" != 0 ]; then
    exec sudo sh "$BOOT/bootinst.sh" "$@"
 fi
-if [ -f "$BOOT/bootlogo.txt" ]; then cat "$BOOT/bootlogo.txt"; fi
+if [ -f "$BOOT/grub/bootlogo.txt" ]; then cat "$BOOT/grub/bootlogo.txt"; fi
 
 # With no argument, use the parent disk of the partition containing this script.
 PARTITION=$(grub-probe --target=device "$BOOT")

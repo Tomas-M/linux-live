@@ -5,6 +5,9 @@ set -e
 DATA=$(cd "$1" && pwd -P)
 NAME="$2"
 BOOT="$DATA/$NAME/boot"
+# Keep the raw-write USB utility packed away from the file-copy boot installers.
+tar -cJf "$BOOT/grub/usb-space.tar.xz" -C "$BOOT/grub/usb-space" .
+rm -r "$BOOT/grub/usb-space"
 mkdir -p "$BOOT/grub/net" "$BOOT/EFI/BOOT"
 cp /usr/share/grub/unicode.pf2 "$BOOT/grub/"
 cat > "$BOOT/grub/grub.cfg" <<EOF
