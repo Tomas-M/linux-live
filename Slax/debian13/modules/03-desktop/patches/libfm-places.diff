@@ -1,0 +1,281 @@
+--- a/src/gtk/fm-places-model.c
++++ b/src/gtk/fm-places-model.c
+@@ -41,6 +41,7 @@
+ #include "fm-file.h"
+ 
+ #include <glib/gi18n-lib.h>
++#include <gio/gunixmounts.h>
+ 
+ #include "fm-config.h"
+ #include "fm-monitor.h"
+@@ -95,7 +96,6 @@
+     guint places_applications_change_handler;
+     guint places_network_change_handler;
+     guint places_unmounted_change_handler;
+-    GdkPixbuf* eject_icon;
+ 
+     GSList* jobs;
+ };
+@@ -711,16 +711,7 @@
+ static void update_icons(FmPlacesModel* model)
+ {
+     GtkTreeIter it;
+-    FmIcon* icon;
+     GdkPixbuf* pix;
+-
+-    /* update the eject icon */
+-    icon = fm_icon_from_name("media-eject");
+-    pix = fm_pixbuf_from_icon(icon, fm_config->pane_icon_size);
+-    g_object_unref(icon);
+-    if(model->eject_icon)
+-        g_object_unref(model->eject_icon);
+-    model->eject_icon = pix;
+ 
+     /* reload icon for every item */
+     gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model), &it);
+@@ -951,7 +942,6 @@
+     GType types[] = {GDK_TYPE_PIXBUF, G_TYPE_STRING, G_TYPE_POINTER};
+     GtkTreeIter it;
+     GList *vols, *l;
+-    FmIcon *icon;
+     FmFileInfoJob* job = fm_file_info_job_new(NULL, FM_FILE_INFO_JOB_FOLLOW_SYMLINK);
+     GtkListStore* model = &self->parent;
+     FmPath *path;
+@@ -984,9 +974,6 @@
+ 
+     self->pane_icon_size_change_handler = g_signal_connect(fm_config, "changed::pane_icon_size",
+                                              G_CALLBACK(on_pane_icon_size_changed), self);
+-    icon = fm_icon_from_name("media-eject");
+-    self->eject_icon = fm_pixbuf_from_icon(icon, fm_config->pane_icon_size);
+-    g_object_unref(icon);
+ 
+     if(fm_config->places_home)
+     {
+@@ -1371,10 +1358,6 @@
+         self->trash_idle_handler = 0;
+     }
+ 
+-    if(self->eject_icon)
+-        g_object_unref(self->eject_icon);
+-    self->eject_icon = NULL;
+-
+     G_OBJECT_CLASS(fm_places_model_parent_class)->dispose(object);
+ }
+ 
+@@ -1420,12 +1403,11 @@
+                                            gpointer user_data)
+ {
+     FmPlacesItem* item = NULL;
+-    GdkPixbuf* pix = NULL;
+     g_return_if_fail(FM_IS_PLACES_MODEL(tree_model));
+     gtk_tree_model_get(tree_model, it, FM_PLACES_MODEL_COL_INFO, &item, -1);
+-    if(item && item->mounted)
+-        pix = ((FmPlacesModel*)tree_model)->eject_icon;
+-    g_object_set(render, "pixbuf", pix, NULL);
++    /* Let GTK size and recolor the symbolic action for the current theme. */
++    const char* icon = item && fm_places_item_is_mounted(item) ? "media-eject-symbolic" : NULL;
++    g_object_set(render, "icon-name", icon, "stock-size", GTK_ICON_SIZE_MENU, "visible", icon != NULL, NULL);
+ }
+ 
+ /**
+@@ -1489,6 +1471,18 @@
+  */
+ gboolean fm_places_item_is_mounted(FmPlacesItem* item)
+ {
++    /* Bookmarks only offer unmount for an exact, non-system mount point. */
++    if(item->type == FM_PLACES_ITEM_PATH && item->bm_item)
++    {
++        FmPath* path = fm_file_info_get_path(item->fi);
++        if(!fm_path_is_native(path)) return FALSE;
++        char* filename = fm_path_to_str(path);
++        GUnixMountEntry* mount = g_unix_mount_at(filename, NULL);
++        gboolean mounted = mount && !g_unix_is_mount_path_system_internal(filename);
++        if(mount) g_unix_mount_free(mount);
++        g_free(filename);
++        return mounted;
++    }
+     return item->mounted ? TRUE : FALSE;
+ }
+ 
+--- a/src/gtk/fm-places-view.c
++++ b/src/gtk/fm-places-view.c
+@@ -40,6 +40,7 @@
+ #define FM_DISABLE_SEAL
+ 
+ #include <glib/gi18n-lib.h>
++#include <gio/gunixmounts.h>
+ #include "fm-places-view.h"
+ #include "fm-config.h"
+ #include "fm-utils.h"
+@@ -98,6 +99,84 @@
+ static FmPlacesModel* model = NULL;
+ 
+ static guint signals[N_SIGNALS];
++
++/* A themed sidebar button inside the tree cell keeps the native Places model. */
++typedef GtkCellRendererPixbuf FmMountIndicator;
++typedef GtkCellRendererPixbufClass FmMountIndicatorClass;
++G_DEFINE_TYPE(FmMountIndicator, _fm_mount_indicator, GTK_TYPE_CELL_RENDERER_PIXBUF);
++
++enum { MOUNT_BUTTON_SIZE = 26, MOUNT_BUTTON_MARGIN = 3 };
++
++/* Draw the same circular sidebar button used by GTK's file chooser. */
++static void mount_indicator_render(GtkCellRenderer* cell, cairo_t* cr, GtkWidget* widget,
++                                   const GdkRectangle* background, const GdkRectangle* area,
++                                   GtkCellRendererState flags)
++{
++    char* icon = NULL;
++    g_object_get(cell, "icon-name", &icon, NULL);
++    if(!icon) return;
++    GtkWidget* button = g_object_get_data(G_OBJECT(cell), "sidebar-button");
++    GtkStyleContext* style = gtk_widget_get_style_context(button);
++    int x = area->x+(area->width-MOUNT_BUTTON_SIZE)/2;
++    int y = area->y+(area->height-MOUNT_BUTTON_SIZE)/2;
++    int pointer_x, pointer_y;
++    GdkModifierType modifiers;
++    GdkDevice* pointer = gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(widget)));
++    gdk_window_get_device_position(gtk_tree_view_get_bin_window(GTK_TREE_VIEW(widget)), pointer,
++                                   &pointer_x, &pointer_y, &modifiers);
++    gboolean hover = pointer_x >= x && pointer_x < x+MOUNT_BUTTON_SIZE;
++    hover = hover && pointer_y >= y && pointer_y < y+MOUNT_BUTTON_SIZE;
++    GtkStateFlags state = GTK_STATE_FLAG_NORMAL;
++    if(hover) state = modifiers & GDK_BUTTON1_MASK ? GTK_STATE_FLAG_ACTIVE : GTK_STATE_FLAG_PRELIGHT;
++    if(flags & GTK_CELL_RENDERER_SELECTED) gtk_style_context_add_class(style, "selected-place");
++    else gtk_style_context_remove_class(style, "selected-place");
++    gtk_style_context_set_state(style, state);
++    gtk_render_background(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
++    gtk_render_frame(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
++    /* Resolve symbolic colors against the button, independently of row selection. */
++    int scale = gtk_widget_get_scale_factor(widget);
++    GtkIconTheme* theme = gtk_icon_theme_get_for_screen(gtk_widget_get_screen(widget));
++    GtkIconInfo* info = gtk_icon_theme_lookup_icon_for_scale(theme, icon, 16, scale, 0);
++    g_free(icon);
++    if(!info) return;
++    GdkPixbuf* symbol = gtk_icon_info_load_symbolic_for_context(info, style, NULL, NULL);
++    g_object_unref(info);
++    if(!symbol) return;
++    cairo_surface_t* image = gdk_cairo_surface_create_from_pixbuf(symbol, scale, gtk_widget_get_window(widget));
++    cairo_push_group(cr);
++    gtk_render_icon_surface(style, cr, image, x+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_width(symbol)/scale)/2,
++                             y+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_height(symbol)/scale)/2);
++    cairo_pop_group_to_source(cr);
++    cairo_paint_with_alpha(cr, hover ? 1.0 : 0.7);
++    cairo_surface_destroy(image);
++    g_object_unref(symbol);
++}
++
++/* Keep the circular button's theme context alive for the renderer. */
++static void _fm_mount_indicator_init(FmMountIndicator* self)
++{
++    GtkWidget* button = gtk_button_new();
++    GtkStyleContext* style = gtk_widget_get_style_context(button);
++    gtk_style_context_add_class(style, "image-button");
++    gtk_style_context_add_class(style, "sidebar-button");
++    g_object_set_data_full(G_OBJECT(self), "sidebar-button", g_object_ref_sink(button), g_object_unref);
++    gtk_cell_renderer_set_fixed_size(GTK_CELL_RENDERER(self), MOUNT_BUTTON_SIZE+2*MOUNT_BUTTON_MARGIN,
++                                     MOUNT_BUTTON_SIZE+2*MOUNT_BUTTON_MARGIN);
++}
++
++/* Use GTK's icon renderer for the symbol and add the native button frame. */
++static void _fm_mount_indicator_class_init(FmMountIndicatorClass* klass)
++{
++    GTK_CELL_RENDERER_CLASS(klass)->render = mount_indicator_render;
++}
++
++/* Redraw when the pointer moves between the row label and its action button. */
++static gboolean on_mount_pointer(GtkWidget* widget, GdkEvent* event, gpointer user_data)
++{
++    gtk_widget_queue_draw(widget);
++    return FALSE;
++}
++
+ 
+ #define PLACES_MENU_XML \
+ "<popup>" \
+@@ -496,6 +575,14 @@
+     gtk_tree_view_set_model(GTK_TREE_VIEW(self), GTK_TREE_MODEL(model));
+     g_object_unref(model);
+ 
++    gtk_widget_add_events(GTK_WIDGET(self), GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK);
++    g_signal_connect(self, "motion-notify-event", G_CALLBACK(on_mount_pointer), NULL);
++    g_signal_connect(self, "leave-notify-event", G_CALLBACK(on_mount_pointer), NULL);
++    /* Refresh bookmark buttons when mounts change outside this file manager. */
++    GUnixMountMonitor* monitor = g_unix_mount_monitor_get();
++    g_signal_connect_object(monitor, "mounts-changed", G_CALLBACK(gtk_widget_queue_draw), self, G_CONNECT_SWAPPED);
++    g_object_set_data_full(G_OBJECT(self), "unix-mount-monitor", monitor, g_object_unref);
++
+     gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(self), FALSE);
+     gtk_tree_view_set_row_separator_func(GTK_TREE_VIEW(self), sep_func, NULL, NULL);
+ 
+@@ -515,7 +602,7 @@
+     gtk_tree_view_column_set_attributes( col, renderer,
+                                          "text", FM_PLACES_MODEL_COL_LABEL, NULL );
+ 
+-    renderer = gtk_cell_renderer_pixbuf_new();
++    renderer = g_object_new(_fm_mount_indicator_get_type(), NULL);
+     self->mount_indicator_renderer = GTK_CELL_RENDERER_PIXBUF(renderer);
+     gtk_tree_view_column_pack_start( col, renderer, FALSE );
+     gtk_cell_layout_set_cell_data_func(GTK_CELL_LAYOUT(col), renderer,
+@@ -642,6 +729,23 @@
+         gtk_tree_selection_unselect_all(ts);
+ }
+ 
++/* Complete an ordinary unmount without blocking GTK or hiding a failed mount. */
++static void on_bookmark_unmounted(GObject* source, GAsyncResult* result, gpointer user_data)
++{
++    GtkWidget* view = user_data;
++    GtkWidget* parent = gtk_widget_get_toplevel(view);
++    GError* error = NULL;
++    char* message = NULL;
++    gboolean completed = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, NULL, &message, &error);
++    if(!completed || !g_subprocess_get_successful(G_SUBPROCESS(source)))
++        fm_show_error(GTK_IS_WINDOW(parent) ? GTK_WINDOW(parent) : NULL, NULL,
++                      error ? error->message : message);
++    g_clear_error(&error);
++    g_free(message);
++    gtk_widget_queue_draw(view);
++    g_object_unref(view);
++}
++
+ static gboolean on_button_release(GtkWidget* widget, GdkEventButton* evt)
+ {
+     FmPlacesView* view = FM_PLACES_VIEW(widget);
+@@ -661,7 +765,10 @@
+                 /* check if we release the button on the row we previously clicked. */
+                 if(gtk_tree_path_compare(tp, view->clicked_row) == 0)
+                 {
+-                    /* check if we click on the "eject" icon. */
++                    /* Resolve this row's visible cells before testing its action button. */
++                    GtkTreeIter row;
++                    gtk_tree_model_get_iter(GTK_TREE_MODEL(model), &row, tp);
++                    gtk_tree_view_column_cell_set_cell_data(col, GTK_TREE_MODEL(model), &row, FALSE, FALSE);
+                     int start, cell_w;
+                     gtk_tree_view_column_cell_get_position(col, GTK_CELL_RENDERER(view->mount_indicator_renderer),
+                                                            &start, &cell_w);
+@@ -684,6 +791,26 @@
+                                 gtk_tree_path_free(tp);
+                                 switch(fm_places_item_get_type(item))
+                                 {
++                                case FM_PLACES_ITEM_PATH:
++                                {
++                                    /* Pass the mount point as one argument, including spaces and Unicode. */
++                                    char* path = fm_path_to_str(fm_places_item_get_path(item));
++                                    GError* error = NULL;
++                                    GSubprocess* process = g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_PIPE,
++                                                                          &error, "umount", "--", path, NULL);
++                                    g_free(path);
++                                    if(process)
++                                    {
++                                        g_subprocess_communicate_utf8_async(process, NULL, NULL, on_bookmark_unmounted, g_object_ref(view));
++                                        g_object_unref(process);
++                                    }
++                                    else
++                                    {
++                                        fm_show_error(toplevel, NULL, error->message);
++                                        g_error_free(error);
++                                    }
++                                    break;
++                                }
+                                 case FM_PLACES_ITEM_VOLUME:
+                                     volume = fm_places_item_get_volume(item);
+                                     /* eject the volume */
