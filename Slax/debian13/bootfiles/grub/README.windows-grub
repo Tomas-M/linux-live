@@ -1,0 +1,38 @@
+Embedded GNU GRUB 2.12 Windows BIOS tools
+=======================================
+
+The embedded grub-mkimage.exe and i386-pc files come from the official GNU release:
+https://ftp.gnu.org/gnu/grub/grub-2.12-for-windows.zip
+https://ftp.gnu.org/gnu/grub/grub-2.12-for-windows.zip.sig
+
+The detached signature was verified against the release key fingerprint:
+BE5C 2320 9ACD DACE B20D B0A2 8C81 89F1 988C 2166
+Published by the maintainer in the official release announcement:
+https://lists.gnu.org/archive/html/grub-devel/2023-12/msg00052.html
+
+SHA256 (official ZIP):
+e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd
+SHA256 (grub-mkimage.exe):
+e04793c1322d6654b416ffa3b5420c07703afbdcbe99857a0e4076cabd9a8fb5
+
+The installer build downloads the release ZIP from GNU's kernel.org mirror:
+https://mirrors.kernel.org/gnu/grub/grub-2.12-for-windows.zip
+It verifies the pinned ZIP SHA256 before embedding the tools directly from
+the archive. These binary build inputs are not stored in the repository.
+Only their embedded copy in bootinst.exe is distributed. External Windows
+executables and modules are not included on the Slax medium.
+Debugger helpers, EFI platforms, fonts, locales and other utilities are omitted.
+Slax supplies Debian's signed shim and GRUB EFI loaders separately.
+The Slax media bundles those loaders in slax/boot/EFI/BOOT. These BIOS tools
+are used by the native installer. Its build verifies and embeds grub-mkimage.exe
+and the matching modules so helpers are never executed from an untrusted ISO.
+The embedded utility builds a BIOS core; the native engine installs it only
+within the explicitly approved BIOS boot area.
+These tools and the native installer require only Windows system DLLs.
+The native application targets XP onward and requests administrator access.
+It does not require VBScript, WMI, PowerShell or additional runtime DLLs.
+
+License: GNU GPL version 3 or later, reproduced in COPYING.windows-grub.
+The corresponding unmodified source code is available from GNU:
+https://ftp.gnu.org/gnu/grub/grub-2.12.tar.xz
+https://ftp.gnu.org/gnu/grub/grub-2.12.tar.xz.sig
