@@ -182,8 +182,10 @@ must follow the general Slax repair rules above.
 - SSH uses root and the local `VM/id_ed25519` key. Host keys are stored in
   `VM/known_hosts`. The console password is in `VM/credentials.txt`.
   Never copy credentials or private keys into notes, logs or Git.
-- System `/tmp` is a 20 GB tmpfs. Both kernel and Slax builds use it. Do not
-  add separate RAM mounts when ordinary directories under `/tmp` suffice.
+- System `/tmp` is a 20 GB tmpfs and `/var/tmp` is a 2 GB tmpfs. Both kernel
+  and Slax builds, including completed ISO output, stay in RAM. Both mounts
+  are configured in `/etc/fstab`; download completed images before rebooting.
+  Do not add further RAM mounts when these directories suffice.
 - Free tmpfs by deleting unneeded, inactive build/test workspaces. Do not
   archive or move them to persistent storage unless explicitly requested;
   building in RAM is intended to avoid unnecessary disk writes. Moving
@@ -955,8 +957,9 @@ must follow the general Slax repair rules above.
   artifacts and other build files. Print the build directory at completion;
   do not delete it automatically. Failed Slax builds still clean their staging.
   Finished `.sb` modules are also inside the ISO at `/slax/modules`.
-- Keep output directories on the persistent filesystem, not dangling links
-  to temporary build trees. Retained Slax files in tmpfs disappear on reboot.
+- Keep real output directories, not dangling links to temporary build trees.
+  The work VM intentionally keeps `/var/tmp` output in tmpfs; download completed
+  images to Windows before rebooting. Retained files in tmpfs disappear on reboot.
 
 ## VM automation and incremental changes
 
