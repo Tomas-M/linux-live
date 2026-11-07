@@ -408,8 +408,8 @@ fs_options()
    debug_log "fs_options" "$*"
 
    echo -n "-t $1 "
-   # ISO9660 cannot be writable; avoid a failed read-write probe of optical media.
-   if [ "$1" = "iso9660" ]; then
+   # Probe NTFS read-only until Windows hibernation is checked; ISO9660 is never writable.
+   if [ "$1" = "iso9660" -o "$1" = "ntfs" -o "$1" = "ntfs3" ]; then
       echo "-o ro"
       return
    fi
@@ -429,6 +429,50 @@ mount_command()
    debug_log "mount_command" "$*"
 
    echo "mount"
+}
+
+
+# Accept only an absent hibernation file or a complete, zeroed Windows header.
+# $1 = read-only NTFS mount directory
+ntfs_hibernation_inactive()
+{
+   local FILE HEADER
+
+   FILE=$(find "$1" -maxdepth 1 -iname hiberfil.sys) || return 1
+   if [ "$FILE" = "" ]; then return 0; fi
+   if [ ! -f "$FILE" ] || [ -L "$FILE" ]; then return 1; fi
+   HEADER=$(od -An -v -N 4096 -t x1 "$FILE") || return 1
+   HEADER=$(printf '%s' "$HEADER" | tr -d ' \n')
+   if [ "${#HEADER}" -ne 8192 ]; then return 1; fi
+   test "$(printf '%s' "$HEADER" | tr -d 0)" = ""
+}
+
+
+# Mount normally, allowing NTFS writes only after a read-only hibernation check.
+# $1 = device, $2 = mount directory, $3 = filesystem
+mount_device()
+{
+   local NUMBER EXISTING
+
+   # Reuse an already checked NTFS mount; a second RO mount of an RW superblock is refused.
+   if [ "$3" = ntfs -o "$3" = ntfs3 ]; then
+      NUMBER=$(cat "/sys/class/block/$(basename "$(readlink -f "$1")")/dev") || return 1
+      EXISTING=$(awk -v device="$NUMBER" '$3==device && $4=="/" {print $5; exit}' /proc/self/mountinfo)
+      if [ "$EXISTING" != "" ]; then
+         $(mount_command "$3") --bind "$(printf '%b' "$EXISTING")" "$2" 2>/dev/null
+         return
+      fi
+   fi
+
+   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") 2>/dev/null; then return 1; fi
+   if [ "$3" != ntfs -a "$3" != ntfs3 ]; then return 0; fi
+
+   if ! ntfs_hibernation_inactive "$2" 2>/dev/null; then
+      echo "* Keeping $1 read-only: Windows is hibernated or its state could not be verified." >&2
+   elif ! mount -o remount,rw "$2" 2>/dev/null; then
+      echo "* Keeping $1 read-only: NTFS refused the read-write remount." >&2
+   fi
+   return 0
 }
 
 
@@ -615,7 +659,7 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM OPTIONS MOUNT ISOMNT DEVICES BOOTDEVICE
+   local DEVICE FS FROM ISOMNT DEVICES BOOTDEVICE
 
    mkdir -p "$1"
    DEVICES=$(blkid | sort | cut -d: -f 1)
@@ -641,10 +685,7 @@ find_data_try()
       fi
 
       FS="$(device_bestfs "$DEVICE")"
-      OPTIONS="$(fs_options $FS)"
-      MOUNT="$(mount_command $FS)"
-
-      if ! $MOUNT "$DEVICE" "$1" $OPTIONS 2>/dev/null; then continue; fi
+      if ! mount_device "$DEVICE" "$1" "$FS"; then continue; fi
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
       if [ -f "$1/$FROM" ]; then
@@ -862,7 +903,7 @@ select_perch_session()
       FS=$(device_bestfs "$DEVICE")
       if [ "$FS" = "" -o "$FS" = swap ]; then continue; fi
       DIR=$(mktemp -d "$SCAN/disk.XXXXXX") || exit 1
-      if ! $(mount_command "$FS") "$DEVICE" "$DIR" $(fs_options "$FS") 2>/dev/null; then continue; fi
+      if ! mount_device "$DEVICE" "$DIR" "$FS"; then continue; fi
       if ! awk -v dir="$DIR" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
          umount "$DIR" >&2
          continue
@@ -946,7 +987,7 @@ restore_perch_session()
 {
    debug_log "restore_perch_session" "$*"
 
-   local TIMEOUT DEVICE FS OPTIONS MOUNT DEVROOT
+   local TIMEOUT DEVICE FS MOUNT DEVROOT
    local CHANDIR PERCHDIR FILE LAST LASTSESSION NEW USAGE NAME NAMEFILE TITLE SOURCE TEMP COPY_STATUS
    local COPY_PID PROGRESS_PID COPY_BASE COPY_USED TICKS
 
@@ -960,7 +1001,6 @@ restore_perch_session()
       PERCHDIR="$(echo "$PERCHDIR" | cut -d '/' -f 4-)"
 
       FS="$(device_bestfs "$DEVICE")"
-      OPTIONS="$(fs_options $FS)"
       MOUNT="$(mount_command $FS)"
       DEVROOT="$MEMORY/persistence"
       mkdir -p "$DEVROOT"
@@ -969,8 +1009,12 @@ restore_perch_session()
       for TIMEOUT in $(seq 1 20); do
          echo -n "." >&2
          refresh_devs
-         $MOUNT "$DEVICE" "$DEVROOT" $OPTIONS 2>/dev/null
+         mount_device "$DEVICE" "$DEVROOT" "$FS"
          if [ $? -eq 0 ]; then
+            if ! awk -v dir="$DEVROOT" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
+               umount "$DEVROOT" >&2
+               return 1
+            fi
             if [ "$PERCHDIR" != "" -a "$PERCHDIR" != "/" ]; then
                mkdir -p "$DEVROOT/$PERCHDIR"
                $MOUNT --bind "$DEVROOT/$PERCHDIR" "$CHANDIR"
