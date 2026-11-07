@@ -104,8 +104,10 @@ reporting progress.
   Inspect nearby code before changing `livekitlib` or other existing scripts.
   Prefer familiar `if ... then ... fi` blocks and `while true`. Do not introduce
   `case`, `while :`, or standalone `[ ... ]` guards in newly written shell code.
-- `bootinst.bat` must remain available as `/slax/boot/bootinst.bat`. Preserve
-  its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
+- `bootinst.bat` must remain available as `/slax/boot/bootinst.bat`. Keep
+  both installers, their VBS helper and bundled Windows GRUB files only under
+  `Slax/debian13/bootfiles`; generic Live Kit does not include USB installers.
+  Preserve its Linux dispatch to `bootinst.sh` and Windows XP-or-newer support without
   requiring PowerShell. Keep Slax's optional text installer logo.
   Keep only these two installers, `vmlinuz`, `initrfs.img`, `grub.cfg`, `grub`
   and `EFI` directly under `slax/boot`. Helper VBS and both logos belong under
@@ -273,7 +275,7 @@ must follow the general Slax repair rules above.
   `grub-efi-amd64-bin` only on the build host: UEFI USB setup copies
   the bundled loader, and ISO recreation builds a temporary FAT image with
   the existing `mkfs.fat` and loop-mount tools.
-- Core also needs `fdisk` for `bootinst.sh`'s GPT ESP setup through `sfdisk`.
+- Core also needs `fdisk` for Partition Manager and ISO recreation through `sfdisk`.
   PXE needs GNU `cpio` for initramfs repacking and Debian's dynamically linked
   `busybox` for `httpd`. Install both without recommends; keep the separate
   static BusyBox bundled in the initramfs unchanged.
@@ -309,6 +311,18 @@ must follow the general Slax repair rules above.
   Keep the side panes fixed in width while the center adapts to window size;
   use automatic overlay scrollbars for details and the device and partition
   lists in short windows. Give partition names more width than filesystem types.
+  Keep the partition details pane informational, with no buttons below Status.
+  New tables default to GPT. Recognize whole-device filesystems even when their
+  boot sectors resemble empty MBR tables, retaining their mounts for Review.
+  Keep New available without GPT/MBR and open the new-table dialog. Probe labels
+  through blkid JSON so spaces, literal backslashes and Unicode remain intact.
+  Subscribe to whole-device udev events without polling or reloading existing
+  layouts. Defer discovery until disk jobs and dialogs finish. Remove disconnected
+  or replaced disks immediately, discarding their plans and Undo without asking
+  and cancelling their editor or Review; preserve other disks' plans and rows.
+  Keep dialog actions together on the
+  right, primary before Cancel. Apply uses a modal progress bar driven by actual
+  completed phases; closing it cannot interrupt disk writes.
   Hide loop and zram devices
   by default; `--include-loop` includes loops only. Disks without GPT/MBR offer
   a new table on double-click. Keep selected GTK list rows alive during pointer
@@ -758,6 +772,12 @@ must follow the general Slax repair rules above.
   icon; keep that logic out of the PCManFM patch.
 - Rebuild `libfm4t64` with `03-desktop/build-libfm` and `libfm-rename.diff`,
   preserving Debian's version and holding the package.
+  The same build also packages and holds `libfm-gtk3-4t64`, applying
+  `libfm-places.diff`. Places bookmarks for exact non-system mount points show
+  a circular, themed unmount button; ordinary directories and symlinks to boot/session storage do
+  not. Watch the Unix mount table to refresh buttons after external changes.
+  Unmount asynchronously without a shell, force or lazy flags, and show errors
+  while retaining the button if the mount remains present.
   Monitor rename and move events explicitly; a rename retains the existing file
   info and model row, while moving in or out still adds or removes the entry.
   PCManFM keeps the icon's position across a rename and saves it under the new
@@ -1167,12 +1187,15 @@ must follow the general Slax repair rules above.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
   UEFI without `bootinst`, while the existing file-copy USB setup remains valid.
-- Windows boot setup must use bundled GRUB/EFI binaries from shared Live Kit
-  assets. Linux may use the system's GRUB tools. USB setup creates the root
+- Slax's Windows boot setup must use its bundled GRUB/EFI binaries, with the
+  Windows installer files under `Slax/debian13/bootfiles`. Linux may use the
+  system's GRUB tools. USB setup creates the root
   `EFI/BOOT` directory from the bundled loaders.
 - Require FAT12, FAT16 or FAT32 before changing USB boot records. Install BIOS
-  first, then mark the GPT partition as an ESP. Never format the user's disk
-  or change its partition layout as part of boot setup.
+  first, then copy the bundled EFI files. Preserve existing partition types
+  and drive letters in both Windows and Linux installers; never convert the
+  data partition into an ESP. Never format the user's disk or change its
+  partition layout as part of boot setup.
 - Use `gfxmode=auto`, retain the framebuffer mode, and center the unscaled
   Slax logo with menu items below it. Avoid frames, tables and extra decoration.
   Keep the four-entry menu centered at 360 px wide, 100 px below the screen center.

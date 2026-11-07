@@ -53,12 +53,6 @@ while [ "$MOUNT" != / ]; do
 done
 mkdir -p "$MOUNT/EFI/BOOT"
 cp -a "$BOOT/EFI/." "$MOUNT/EFI/"
-# Identify the existing FAT partition as an ESP without changing its layout.
-STYLE=$(grub-probe --target=partmap "$BOOT")
-if [ "$STYLE" = gpt ]; then
-   NUMBER=$(cat "/sys/class/block/$(basename "$PARTITION")/partition")
-   sfdisk --part-type "$DISK" "$NUMBER" C12A7328-F81F-11D2-BA4B-00A0C93EC93B
-fi
 echo "UEFI boot files installed in $MOUNT/EFI/BOOT."
 
 [ "$BIOS_STATUS" -eq 0 ] || exit "$BIOS_STATUS"
