@@ -17,8 +17,8 @@ SHA256 (grub-install.exe):
 
 Only the BIOS installer and its matching i386-pc images/modules are included.
 Debugger helpers, EFI platforms, fonts, locales and other utilities are omitted.
-The build generates EFI loaders separately using the build host's GRUB tools.
-The generated kit bundles those loaders in boot/EFI/BOOT. bootinst uses
+Slax supplies Debian's signed shim and GRUB EFI loaders separately.
+The Slax media bundles those loaders in slax/boot/EFI/BOOT. bootinst uses
 explicit paths to this EXE and its matching BIOS modules; it does not need
 GRUB installed on Windows, a GRUB PATH entry or any runtime downloads.
 The EXE imports only Windows system DLLs: ADVAPI32, KERNEL32, msvcrt,
@@ -26,9 +26,8 @@ SHELL32 and USER32. No separate runtime DLL package is required.
 bootinst.bat uses Windows Script Host (VBScript and WMI), available from
 Windows XP onward. PowerShell is not required. Run with administrator rights;
 Vista and later request elevation through the Windows shell.
-MBR keeps the FAT partition type so XP can still access the USB drive.
-GPT setup needs Windows 7 or later; Windows 8 and later use Storage WMI,
-while Windows 7 uses the system DiskPart utility.
+Existing partition types and drive letters are preserved. Copying EFI files
+does not convert a data partition into an EFI System Partition.
 VBScript must be enabled if Windows Script Host or its engine was removed.
 
 License: GNU GPL version 3 or later, reproduced in COPYING.

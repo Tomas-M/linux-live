@@ -48,13 +48,8 @@ Note:
   - it creates a media tree and scripts to generate ISO and ZIP files in /tmp
   - make sure you have enough free space in /tmp to handle it
   
-* For USB boot, copy the /$LIVEKITNAME directory from the ISO to the USB.
-  On Windows, run $LIVEKITNAME/boot/bootinst.bat.
-  On Linux, run sh $LIVEKITNAME/boot/bootinst.bat.
-  The installer requests administrator rights and sets up booting without
-  formatting the drive. Windows XP and later use VBScript; Linux needs GRUB tools.
-  USB installation requires FAT12, FAT16 or FAT32.
-  See DOC/supported_fs.txt for filesystem and disk requirements.
+* For USB boot, write the generated hybrid ISO image to the USB device
+  using a disk-imaging tool. File-copy USB installation is distribution-specific.
 
 * Slax-specific instructions are in Slax/README.
 

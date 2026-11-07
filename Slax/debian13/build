@@ -33,6 +33,7 @@ BOOT=$MEDIA/slax/boot
 mkdir -p "$BOOT" "$MEDIA/slax/changes"
 cp -a "$KIT/bootfiles/." "$BOOT/"
 cp -a "$THIS/bootfiles/." "$BOOT/"
+chmod 755 "$BOOT/bootinst.bat" "$BOOT/bootinst.sh"
 cp "$THIS/README.txt" "$MEDIA/"
 sh "$THIS/build-boot" "$MEDIA" "$BUILD"
 sh "$BOOT/grub/makeiso.sh" "$BUILD/slax-amd64.iso"

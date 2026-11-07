@@ -75,8 +75,6 @@ cd "$LIVEKITDATA"
 ARCH=$(uname -m)
 TARGET=/tmp
 
-grep -v "#" "$CWD/bootinfo.txt" | sed "s/mylinux/$LIVEKITNAME/; s/\$/$(printf '\r')/" > readme.txt
-
 printf '#!/bin/sh\nexec sh "%s/%s/boot/grub/makeiso.sh" "%s/%s-%s.iso"\n' \
    "$LIVEKITDATA" "$LIVEKITNAME" "$TARGET" "$LIVEKITNAME" "$ARCH" > "$TARGET/gen_${LIVEKITNAME}_iso.sh"
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh

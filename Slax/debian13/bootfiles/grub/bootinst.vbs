@@ -29,11 +29,11 @@ Function PartitionForDrive(drive)
     Next
 End Function
 
-' Keep BIOS installation before EFI partition changes, including elevation restarts.
+' Install BIOS boot code and copy EFI files without changing partition types.
 Sub Install
     Dim boot, drive, filesystem, automatic, elevated, arguments
-    Dim partition, hostPartition, disk, model, systemDisk, os, version, modern, gpt, registry, allowed
-    Dim storage, disks, items, item, parameters, response, biosStatus
+    Dim partition, hostPartition, disk, model, systemDisk, os, version, modern, registry, allowed
+    Dim storage, disks, biosStatus
     Set files=CreateObject("Scripting.FileSystemObject")
     Set shell=CreateObject("WScript.Shell")
     Set wmi=GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
@@ -57,10 +57,6 @@ Sub Install
         version=Split(os.Version,".")
     Next
     modern=(CInt(version(0)) > 6 Or (CInt(version(0))=6 And CInt(version(1)) >= 2))
-    gpt=(Left(partition.Type,4)="GPT:")
-    If gpt And Not modern Then
-        If CInt(version(0)) < 6 Or CInt(version(1)) < 1 Then Fail "Installing to GPT needs Windows 7 or later. Use an MBR USB drive on XP or Vista."
-    End If
 
     ' Check access without writing a probe directory into the Windows installation.
     Set registry=GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")
@@ -92,46 +88,7 @@ Sub Install
     If Not files.FolderExists(drive & "\EFI") Then files.CreateFolder drive & "\EFI"
     If Not files.FolderExists(drive & "\EFI\BOOT") Then files.CreateFolder drive & "\EFI\BOOT"
     files.CopyFolder boot & "\EFI\*",drive & "\EFI\",True
-    ' MBR retains its FAT type for XP; GPT needs the EFI System Partition GUID.
-    If gpt Then
-        If modern Then
-            Set items=storage.ExecQuery("SELECT * FROM MSFT_Partition WHERE DiskNumber=" & partition.DiskIndex & " AND Offset=" & partition.StartingOffset)
-            If items.Count <> 1 Then Fail "Cannot identify the FAT partition for EFI setup."
-            For Each item In items
-                Set parameters=item.Methods_("SetAttributes").InParameters.SpawnInstance_
-                parameters.GptType="{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-                Set response=item.ExecMethod_("SetAttributes",parameters)
-                If response.ReturnValue <> 0 Then Fail "Cannot mark the EFI partition (error " & response.ReturnValue & ")."
-                If Not files.FolderExists(drive & "\") Then
-                    Set parameters=item.Methods_("AddAccessPath").InParameters.SpawnInstance_
-                    parameters.AccessPath=drive & "\"
-                    Set response=item.ExecMethod_("AddAccessPath",parameters)
-                    If response.ReturnValue <> 0 Then Fail "Cannot restore the USB drive letter (error " & response.ReturnValue & ")."
-                End If
-            Next
-        Else
-            MarkLegacyGpt drive
-        End If
-    End If
     WScript.Echo "UEFI boot files installed in " & drive & "\EFI\BOOT."
     If biosStatus <> 0 Then Fail "BIOS GRUB installation failed (exit " & biosStatus & ")."
     WScript.Echo "BIOS boot installation finished."
-End Sub
-
-' Windows 7 has DiskPart but lacks the newer Storage WMI provider.
-Sub MarkLegacyGpt(drive)
-    Dim path, commands, status, partition
-    path=files.BuildPath(files.GetSpecialFolder(2),files.GetTempName)
-    Set commands=files.CreateTextFile(path,False)
-    commands.WriteLine "select volume " & Left(drive,1)
-    commands.WriteLine "set id=C12A7328-F81F-11D2-BA4B-00A0C93EC93B override"
-    commands.WriteLine "assign letter=" & Left(drive,1)
-    commands.WriteLine "exit"
-    commands.Close
-    status=shell.Run("diskpart.exe /s " & Quote(path),1,True)
-    files.DeleteFile path
-    If status <> 0 Then Fail "Cannot mark the EFI partition (DiskPart exit " & status & ")."
-    If Not files.FolderExists(drive & "\") Then Fail "Cannot restore the USB drive letter."
-    Set partition=PartitionForDrive(drive)
-    If partition.Type <> "GPT: System" Then Fail "DiskPart did not mark the USB partition as an EFI System Partition."
 End Sub
