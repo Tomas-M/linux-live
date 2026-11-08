@@ -99,6 +99,7 @@ public:
    bool isSelected(const Device &device) const;
    int displayPage() const;
    bool indeterminate() const;
+   bool busy() const;
    std::string heading() const;
    std::string introduction() const;
    std::string progressText() const;

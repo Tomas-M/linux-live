@@ -18,6 +18,7 @@ struct GtkUi
    GtkWidget *rail,*steps[4],*numbers[4],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox,*messageIcon;
    GtkWidget *devices,*deviceScroll,*erase,*target[2],*status,*percent,*progress,*result;
    GtkWidget *back,*next,*footerLabel,*content;
+   GdkCursor *progressCursor=nullptr;
    bool updating=false;
 } ui;
 
@@ -178,6 +179,7 @@ static void updateWindow()
    gtk_widget_set_sensitive(ui.path,app.pending==None);
    gtk_widget_set_sensitive(ui.next,app.canContinue());
    gtk_button_set_label(GTK_BUTTON(ui.next),app.page==3?(app.error.empty()?"Finish":"Try again"):"Next");
+   gdk_window_set_cursor(gtk_widget_get_window(window),app.busy()?ui.progressCursor:nullptr);
    ui.updating=false;
 }
 
@@ -249,6 +251,7 @@ void showInstallError(const std::string &message)
 int runWindow()
 {
    if (!gtk_init_check(nullptr,nullptr)) { fprintf(stderr,"Open the installer in a Slax graphical session.\n"); return 1; }
+   ui.progressCursor=gdk_cursor_new_from_name(gdk_display_get_default(),"progress");
    for (int i=0; i<7; i++)
    {
       auto loader=gdk_pixbuf_loader_new();
@@ -381,6 +384,7 @@ int runWindow()
    g_source_remove(timer); app.stop();
    if (window) gtk_widget_destroy(window);
    for (auto image:images) g_object_unref(image);
+   g_clear_object(&ui.progressCursor);
    return 0;
 }
 

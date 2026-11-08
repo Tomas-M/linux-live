@@ -520,6 +520,17 @@ static void updateWindow()
    layoutWindow();
    layoutCards();
    ui.updating=false;
+   // Refresh a stationary pointer too, keeping native frame and child-control cursors.
+   POINT point;
+   if (GetCursorPos(&point))
+   {
+      HWND hovered=WindowFromPoint(point);
+      if (hovered==window || IsChild(window,hovered))
+      {
+         auto hit=SendMessageW(hovered,WM_NCHITTEST,0,MAKELPARAM(point.x,point.y));
+         SendMessageW(hovered,WM_SETCURSOR,reinterpret_cast<WPARAM>(hovered),MAKELPARAM(hit,WM_MOUSEMOVE));
+      }
+   }
 }
 
 // Update on the GUI thread using ordinary control messages.
@@ -658,6 +669,10 @@ static void revealFocus()
 // Handle native control notifications; leave all nonclient behavior to Windows.
 static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
+   if (message==WM_SETCURSOR && LOWORD(lp)==HTCLIENT && app.busy())
+   {
+      SetCursor(LoadCursorW(nullptr,IDC_APPSTARTING)); return TRUE;
+   }
    if (message==WM_COMMAND && !ui.updating)
    {
       int id=LOWORD(wp);

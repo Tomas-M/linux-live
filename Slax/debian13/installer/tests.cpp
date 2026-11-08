@@ -331,9 +331,9 @@ int main(int argc,char **argv)
 
    // Automatic validation advances once without selecting a target or starting writes.
    Installer automatic; before=writeCalls; automatic.setImagePath(image.path,true);
-   assert(automatic.pending==Next && automatic.source==image.path && !automatic.canContinue());
+   assert(automatic.pending==Next && automatic.source==image.path && !automatic.canContinue() && automatic.busy());
    deliver(automatic);
-   assert(automatic.page==1 && automatic.selected.empty() && !automatic.plan && writeCalls==before);
+   assert(automatic.page==1 && automatic.selected.empty() && !automatic.plan && writeCalls==before && !automatic.busy());
    automatic.activate(Back); deliver(automatic);
    assert(automatic.page==0 && automatic.pending==None && automatic.source.empty() && automatic.iso.path==image.path);
    Installer invalidSource; invalidSource.setImagePath(fixtureRoot+"/missing-source.iso",true); deliver(invalidSource);
@@ -354,8 +354,8 @@ int main(int argc,char **argv)
    auto drive=fixture(5,true); hardware={drive}; Installer wizard; wizard.iso=image;
    wizard.activate(Next); wizard.scannedRevision=wizard.revision-1; wizard.scanReady=true; wizard.tick(); assert(wizard.page==0);
    deliver(wizard); assert(wizard.page==1 && wizard.pending==None); wizard.activate(Select,drive.id); wizard.activate(Erase);
-   wizard.activate(Next); assert(wizard.displayPage()==2 && wizard.indeterminate() && !wizard.progressText().empty());
-   before=writeCalls; deliver(wizard); assert(wizard.page==1 && wizard.displayPage()==1 && !wizard.plan && writeCalls==before);
+   wizard.activate(Next); assert(wizard.displayPage()==2 && wizard.indeterminate() && !wizard.progressText().empty() && wizard.busy());
+   before=writeCalls; deliver(wizard); assert(wizard.page==1 && wizard.displayPage()==1 && !wizard.plan && writeCalls==before && !wizard.busy());
    approve=true; wizard.activate(Next); deliver(wizard); assert(wizard.pending==Confirm);
    hardware.clear(); deliver(wizard); assert(wizard.page==1 && !dialogError.empty() && wizard.message().empty() && writeCalls==before);
    hardware={drive}; deliver(wizard); wizard.activate(Select,drive.id); wizard.activate(Next); deliver(wizard);
@@ -369,9 +369,9 @@ int main(int argc,char **argv)
    });
    deliver(wizard); assert(!scanFinished && writeCalls==before); releaseScan=true;
    if (wizard.page!=2) fprintf(stderr,"Wizard page %d, pending %d: %s\n",wizard.page,int(wizard.pending),wizard.error.c_str());
-   assert(wizard.page==2);
+   assert(wizard.page==2 && wizard.busy());
    wizard.activate(Close); assert(native==None);
    for (int i=0; i<1000 && wizard.page==2; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); wizard.tick(); }
-   wizard.stop(); assert(wizard.page==3 && wizard.error.empty() && wizard.percent==100); wizard.activate(Next); assert(native==Close);
+   wizard.stop(); assert(wizard.page==3 && wizard.error.empty() && wizard.percent==100 && !wizard.busy()); wizard.activate(Next); assert(native==Close);
    puts("Installer: ISO, SHA-256, GPT/FAT32 writes, existing files, Windows multiboot, firmware rollback, disconnection and confirmation checks passed.");
 }

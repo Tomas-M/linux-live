@@ -74,7 +74,7 @@ reporting progress.
   English while retaining the alternate in persistent sessions. Observe modifier
   chords without grabbing application input; Ctrl+Shift plus another key must not
   change layouts. Keep the tray synchronized with external XKB changes.
-  The tray handles bare left Super on release to open `fbappselect`, suppressing
+  The tray handles either bare Super key on release to open `fbappselect`, suppressing
   it for combinations. Fluxbox binds Super+Space to `Exec true` so the focused app
   receives no space. Preserve its other Super shortcuts and AltGr typing.
   Render the tray abbreviation as a native GTK label in an XEmbed plug, not
@@ -128,6 +128,10 @@ reporting progress.
   Target Next immediately shows preparation on the progress page, with a moving
   indicator and status text before approval and actual writes. Keep scanner joins
   off the GUI thread. Use bundled check/warning symbols instead of system status icons.
+  During requested ISO/target checks and installation, use the native arrow-with-busy
+  cursor over the client area: Windows IDC_APPSTARTING and GTK's themed progress
+  cursor when available. Restore ordinary cursors on completion and while awaiting
+  dialog input; leave background discovery and native resize cursors unchanged.
   Erase highlights every visible row on the last clicked physical disk; turning
   it off restores only that clicked row. Unknown physical identities never group.
   Detect mounted-source files through Windows' optional native VirtDisk API or
