@@ -1,130 +1,182 @@
 # Slax Installer
 
-`../bootfiles/bootinst` runs in Slax. `bootinst.exe` is a standalone 32-bit
+`../installers/slax-install-linux` runs in Slax. `slax-install.exe` is a standalone 32-bit
 Windows executable for Windows XP and later. Both perform real installations.
-The native GTK 3 and Win32 wizard retains Slax branding, drive cards and the
-fixed step sidebar. Default client size is 832 × 480 logical pixels; minimum
-is 720 × 400. Windows can be resized and maximized normally.
-The ISO path supports typing and clipboard paste. Typing and Browse only fill
-the path; Next starts asynchronous ISO validation. An automatically detected
-source ISO is validated immediately and opens the target step on success.
-Back returns to the editable path without advancing again; invalid automatic
-sources remain on the ISO step with an explanation. Cancel has a wider gap
-from the Back/Next pair.
-Windows reads native ISO attachment metadata when available (Windows 8 and
-later); Linux follows the executable's ISO loop device to its backing file.
-If the original file cannot be resolved, the path remains available for manual
-entry. Explicit command-line paths take precedence. Validation feedback keeps
-summary, reason and recovery on separate lines beside a muted-red square.
+The ISO places both executables directly in `/slax`.
+The GTK 3 and Win32 wizard uses native windows, controls and dialogs, with Slax
+branding and a permanent sidebar. Initial client size is 832 × 540 logical
+pixels, fitting four normal drive cards with a small reserve; minimum is
+720 × 400. The list expands when the window grows.
 
-## Targets and installation
+## Wizard
 
-Discovery runs outside the GUI thread. It lists internal and USB physical
-disks, their individual partitions and Windows drive letters, including disks
-with no partition table. The menu shows partitions strictly larger than
-1,000,000,000 bytes. A whole disk is hidden when it has any partition above
-this limit. Unformatted partitions are hidden when a formatted partition above
-the limit exists on the same disk. Complete discovery metadata is retained for
-preflight and whole-disk erase warnings. Bare disks and disks with only small
-partitions remain whole-disk targets, labeled #0, #1, etc. on Windows. Lists
-expand with the window instead of stopping at a fixed height.
-Windows sorts drive letters alphabetically before the remaining targets;
-Linux sorts by full device path.
-Linux badges show complete device paths such as `/dev/sda2` and
-`/dev/nvme0n1p2`. Their shared width follows the text and preserves aligned
-device descriptions; unusually long paths wrap within the badge.
-Targets need at least 1 GB total capacity and enough
-actual free space for the selected payload. Optical, network, loop and zram
-storage are not installation targets. Read-only and layered storage report
-why they cannot be used. All sibling partitions remain available to the
-confirmation even when they are too small to hold Slax.
+The ISO path supports typing, paste and Browse. Edited paths are validated only
+after Next. An automatically detected source is checked immediately and opens
+the target step on success. Back returns to the path without advancing again.
+Windows uses optional native VirtDisk attachment metadata; Linux follows the
+ISO loop device. Missing metadata leaves the path available for manual entry.
+The footer contains Back and Next; the native window close control exits the
+wizard. Closing remains disabled during disk writes.
 
-Without **Erase entire disk**, existing partitions and files are retained.
-The installer creates a new `slax` directory, verifies every copied file with
-SHA-256 and publishes it after copying completes. An existing `slax` directory
-is never replaced; it may contain saved sessions. Rename or move it first.
+Discovery runs outside the GUI thread and retains the complete physical-disk
+inventory. The menu shows partitions strictly larger than 1,000,000,000 bytes.
+A whole disk is hidden when it has a partition above this limit; unformatted
+partitions are hidden when a formatted partition above it exists on that disk.
+Bare disks and disks with only small partitions remain whole-disk choices.
+Windows sorts drive letters first, then other targets; Linux sorts full device
+paths. Every card has a square icon badge for hard, USB or virtual storage,
+using Partition Manager's artwork. The second line begins with the bold target
+path (`C:/`, `#0` or `/dev/sda5`), followed by capacity, filesystem and free space
+with middle-dot separators. Wheel events at list boundaries do not repaint
+unchanged cards.
 
-FAT filesystems can host their own removable UEFI loaders. NTFS, ext2/3/4 and
-XFS require an existing writable FAT EFI System Partition on the same disk.
-Btrfs and exFAT additionally require a Slax ISO advertising their initramfs
-drivers in `slax/boot/grub/filesystems.txt`. Windows can preserve only volumes
-its own filesystem drivers can access. Multi-device Btrfs, RAID, LVM, dynamic
-volumes and storage pools are rejected rather than altering their metadata.
-Encrypted volumes and filesystems without a stable, unique UUID are rejected.
+The target page shows device information without inline eligibility errors.
+Next always opens a native dialog: a neutral error explaining why installation
+is unavailable, or a short, plain-language confirmation of the actual plan.
+The checkbox reads **Erase entire selected disk (including all other partitions
+on it)**. When checked, every visible row on the last clicked physical disk is
+highlighted. Unchecking restores only the last clicked row, or no selection.
+Hidden sibling partitions still appear in erase warnings.
+Target Next immediately opens the progress page with preparation text and an
+indeterminate indicator. Cancellation or a failed check returns to target selection;
+approved work keeps this page visible through final checks and actual writes.
+The GUI never waits for scanner shutdown. ISO checks also show immediate status.
+Completion and error states use the bundled green check and muted-red warning
+symbols, including native error dialogs, instead of operating-system status icons.
 
-Internal-disk multiboot requires a session booted using 64-bit UEFI and writable
-firmware variables. A separate `EFI/Slax/<installation-id>` contains the signed
-shim, signed GRUB, kernel, initramfs and full menu. Microsoft boot files, BCD
-and existing firmware entries are retained. Slax is added first in BootOrder;
-its complete menu has a visible 10-second timeout and a Windows Boot Manager
-entry when present. Secure Boot stays enabled. An unknown removable fallback
-loader is not overwritten. An identical Windows fallback can be backed up
-atomically before the Slax fallback is published; Microsoft files stay intact.
+## Preserving files and existing systems
 
-A simple non-system MBR FAT partition with at least 1 MiB before it can also
-receive BIOS GRUB without changing its partition table. Existing Windows BIOS
-loaders are not replaced. Other preserve configurations are UEFI-only, as
-explained in the confirmation. NTFS boot and persistence sources are mounted
-read-only first and remounted writable only after checking the Windows
-hibernation header; a failed check or remount leaves them read-only. No force
-mount option is used. Linux installation checks the Windows hibernation header
-before obtaining writable access and refuses active or unverifiable hibernation.
+The installer creates a new `slax` directory, verifies files with SHA-256 and
+publishes the directory only after copying succeeds. An existing `slax` file or
+directory is never replaced; it can contain saved sessions. Move or rename it
+first. BIOS and UEFI are planned independently:
 
-With **Erase entire disk**, the physical parent is repartitioned, including
-all its other partitions. The confirmation lists their names and drive letters.
-The new GPT contains a 1 MiB BIOS boot partition, a FAT32 ESP (256 MiB with
-512-byte sectors, 512 MiB with 4096-byte sectors), and one FAT32 data partition
-using the remaining capacity. Native formatting supports FAT32 above 32 GiB,
-within its sector and cluster limits. 512-byte disks support BIOS and UEFI;
-native 4096-byte disks support UEFI.
-When the installer runs in Windows XP (including XP x64), erasure instead
-creates MBR with an active FAT32 Slax data partition first and a small FAT32
-ESP second (type 0xEF). GRUB BIOS uses the reserved gap before the data
-partition; signed UEFI loaders remain in the ESP. Data comes first so XP can
-expose it on removable USB media. This XP-only layout requires 512-byte
-logical sectors and a disk no larger than 2 TiB. Newer Windows and Linux keep
-GPT even when booted in BIOS mode; compatibility mode does not select XP.
+| Target | Available installation paths |
+| --- | --- |
+| FAT, NTFS, ext2/3/4 or XFS partition on MBR | BIOS in safe empty boot space; UEFI through a same-disk ESP or a newly added ESP in free space. |
+| Supported partition on GPT | BIOS through an empty BIOS boot partition or a new one in free space; UEFI through an existing or new ESP. |
+| Windows XP BIOS system | Keep the original MBR boot code and boot.ini default; append an NTLDR entry pointing at a verified sector file which starts Slax GRUB. |
+| Newer Windows BIOS system | Use native BCDEdit to append a boot-sector entry without changing the default OS. Display the text boot menu for 10 seconds. |
+| Windows UEFI system | Keep Microsoft files and entries; a signed GRUB text selector defaults to Windows and offers Slax Linux separately. |
+| Recognized existing GRUB | Append Slax Linux through its standard custom.cfg hook, retaining existing entries and defaults. BIOS loads the Slax configuration; UEFI chainloads its signed shim. |
+| Unrecognized existing loader | Keep it behind the default entry of a separate text selector, without rewriting its private configuration. |
+| FAT target without space for a separate ESP | EFI files may share the data filesystem. A whole-device FAT filesystem can receive removable UEFI files without a partition table. |
+| Non-FAT target without a usable ESP or room for one | BIOS-only installation when a safe BIOS location exists; otherwise an explanation before approval. |
+| Native 4096-byte-sector disk | UEFI only; the stock BIOS loader requires 512-byte logical sectors. |
 
-The running system/live-session disk and disks containing the ISO or installer
-cannot be erased. All sibling filesystems must be safely unmounted/locked
-before raw writes begin. Disk handles remain pinned across confirmation;
-identity, layout, geometry, media-generation counters when available, source
-identity, space and firmware state are rechecked. Closing cannot interrupt a
-running installation. Errors identify possible partial Slax files or partial
-erasure; a hardware failure or power loss cannot be made transactional.
+Btrfs and exFAT additionally require an ISO advertising their initramfs drivers
+in `slax/boot/grub/filesystems.txt`. Windows can preserve only filesystems its
+own drivers expose. GRUB checks the real filesystem and compares the copied
+boot files before BIOS activation; unsupported features cannot silently replace
+a working MBR. Filesystem and partition UUIDs must be stable and unique.
+
+The small BIOS core loads matching external modules from the new Slax folder.
+Its prefix follows the disk selected by the BIOS and the approved partition
+number, so it does not assume a fixed BIOS disk number. A traditional MBR gap
+must be entirely empty; occupied original embedding areas are retained intact.
+GPT uses an empty BIOS boot partition or creates one in verified free space.
+If necessary, MBR can add a small type 0xDA BIOS partition in a zero-filled free
+extent outside every existing partition. No existing filesystem is resized.
+
+Preserve-mode raw writes are restricted to the approved boot and metadata
+ranges. Existing filesystems stay mounted and are never raw-written. Original
+MBR/table records are saved in `slax/boot/grub/boot-backup`; normal activation
+errors restore the original boot metadata. NTLDR and BOOTMGR retain their MBR
+code; their new root-level sector file points at the reserved GRUB core. Native
+GRUB integration does not need a second embedded core. Existing menu text is
+saved under boot-backup; boot.ini/custom.cfg replacement is atomic.
+Fallback selectors are plain text, default to the previous system, and offer
+Slax Linux as a separate choice. The normal Slax configuration from the ISO
+keeps its logo, five-second countdown and four-entry Escape menu unchanged.
+
+UEFI prefers an existing writable FAT ESP on the same disk. If none is usable,
+the installer may create a separate FAT32 ESP in verified empty unallocated
+space. Only when neither is possible can a FAT data filesystem host EFI itself.
+`EFI/Slax/<installation-id>` holds the signed shim, signed GRUB, kernel,
+initramfs and menu, without replacing another vendor's files. Signed Slax UEFI
+boot uses Debian's existing Microsoft trust chain and keeps verification enabled.
+
+Adding an internal firmware entry requires writable runtime variables in a
+64-bit UEFI session. A new selector entry retains every original firmware entry.
+Windows Boot Manager appears first in the outer text menu when present on this
+ESP. Other active same-ESP loaders without binary load options can appear there too;
+entries with unsupported options remain available in the firmware boot menu.
+Preparing removable media works from BIOS sessions too, including XP.
+Unknown EFI fallback loaders are kept. An identical Microsoft fallback may be
+backed up atomically before Slax's fallback is published.
+
+Encrypted filesystems, Windows file encryption, RAID/LVM/storage-pool members,
+dynamic or spanned volumes, unsupported filesystems, read-only media and
+insufficient space are explained before approval. Raw NTFS boot headers also
+detect an encrypted volume that Windows has unlocked. Linux checks NTFS
+hibernation before obtaining writable access. NTFS boot/persistence sources
+start read-only and become writable only when the complete hibernation header
+is absent or zero; no force-mount option is used.
+
+## Erasing a whole disk
+
+Erase means the complete physical parent, including all sibling drive letters
+and hidden partitions. The confirmation lists them. The usual layout is GPT:
+a 1 MiB BIOS boot partition, a FAT32 ESP (256 MiB with 512-byte sectors or
+512 MiB with 4096-byte sectors), then a full-capacity FAT32 Slax data partition.
+
+Actual Windows XP, including XP x64, uses MBR with active Slax data first and a
+small type 0xEF ESP second. This keeps the Slax folder accessible on XP USB media.
+The same compatible layout serves removable media on Windows before 10 build
+15063, which exposes only the first partition, and older hosts without GPT data
+support. It requires 512-byte logical sectors and at most 2 TiB. Other Windows
+configurations and Linux retain GPT even when started using BIOS. Compatibility
+mode does not change capability detection. Both layouts support signed UEFI;
+512-byte disks also receive BIOS boot.
+
+The native FAT32 formatter supports volumes above Windows' 32 GiB formatting
+limit. FAT32 sector/cluster limits, files above 4 GiB and inadequate space are
+rejected before writing. The running system, live session, ISO and executable
+disks cannot be erased. All sibling volumes must be safely locked/unmounted
+before erase writes; preserve installs do not lock or unmount live data volumes.
+
+Disk handles stay pinned across confirmation. The ISO is reopened between steps;
+source file IDs, timestamps and content changes are not compared. Table integrity,
+geometry, media-generation tokens when available, free space, approved empty
+ranges and firmware state are rechecked. Closing cannot interrupt installation.
+Hardware faults and power loss cannot be transactional; failure messages report
+possible partial Slax files or partial erasure, with recovery metadata retained.
 
 ## Runtime and build
 
 Windows uses only system DLLs, including XP's GDI+. C++ and threading runtimes
-are linked statically. Linux uses GTK 3, GLib, libudev, libblkid and standard
-C/C++ libraries already present in Slax, plus its stock GRUB BIOS tools.
-No browser, .NET, WebView, PowerShell, WMI, VBS, downloaded font or internet
-connection is required. Administrator/root access is required for installation.
-New Windows APIs are loaded only when available; the PE subsystem is 5.1.
-
-The ISO9660/Rock Ridge reader inventories the complete Slax tree without
-mounting the ISO. It rejects unsafe names, links, duplicate aliases and invalid
-extents. An ISO filename can be supplied as the only argument.
-`--list-devices [ISO]` and `--check-iso FILE` are read-only diagnostics.
+are static. Linux uses GTK 3, GLib, libudev, libblkid, standard C/C++ libraries
+and stock GRUB tools already present in Slax. No browser, .NET, WebView,
+PowerShell, WMI, VBS, downloaded font or installation-time internet is required.
+Administrator/root access is needed. Optional Windows APIs are loaded dynamically;
+the PE subsystem is 5.1. The ISO reader rejects unsafe names, links, alias
+collisions and invalid extents. `--list-devices [ISO]` and `--check-iso FILE`
+are read-only diagnostics.
 
 Build both binaries on Debian:
 
 ```sh
-apt-get install --no-install-recommends g++ g++-mingw-w64-i686 python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev upx-ucl
+apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev upx-ucl
 sh Slax/debian13/installer/build
 ```
 
-Both executables are stripped, packed with `upx --best` and checked with
-`upx -t`; ultra-brute compression is not used. The Windows build embeds the
-official GNU GRUB 2.12 mkimage utility and its matching i386-pc modules.
-The installer build requires internet access: it downloads the release ZIP
-from GNU's kernel.org mirror and verifies its pinned SHA256 before embedding
-the tools directly from the archive. These binary inputs are not stored in
-the repository. The ISO contains their embedded copy in `bootinst.exe`, with
-license and provenance under `slax/boot/grub`.
-Ordinary Slax builds copy the prebuilt executables; rebuild both after changes.
-The ICO comes from https://www.slax.org/favicon.ico and the original PNGs from
-the supplied wizard mockup.
+The build strips both executables, packs them with `upx --best` (without
+ultra-brute) and runs `upx -t`. It downloads and SHA-256 verifies the official
+GNU GRUB 2.12 Windows ZIP for its filesystem verifier and matching BIOS modules.
+The official Windows mkimage lacks XZ support, so `build-windows-grub` compiles
+the unmodified GNU utility with static, threadless liblzma from separately
+pinned GNU/XZ source archives. This fits small BIOS gaps without adding a DLL.
+Downloaded inputs stay in the temporary build directory. Only their embedded
+copy is distributed in the Windows installer; provenance/licenses live under
+`bootfiles/grub`. Ordinary ISO builds copy the prebuilt installers. The ICO is
+from https://www.slax.org/favicon.ico. The sidebar uses its exact 32 × 32 clover
+frame: Windows loads the ICO natively and selects a larger frame at higher DPI;
+GTK uses the extracted PNG. The wordmark PNG came from the supplied mockup.
+The hard-drive, USB, layer-group, check and triangle-exclamation icons are Font Awesome Free 6.7.2 by
+Fonticons, Inc., copied from Partition Manager under CC BY 4.0. Original SVGs,
+license and embedded PNGs live in `icons`; `python3 icons/render` regenerates
+the 96-pixel PNGs with `rsvg-convert` when changing artwork. Ordinary installer
+builds require no image converter, font package or additional runtime library.
 
 ## Verification
 
@@ -133,20 +185,15 @@ apt-get install --no-install-recommends xorriso
 sh Slax/debian13/installer/check /path/to/slax.iso
 ```
 
-The sanitizer suite exercises real ISO parsing, extraction, GPT/FAT32 writes,
-4 KiB sectors, Unicode, capacity limits, existing-file preservation, Windows
-multiboot, firmware rollback, disconnection and native-wizard confirmation
-handoff. Writes are confined to owned sparse files with fake firmware.
-`test-native.cpp` additionally tests real Linux storage APIs, accepting only
-owned loop devices backed by `/tmp/slax-installer-native.*` fixtures.
+The sanitizer suite writes owned sparse files with fake firmware, exercising
+ISO parsing, hashing, GPT/MBR/FAT32, 4 KiB sectors, BIOS multiboot, preservation,
+new boot partitions, occupied embedding areas, rollback, encryption detection,
+UEFI entry parsing and the wizard's confirmation handoff. `test-native.cpp`
+accepts only owned Linux loop devices under `/tmp/slax-installer-native.*`.
+`check-linux` tests discovery using mocked hardware and an owned loop.
+Native GUI fixtures cover resizing, DPI, text alignment, four-card defaults,
+whole-disk highlighting, restored selection and wheel-boundary repainting.
 
-Optional discovery tests use mocked hardware and an owned RAM-backed loop:
-
-```sh
-apt-get install --no-install-recommends umockdev gir1.2-umockdev-1.0 python3-gi e2fsprogs
-sh Slax/debian13/installer/check-linux
-```
-
-Destructive Windows tests belong only in explicitly dedicated VMs. Never run
-GUI confirmation automation against host drives. Boot tests must cover BIOS,
-UEFI Secure Boot, and both Slax and Windows entries after a preserve install.
+Destructive Windows tests belong only in designated VMs. Never automate write
+confirmation against host drives. Boot tests must cover BIOS, UEFI Secure Boot,
+and both Slax and the previous Windows entry after preserving an OS installation.

@@ -2,7 +2,7 @@
 # Exercise real discovery against mocked USB devices and an owned RAM-backed loop fixture.
 set -eu
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
-BINARY=${1:-$THIS/../bootfiles/bootinst}
+BINARY=${1:-$THIS/../installers/slax-install-linux}
 TEMP=$(mktemp -d /tmp/slax-installer-usb.XXXXXX)
 
 # Release only the filesystem created by this test, including on interruption.

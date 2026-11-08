@@ -2,7 +2,7 @@
 # Compile both native frontends on Debian; runtime libraries already exist in Slax.
 set -eu
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
-OUT=${1:-$THIS/../bootfiles}
+OUT=${1:-$THIS/../installers}
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer.XXXXXX")
 trap 'rm -r "$TEMP"' 0
 mkdir -p "$OUT"
@@ -13,13 +13,19 @@ from pathlib import Path
 import sys
 folder=Path(sys.argv[1])
 with Path(sys.argv[2]).open('w') as header:
-    for name in ('clover','wordmark'):
-        data=(folder/(name+'.png')).read_bytes()
+    for name in ('clover','wordmark','hard_drive','usb','layer_group','check','triangle_exclamation'):
+        path=folder/(name+'.png') if name in ('clover','wordmark') else folder/'icons'/(name.replace('_','-')+'.png')
+        data=path.read_bytes()
         header.write('static const unsigned char '+name+'_png[]={'+','.join(map(str,data))+'};\n')
+    header.write('static const struct {const unsigned char *data; unsigned size;} installer_images[]={\n')
+    for name in ('clover','wordmark','hard_drive','usb','layer_group','check','triangle_exclamation'):
+        header.write('{'+name+'_png,sizeof('+name+'_png)},\n')
+    header.write('};\n')
 PY
 
-# Download and verify the complete upstream archive before embedding its BIOS tools.
-python3 - "$TEMP/grub-tools.h" <<'PY'
+# Build XZ-enabled mkimage and verify the upstream filesystem verifier and matching BIOS modules.
+sh "$THIS/build-windows-grub" "$TEMP/windows-tools" "$TEMP/grub-mkimage.exe"
+python3 - "$TEMP/grub-tools.h" "$TEMP/grub-mkimage.exe" <<'PY'
 from io import BytesIO
 from pathlib import Path
 from urllib.request import urlopen
@@ -34,9 +40,10 @@ if hashlib.sha256(data).hexdigest()!='e98bf808fcb6836a7e50d0f9483900116b28c46c0b
 print('Verified GNU GRUB archive SHA256.',flush=True)
 with ZipFile(BytesIO(data)) as archive,Path(sys.argv[1]).open('w') as header:
     folder='grub-2.12-for-windows/'
-    assets=['grub-mkimage.exe']+sorted(name[len(folder):] for name in archive.namelist() if name.startswith(folder+'i386-pc/') and not name.endswith(('/','/gdb_grub','/gdb_helper.py')))
+    assets=['grub-mkimage.exe','grub-fstest.exe']+sorted(name[len(folder):] for name in archive.namelist() if name.startswith(folder+'i386-pc/') and not name.endswith(('/','/gdb_grub','/gdb_helper.py')))
     for i,name in enumerate(assets):
-        header.write('static const unsigned char grub_asset_'+str(i)+'[]={'+','.join(map(str,archive.read(folder+name)))+'};\n')
+        asset=Path(sys.argv[2]).read_bytes() if name=='grub-mkimage.exe' else archive.read(folder+name)
+        header.write('static const unsigned char grub_asset_'+str(i)+'[]={'+','.join(map(str,asset))+'};\n')
     header.write('static const struct { const char *name; const unsigned char *data; unsigned size; } grub_tools[]={\n')
     for i,name in enumerate(assets):
         header.write('{"'+name+'",grub_asset_'+str(i)+',sizeof(grub_asset_'+str(i)+')},\n')
@@ -44,20 +51,20 @@ with ZipFile(BytesIO(data)) as archive,Path(sys.argv[1]).open('w') as header:
 PY
 
 g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
-   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
    "$THIS/linux-storage.cpp" "$THIS/linux.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid) \
-   -o "$TEMP/bootinst"
-strip "$TEMP/bootinst"
+   -o "$TEMP/slax-install-linux"
+strip "$TEMP/slax-install-linux"
 
-printf '1 ICON "%s/slax.ico"\n1 24 "%s/installer.manifest"\n' "$THIS" "$THIS" > "$TEMP/resource.rc"
+printf '1 ICON "%s/slax.ico"\n2 ICON "%s/icons/triangle-exclamation.ico"\n1 24 "%s/installer.manifest"\n' "$THIS" "$THIS" "$THIS" > "$TEMP/resource.rc"
 i686-w64-mingw32-windres "$TEMP/resource.rc" "$TEMP/resource.o"
 i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-function-type \
    -municode -mwindows -static -D_WIN32_WINNT=0x0501 -I"$TEMP" \
    -Wl,--nxcompat,--dynamicbase,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1 \
-   "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
    "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
-   -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/bootinst.exe"
-i686-w64-mingw32-strip "$TEMP/bootinst.exe"
-upx --best --no-progress "$TEMP/bootinst" "$TEMP/bootinst.exe"
-upx -t "$TEMP/bootinst" "$TEMP/bootinst.exe"
-install -m 755 "$TEMP/bootinst" "$TEMP/bootinst.exe" "$OUT/"
+   -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/slax-install.exe"
+i686-w64-mingw32-strip "$TEMP/slax-install.exe"
+upx --best --no-progress "$TEMP/slax-install-linux" "$TEMP/slax-install.exe"
+upx -t "$TEMP/slax-install-linux" "$TEMP/slax-install.exe"
+install -m 755 "$TEMP/slax-install-linux" "$TEMP/slax-install.exe" "$OUT/"

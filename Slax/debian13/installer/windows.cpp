@@ -20,13 +20,13 @@
 static HWND window;
 static float scale=1;
 
-enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,CancelButton,Separator,ErrorIcon };
+enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,ErrorIcon };
 static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
 
 struct WinCard
 {
    Device device;
-   HWND window=nullptr,badge=nullptr,name=nullptr,detail=nullptr,radio=nullptr;
+   HWND window=nullptr,badge=nullptr,name=nullptr,location=nullptr,detail=nullptr,radio=nullptr;
    bool pressed=false;
 };
 
@@ -35,9 +35,10 @@ static ULONG_PTR graphicsToken;
 struct WinUi
 {
    HWND panel=nullptr,controls[180]={};
-   HFONT body=nullptr,small=nullptr,title=nullptr,intro=nullptr,bold=nullptr,badge=nullptr;
+   HFONT body=nullptr,small=nullptr,title=nullptr,intro=nullptr,bold=nullptr,smallBold=nullptr;
    HBRUSH rail=nullptr,green=nullptr,selected=nullptr,red=nullptr;
-   HBITMAP brand[2]={};
+   HBITMAP brand[7]={};
+   HICON clover=nullptr;
    std::vector<std::unique_ptr<WinCard>> cards;
    int scroll=0,deviceScroll=0,page=-1;
    bool updating=false,layingout=false,layingoutDevices=false;
@@ -80,9 +81,9 @@ static void fonts()
 {
    LOGFONTW systemFont={};
    SystemParametersInfoW(SPI_GETICONTITLELOGFONT,sizeof(systemFont),&systemFont,0);
-   HFONT old[]={ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.badge};
-   HFONT *slots[]={&ui.body,&ui.small,&ui.title,&ui.intro,&ui.bold,&ui.badge};
-   int sizes[]={14,13,28,16,14,20};
+   HFONT old[]={ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.smallBold};
+   HFONT *slots[]={&ui.body,&ui.small,&ui.title,&ui.intro,&ui.bold,&ui.smallBold};
+   int sizes[]={14,13,28,16,14,13};
    for (int i=0; i<6; i++)
    {
       LOGFONTW font=systemFont; font.lfHeight=-LONG(sizes[i]*scale); font.lfWeight=i==2 || i==4 || i==5?FW_SEMIBOLD:FW_NORMAL;
@@ -93,42 +94,68 @@ static void fonts()
    if (ui.controls[Intro]) SendMessageW(ui.controls[Intro],WM_SETFONT,reinterpret_cast<WPARAM>(ui.intro),TRUE);
    if (ui.controls[ErrorIcon]) SendMessageW(ui.controls[ErrorIcon],WM_SETFONT,reinterpret_cast<WPARAM>(ui.bold),TRUE);
    for (int id:{Step,Footer}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
-   for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
+   for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.displayPage()?ui.bold:ui.body),TRUE);
    for (const auto &card:ui.cards)
    {
-      SendMessageW(card->badge,WM_SETFONT,reinterpret_cast<WPARAM>(card->device.label.size()>3?ui.bold:ui.badge),TRUE);
+      SendMessageW(card->location,WM_SETFONT,reinterpret_cast<WPARAM>(ui.smallBold),TRUE);
       SendMessageW(card->name,WM_SETFONT,reinterpret_cast<WPARAM>(ui.bold),TRUE);
       SendMessageW(card->detail,WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
    }
    for (auto font:old) if (font) DeleteObject(font);
 }
 
-// Convert the two original PNGs once into ordinary STATIC bitmap resources.
+// Cache branding and Partition Manager icons as native bitmaps at the current DPI.
 static void branding()
 {
-   for (int i=0; i<2; i++)
+   auto icon=static_cast<HICON>(LoadImageW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(1),IMAGE_ICON,int(32*scale),int(32*scale),0));
+   SendMessageW(ui.controls[Brand],STM_SETICON,reinterpret_cast<WPARAM>(icon),0);
+   if (ui.clover) DestroyIcon(ui.clover);
+   ui.clover=icon;
+   const int widths[]={32,83,24,24,24,42,42},heights[]={32,30,24,24,24,42,42};
+   for (int i=1; i<7; i++)
    {
-      size_t length=i?sizeof(wordmark_png):sizeof(clover_png);
+      size_t length=installer_images[i].size;
       HGLOBAL data=GlobalAlloc(GMEM_MOVEABLE,length);
-      memcpy(GlobalLock(data),i?wordmark_png:clover_png,length); GlobalUnlock(data);
+      memcpy(GlobalLock(data),installer_images[i].data,length); GlobalUnlock(data);
       IStream *stream; CreateStreamOnHGlobal(data,TRUE,&stream);
       HBITMAP bitmap;
       {
          Gdiplus::Bitmap source(stream);
-         Gdiplus::Bitmap resized(int((i?83:31)*scale),int((i?30:33)*scale),PixelFormat32bppPARGB);
+         Gdiplus::Bitmap resized(int(widths[i]*scale),int(heights[i]*scale),PixelFormat32bppPARGB);
          {
             Gdiplus::Graphics graphics(&resized);
-            graphics.Clear(Gdiplus::Color(255,236,243,231));
+            COLORREF background=i>=5?GetSysColor(COLOR_WINDOW):RGB(236,243,231);
+            graphics.Clear(Gdiplus::Color(255,GetRValue(background),GetGValue(background),GetBValue(background)));
             graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-            graphics.DrawImage(&source,0,0,int(resized.GetWidth()),int(resized.GetHeight()));
+            int inset=i>=5?int(5*scale):0;
+            graphics.DrawImage(&source,inset,inset,int(resized.GetWidth())-2*inset,int(resized.GetHeight())-2*inset);
          }
          resized.GetHBITMAP(Gdiplus::Color(255,236,243,231),&bitmap);
       }
       stream->Release();
-      SendMessageW(ui.controls[Brand+i],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
+      if (i<2) SendMessageW(ui.controls[Brand+i],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
+      else if (i<5) for (auto &card:ui.cards) { if (deviceIcon(card->device)+2==i) SendMessageW(card->badge,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap)); }
+      else if (i==(app.error.empty()?5:6)) SendMessageW(ui.controls[Result],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
       if (ui.brand[i]) DeleteObject(ui.brand[i]);
       ui.brand[i]=bitmap;
    }
+}
+
+static bool position(HWND item,int x,int y,int width,int height);
+
+// Measure the bold native path so the regular metadata starts immediately after it.
+static void layoutCard(WinCard &card)
+{
+   RECT bounds; GetClientRect(card.window,&bounds); int width=bounds.right;
+   auto location=wide(deviceLocation(card.device));
+   HDC dc=GetDC(card.window); auto old=SelectObject(dc,ui.smallBold); SIZE size;
+   GetTextExtentPoint32W(dc,location.c_str(),location.size(),&size); SelectObject(dc,old); ReleaseDC(card.window,dc);
+   int available=std::max(1,width-int(108*scale)),prefix=std::min(int(size.cx),int(available*0.7));
+   position(card.badge,int(21*scale),int(19*scale),int(24*scale),int(24*scale));
+   position(card.name,int(66*scale),int(9*scale),available,int(22*scale));
+   position(card.location,int(66*scale),int(31*scale),prefix,int(21*scale));
+   position(card.detail,int(66*scale)+prefix,int(31*scale),available-prefix,int(21*scale));
+   position(card.radio,width-int(29*scale),int(22*scale),int(18*scale),int(18*scale));
 }
 
 // Queue changed child geometry without copying old text pixels or repainting midway through layout.
@@ -198,7 +225,7 @@ static void paintCard(WinCard &card,HDC dc)
 {
    RECT bounds; GetClientRect(card.window,&bounds); FillRect(dc,&bounds,GetSysColorBrush(COLOR_WINDOW));
    Gdiplus::Graphics graphics(dc); graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias); graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-   bool selected=card.device.id==app.selected;
+   bool selected=app.isSelected(card.device);
    float border=std::max(1.0f,std::round(scale));
    rounded(graphics,{border/2,border/2,bounds.right-border,bounds.bottom-border},7*scale,selected?RGB(238,247,231):GetSysColor(COLOR_WINDOW),selected?RGB(57,119,33):RGB(217,224,216));
    rounded(graphics,{12*scale,10*scale,42*scale,42*scale},6*scale,RGB(236,243,231));
@@ -244,11 +271,7 @@ static LRESULT CALLBACK cardEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (!card) return DefWindowProcW(hwnd,message,wp,lp);
    if (message==WM_SIZE && card->radio)
    {
-      RECT bounds; GetClientRect(hwnd,&bounds); int width=bounds.right;
-      position(card->badge,int(12*scale),int(18*scale),int(42*scale),int(26*scale));
-      position(card->name,int(66*scale),int(9*scale),width-int(108*scale),int(22*scale));
-      position(card->detail,int(66*scale),int(31*scale),width-int(108*scale),int(21*scale));
-      position(card->radio,width-int(29*scale),int(22*scale),int(18*scale),int(18*scale)); return 0;
+      layoutCard(*card); return 0;
    }
    if (message==WM_PAINT)
    {
@@ -257,11 +280,11 @@ static LRESULT CALLBACK cardEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (message==WM_ERASEBKGND || message==WM_PRINTCLIENT) { paintCard(*card,reinterpret_cast<HDC>(wp)); return 1; }
    if (message==WM_CTLCOLORSTATIC || message==WM_CTLCOLORBTN)
    {
-      HDC dc=reinterpret_cast<HDC>(wp); bool selected=card->device.id==app.selected;
+      HDC dc=reinterpret_cast<HDC>(wp); bool selected=app.isSelected(card->device);
       COLORREF background=selected?RGB(238,247,231):GetSysColor(COLOR_WINDOW);
       SetBkMode(dc,OPAQUE); SetBkColor(dc,background); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
       if (reinterpret_cast<HWND>(lp)==card->badge) { SetBkColor(dc,RGB(236,243,231)); SetTextColor(dc,RGB(57,119,33)); return reinterpret_cast<LRESULT>(ui.rail); }
-      if (reinterpret_cast<HWND>(lp)==card->detail) SetTextColor(dc,RGB(84,96,86));
+      if (reinterpret_cast<HWND>(lp)==card->detail || reinterpret_cast<HWND>(lp)==card->location) SetTextColor(dc,RGB(84,96,86));
       return reinterpret_cast<LRESULT>(selected?ui.selected:GetSysColorBrush(COLOR_WINDOW));
    }
    if (message==WM_COMMAND && !ui.updating) { app.activate(Select,card->device.id); return 0; }
@@ -282,11 +305,13 @@ static void createCard(const Device &device)
    auto card=std::make_unique<WinCard>(); card->device=device;
    HINSTANCE instance=GetModuleHandleW(nullptr);
    card->window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxInstallerCard",wide(device.name).c_str(),WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN,0,0,1,int(62*scale),ui.controls[Drives],nullptr,instance,card.get());
-   card->badge=CreateWindowExW(0,L"STATIC",wide(device.label).c_str(),WS_CHILD|WS_VISIBLE|SS_CENTER|SS_CENTERIMAGE|SS_NOTIFY,0,0,1,1,card->window,nullptr,instance,nullptr);
+   card->badge=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_BITMAP|SS_NOTIFY,0,0,1,1,card->window,nullptr,instance,nullptr);
    card->name=CreateWindowExW(0,L"STATIC",wide(device.name).c_str(),WS_CHILD|WS_VISIBLE|SS_LEFT|SS_CENTERIMAGE|SS_ENDELLIPSIS|SS_NOPREFIX|SS_NOTIFY,0,0,1,1,card->window,nullptr,instance,nullptr);
    card->detail=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFT|SS_CENTERIMAGE|SS_ENDELLIPSIS|SS_NOPREFIX|SS_NOTIFY,0,0,1,1,card->window,nullptr,instance,nullptr);
+   card->location=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|WS_VISIBLE|SS_LEFT|SS_CENTERIMAGE|SS_ENDELLIPSIS|SS_NOPREFIX|SS_NOTIFY,0,0,1,1,card->window,nullptr,instance,nullptr);
    card->radio=CreateWindowExW(0,L"BUTTON",L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_AUTORADIOBUTTON,0,0,1,1,card->window,nullptr,instance,nullptr);
-   SendMessageW(card->badge,WM_SETFONT,reinterpret_cast<WPARAM>(device.label.size()>3?ui.bold:ui.badge),TRUE);
+   SendMessageW(card->badge,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(ui.brand[deviceIcon(device)+2]));
+   SendMessageW(card->location,WM_SETFONT,reinterpret_cast<WPARAM>(ui.smallBold),TRUE);
    SendMessageW(card->name,WM_SETFONT,reinterpret_cast<WPARAM>(ui.bold),TRUE); SendMessageW(card->detail,WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
    SetWindowSubclass(card->radio,radioKeys,1,reinterpret_cast<DWORD_PTR>(card.get()));
    ui.cards.push_back(std::move(card));
@@ -328,21 +353,23 @@ static void layoutContent()
 {
    if (ui.layingout || !ui.panel) return;
    ui.layingout=true;
+   int page=app.displayPage();
    RECT outer,viewport; GetWindowRect(ui.panel,&outer); GetClientRect(ui.panel,&viewport);
    struct Field { int id; float x,y,width,height; };
    std::vector<Field> fields;
-   bool messageVisible=app.page==0 || (app.page==1 && !app.message().empty());
+   bool messageVisible=page==0 || (page==1 && !app.message().empty());
    bool errorVisible=messageVisible && app.pending==None && !app.error.empty();
    for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message,ErrorIcon})
    {
-      bool isoField=app.page==0 && (id==PathLabel || id==Path || id==BrowseButton);
-      bool usbField=app.page==1 && (id==Drives || id==Empty || id==EraseButton);
-      bool progressField=app.page==2 && (id==Status || id==Percent || id==Progress);
+      bool isoField=page==0 && (id==PathLabel || id==Path || id==BrowseButton);
+      bool usbField=page==1 && (id==Drives || id==Empty || id==EraseButton);
+      bool progressField=page==2 && (id==Status || id==Percent || id==Progress);
       bool show=isoField || usbField || progressField;
-      if (id==Target) show=app.page>=2;
-      if (id==Result) show=app.page==3;
-      if (id==Drives) show=app.page==1 && !app.devices.empty();
-      if (id==Empty) show=app.page==1 && app.devices.empty();
+      if (id==Target) show=page>=2;
+      if (id==Result) show=page==3;
+      if (id==Percent) show=progressField && !app.indeterminate();
+      if (id==Drives) show=page==1 && !app.devices.empty();
+      if (id==Empty) show=page==1 && app.devices.empty();
       if (id==Message) show=messageVisible;
       if (id==ErrorIcon) show=errorVisible;
       if (bool(GetWindowLongW(ui.controls[id],GWL_STYLE)&WS_VISIBLE)!=show) ShowWindow(ui.controls[id],show?SW_SHOW:SW_HIDE);
@@ -359,41 +386,42 @@ static void layoutContent()
       h=textHeight(Intro,w); add(Intro,x,y,w,h); y+=h+22;
       float messageWidth=w-(errorVisible?36:0);
       float messageHeight=messageVisible?textHeight(Message,messageWidth):0;
-      if (app.page==0)
+      if (page==0)
       {
          add(PathLabel,x,y,w,21); y+=27;
          add(Path,x,y,w-94,35); add(BrowseButton,x+w-86,y,86,35); y+=48;
          messageHeight=std::max(42.0f,messageHeight);
       }
-      if (app.page==1)
+      if (page==1)
       {
          if (app.devices.empty()) { h=textHeight(Empty,w); add(Empty,x,y,w,h); }
          else
          {
-            float reserve=10+34+12+(messageVisible?13+messageHeight:0);
+            float reserve=10+std::max(34.0f,textHeight(EraseButton,w-20))+12;
             h=std::max(62.0f,viewport.bottom/scale-y-reserve);
             add(Drives,x,y,w,h);
          }
-         y+=h+10; add(EraseButton,x,y,w,34); y+=34;
+         y+=h+10; h=std::max(34.0f,textHeight(EraseButton,w-20)); add(EraseButton,x,y,w,h); y+=h;
       }
-      if (app.page>=2)
+      if (page>=2)
       {
-         if (app.page==3) { add(Result,x,y,42,42); y+=55; }
+         if (page==3) { add(Result,x,y,42,42); y+=55; }
          h=textHeight(Target,w-24); add(Target,x+12,y+10,w-24,h); y+=h+20;
-         if (app.page==2)
+         if (page==2)
          {
-            y+=21; h=std::max(21.0f,textHeight(Status,w-58));
-            add(Status,x,y,w-58,h); add(Percent,x+w-45,y,45,21); y+=h+6; add(Progress,x,y,w,16); y+=16;
+            float statusWidth=w-(app.indeterminate()?0:58);
+            y+=21; h=std::max(21.0f,textHeight(Status,statusWidth));
+            add(Status,x,y,statusWidth,h); add(Percent,x+w-45,y,45,21); y+=h+6; add(Progress,x,y,w,16); y+=16;
          }
       }
       if (messageVisible)
       {
-         if (app.page==1) y+=13;
+         if (page==1) y+=13;
          if (errorVisible) add(ErrorIcon,x,y,24,24);
          add(Message,x+(errorVisible?36:0),y,messageWidth,messageHeight); y+=messageHeight;
       }
       SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
-      scroll.nMin=0; scroll.nMax=int((y+(app.page==1?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
+      scroll.nMin=0; scroll.nMax=int((y+(page==1?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
       SetScrollInfo(ui.panel,SB_VERT,&scroll,TRUE); GetClientRect(ui.panel,&viewport);
       if (viewport.right==pixels) break;
       pixels=viewport.right;
@@ -412,15 +440,15 @@ static void layoutWindow()
    float rail=std::max(175.0f,width*0.3f);
    for (int id:{Rail,Brand,Wordmark}) ShowWindow(ui.controls[id],SW_SHOW);
    place(Rail,0,0,rail,footer,false);
-   place(Brand,25,28,31,33,false); place(Wordmark,65,29,83,30,false);
+   place(Brand,25,28,32,32,false); place(Wordmark,66,29,83,30,false);
    for (int i=0; i<4; i++)
    {
       ShowWindow(ui.controls[StepNumber+i],SW_SHOW); ShowWindow(ui.controls[StepName+i],SW_SHOW);
       place(StepNumber+i,22,86+i*40,24,24,false); place(StepName+i,56,83+i*40,rail-66,31,false);
    }
    position(ui.panel,int(rail*scale),0,int((width-rail)*scale),int(footer*scale));
-   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,width-299,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
-   place(CancelButton,width-277,footer+11,70,35,false); place(BackButton,width-175,footer+11,59,35,false); place(NextButton,width-108,footer+11,92,35,false);
+   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,width-197,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
+   place(BackButton,width-175,footer+11,59,35,false); place(NextButton,width-108,footer+11,92,35,false);
    layoutContent();
 }
 
@@ -429,13 +457,22 @@ static void updateWindow()
 {
    if (ui.updating || !ui.panel) return;
    ui.updating=true;
-   text(Step,"Step "+std::to_string(app.page+1)+" of 4"); text(Heading,app.heading()); text(Intro,app.introduction());
+   int page=app.displayPage();
+   text(Step,"Step "+std::to_string(page+1)+" of 4"); text(Heading,app.heading()); text(Intro,app.introduction());
    text(Path,app.iso.path); text(Message,app.message());
    text(Target,app.target); text(Status,app.progressText()); text(Percent,std::to_string(app.percent)+"%");
    text(NextButton,app.page==3?(app.error.empty()?"Finish":"Try again"):"Next");
-   SendMessageW(ui.controls[Progress],PBM_SETPOS,app.percent,0);
+   LONG progressStyle=GetWindowLongW(ui.controls[Progress],GWL_STYLE); bool pulse=app.indeterminate();
+   if (pulse!=bool(progressStyle&PBS_MARQUEE))
+   {
+      if (!pulse) SendMessageW(ui.controls[Progress],PBM_SETMARQUEE,FALSE,0);
+      SetWindowLongW(ui.controls[Progress],GWL_STYLE,pulse?progressStyle|PBS_MARQUEE:progressStyle&~PBS_MARQUEE);
+      if (pulse) SendMessageW(ui.controls[Progress],PBM_SETMARQUEE,TRUE,40);
+   }
+   if (!pulse) SendMessageW(ui.controls[Progress],PBM_SETPOS,app.percent,0);
    SendMessageW(ui.controls[EraseButton],BM_SETCHECK,app.erase?BST_CHECKED:BST_UNCHECKED,0);
-   SendMessageW(ui.controls[Result],STM_SETICON,reinterpret_cast<WPARAM>(LoadIconW(nullptr,app.error.empty()?IDI_INFORMATION:IDI_ERROR)),0);
+   auto result=ui.brand[app.error.empty()?5:6];
+   if (reinterpret_cast<HBITMAP>(SendMessageW(ui.controls[Result],STM_GETIMAGE,IMAGE_BITMAP,0))!=result) SendMessageW(ui.controls[Result],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(result));
    bool changed=ui.cards.size()!=app.devices.size();
    for (size_t i=0; !changed && i<ui.cards.size(); i++) changed=ui.cards[i]->device.id!=app.devices[i].id;
    // Defer native row rebuilding until the user's pointer release completes.
@@ -450,12 +487,12 @@ static void updateWindow()
       auto device=std::find_if(app.devices.begin(),app.devices.end(),[&](const Device &d) { return d.id==card->device.id; });
       if (device==app.devices.end()) continue;
       card->device=*device;
-      text(card->name,device->name); text(card->badge,device->label);
-      HFONT font=device->label.size()>3?ui.bold:ui.badge;
-      if (reinterpret_cast<HFONT>(SendMessageW(card->badge,WM_GETFONT,0,0))!=font) SendMessageW(card->badge,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
-      std::string reason=app.eligibility(*device);
-      text(card->detail,sizeText(device->bytes)+" · "+(reason.empty()?device->detail:reason));
-      WPARAM checked=device->id==app.selected?BST_CHECKED:BST_UNCHECKED;
+      text(card->name,device->name); text(card->location,deviceLocation(*device));
+      auto bitmap=ui.brand[deviceIcon(*device)+2];
+      if (reinterpret_cast<HBITMAP>(SendMessageW(card->badge,STM_GETIMAGE,IMAGE_BITMAP,0))!=bitmap) SendMessageW(card->badge,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
+      text(card->detail," · "+sizeText(device->bytes)+" · "+device->detail);
+      layoutCard(*card);
+      WPARAM checked=app.isSelected(*device)?BST_CHECKED:BST_UNCHECKED;
       if (WPARAM(SendMessageW(card->radio,BM_GETCHECK,0,0))!=checked)
       {
          SendMessageW(card->radio,BM_SETCHECK,checked,0);
@@ -464,17 +501,20 @@ static void updateWindow()
    }
    EnableWindow(ui.controls[Drives],app.pending==None); EnableWindow(ui.controls[BrowseButton],app.pending==None); EnableWindow(ui.controls[Path],app.pending==None);
    EnableWindow(ui.controls[EraseButton],!app.devices.empty() && app.pending==None);
-   EnableWindow(ui.controls[NextButton],app.canContinue()); EnableWindow(ui.controls[BackButton],app.page==1); EnableWindow(ui.controls[CancelButton],app.page!=2);
-   ShowWindow(ui.controls[BackButton],app.page<3?SW_SHOW:SW_HIDE); ShowWindow(ui.controls[CancelButton],app.page<3?SW_SHOW:SW_HIDE);
-   if (ui.page!=app.page)
+   EnableWindow(ui.controls[NextButton],app.canContinue()); EnableWindow(ui.controls[BackButton],page==1);
+   ShowWindow(ui.controls[BackButton],page<3?SW_SHOW:SW_HIDE);
+   EnableMenuItem(GetSystemMenu(window,FALSE),SC_CLOSE,MF_BYCOMMAND|(app.page==2?MF_GRAYED:MF_ENABLED));
+   if (ui.page!=page)
    {
-      EnableMenuItem(GetSystemMenu(window,FALSE),SC_CLOSE,MF_BYCOMMAND|(app.page==2?MF_GRAYED:MF_ENABLED));
-      ui.page=app.page; ui.scroll=0;
-      SetFocus(app.page==1?ui.controls[Drives]:ui.controls[NextButton]);
+      ui.page=page; ui.scroll=0;
+      HWND focus=ui.controls[NextButton];
+      if (page==1) focus=ui.controls[Drives];
+      if (page==2) focus=window;
+      SetFocus(focus);
    }
    for (int i=0; i<4; i++)
    {
-      SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
+      SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==page?ui.bold:ui.body),TRUE);
       InvalidateRect(ui.controls[StepNumber+i],nullptr,TRUE); InvalidateRect(ui.controls[StepName+i],nullptr,TRUE);
    }
    layoutWindow();
@@ -550,6 +590,15 @@ bool confirmInstall(const std::string &target,bool erase)
    return DialogBoxIndirectParamW(GetModuleHandleW(nullptr),reinterpret_cast<DLGTEMPLATE *>(resource.data()),window,confirmEvents,reinterpret_cast<LPARAM>(&text))==IDYES;
 }
 
+// Report preflight failures only after Next, using the ordinary native dialog palette.
+void showInstallError(const std::string &message)
+{
+   auto text=wide(message); MSGBOXPARAMSW dialog={}; dialog.cbSize=sizeof(dialog);
+   dialog.hwndOwner=window; dialog.hInstance=GetModuleHandleW(nullptr); dialog.lpszText=text.c_str();
+   dialog.lpszCaption=L"Cannot install Slax"; dialog.dwStyle=MB_OK|MB_USERICON; dialog.lpszIcon=MAKEINTRESOURCEW(2);
+   MessageBoxIndirectW(&dialog);
+}
+
 // Native scrolling moves child controls while Windows renders the scrollbar itself.
 static LRESULT CALLBACK contentEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
@@ -620,7 +669,6 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
       if (id==BrowseButton) app.activate(Browse);
       if (id==BackButton) app.activate(Back);
       if (id==NextButton) app.activate(Next);
-      if (id==CancelButton) app.activate(Cancel);
       if (id==EraseButton) app.activate(Erase);
       return 0;
    }
@@ -631,8 +679,10 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
       if (id==Message) SetTextColor(dc,!app.error.empty() && app.pending==None?RGB(162,41,41):RGB(84,96,86));
       if (id==ErrorIcon) { SetBkColor(dc,RGB(163,60,54)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.red); }
       if (id==Step || (id>=StepName && id<StepName+4)) SetTextColor(dc,RGB(57,119,33));
-      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
-      bool sidebar=id==Rail || (id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
+      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.displayPage()) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
+      bool stepControl=(id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
+      bool branding=id==Brand || id==Wordmark;
+      bool sidebar=id==Rail || branding || stepControl;
       if (sidebar) SetBkColor(dc,RGB(236,243,231));
       return reinterpret_cast<LRESULT>(sidebar?ui.rail:GetSysColorBrush(COLOR_WINDOW));
    }
@@ -671,13 +721,13 @@ int runWindow()
    cls.lpfnWndProc=deviceEvents; cls.lpszClassName=L"SlaxInstallerDevices"; RegisterClassW(&cls);
    cls.lpfnWndProc=cardEvents; cls.lpszClassName=L"SlaxInstallerCard"; RegisterClassW(&cls);
    cls.lpfnWndProc=railEvents; cls.lpszClassName=L"SlaxInstallerRail"; RegisterClassW(&cls);
-   auto bounds=windowBounds(832,480); int width=bounds.right-bounds.left,height=bounds.bottom-bounds.top;
+   auto bounds=windowBounds(832,540); int width=bounds.right-bounds.left,height=bounds.bottom-bounds.top;
    RECT workarea; SystemParametersInfoW(SPI_GETWORKAREA,0,&workarea,0);
    width=std::min(width,int(workarea.right-workarea.left-16)); height=std::min(height,int(workarea.bottom-workarea.top-16));
    window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxUsbInstaller",L"Slax Installer",windowStyle,workarea.left+(workarea.right-workarea.left-width)/2,workarea.top+(workarea.bottom-workarea.top-height)/2,width,height,nullptr,nullptr,instance,nullptr);
    if (!window) return 1;
    ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); ui.red=CreateSolidBrush(RGB(163,60,54)); fonts();
-   control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_BITMAP,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
+   control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_ICON|SS_REALSIZEIMAGE,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
    const char *steps[]={"ISO image","Target drive","Installation","Finish"};
    for (int i=0; i<4; i++)
    {
@@ -694,11 +744,11 @@ int runWindow()
    control(ErrorIcon,L"STATIC",SS_CENTER|SS_CENTERIMAGE|SS_NOPREFIX,ui.panel); text(ErrorIcon,"!");
    control(BrowseButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,ui.panel);
    control(Drives,L"SlaxInstallerDevices",WS_VSCROLL|WS_CLIPCHILDREN|WS_TABSTOP,ui.panel,WS_EX_CONTROLPARENT);
-   control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
-   control(Result,L"STATIC",SS_ICON,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
-   control(CancelButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
+   control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
+   control(Result,L"STATIC",SS_BITMAP,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
+   control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
    text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No disks detected. Connect a writable disk to continue.");
-   text(EraseButton,"Erase entire disk (all partitions)"); text(Footer,"Slax Installer"); text(BackButton,"Back"); text(CancelButton,"Cancel");
+   text(EraseButton,"Erase entire selected disk (including all other partitions on it)"); text(Footer,"Slax Installer"); text(BackButton,"Back");
    fonts(); branding(); updateWindow(); SetTimer(window,1,100,nullptr); ShowWindow(window,SW_SHOW); UpdateWindow(window); app.startScan();
    MSG message;
    while (GetMessageW(&message,nullptr,0,0)>0)
@@ -708,8 +758,9 @@ int runWindow()
       if (message.message==WM_KEYDOWN && (message.wParam==VK_TAB || message.wParam==VK_UP || message.wParam==VK_DOWN)) revealFocus();
    }
    app.stop(); window=nullptr;
-   for (auto font:{ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.badge}) DeleteObject(font);
+   for (auto font:{ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.smallBold}) DeleteObject(font);
    for (auto image:ui.brand) DeleteObject(image);
+   DestroyIcon(ui.clover);
    ui.cards.clear(); DeleteObject(ui.rail); DeleteObject(ui.green); DeleteObject(ui.selected); DeleteObject(ui.red);
    Gdiplus::GdiplusShutdown(graphicsToken);
    return 0;

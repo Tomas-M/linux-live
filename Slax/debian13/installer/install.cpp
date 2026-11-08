@@ -42,6 +42,8 @@ std::string basicEligibility(const Device &device,const Image &image,bool erase)
 {
    if (!device.blocked.empty()) return device.blocked;
    if (!image.error.empty()) return image.error;
+   bool fatTarget=erase || fat(device);
+   if (fatTarget && std::any_of(image.entries.begin(),image.entries.end(),[](const ImageEntry &entry) { return !entry.directory && entry.bytes>UINT32_MAX; })) return "This ISO contains a file larger than FAT32's 4 GiB file limit. Select an existing NTFS or Linux filesystem; it cannot be installed to a new FAT32 layout.";
    if (device.sector!=512 && device.sector!=4096) return "This disk uses an unsupported logical sector size; only 512-byte and 4096-byte sectors are supported.";
    if (erase)
    {
@@ -49,8 +51,8 @@ std::string basicEligibility(const Device &device,const Image &image,bool erase)
       bool pool=member(device) || std::any_of(device.partitions.begin(),device.partitions.end(),[](const Partition &part) { return member(part); });
       if (pool) return "This disk contains a RAID, LVM or storage-pool member. Erasing it could also destroy data on other disks. Remove it safely using that storage system's management tools first.";
       if (device.diskBytes<1000000000) return "The whole disk must have at least 1 GB of capacity.";
-      if (windowsXp() && device.sector!=512) return "Windows XP requires 512-byte logical sectors for this BIOS/UEFI MBR installation. Use Slax or newer Windows for this disk.";
-      if (windowsXp() && device.diskBytes/device.sector>uint64_t(UINT32_MAX)+1) return "Windows XP's MBR layout cannot use a disk larger than 2 TiB at full capacity. Use Slax or newer Windows for this disk.";
+      if (mbrRequired(device) && device.sector!=512) return "This Windows version needs an MBR layout with 512-byte logical sectors to keep the Slax partition accessible. Use Slax or newer Windows for this disk.";
+      if (mbrRequired(device) && device.diskBytes/device.sector>uint64_t(UINT32_MAX)+1) return "This Windows version cannot expose a full-capacity Slax partition on this disk using its compatible MBR layout (maximum 2 TiB). Use Slax or newer Windows.";
       uint64_t reserve=(device.sector==4096?514ULL:258ULL)*1024*1024+1024*1024;
       if (device.diskBytes<=reserve || device.diskBytes-reserve<required(image)) return "This disk is too small for Slax, its EFI partition and filesystem overhead.";
       if ((device.diskBytes-reserve)/device.sector>UINT32_MAX) return "One full-capacity FAT32 data partition would exceed FAT32's sector-addressing limit. Use a smaller disk or an existing smaller partition.";
@@ -67,8 +69,6 @@ std::string basicEligibility(const Device &device,const Image &image,bool erase)
    if (std::find(image.filesystems.begin(),image.filesystems.end(),fs)==image.filesystems.end()) return "The selected Slax ISO does not advertise boot support for "+device.filesystem+". Choose a newer ISO, use a supported filesystem, or erase the whole disk to create FAT32 partitions.";
    if (device.uuid.empty()) return "The filesystem has no readable stable UUID. Run the installer with administrator/root permissions, repair the filesystem, or erase the whole disk.";
    for (unsigned char c:device.uuid) if (!(c>='0' && c<='9') && !(c>='a' && c<='f') && !(c>='A' && c<='F') && c!='-') return "The filesystem identifier cannot safely be used by the Slax boot loader.";
-   bool hasEfi=std::any_of(device.partitions.begin(),device.partitions.end(),[](const Partition &p) { return efi(p) && fat(p); });
-   if (!fat(device) && !hasEfi) return "This filesystem needs an existing FAT EFI System Partition on the same disk for UEFI boot. Select another partition, or erase the whole disk to create the required EFI and FAT32 data partitions.";
    if (device.free!=UINT64_MAX && device.free<required(image)) return "There is not enough free space for Slax and filesystem overhead. Free space, choose another target, or erase the whole disk.";
    return "";
 }
@@ -107,6 +107,11 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
    if (!administrator()) throw std::runtime_error("Run the installer as administrator on Windows, or as root in Slax, before installing.");
    InstallPlan plan; plan.device=device; plan.image=image; plan.erase=erase;
    plan.disk=std::make_shared<Disk>(device); plan.snapshot=partitionSnapshot(*plan.disk,!erase);
+   if (!erase && lower(device.filesystem)=="ntfs")
+   {
+      std::vector<unsigned char> boot(device.sector); plan.disk->read(device.start,boot.data(),boot.size());
+      if (memcmp(boot.data()+3,"NTFS    ",8)) throw std::runtime_error("This NTFS volume is encrypted or cannot be read directly from the disk. Slax needs an unencrypted filesystem, even when Windows has unlocked the volume. Choose another target.");
+   }
    for (const auto &entry:image.entries)
    {
       bool menu=entry.path.find("slax/boot/grub/")==0 && entry.path.find("slax/boot/grub/windows/")!=0 && entry.path.find("slax/boot/grub/net/")!=0;
@@ -117,74 +122,79 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
    plan.bootBytes+=4*1024*1024;
    if (erase)
    {
-      auto layout=newLayout(device,windowsXp()); fatGeometry(layout.efi.bytes,device.sector); fatGeometry(layout.data.bytes,device.sector);
-      plan.bios=device.sector==512;
+      auto layout=newLayout(device,mbrRequired(device)); fatGeometry(layout.efi.bytes,device.sector); fatGeometry(layout.data.bytes,device.sector);
+      plan.bios=device.sector==512; plan.fallback=true;
    }
    else
    {
       FileTree target(device,false);
       if (target.exists("slax")) throw std::runtime_error("A slax file or directory already exists on this filesystem. It may contain saved sessions. Move or rename it before installing; it will not be overwritten.");
-      if (target.available()<required(image)) throw std::runtime_error("There is not enough actual free space in the selected filesystem.");
-      std::vector<Partition> candidates;
-      for (const auto &part:device.partitions) if (efi(part) && fat(part) && !part.readonly) candidates.push_back(part);
-      if (!candidates.empty())
+      if (target.available()<required(image)) throw std::runtime_error("There is not enough free space in the selected filesystem. Free some space or choose another target.");
+      // An inaccessible/full ESP must not rule out another valid ESP or a BIOS-only installation.
+      std::string efiFailure;
+      for (const auto &part:device.partitions)
       {
-         bool selected=false;
-         for (const auto &part:candidates)
+         if (!efi(part) || !fat(part) || part.readonly) continue;
+         try
          {
             FileTree boot(part,false);
-            if (boot.available()<plan.bootBytes) continue;
+            if (boot.available()<plan.bootBytes) { efiFailure="The existing EFI partition does not have enough free space."; continue; }
             bool windows=boot.exists("EFI/Microsoft/Boot/bootmgfw.efi");
-            if (!selected || windows) { plan.efi=part; selected=true; if (windows) { plan.windowsLoader="/EFI/Microsoft/Boot/bootmgfw.efi"; break; } }
-         }
-         if (!selected) throw std::runtime_error("No existing EFI System Partition has enough free space for Slax's signed loaders, kernel and boot menu. Free EFI space or erase the whole disk.");
-      }
-      else
-      {
-         if (!fat(device)) throw std::runtime_error("No usable EFI System Partition is available on this disk. Erase the whole disk to create one.");
-         plan.efi=static_cast<const Partition &>(device);
-         if (target.exists("EFI/BOOT")) throw std::runtime_error("This filesystem already contains an EFI fallback boot loader. It will not be overwritten. Use a separate EFI System Partition or erase the whole disk.");
-         if (target.available()<required(image)+plan.bootBytes) throw std::runtime_error("There is not enough free space for both the Slax payload and EFI boot files.");
-         if (target.exists("bootmgr") || target.exists("ntldr") || target.exists("BOOTMGR") || target.exists("NTLDR")) throw std::runtime_error("This FAT filesystem contains an existing Windows BIOS loader. Its boot path will not be replaced automatically. Choose a target with an EFI System Partition or prepare a separate disk.");
-         bool simple=device.partitions.size()<=1 && device.start>=1024*1024 && device.sector==512;
-         if (simple && device.eraseBlocked.empty())
-         {
-            // Confirm the actual sole primary FAT partition; cached table names cannot authorize gap writes.
-            std::vector<unsigned char> mbr(device.sector*2); plan.disk->read(0,mbr.data(),mbr.size());
-            bool matches=false; unsigned used=0;
-            for (unsigned i=0; i<4; i++)
+            if (!plan.efi.bytes || windows)
             {
-               auto entry=mbr.data()+446+i*16; unsigned type=entry[4];
-               if (!type || !disk32(entry+12)) continue;
-               used++;
-               bool fatType=type==4 || type==6 || type==0x0b || type==0x0c || type==0x0e;
-               bool geometry=uint64_t(disk32(entry+8))*device.sector==device.start && uint64_t(disk32(entry+12))*device.sector==device.bytes;
-               if (fatType && geometry && device.number==i+1) matches=true;
+               plan.efi=part;
+               if (windows) { plan.windowsLoader="/EFI/Microsoft/Boot/bootmgfw.efi"; break; }
             }
-            bool signature=mbr[510]==0x55 && mbr[511]==0xaa;
-            bool dos=memcmp(mbr.data()+device.sector,"EFI PART",8)!=0;
-            bool solePartition=used==1 && matches;
-            plan.bios=dos && solePartition && signature;
+         }
+         catch (const std::exception &error) { efiFailure=error.what(); }
+      }
+      // The small embedded core can read FAT, NTFS or Linux data without an EFI partition.
+      std::vector<unsigned char> header(device.sector); plan.disk->read(device.sector,header.data(),header.size());
+      bool gpt=!memcmp(header.data(),"EFI PART",8);
+      if (device.number && device.sector==512)
+      {
+         try { checkBiosFiles(device,false); plan.biosImage=std::make_shared<BiosImage>(buildBios(device,gpt)); }
+         catch (const std::exception &error) { plan.bootWarning=error.what(); }
+      }
+      uint64_t coreBytes=plan.biosImage?plan.biosImage->core.size():0;
+      plan.bootLayout=std::make_shared<BootLayout>(planBootLayout(*plan.disk,coreBytes,plan.bootBytes,!plan.efi.bytes && device.number));
+      plan.bios=plan.biosImage && plan.bootLayout->bios.bytes;
+      if (plan.biosImage && !plan.bios) plan.bootWarning="The BIOS loader needs "+std::to_string((coreBytes+1023)/1024)+" KiB of safe empty space outside the filesystems. None of the available areas is large enough.";
+      if (!plan.efi.bytes && plan.bootLayout->efi.bytes) plan.efi=plan.bootLayout->efi;
+      if (!plan.efi.bytes && fat(device))
+      {
+         if (!target.exists("EFI/BOOT") && target.available()>=required(image)+plan.bootBytes) plan.efi=static_cast<const Partition &>(device);
+         else efiFailure="The data filesystem already has an EFI fallback loader, or lacks room for the additional EFI files.";
+      }
+      if (plan.bios)
+      {
+         const auto &mbr=plan.bootLayout->originalMbr;
+         bool code=std::any_of(mbr.begin(),mbr.begin()+440,[](unsigned char c) { return c!=0; });
+         if (code)
+         {
+            bool windows=target.exists("ntldr") || target.exists("bootmgr") || target.exists("NTLDR") || target.exists("BOOTMGR") || target.exists("Windows") || target.exists("WINDOWS");
+            if (gpt) plan.previousBios="Previous BIOS boot loader";
+            else plan.previousBios=windows?"Windows (BIOS)":"Previous operating system (BIOS)";
          }
       }
-      if (device.usb && efi(plan.efi))
+      // Keep unknown fallback files intact; a matching Microsoft copy can be backed up atomically.
+      plan.fallback=plan.efi.bytes && (device.usb || !efi(plan.efi) || plan.bootLayout->efi.bytes);
+      if (plan.fallback && !plan.bootLayout->efi.bytes)
       {
          FileTree esp(plan.efi,false);
          if (esp.exists("EFI/BOOT"))
          {
-            if (plan.windowsLoader.empty() || !esp.exists("EFI/BOOT/BOOTX64.EFI")) throw std::runtime_error("This removable disk already has an unknown EFI fallback loader. It will not be replaced. Choose another target or erase the whole disk.");
-            auto original=bootDigest(esp,"EFI/BOOT/BOOTX64.EFI");
-            if (original!=bootDigest(esp,"EFI/Microsoft/Boot/bootmgfw.efi")) throw std::runtime_error("The existing removable EFI fallback is not an identical Windows Boot Manager. It will not be replaced. Use another target or erase the whole disk.");
-            plan.fallbackDigest=original;
+            bool windowsCopy=!plan.windowsLoader.empty() && esp.exists("EFI/BOOT/BOOTX64.EFI");
+            if (windowsCopy && bootDigest(esp,"EFI/BOOT/BOOTX64.EFI")==bootDigest(esp,"EFI/Microsoft/Boot/bootmgfw.efi")) plan.fallbackDigest=bootDigest(esp,"EFI/BOOT/BOOTX64.EFI");
+            else { plan.fallback=false; plan.bootWarning="The existing EFI fallback loader will be kept. Select Slax Linux in the firmware boot menu."; }
          }
       }
-      // Internal or Windows-system multiboot uses a new vendor path and preserves every original boot entry.
-      plan.registerBoot=(!device.usb || device.system) && efi(plan.efi);
+      bool wantEntry=plan.efi.number && (!device.usb || device.system || !plan.fallback);
+      plan.registerBoot=wantEntry && firmwareAvailable();
       if (plan.registerBoot)
       {
-         if (!firmwareAvailable()) throw std::runtime_error("Automatic internal-disk multiboot requires a 64-bit UEFI-booted session with writable firmware variables. Start Windows or Slax in 64-bit UEFI mode, or install to a separate removable disk.");
          plan.bootOrder=readFirmware("BootOrder");
-         if (plan.bootOrder.empty() || plan.bootOrder.size()%2) throw std::runtime_error("The existing UEFI boot order is invalid. No boot settings will be changed.");
+         if (plan.bootOrder.empty() || plan.bootOrder.size()%2) throw std::runtime_error("The existing UEFI boot order is invalid. Repair it before installing; no boot settings will be changed.");
          std::set<uint16_t> referenced;
          for (size_t at=0; at<plan.bootOrder.size(); at+=2) referenced.insert(plan.bootOrder[at]|plan.bootOrder[at+1]<<8);
          for (const char *variable:{"BootCurrent","BootNext"})
@@ -198,7 +208,23 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
             if (!referenced.count(n) && readFirmware(name).empty()) { plan.bootNumber=n; found=true; break; }
          }
          if (!found) throw std::runtime_error("The firmware has no free UEFI boot entry slots.");
+         readEfiLoaders(plan);
       }
+      planBootMenu(plan);
+      if (grubBootMenu(plan))
+      {
+         bool newEfi=plan.bootLayout->efi.bytes!=0;
+         plan.bootLayout=std::make_shared<BootLayout>(planBootLayout(*plan.disk,0,plan.bootBytes,newEfi));
+         if (newEfi) plan.efi=plan.bootLayout->efi;
+         plan.bios=bool(plan.biosImage);
+      }
+      else if (!plan.bios) plan.biosImage.reset();
+      if (!plan.bios && !plan.efi.bytes)
+         throw std::runtime_error("Slax cannot be made bootable on this target. "+plan.bootWarning+"\n"+efiFailure+" UEFI needs a writable FAT EFI partition or free space for one. Choose another target, free unallocated disk space, or erase the whole disk after backing it up.");
+      if (!plan.bios && !plan.fallback && !plan.registerBoot && plan.bootConfig.empty())
+         throw std::runtime_error("Slax files can be copied, but this session cannot add a usable boot entry while keeping the existing loader. Start the installer in 64-bit UEFI mode, or prepare a separate disk. Existing boot files will not be replaced.");
+      if (wantEntry && !plan.registerBoot && plan.bios && plan.bootConfig.empty()) plan.bootWarning="This session runs without writable UEFI firmware. BIOS multiboot will be set up; existing UEFI boot settings will stay unchanged.";
+      if (!plan.bios) plan.bootWarning+=" BIOS boot is unavailable because this disk has no safe empty embedding area"+std::string(device.sector==4096?" and uses native 4096-byte sectors.":".");
    }
    if (!erase) for (const auto &other:scanDevices(image.path))
    {
@@ -210,25 +236,36 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
       };
       if (duplicate(other) || std::any_of(other.partitions.begin(),other.partitions.end(),duplicate)) throw std::runtime_error("Another connected filesystem has the same UUID as the target or EFI partition. Disconnect the duplicate or assign it a unique filesystem UUID before installing; boot would otherwise be ambiguous.");
    }
-   plan.confirmation="Install Slax to "+device.name+" ("+device.label+")\n"+device.path+" · "+sizeText(erase?device.diskBytes:device.bytes)+"\n\n";
+   plan.confirmation="Install Slax to "+device.label+" — "+device.name+" ("+sizeText(erase?device.diskBytes:device.bytes)+")\n\n";
    if (erase)
    {
-      plan.confirmation+="ERASE THE ENTIRE PHYSICAL DISK, including every partition below:\n";
-      if (device.partitions.empty()) plan.confirmation+="  "+device.path+" — entire disk; any existing contents will be lost\n";
+      plan.confirmation+="Everything on this physical disk will be permanently deleted, including these partitions:\n";
+      if (device.partitions.empty()) plan.confirmation+="  "+device.path+" — entire disk\n";
       for (const auto &part:device.partitions) plan.confirmation+="  "+part.label+" — "+sizeText(part.bytes)+" · "+(part.filesystem.empty()?"unformatted/unknown":part.filesystem)+"\n";
-      if (windowsXp()) plan.confirmation+="\nCreate MBR with an active FAT32 Slax data partition first and a small FAT32 EFI partition second. Install GRUB BIOS boot code in the MBR and reserved space before the first partition. The medium will support BIOS and UEFI boot.";
-      else plan.confirmation+="\nCreate GPT, a 1 MiB BIOS boot partition, a FAT32 EFI partition and one FAT32 Slax data partition using the remaining capacity.";
-      plan.confirmation+=" All existing data on this physical disk will be lost.";
+      plan.confirmation+="\nCreate a large FAT32 partition for the slax folder and a small, separate EFI partition for starting the computer. ";
+      if (mbrRequired(device)) plan.confirmation+="Use MBR with the data partition first so this Windows version can still open and use it. ";
+      else plan.confirmation+="Use GPT, with a small BIOS boot partition for older computers. ";
    }
    else
    {
-      plan.confirmation+="Keep the existing partitions and files. Create a new slax directory and separate Slax EFI boot files.";
-      if (!plan.windowsLoader.empty()) plan.confirmation+="\nPreserve Windows Boot Manager and add Windows to the Slax menu.";
-      if (!plan.fallbackDigest.empty()) plan.confirmation+="\nBack up the identical Windows removable fallback directory, then publish Slax there. The Microsoft boot loader and its firmware entry will be retained.";
-      if (plan.registerBoot) plan.confirmation+="\nAdd Slax first in the UEFI boot order, retaining all original boot entries. The full Slax menu will be visible with a 10-second timeout.";
-      if (plan.bios) plan.confirmation+="\nInstall GRUB BIOS boot code in the MBR and the unused space before the first partition. The partition table and files will be kept.";
+      plan.confirmation+="Keep your files and existing partitions. Copy Slax into a new slax folder on "+device.label+".\n\n";
+      if (!plan.bootConfig.empty()) plan.confirmation+="Add Slax Linux to the existing "+std::string(plan.bootConfig=="boot.ini"?"Windows XP":plan.bootConfig=="Boot/BCD"?"Windows":"GRUB")+" boot menu. Keep the original operating system as the default and preserve its boot code. ";
+      else if (plan.bios) plan.confirmation+="Set up BIOS boot (for older computers). "+std::string(plan.previousBios.empty()?"":"Show a text system-selection menu first, with the original system as the default. ");
+      bool newBios=plan.bootLayout->bios.number && std::none_of(device.partitions.begin(),device.partitions.end(),[&](const Partition &part) { return part.start==plan.bootLayout->bios.start; });
+      if (newBios) plan.confirmation+="Create a small BIOS boot partition in unused space, keeping the sizes of your existing partitions. ";
+      if (plan.bootLayout->efi.bytes) plan.confirmation+="Create a small EFI partition in currently unused space; no existing partition will be resized. ";
+      else if (plan.efi.bytes) plan.confirmation+=efi(plan.efi)?"Put signed UEFI boot files in the existing EFI partition, separate from your data. ":"Put signed UEFI boot files on the same FAT filesystem; no separate EFI partition can be created safely. ";
+      if (!plan.windowsLoader.empty() && plan.bootConfig.empty()) plan.confirmation+="Keep Windows Boot Manager and show it first in a text system-selection menu. ";
+      if (!plan.efiLoaders.empty() && plan.bootConfig.empty()) plan.confirmation+="Retain the other system loaders as choices in this outer menu. ";
+      if (plan.registerBoot) plan.confirmation+=plan.efiFirst.empty()?"Add Slax Linux as another UEFI choice, keeping the current firmware default. ":"Start this selector through UEFI, retaining all previous firmware choices. ";
+      if (!plan.fallbackDigest.empty()) plan.confirmation+="Keep a backup of the Windows fallback boot files. ";
    }
-   if (!plan.bios) plan.confirmation+="\n\nThis installation supports UEFI boot only. "+std::string(device.sector==4096?"The disk uses native 4096-byte sectors; the BIOS loader requires 512-byte sectors.":"Existing BIOS boot code will not be replaced in this configuration.");
+   bool uefi=erase || plan.efi.bytes;
+   plan.confirmation+="\n\nSelecting Slax Linux starts its normal logo and countdown; Escape opens the Slax options. ";
+   if (uefi) plan.confirmation+="Signed UEFI files support Secure Boot on compatible 64-bit computers. ";
+   if (!plan.bios) plan.confirmation+="This installation uses UEFI boot only. ";
+   else if (!uefi) plan.confirmation+="This installation uses BIOS boot only; it cannot start with Secure Boot. ";
+   if (!plan.bootWarning.empty()) plan.confirmation+="\n\n"+plan.bootWarning;
    return plan;
 }
 
@@ -248,19 +285,29 @@ static void replace(std::string &text,const std::string &from,const std::string 
    while ((at=text.find(from,at))!=std::string::npos) { text.replace(at,from.size(),to); at+=to.size(); }
 }
 
-// Keep a visible countdown in the full menu for both BIOS and UEFI installations.
-static std::string menuTheme(std::string text,bool windows)
+// Keep system selection in a plain outer menu; Slax retains its own countdown and Escape menu.
+static std::string menu(const std::string &boot,const std::string &uuid,const InstallPlan &plan,bool uefi=false)
 {
-   if (windows) replace(text,"height = 64","height = 80");
-   text+="\n+ label { id = \"__timeout__\" left = 0 top = \"100%-52\" width = 100% height = 16 text = \"Booting Slax in %d seconds\" font = \"Unifont Regular 16\" color = \"#FFFFFF\" align = \"center\" }\n";
-   return text;
-}
-
-// Show the full Slax menu, with a visible timeout and an intact Windows chainloader when present.
-static std::string menu(const std::string &boot,const std::string &uuid,const InstallPlan &plan)
-{
-   std::string text="set default=0\nset timeout=10\nset timeout_style=menu\nset gfxmode=auto\nset gfxpayload=keep\nset bootuuid="+uuid+"\nexport bootuuid\nsource "+boot+"/grub/graphics.cfg\nset theme="+boot+"/grub/theme.txt\nexport theme\nsource "+boot+"/grub/entries.cfg\n";
-   if (!plan.windowsLoader.empty()) text+="menuentry \"Windows Boot Manager\" {\n   search --no-floppy --fs-uuid --set=windows "+plan.efi.uuid+"\n   chainloader ($windows)"+plan.windowsLoader+"\n}\n";
+   bool previous=uefi?(!plan.windowsLoader.empty() || !plan.efiLoaders.empty()):!plan.previousBios.empty();
+   bool native=uefi?grubEfiMenu(plan):!plan.bootConfig.empty();
+   if (!previous || native) return "configfile "+boot+"/grub.cfg\n";
+   unsigned first=0;
+   if (uefi && !plan.efiFirst.empty() && filenameKey(plan.efiFirst)!=filenameKey(plan.windowsLoader))
+      for (size_t i=0; i<plan.efiLoaders.size(); i++) if (plan.efiLoaders[i].second==plan.efiFirst) first=i+!plan.windowsLoader.empty();
+   std::string text="terminal_output console\nunset theme\nset default="+std::to_string(first)+"\nset timeout=10\nset timeout_style=menu\n";
+   if (!plan.windowsLoader.empty()) text+="if [ \"$grub_platform\" = efi ]; then\nmenuentry \"Windows Boot Manager\" {\n   search --no-floppy --fs-uuid --set=windows "+plan.efi.uuid+"\n   chainloader ($windows)"+plan.windowsLoader+"\n}\nfi\n";
+   if (!plan.previousBios.empty()) text+="if [ \"$grub_platform\" = pc ]; then\nmenuentry \""+plan.previousBios+"\" {\n   search --no-floppy --fs-uuid --set=root "+uuid+"\n   drivemap -s (hd0) $root\n   chainloader /slax/boot/grub/boot-backup/original-mbr.bin\n}\nfi\n";
+   for (const auto &loader:plan.efiLoaders)
+   {
+      auto quote=[](const std::string &value)
+      {
+         std::string text="\"";
+         for (unsigned char c:value) { if (c<32) continue; if (c=='\\' || c=='\"' || c=='$' || c=='`') text+='\\'; text+=c; }
+         return text+'\"';
+      };
+      text+="if [ \"$grub_platform\" = efi ]; then\nmenuentry "+quote(loader.first)+" {\n   search --no-floppy --fs-uuid --set=root "+plan.efi.uuid+"\n   chainloader "+quote(loader.second)+"\n}\nfi\n";
+   }
+   text+="menuentry \"Slax Linux\" {\n   search --no-floppy --fs-uuid --set=root "+uuid+"\n   configfile "+boot+"/grub.cfg\n   terminal_output console\n}\n";
    return text;
 }
 
@@ -287,19 +334,17 @@ static std::vector<Content> bootFiles(const InstallPlan &plan,FILE *source,const
    for (const auto &entry:plan.image.entries)
    {
       if (entry.directory) continue;
-      bool asset=entry.path.find("slax/boot/grub/")==0 && entry.path.find("slax/boot/grub/windows/")!=0 && entry.path.find("slax/boot/grub/net/")!=0;
+      bool asset=entry.path.find("slax/boot/grub/")==0 && entry.path.find("slax/boot/grub/windows/")!=0 && entry.path.find("slax/boot/grub/net/")!=0 && entry.path.find("slax/boot/grub/i386-pc/")!=0 && entry.path.find("slax/boot/grub/boot-backup/")!=0;
       bool kernel=entry.path=="slax/boot/vmlinuz" || entry.path=="slax/boot/initrfs.img";
+      bool config=entry.path=="slax/boot/grub.cfg";
       if (asset && (entry.path.find(".img")!=std::string::npos || entry.path.find("usb-space.tar")!=std::string::npos)) continue;
-      if (asset || kernel)
+      if (asset || kernel || config)
       {
          Content file={entry,""}; file.entry.path=vendor+"/boot/"+entry.path.substr(10);
-         if (asset && (entry.path.size()>4 && (entry.path.substr(entry.path.size()-4)==".cfg" || entry.path.substr(entry.path.size()-4)==".txt")))
+         if (config || (asset && entry.path.size()>4 && (entry.path.substr(entry.path.size()-4)==".cfg" || entry.path.substr(entry.path.size()-4)==".txt")))
          {
             auto text=contents(source,entry); replace(text,"/slax/boot","/"+vendor+"/boot");
-            if (entry.path=="slax/boot/grub/theme.txt")
-            {
-               text=menuTheme(text,!plan.windowsLoader.empty());
-            }
+            if (config) replace(text,"probe --set=bootuuid --fs-uuid ($root)","set bootuuid="+uuid);
             file=generated(file.entry.path,text);
          }
          files.push_back(std::move(file));
@@ -312,7 +357,7 @@ static std::vector<Content> bootFiles(const InstallPlan &plan,FILE *source,const
          if (fallback) { file.entry.path="EFI/BOOT/"+name; files.push_back(file); }
       }
    }
-   files.push_back(generated(vendor+"/boot/grub/menu.cfg",menu("/"+vendor+"/boot",uuid,plan)));
+   files.push_back(generated(vendor+"/boot/grub/menu.cfg",menu("/"+vendor+"/boot",plan.efi.uuid.empty()?uuid:plan.efi.uuid,plan,true)));
    std::string bootstrap="set slax_path=$cmdpath\nif [ -n \"$fw_path\" ]; then set slax_path=$fw_path; fi\nif regexp --set=1:slax_efi '^\\(([^)]+)\\)' \"$slax_path\"; then set root=$slax_efi; fi\nset prefix=($root)/"+vendor+"/boot/grub\nconfigfile /"+vendor+"/boot/grub/menu.cfg\n";
    files.push_back(generated(vendor+"/grub.cfg",bootstrap));
    if (fallback) files.push_back(generated("EFI/BOOT/grub.cfg",bootstrap));
@@ -335,7 +380,7 @@ static void copyTree(FileTree &tree,const std::vector<Content> &files,FILE *sour
             if (!tree.exists(entry.path)) { tree.mkdir(entry.path); created.push_back({entry.path,true}); }
             continue;
          }
-         FILE *output=tree.open(entry.path,true); created.push_back({entry.path,false});
+         FILE *output=tree.open(entry.path,true,entry.mode); created.push_back({entry.path,false});
          try
          {
             Hash expected;
@@ -364,30 +409,44 @@ static void copyTree(FileTree &tree,const std::vector<Content> &files,FILE *sour
    }
 }
 
-// Perform real writes only after revalidating the source, approved metadata and retained device handle.
+// Reopen the source for copying and revalidate the approved destination before writing.
 void install(const InstallPlan &plan,const Progress &progress)
 {
    using File=std::unique_ptr<FILE,int (*)(FILE *)>;
    File source(openImage(plan.image.path),fclose);
-   if (!source || imageIdentity(source.get())!=plan.image.identity) throw std::runtime_error("The selected ISO changed or cannot be opened. No changes were made.");
+   if (!source) throw std::runtime_error("The selected ISO cannot be opened. No changes were made.");
    if (partitionSnapshot(*plan.disk,!plan.erase)!=plan.snapshot) throw std::runtime_error("The approved partition table changed. No changes were made.");
    auto reason=basicEligibility(plan.device,plan.image,plan.erase); if (!reason.empty()) throw std::runtime_error(reason);
    progress("Preparing verified boot files…",1);
    std::string vendor="EFI/Slax/"+randomId();
    Layout layout;
-   if (plan.erase) layout=newLayout(plan.device,windowsXp());
+   if (plan.erase) layout=newLayout(plan.device,mbrRequired(plan.device));
    std::string uuid=plan.erase?layout.data.uuid:plan.device.uuid;
    BiosImage bios;
-   if (plan.bios) bios=buildBios(plan.image,source.get(),uuid);
+   if (plan.bios) bios=plan.erase?buildBios(layout.data,!layout.primary.empty()):*plan.biosImage;
    std::vector<Content> payload;
    for (const auto &entry:plan.image.entries) payload.push_back({entry,""});
-   for (auto &file:payload) if (file.entry.path=="slax/boot/grub.cfg") file=generated(file.entry.path,menu("/slax/boot",uuid,plan));
-   for (auto &file:payload) if (file.entry.path=="slax/boot/grub/theme.txt") file=generated(file.entry.path,menuTheme(contents(source.get(),file.entry),!plan.windowsLoader.empty()));
-   auto boot=bootFiles(plan,source.get(),vendor,uuid,plan.erase || plan.device.usb || !efi(plan.efi));
+   if (plan.bios)
+   {
+      payload.insert(payload.end(),bios.modules.begin(),bios.modules.end());
+      payload.push_back(generated("slax/boot/grub/grub.cfg",menu("/slax/boot",uuid,plan)));
+   }
+   if (plan.bootLayout && (plan.bios || !plan.bootLayout->patches.empty()))
+   {
+      std::string record="Slax boot recovery backup. Files contain original bytes from the physical disk.\nDisk: "+plan.device.disk+"\nLogical sector size: "+std::to_string(plan.device.sector)+"\n";
+      payload.push_back(generated("slax/boot/grub/boot-backup/original-mbr.bin",plan.bootLayout->originalMbr));
+      for (const auto &patch:plan.bootLayout->patches)
+      {
+         auto name=std::to_string(patch.start)+".bin"; record+=name+": byte offset "+std::to_string(patch.start)+", length "+std::to_string(patch.before.size())+"\n";
+         payload.push_back(generated("slax/boot/grub/boot-backup/"+name,patch.before));
+      }
+      record+="original-mbr.bin: byte offset 0. Restore boot metadata only from a separate recovery session, on this exact disk. Existing partitions must retain their original positions.\n";
+      payload.push_back(generated("slax/boot/grub/boot-backup/README.txt",record));
+   }
+   auto boot=plan.erase || plan.efi.bytes?bootFiles(plan,source.get(),vendor,uuid,plan.fallback):std::vector<Content>{};
    if (!plan.fallbackDigest.empty())
       for (auto &file:boot) if (file.entry.path.find("EFI/BOOT")==0) file.entry.path=vendor+"/fallback"+file.entry.path.substr(8);
    boot=ordered(std::move(boot));
-   if (imageIdentity(source.get())!=plan.image.identity) throw std::runtime_error("The ISO changed while preparing the installation. No changes were made.");
    bool changed=false;
    try
    {
@@ -399,7 +458,6 @@ void install(const InstallPlan &plan,const Progress &progress)
          changed=true;
          writeFat(*plan.disk,layout.data,ordered(std::move(payload)),source.get(),[&](const auto &text,int percent) { progress(text,5+percent); });
          writeFat(*plan.disk,layout.efi,boot,source.get(),[&](const auto &text,int percent) { progress(text,80+percent/6); });
-         if (imageIdentity(source.get())!=plan.image.identity) throw std::runtime_error("The ISO changed during copying; boot activation was stopped.");
          progress("Writing BIOS and UEFI boot records…",94);
          if (plan.bios) writeBios(*plan.disk,layout.bios.start,layout.bios.bytes,bios,layout.mbr);
          writeLayout(*plan.disk,layout);
@@ -413,14 +471,15 @@ void install(const InstallPlan &plan,const Progress &progress)
             for (auto &file:payload) file.entry.path=stage+file.entry.path.substr(4);
             changed=true;
             copyTree(target,ordered(std::move(payload)),source.get(),[&](auto text,int percent) { plan.disk->verify(); replace(text,stage,"slax"); progress(text,5+percent); });
-            if (imageIdentity(source.get())!=plan.image.identity) throw std::runtime_error("The ISO changed during copying; the new slax directory was not published.");
             target.move(stage,"slax"); target.sync();
          }
+         if (plan.bios) checkBiosFiles(plan.device,true);
+         if (plan.efi.bytes && !plan.bootLayout->efi.bytes)
          {
             FileTree esp(plan.efi,true);
-            if (!efi(plan.efi) && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation. It will not be overwritten.");
+            if (plan.fallback && !efi(plan.efi) && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation. It will not be overwritten.");
             if (!plan.fallbackDigest.empty() && bootDigest(esp,"EFI/BOOT/BOOTX64.EFI")!=plan.fallbackDigest) throw std::runtime_error("The existing EFI fallback changed after confirmation; it will not be replaced.");
-            if (plan.device.usb && plan.fallbackDigest.empty() && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation; it will not be replaced.");
+            if (plan.fallback && plan.fallbackDigest.empty() && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation; it will not be replaced.");
             if (esp.available()<plan.bootBytes) throw std::runtime_error("The EFI filesystem no longer has enough free space. The copied Slax files remain, and the original boot loader has not been replaced.");
             copyTree(esp,boot,source.get(),[&](const auto &,int percent) { plan.disk->verify(); progress("Copying UEFI boot files…",80+percent/6); });
             esp.sync();
@@ -431,23 +490,30 @@ void install(const InstallPlan &plan,const Progress &progress)
                catch (...) { esp.move(vendor+"/original-fallback","EFI/BOOT"); esp.sync(); throw; }
             }
          }
-         if (plan.bios)
+         if (plan.bios || !plan.bootLayout->patches.empty())
          {
-            progress("Installing GRUB BIOS boot code…",94);
-            plan.disk->claim(false);
-            if (partitionSnapshot(*plan.disk)!=plan.snapshot) throw std::runtime_error("The partition table changed before BIOS setup. The original boot code was not replaced.");
-            std::vector<unsigned char> original(std::min<uint64_t>(plan.device.start,1024*1024)),mbr(plan.device.sector);
-            plan.disk->read(0,original.data(),original.size()); std::copy(original.begin(),original.begin()+mbr.size(),mbr.begin());
-            try { writeBios(*plan.disk,plan.device.sector,original.size()-plan.device.sector,bios,mbr); plan.disk->write(0,mbr.data(),mbr.size()); plan.disk->flush(); }
-            catch (...) { plan.disk->write(0,original.data(),original.size()); plan.disk->flush(); throw; }
+            progress("Preparing BIOS and EFI boot records…",94);
+            plan.disk->claimBoot(plan.bootLayout->ranges);
+            if (partitionSnapshot(*plan.disk)!=plan.snapshot) throw std::runtime_error("The partition table changed before boot setup. The original boot code was not replaced.");
+            verifyBootLayout(*plan.disk,*plan.bootLayout);
+            if (plan.bootLayout->efi.bytes)
+            {
+               writeFat(*plan.disk,plan.efi,boot,source.get(),[&](const auto &,int percent) { progress("Preparing the new EFI partition…",85+percent/10); });
+            }
+            commitBootLayout(*plan.disk,*plan.bootLayout,plan.bios && !grubBootMenu(plan)?&bios:nullptr,!plan.bootConfig.empty());
          }
       }
-      if (imageIdentity(source.get())!=plan.image.identity) throw std::runtime_error("The ISO changed during installation. The copied files were individually verified, but installation cannot be confirmed.");
       plan.disk->verify(); plan.disk->flush();
+      if (!plan.bootConfig.empty())
+      {
+         progress("Adding Slax to the original boot menu…",97);
+         publishBootMenu(plan,vendor);
+      }
       if (plan.registerBoot)
       {
          progress("Adding Slax multiboot while preserving existing entries…",97);
-         registerFirmware(plan,"\\"+vendor+"\\BOOTX64.EFI",vendor+"/boot-order-backup.txt");
+         auto active=plan; active.snapshot=partitionSnapshot(*plan.disk);
+         registerFirmware(active,"\\"+vendor+"\\BOOTX64.EFI","slax/boot/grub/boot-order-backup.txt");
       }
       plan.disk->release(); refreshDisk(plan.device); progress("Installation verified and complete.",100);
    }

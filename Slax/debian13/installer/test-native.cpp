@@ -7,6 +7,7 @@
 // This headless test entry point can write only a loop device backed by its explicitly owned fixture.
 std::string chooseImage() { return ""; }
 bool confirmInstall(const std::string &,bool) { return false; }
+void showInstallError(const std::string &) {}
 void invalidate() {}
 void windowAction(Action) {}
 int runWindow() { return 1; }

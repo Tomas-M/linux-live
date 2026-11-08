@@ -1,0 +1,33 @@
+#!/bin/sh
+# Build the unmodified GNU image utility with static XZ support for small legacy BIOS gaps.
+set -eu
+ROOT=${1:?Usage: build-windows-grub WORK_DIRECTORY OUTPUT_EXE}
+OUTPUT=${2:?Usage: build-windows-grub WORK_DIRECTORY OUTPUT_EXE}
+mkdir -p "$ROOT"
+trap 'if [ "$?" -ne 0 ] && [ -f "$ROOT/build.log" ]; then tail -40 "$ROOT/build.log"; fi' 0
+python3 - "$ROOT" <<'PY'
+from pathlib import Path
+from urllib.request import urlopen
+import hashlib,io,sys,tarfile
+root=Path(sys.argv[1])
+archives=[
+    ('https://mirrors.kernel.org/gnu/grub/grub-2.12.tar.xz','f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa'),
+    ('https://deb.debian.org/debian/pool/main/x/xz-utils/xz-utils_5.8.1.orig.tar.xz','0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e'),
+]
+for url,expected in archives:
+    with urlopen(url,timeout=60) as response: data=response.read()
+    if hashlib.sha256(data).hexdigest()!=expected: sys.exit('Source archive SHA256 mismatch: '+url)
+    with tarfile.open(fileobj=io.BytesIO(data),mode='r:xz') as archive: archive.extractall(root,filter='data')
+    print('Verified '+url,flush=True)
+PY
+mkdir "$ROOT/xz-build" "$ROOT/grub-build"
+cd "$ROOT/xz-build"
+CFLAGS='-Os -D_WIN32_WINNT=0x0501 -ffunction-sections -fdata-sections' "$ROOT/xz-5.8.1/configure" --host=i686-w64-mingw32 --prefix="$ROOT/sysroot" --disable-shared --enable-static --disable-nls --disable-threads --disable-xz --disable-xzdec --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc > "$ROOT/build.log" 2>&1
+make -j8 V=0 >> "$ROOT/build.log" 2>&1
+make install >> "$ROOT/build.log" 2>&1
+cd "$ROOT/grub-build"
+CPPFLAGS="-I$ROOT/sysroot/include" LDFLAGS="-L$ROOT/sysroot/lib -static -Wl,--gc-sections,--major-subsystem-version,5,--minor-subsystem-version,1" CFLAGS='-Os -ffunction-sections -fdata-sections' "$ROOT/grub-2.12/configure" --host=i686-w64-mingw32 --target=i386 --with-platform=pc --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount --disable-device-mapper --disable-efiemu >> "$ROOT/build.log" 2>&1
+make -C grub-core/lib/gnulib -j8 V=0 >> "$ROOT/build.log" 2>&1
+make -j8 V=0 grub-mkimage.exe >> "$ROOT/build.log" 2>&1
+i686-w64-mingw32-strip grub-mkimage.exe
+cp grub-mkimage.exe "$OUTPUT"

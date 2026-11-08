@@ -1,4 +1,4 @@
-#include "storage.h"
+#include "disk-format.h"
 #include <chrono>
 #include <cstring>
 
@@ -24,6 +24,23 @@ static void json(const std::string &value)
       else putchar(c);
    }
    putchar('"');
+}
+
+// Reuse Partition Manager's hard-drive, USB and virtual-storage artwork.
+int deviceIcon(const Device &device)
+{
+   if (device.virtualDisk) return 2;
+   return device.usb?1:0;
+}
+
+// Keep the native target identifier first in the metadata line, outside the icon.
+std::string deviceLocation(const Device &device)
+{
+#ifdef _WIN32
+   if (device.label.size()==2 && device.label[1]==':') return device.label+"/";
+   if (!device.label.empty() && device.label[0]=='#') return device.label;
+#endif
+   return device.path;
 }
 
 // Filter and sort the menu while retaining every sibling in discovery and erase warnings.
@@ -129,8 +146,13 @@ void Installer::setImagePath(const std::string &path,bool automatic)
    refresh(automatic?Next:None); invalidate();
 }
 
-// Keep the immediate explanation consistent with the deeper native preflight.
-std::string Installer::eligibility(const Device &device) const { return basicEligibility(device,iso,erase); }
+// Whole-disk highlighting is derived from the last clicked row, never a second selection list.
+bool Installer::isSelected(const Device &device) const
+{
+   if (!erase || device.diskId.empty()) return device.id==selected;
+   auto clicked=std::find_if(devices.begin(),devices.end(),[this](const Device &d) { return d.id==selected; });
+   return clicked!=devices.end() && device.diskId==clicked->diskId;
+}
 
 // Consume worker results on the GUI thread and launch only the exact plan the user approved.
 void Installer::tick()
@@ -151,7 +173,7 @@ void Installer::tick()
    }
    if (!ready) return;
    auto found=std::find_if(devices.begin(),devices.end(),[this](const Device &d) { return d.id==selected; });
-   if (found==devices.end() && !selected.empty()) { selected.clear(); if (page==1) error="The selected target is no longer available. Select a listed disk or partition."; }
+   if (found==devices.end() && !selected.empty()) selected.clear();
    if (pending!=None)
    {
       Action action=pending; pending=None;
@@ -166,8 +188,11 @@ void Installer::tick()
       {
          error=failure;
          if (error.empty() && !prepared) error="The target could not be prepared. Select the image and target again.";
-         if (error.empty() && checked.identity!=iso.identity) error="The ISO file identity changed. Copy the image to a stable local drive and select it again.";
-         if (error.empty() && action==Next)
+         if (!error.empty())
+         {
+            confirming=true; showInstallError(error); confirming=false; error.clear(); plan.reset();
+         }
+         else if (action==Next)
          {
             plan=prepared; target=found->name+" ("+found->label+") · "+sizeText(erase?found->diskBytes:found->bytes); targetId=found->id;
             confirming=true; invalidate(); bool approved=confirmInstall(plan->confirmation,erase); confirming=false;
@@ -175,20 +200,27 @@ void Installer::tick()
          }
          else if (error.empty() && action==Confirm)
          {
-            bool sameDevice=plan && prepared->device.id==plan->device.id && prepared->device.layout==plan->device.layout && prepared->snapshot==plan->snapshot;
-            bool sameEfi=plan && prepared->efi.start==plan->efi.start && prepared->efi.uuid==plan->efi.uuid;
-            bool sameFirmware=plan && prepared->bootOrder==plan->bootOrder && prepared->fallbackDigest==plan->fallbackDigest;
-            bool sameImage=plan && prepared->image.identity==plan->image.identity && prepared->confirmation==plan->confirmation;
-            bool same=sameDevice && sameEfi && sameFirmware && sameImage;
-            if (!same) { error="The installation plan changed after confirmation. Review and confirm the target again."; plan.reset(); }
+            bool sameDevice=plan && prepared->device.id==plan->device.id && prepared->device.layout==plan->device.layout && prepared->snapshot==plan->snapshot && prepared->device.uuid==plan->device.uuid;
+            bool newEfi=plan && plan->bootLayout && plan->bootLayout->efi.bytes;
+            bool sameEfi=plan && prepared->efi.start==plan->efi.start && prepared->efi.bytes==plan->efi.bytes && (newEfi || prepared->efi.uuid==plan->efi.uuid);
+            bool sameBios=plan && prepared->bios==plan->bios && prepared->previousBios==plan->previousBios;
+            if (sameBios && plan->bios && !plan->erase) sameBios=prepared->bootLayout->bios.start==plan->bootLayout->bios.start && prepared->biosImage->core==plan->biosImage->core;
+            bool sameFirmware=plan && prepared->bootOrder==plan->bootOrder && prepared->fallbackDigest==plan->fallbackDigest && prepared->efiLoaders==plan->efiLoaders && prepared->efiFirst==plan->efiFirst;
+            bool sameSummary=plan && prepared->confirmation==plan->confirmation;
+            bool sameMenu=plan && prepared->bootConfig==plan->bootConfig && prepared->bootBefore==plan->bootBefore && prepared->bootPartition.uuid==plan->bootPartition.uuid && prepared->bootFile==plan->bootFile;
+            bool same=sameDevice && sameEfi && sameBios && sameFirmware && sameSummary && sameMenu;
+            if (!same) { confirming=true; showInstallError("The installation plan changed after confirmation. Review and confirm the target again."); confirming=false; plan.reset(); }
             else
             {
-               running=false; if (scanner.joinable()) scanner.join();
+               running=false;
                page=2; percent=0;
                { std::lock_guard<std::mutex> lock(mutex); writeDone=false; writeError.clear(); writtenPercent=0; status="Preparing installation…"; }
-               auto approved=plan;
+               // Use the latest parsed ISO inventory when reopening the source for copying.
+               plan=prepared; auto approved=plan;
                writer=std::thread([this,approved]
                {
+                  // Let the window keep animating while the discovery worker finishes.
+                  if (scanner.joinable()) scanner.join();
                   std::string failure;
                   try
                   {
@@ -209,7 +241,7 @@ void Installer::tick()
 void Installer::activate(Action action,const std::string &id)
 {
    if (confirming || choosing || page==2) return;
-   if (action==Close || action==Cancel) { windowAction(Close); return; }
+   if (action==Close) { windowAction(Close); return; }
    if (action==Back && page==1) { plan.reset(); page=0; refresh(None); error=iso.error; }
    if (pending!=None) { invalidate(); return; }
    if (action==Browse)
@@ -221,18 +253,23 @@ void Installer::activate(Action action,const std::string &id)
    if (action==Erase)
    {
       erase=!erase; error.clear(); plan.reset();
-      for (const auto &device:devices) if (device.id==selected) error=eligibility(device);
    }
    if (action==Select)
    {
       auto found=std::find_if(devices.begin(),devices.end(),[&](const Device &d) { return d.id==id; });
-      if (found!=devices.end()) { selected=id; error=eligibility(*found); plan.reset(); }
+      if (found!=devices.end()) { selected=id; error.clear(); plan.reset(); }
    }
    if (action==Next)
    {
       if (page<2)
       {
          if (page==0 && iso.path.size()>1 && iso.path.front()=='"' && iso.path.back()=='"') iso.path=iso.path.substr(1,iso.path.size()-2);
+         if (page==1)
+         {
+            auto device=std::find_if(devices.begin(),devices.end(),[&](const Device &d) { return d.id==selected; });
+            if (device!=devices.end()) target=device->name+" ("+device->label+") · "+sizeText(erase?device->diskBytes:device->bytes);
+            percent=0;
+         }
          error.clear(); refresh(Next);
       }
       else if (page==3)
@@ -248,14 +285,21 @@ void Installer::activate(Action action,const std::string &id)
 void Installer::stop()
 {
    running=false;
-   if (scanner.joinable()) scanner.join();
    if (writer.joinable()) writer.join();
+   if (scanner.joinable()) scanner.join();
 }
+
+// Show preparation immediately without treating preflight as an active disk writer.
+int Installer::displayPage() const { return page==1 && (pending!=None || confirming)?2:page; }
+
+// Unknown work uses a moving indicator until real installation progress is available.
+bool Installer::indeterminate() const { return displayPage()==2 && (page!=2 || percent==0); }
 
 // Shared page headings keep both native frontends in the same workflow.
 std::string Installer::heading() const
 {
    const char *titles[]={"Choose an ISO file","Choose a target drive","Installing Slax","Installation complete"};
+   if (page==1 && displayPage()==2) return "Preparing installation";
    if (page==3 && !error.empty()) return "Installation failed";
    return titles[page];
 }
@@ -264,6 +308,7 @@ std::string Installer::heading() const
 std::string Installer::introduction() const
 {
    const char *text[]={"Select the Slax ISO image you want to install.","Select a disk or partition that will hold Slax.","Keep the source and target connected. Do not turn off the computer.","Slax was copied and verified, and its boot files are ready. Restart and select Slax or the target disk in the boot menu."};
+   if (page==1 && displayPage()==2) return "Please wait while the installation is prepared.";
    if (page==3 && !error.empty()) return error;
    return text[page];
 }
@@ -271,13 +316,17 @@ std::string Installer::introduction() const
 // Progress is supplied by real completed I/O, never by an elapsed-time simulation.
 std::string Installer::progressText() const
 {
+   if (page==1 && pending==Next) return "Checking the target and preparing installation…";
+   if (page==1 && pending==Confirm) return "Preparing installation…";
+   if (page==1 && confirming) return "Waiting for your confirmation…";
    std::lock_guard<std::mutex> lock(mutex); return status;
 }
 
 // Keep metadata, checks and validation feedback in the same consistently spaced slot.
 std::string Installer::message() const
 {
-   if (pending!=None) return "Checking the ISO and target configuration…";
+   if (page==1) return "";
+   if (pending!=None) return "Checking the ISO image…";
    if (!error.empty())
    {
       auto reason=error;
@@ -285,7 +334,7 @@ std::string Installer::message() const
       return std::string(page==0?"The selected ISO image cannot be used.":"The selected target cannot be used.")+"\nReason: "+reason+"\n"+
          (page==0?"Check the path or choose a current Slax ISO image.":"Review the target or choose another disk or partition.");
    }
-   if (page==0 && !iso.identity.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
+   if (page==0 && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
    return "";
 }
 
@@ -297,7 +346,7 @@ bool Installer::canContinue() const
    if (page==1)
    {
       if (!iso.error.empty()) return false;
-      for (const auto &device:devices) if (device.id==selected) return eligibility(device).empty();
+      for (const auto &device:devices) if (device.id==selected) return true;
       return false;
    }
    return true;
