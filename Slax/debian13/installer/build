@@ -18,8 +18,34 @@ with Path(sys.argv[2]).open('w') as header:
         header.write('static const unsigned char '+name+'_png[]={'+','.join(map(str,data))+'};\n')
 PY
 
+# Download and verify the complete upstream archive before embedding its BIOS tools.
+python3 - "$TEMP/grub-tools.h" <<'PY'
+from io import BytesIO
+from pathlib import Path
+from urllib.request import urlopen
+from zipfile import ZipFile
+import hashlib,sys
+url='https://mirrors.kernel.org/gnu/grub/grub-2.12-for-windows.zip'
+print('Downloading '+url,flush=True)
+with urlopen(url,timeout=60) as response:
+    data=response.read()
+if hashlib.sha256(data).hexdigest()!='e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd':
+    sys.exit('GNU GRUB archive SHA256 mismatch')
+print('Verified GNU GRUB archive SHA256.',flush=True)
+with ZipFile(BytesIO(data)) as archive,Path(sys.argv[1]).open('w') as header:
+    folder='grub-2.12-for-windows/'
+    assets=['grub-mkimage.exe']+sorted(name[len(folder):] for name in archive.namelist() if name.startswith(folder+'i386-pc/') and not name.endswith(('/','/gdb_grub','/gdb_helper.py')))
+    for i,name in enumerate(assets):
+        header.write('static const unsigned char grub_asset_'+str(i)+'[]={'+','.join(map(str,archive.read(folder+name)))+'};\n')
+    header.write('static const struct { const char *name; const unsigned char *data; unsigned size; } grub_tools[]={\n')
+    for i,name in enumerate(assets):
+        header.write('{"'+name+'",grub_asset_'+str(i)+',sizeof(grub_asset_'+str(i)+')},\n')
+    header.write('};\n')
+PY
+
 g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
-   -I"$TEMP" "$THIS/main.cpp" "$THIS/linux.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev) \
+   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid) \
    -o "$TEMP/bootinst"
 strip "$TEMP/bootinst"
 
@@ -28,7 +54,8 @@ i686-w64-mingw32-windres "$TEMP/resource.rc" "$TEMP/resource.o"
 i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-function-type \
    -municode -mwindows -static -D_WIN32_WINNT=0x0501 -I"$TEMP" \
    -Wl,--nxcompat,--dynamicbase,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1 \
-   "$THIS/main.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
+   "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
    -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/bootinst.exe"
 i686-w64-mingw32-strip "$TEMP/bootinst.exe"
 upx --best --no-progress "$TEMP/bootinst" "$TEMP/bootinst.exe"

@@ -141,6 +141,14 @@ printf '\nLIVEKITNAME=slax\nUNIONFS=overlay\nNETWORK=true\nKERNEL=%s\nLMK=lib/mo
 INITRAMFS=$(chroot "$UNION" env LIVEKITCONFIG=/tmp/slax-build-config SPLASH=/kit/Slax/debian13/bootsplash sh -c 'cd /kit/initramfs; sh ./initramfs_create')
 mkdir -p "$MEDIA/slax/boot"
 mv "$RUN/$INITRAMFS" "$MEDIA/slax/boot/initrfs.img"
+# Advertise only filesystem drivers present in the generated early-boot environment.
+mkdir -p "$MEDIA/slax/boot/grub"
+xz -dc "$MEDIA/slax/boot/initrfs.img" | cpio -it 2>/dev/null > "$WORK/initramfs-files.txt"
+for FS in btrfs exfat; do
+   if grep -Eq "/$FS[.]ko$" "$WORK/initramfs-files.txt" || grep -Eq "/$FS[.]ko$" "$RUN/lib/modules/$KERNEL/modules.builtin"; then
+      printf '%s\n' "$FS"
+   fi
+done > "$MEDIA/slax/boot/grub/filesystems.txt"
 cp "$RUN/boot/vmlinuz-$KERNEL" "$MEDIA/slax/boot/vmlinuz"
 printf '%s\n' "$KERNEL" > "$WORK/kernel-release.txt"
 close_root
