@@ -252,8 +252,9 @@ static void key_event(XIRawEvent *event)
     if (press)
     {
         KeySym symbol=XkbKeycodeToKeysym(display, event->detail, 0, 0);
-        /* Only a lone left Super press can become a launcher tap. */
-        super_tap=symbol==XK_Super_L && held==Mod4Mask && !other && !chord;
+        /* A lone Super press on either side can become a launcher tap. */
+        gboolean lone_super=(symbol==XK_Super_L || symbol==XK_Super_R) && held==Mod4Mask;
+        super_tap=lone_super && !other && !chord;
     }
     if (!held)
     {
