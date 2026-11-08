@@ -104,8 +104,9 @@ reporting progress.
   Inspect nearby code before changing `livekitlib` or other existing scripts.
   Prefer familiar `if ... then ... fi` blocks and `while true`. Do not introduce
   `case`, `while :`, or standalone `[ ... ]` guards in newly written shell code.
-- Slax's USB installer is now native: `/slax/boot/bootinst` for Slax and
-  `/slax/boot/bootinst.exe` for Windows XP and later. Sources, original branding
+- Slax's USB installer is native: `/slax/slax-install-linux` for Slax and
+  `/slax/slax-install.exe` for Windows XP and later. Prebuilt binaries live in
+  `Slax/debian13/installers`. Sources, original branding
   and the ICO are in `Slax/debian13/installer`. Use standard GTK 3 and Win32
   windows, controls, file choosers and confirmation dialogs; retain the supplied
   wizard's general layout and green branding without recreating native frames
@@ -113,22 +114,101 @@ reporting progress.
   radio buttons. Keep the left step panel visible; use a 720 by 400 logical-pixel
   minimum client size. Reserve one consistently spaced message area under the
   ISO path for metadata, checking and validation errors.
+  Keep the ISO path editable, including clipboard paste. Typing and Browse only
+  fill the path; validate asynchronously on Next. Automatically detected sources
+  validate immediately and advance to step 2 only on success. Back must return
+  to the editable path without advancing again. Keep only Back and Next in the
+  wizard footer; close through the native window controls. Preserve the write-phase
+  close protection and Cancel in file/installation confirmation dialogs.
+  The sidebar clover is 32 by 32 logical pixels, using slax.ico's exact 32-pixel
+  frame. Windows loads the ICO natively for DPI scaling; GTK uses its extracted PNG.
+  Default client size is 832 by 540 logical pixels, fitting four normal drive
+  cards with a small reserve. Keep target errors off the selection page; Next
+  always opens a neutral native error or a short, plain-language confirmation.
+  Target Next immediately shows preparation on the progress page, with a moving
+  indicator and status text before approval and actual writes. Keep scanner joins
+  off the GUI thread. Use bundled check/warning symbols instead of system status icons.
+  Erase highlights every visible row on the last clicked physical disk; turning
+  it off restores only that clicked row. Unknown physical identities never group.
+  Detect mounted-source files through Windows' optional native VirtDisk API or
+  Linux loop metadata, without requiring PowerShell or a new runtime library.
+  Center the Win32 path line from actual font metrics and redraw moved controls
+  without copying stale pixels. Validation errors use a muted-red square with
+  an exclamation mark beside separate summary, reason and recovery lines.
   Windows must use only system DLLs; Linux may use libraries
   already installed in Slax. Do not require a browser or download fonts.
   Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
   it strips them, compresses both with `upx --best` (without `--ultra-brute`),
   and checks their packed integrity. Ordinary ISO builds only copy them.
-  Disk and ISO discovery are real and read-only; all copying, formatting and
-  boot setup remain explicitly simulated until Tomas requests the second step.
-  Keep bundled Windows GRUB tools under `Slax/debian13/bootfiles`; generic
-  Live Kit does not include these installers. The old BAT, shell and VBS
-  installers have been replaced. Keep only the two binaries, `vmlinuz`,
-  `initrfs.img`, `grub.cfg`, `grub` and `EFI` directly under `slax/boot`.
+  Installation now performs real writes after a concrete native confirmation.
+  Offer partitions strictly larger than 1 GB (1,000,000,000 bytes). Hide whole
+  disks when any partition exceeds this limit, and hide unformatted partitions
+  when a formatted partition above the limit exists on the same disk. Retain
+  every sibling in native discovery and erase warnings, including hidden ones.
+  Bare disks and disks with only small partitions remain whole-disk targets.
+  Sort Windows drive letters alphabetically before the remaining targets;
+  sort Linux targets by full device path. Use Partition Manager's hard-drive,
+  USB and virtual-storage icons in fixed square badges. Begin the second line
+  with the bold target location: C:/, #0 or a full /dev path, followed by
+  middle-dot-separated capacity, filesystem and free space. Keep drive letters
+  out of hardware titles. Let drive lists fill the available
+  window height; scrolling at either boundary must not invalidate or repaint.
+  Preserve existing files and Windows boot assets; an existing slax directory
+  is never overwritten. Plan BIOS and UEFI independently. Preserve BIOS boot by
+  retaining recognized NTLDR/BOOTMGR and GRUB menus. Add an NTLDR/BCD sector-file
+  entry or a standard GRUB custom.cfg entry, keeping the original default OS.
+  Only a fallback selector may replace BIOS boot code, backing up and chainloading
+  the previous MBR. Embed stock GRUB cores only in verified empty space.
+  Prefer an existing same-disk ESP, or add boot partitions only in verified
+  unallocated space; never resize existing filesystems. FAT data can host EFI
+  only when a separate ESP is unavailable. Internal firmware registration needs
+  writable 64-bit UEFI. Keep original entries; a fallback text selector defaults
+  to the original system, then offers Slax Linux. Slax itself keeps its original
+  logo/countdown and Escape menu. Do not add other OS choices to the Slax menu.
+  Erase means the entire physical parent, with all sibling partitions listed:
+  create GPT, 1 MiB BIOS boot, FAT32 EFI and full-capacity FAT32 data partitions.
+  On actual Windows XP, including XP x64, or hosts restricted to the first
+  removable partition (Windows before 10 build 15063), create compatible MBR:
+  active FAT32 Slax data first, FAT32 ESP second (type 0xEF), GRUB BIOS in the
+  reserved pre-partition gap. Preserve UEFI support and XP's access to the first
+  removable partition. Reject native 4K sectors and disks above 2 TiB for this
+  layout. Detect native Windows capabilities, not compatibility mode. Other
+  Windows configurations and Linux retain GPT, including BIOS hosts.
+  Keep BIOS support on 512-byte sectors and explain UEFI-only configurations.
+  Protect the running system, live session, ISO and executable from erasure.
+  Pin and revalidate destination disk handles and metadata across approval.
+  Reopen the ISO between steps without comparing source file IDs, timestamps
+  or content changes. Keep normal ISO validation and destination read-back checks.
+  Verify copied files before boot activation; never force a dirty NTFS mount.
+  Mount NTFS boot and persistence sources read-only first. Allow a read-write
+  remount only when hiberfil.sys is absent or its complete first 4096 bytes are
+  zero; reject unreadable, short, nonregular or ambiguous headers. Never use
+  force: failed remounts stay read-only. The Linux installer also rejects active
+  or unverifiable Windows hibernation before obtaining writable target access.
+  Test writes only on owned sparse/loop fixtures and dedicated virtual disks.
+  Use WindowsXP and Windows10 Tiny directly for Windows tests, without clones
+  or new snapshots. Tomas permits restoring his WindowsXP `install` and
+  Windows10 Tiny `Initial install` snapshots for clean-state boot tests.
+  Remove temporary test VMs when finished.
+  Generic initramfs includes Btrfs and exFAT drivers when available; Slax emits
+  an actual-driver capability list so older ISOs cannot be installed to a
+  filesystem their early boot environment cannot read.
+  Download the official Windows GRUB release during installer compilation and
+  verify its pinned archive SHA256 before embedding the filesystem verifier and
+  BIOS modules. Build unmodified GNU mkimage with static liblzma from separately
+  pinned source archives: the official Windows executable lacks XZ support.
+  Verify GRUB can read the filesystem and copied boot files before BIOS activation.
+  Do not store the downloaded archive or extracted build assets in the repository.
+  Only their embedded copy in slax-install.exe is distributed; keep their license
+  and provenance in `bootfiles/grub`, without external Windows executables or
+  modules. Generic Live Kit does not include these installers. The old BAT, shell and VBS
+  installers have been replaced. Keep only `vmlinuz`, `initrfs.img`, `grub.cfg`,
+  `grub` and `EFI` directly under `slax/boot`; both installers belong in `/slax`.
   Slax's media README belongs at `/README.txt`; its source is
   `Slax/debian13/README.txt`, also installed as `/usr/share/slax-media/README.txt`
   so `genslaxiso` retains it after copy-to-RAM boot.
-  This README describes the native installer and clearly identifies the current
-  simulation preview. Keep raw ISO writing instructions and boot parameter
+  This README describes the native installer, preservation and whole-disk erasure.
+  Keep raw ISO writing instructions and boot parameter
   documentation out of it. USB-SPACE has its own separate instructions.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
 - Add an item to `TODO.md` only when Tomas explicitly requests a TODO entry.
@@ -1188,6 +1268,12 @@ must follow the general Slax repair rules above.
   partition changes if it is in use or cannot be locked. Retain that lock while
   formatting, mounting and verifying file writes/reads on USB-DATA, then remove
   only USB-SPACE. Keep USB-SPACE if data preparation or verification fails.
+  Before removing USB-SPACE, create the live-data changes directory, an initial
+  numeric session with session.txt and last_session.txt, and a short readme.txt
+  beside changes. Preserve existing files and resume markers. Derive the live-data
+  directory from makeiso.sh's ISO volume ID, retaining generic Live Kit names.
+  Let the first persistent boot create changes.dat through DynFileFS; an empty
+  placeholder is not a valid container. Verify newly written files before success.
   After confirmation, relaunch a plain EXE copy in a separate local temporary
   folder. Transfer the original open disk handle, volume identity, mutex and
   complete approved GPT snapshot through inherited handles; revalidate them
@@ -1208,16 +1294,15 @@ must follow the general Slax repair rules above.
   zero filling when later writes target its end; a 64 GiB test caused heavy host I/O.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
-  UEFI without `bootinst`, while the existing file-copy USB setup remains valid.
+  UEFI without running an installer, while the existing file-copy USB setup remains valid.
 - Slax's Windows boot setup must use its bundled GRUB/EFI binaries, with the
-  Windows installer files under `Slax/debian13/bootfiles`. Linux may use the
+  Windows tools embedded in `Slax/debian13/installers/slax-install.exe`. Linux may use the
   system's GRUB tools. USB setup creates the root
   `EFI/BOOT` directory from the bundled loaders.
-- Require FAT12, FAT16 or FAT32 before changing USB boot records. Install BIOS
-  first, then copy the bundled EFI files. Preserve existing partition types
-  and drive letters in both Windows and Linux installers; never convert the
-  data partition into an ESP. Never format the user's disk or change its
-  partition layout as part of boot setup.
+- Keep existing partition types, geometry and drive letters in preserve mode;
+  never turn the data partition into an ESP. BIOS may use a GRUB-readable
+  filesystem independently of UEFI's FAT ESP. Add boot partitions only in verified
+  unused space. Formatting and repartitioning require explicit whole-disk erasure.
 - Use `gfxmode=auto`, retain the framebuffer mode, and center the unscaled
   Slax logo with menu items below it. Avoid frames, tables and extra decoration.
   Keep the four-entry menu centered at 360 px wide, 100 px below the screen center.

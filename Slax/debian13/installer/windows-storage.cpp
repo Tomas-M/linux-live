@@ -123,12 +123,21 @@ static std::string guidText(const GUID &id)
    return text;
 }
 
-// Read the raw filesystem header to detect BitLocker and obtain GRUB's real filesystem UUID.
+// Filesystem UUIDs use byte-order text, unlike Windows' mixed-endian GUID structure.
+static std::string filesystemUuid(const unsigned char *bytes)
+{
+   const char *hex="0123456789abcdef"; std::string text;
+   for (unsigned i=0; i<16; i++) { if (i==4 || i==6 || i==8 || i==10) text+='-'; text+=hex[bytes[i]>>4]; text+=hex[bytes[i]&15]; }
+   return text;
+}
+
+// Read the raw filesystem header to detect encryption/pools and obtain GRUB's real filesystem UUID.
 static void filesystemHeader(HANDLE disk,Partition &part,uint32_t sector)
 {
    std::vector<unsigned char> data(sector); LARGE_INTEGER at; at.QuadPart=part.start; DWORD done=0;
    if (!SetFilePointerEx(disk,at,nullptr,FILE_BEGIN) || !ReadFile(disk,data.data(),data.size(),&done,nullptr) || done!=data.size()) return;
    const auto p=data.data();
+   std::string fs=part.filesystem; for (char &c:fs) if (c>='A' && c<='Z') c+=32;
    if (!memcmp(p+3,"-FVE-FS-",8)) { part.filesystem="BitLocker"; return; }
    char uuid[24];
    if (!memcmp(p+3,"NTFS    ",8))
@@ -146,13 +155,21 @@ static void filesystemHeader(HANDLE disk,Partition &part,uint32_t sector)
       uint32_t serial; memcpy(&serial,p+(!memcmp(p+3,"EXFAT   ",8)?100:39),4);
       snprintf(uuid,sizeof(uuid),"%04lX-%04lX",static_cast<unsigned long>(serial>>16),static_cast<unsigned long>(serial&65535)); part.uuid=uuid;
    }
-   if (part.bytes>=65536+sector && part.filesystem.empty())
+   else if (fs=="xfs" && !memcmp(p,"XFSB",4)) part.uuid=filesystemUuid(p+32);
+   if (fs=="ext2" || fs=="ext3" || fs=="ext4")
+   {
+      at.QuadPart=part.start+1024/sector*sector; size_t offset=1024%sector;
+      if (SetFilePointerEx(disk,at,nullptr,FILE_BEGIN) && ReadFile(disk,data.data(),data.size(),&done,nullptr) && done==data.size())
+         if (data[offset+56]==0x53 && data[offset+57]==0xef) part.uuid=filesystemUuid(data.data()+offset+104);
+   }
+   if (part.bytes>=65536+sector && (fs.empty() || fs=="btrfs"))
    {
       at.QuadPart=part.start+65536;
       if (SetFilePointerEx(disk,at,nullptr,FILE_BEGIN) && ReadFile(disk,data.data(),data.size(),&done,nullptr) && done==data.size() && !memcmp(data.data()+0x40,"_BHRfS_M",8))
       {
          uint64_t count=0; for (int n=7; n>=0; n--) count=count*256+data[0x88+n];
          part.filesystem=count>1?"btrfs_member":"btrfs";
+         part.uuid=filesystemUuid(data.data()+0x20);
       }
    }
 }
@@ -210,6 +227,9 @@ std::vector<Device> scanDevices(const std::string &source)
       Device whole; auto size=reinterpret_cast<DISK_GEOMETRY_EX *>(geometry);
       whole.path="\\\\.\\PhysicalDrive"+std::to_string(number.DeviceNumber); whole.disk=utf8(detail->DevicePath);
       whole.bytes=whole.diskBytes=size->DiskSize.QuadPart; whole.sector=size->Geometry.BytesPerSector; whole.usb=storage->BusType==BusTypeUsb;
+      whole.removable=storage->RemovableMedia;
+      // XP headers omit the later STORAGE_BUS_TYPE values Virtual (14) and FileBackedVirtual (15).
+      whole.virtualDisk=storage->BusType==14 || storage->BusType==15;
       whole.system=system.count(number.DeviceNumber);
       wchar_t instance[4096]={},name[1024]={};
       SetupDiGetDeviceInstanceIdW(set,&information,instance,4096,nullptr);
@@ -281,25 +301,15 @@ std::vector<Device> scanDevices(const std::string &source)
    return result;
 }
 
-// Deny concurrent writes and deletion of an ISO throughout validation and installation.
+// Open the source separately for each validation or copy operation.
 FILE *openImage(const std::string &path)
 {
    if (path.find("\\\\.")==0) return nullptr;
    HANDLE handle=CreateFileW(wide(path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
    if (handle==INVALID_HANDLE_VALUE) return nullptr;
-   BY_HANDLE_FILE_INFORMATION info;
-   if (!GetFileInformationByHandle(handle,&info) || (info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)) { CloseHandle(handle); return nullptr; }
    int fd=_open_osfhandle(reinterpret_cast<intptr_t>(handle),_O_RDONLY|_O_BINARY);
    if (fd<0) { CloseHandle(handle); return nullptr; }
    FILE *file=_fdopen(fd,"rb"); if (!file) _close(fd); return file;
-}
-
-// Bind an image to its volume, file ID, size and last-write timestamp.
-std::string imageIdentity(FILE *file)
-{
-   BY_HANDLE_FILE_INFORMATION i;
-   if (!GetFileInformationByHandle(reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(file))),&i)) failed("Cannot identify the source ISO");
-   return std::to_string(i.dwVolumeSerialNumber)+":"+std::to_string(i.nFileIndexHigh)+":"+std::to_string(i.nFileIndexLow)+":"+std::to_string(i.nFileSizeHigh)+":"+std::to_string(i.nFileSizeLow)+":"+std::to_string(i.ftLastWriteTime.dwHighDateTime)+":"+std::to_string(i.ftLastWriteTime.dwLowDateTime);
 }
 
 // Windows' invariant Unicode mapping catches aliases beyond ASCII without an external Unicode library.
@@ -316,6 +326,7 @@ struct Disk::Impl
    HANDLE mutex=nullptr;
    std::vector<HANDLE> locks;
    bool claimed=false;
+   std::vector<DiskRange> ranges;
    ~Impl() { for (auto lock:locks) CloseHandle(lock); if (handle!=INVALID_HANDLE_VALUE) CloseHandle(handle); if (mutex) CloseHandle(mutex); }
 };
 
@@ -382,10 +393,17 @@ void Disk::claim(bool erase)
    impl->claimed=true;
 }
 
+// Windows permits raw boot writes outside mounted volume extents; never grant access to their contents.
+void Disk::claimBoot(const std::vector<DiskRange> &ranges)
+{
+   reserve(); verify(); impl->ranges=ranges;
+}
+
 // Release all volume locks before Windows is asked to discover the finished table.
 void Disk::release()
 {
    impl->claimed=false;
+   impl->ranges.clear();
    for (auto handle:impl->locks) CloseHandle(handle);
    impl->locks.clear();
    if (impl->mutex) { ReleaseMutex(impl->mutex); CloseHandle(impl->mutex); impl->mutex=nullptr; }
@@ -404,7 +422,9 @@ void Disk::read(uint64_t offset,void *data,size_t bytes)
 void Disk::write(uint64_t offset,const void *data,size_t bytes)
 {
    verify();
-   if (!impl->claimed || offset>device.diskBytes || bytes>device.diskBytes-offset || bytes>MAXDWORD || offset%device.sector || bytes%device.sector) throw std::runtime_error("An unapproved, unaligned or out-of-range disk write was refused.");
+   bool approved=impl->claimed;
+   for (const auto &range:impl->ranges) if (offset>=range.start && offset-range.start<=range.bytes && bytes<=range.bytes-(offset-range.start)) approved=true;
+   if (!approved || offset>device.diskBytes || bytes>device.diskBytes-offset || bytes>MAXDWORD || offset%device.sector || bytes%device.sector) throw std::runtime_error("An unapproved, unaligned or out-of-range disk write was refused.");
    LARGE_INTEGER at; at.QuadPart=offset; DWORD done=0;
    if (!SetFilePointerEx(impl->handle,at,nullptr,FILE_BEGIN) || !WriteFile(impl->handle,data,bytes,&done,nullptr) || done!=bytes) failed("Cannot write the selected disk completely");
 }
@@ -458,6 +478,7 @@ FileTree::FileTree(const Partition &partition,bool writable):impl(new Impl)
    if (impl->handle==INVALID_HANDLE_VALUE) failed("Cannot open the selected filesystem");
    BY_HANDLE_FILE_INFORMATION info;
    if (!GetFileInformationByHandle(impl->handle,&info) || (info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("The destination root is a reparse point.");
+   if (info.dwFileAttributes&FILE_ATTRIBUTE_ENCRYPTED) throw std::runtime_error("Windows file encryption is enabled for this target. Choose an unencrypted filesystem so Slax can read its files.");
    if (writable)
    {
       std::wstring path=impl->root; path.pop_back();
@@ -468,6 +489,8 @@ FileTree::FileTree(const Partition &partition,bool writable):impl(new Impl)
 
 // Retained root handles remain valid until all filesystem operations finish.
 FileTree::~FileTree()=default;
+// Give the trusted verifier the pinned volume-GUID root rather than a changeable drive letter.
+std::string FileTree::rootPath() { return utf8(impl->root); }
 
 // An existing object of any kind prevents accidental replacement of an installation.
 bool FileTree::exists(const std::string &path) { return GetFileAttributesW((impl->root+nativePath(path)).c_str())!=INVALID_FILE_ATTRIBUTES; }
@@ -480,13 +503,19 @@ void FileTree::mkdir(const std::string &path)
 }
 
 // CREATE_NEW and reparse-point rejection prevent payload extraction from overwriting unrelated files.
-FILE *FileTree::open(const std::string &path,bool write)
+FILE *FileTree::open(const std::string &path,bool write,uint32_t)
 {
    Parents parents(impl->root,path);
    HANDLE h=CreateFileW((impl->root+nativePath(path)).c_str(),GENERIC_READ|(write?GENERIC_WRITE:0),FILE_SHARE_READ,nullptr,write?CREATE_NEW:OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_WRITE_THROUGH,nullptr);
    if (h==INVALID_HANDLE_VALUE) failed("Cannot open destination file "+path);
    BY_HANDLE_FILE_INFORMATION info;
    if (!GetFileInformationByHandle(h,&info) || (info.dwFileAttributes&(FILE_ATTRIBUTE_REPARSE_POINT|FILE_ATTRIBUTE_DIRECTORY))) { CloseHandle(h); throw std::runtime_error("A destination file is a link or directory."); }
+   if (write && (info.dwFileAttributes&FILE_ATTRIBUTE_ENCRYPTED)) { CloseHandle(h); throw std::runtime_error("Windows file encryption is enabled for this destination. Choose an unencrypted target so the boot loader and Slax can read their files."); }
+   if (write && (info.dwFileAttributes&FILE_ATTRIBUTE_COMPRESSED))
+   {
+      USHORT format=COMPRESSION_FORMAT_NONE; DWORD done=0;
+      if (!DeviceIoControl(h,FSCTL_SET_COMPRESSION,&format,sizeof(format),nullptr,0,&done,nullptr)) { CloseHandle(h); failed("Cannot store boot files without NTFS compression"); }
+   }
    int fd=_open_osfhandle(reinterpret_cast<intptr_t>(h),_O_BINARY|(write?_O_RDWR:_O_RDONLY));
    if (fd<0) { CloseHandle(h); throw std::runtime_error("Cannot open the destination file stream."); }
    FILE *file=_fdopen(fd,write?"w+b":"rb");
@@ -499,6 +528,19 @@ void FileTree::move(const std::string &from,const std::string &to)
 {
    Parents source(impl->root,from),destination(impl->root,to);
    if (!MoveFileExW((impl->root+nativePath(from)).c_str(),(impl->root+nativePath(to)).c_str(),MOVEFILE_WRITE_THROUGH)) failed("Cannot publish the verified installation");
+}
+
+// Atomically replace an approved boot configuration while retaining its Windows attributes and ACL.
+void FileTree::replace(const std::string &from,const std::string &to)
+{
+   Parents source(impl->root,from),destination(impl->root,to);
+   auto path=impl->root+nativePath(to); DWORD attributes=GetFileAttributesW(path.c_str());
+   if (attributes==INVALID_FILE_ATTRIBUTES || (attributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))) throw std::runtime_error("The boot configuration is not a regular file.");
+   if (!SetFileAttributesW(path.c_str(),attributes&~FILE_ATTRIBUTE_READONLY)) failed("Cannot prepare the boot configuration");
+   bool replaced=ReplaceFileW(path.c_str(),(impl->root+nativePath(from)).c_str(),nullptr,0,nullptr,nullptr);
+   DWORD error=GetLastError(); SetFileAttributesW(path.c_str(),attributes);
+   if (!replaced) { SetLastError(error); failed("Cannot atomically update the boot configuration"); }
+   sync();
 }
 
 // Remove only the exact objects recorded as created by this run.
@@ -548,12 +590,97 @@ bool windowsXp()
    return xpVersion && version.wProductType==VER_NT_WORKSTATION;
 }
 
+// Older Windows exposes only the first partition on removable media; XP also cannot use normal GPT disks.
+bool mbrRequired(const Device &device)
+{
+   OSVERSIONINFOEXW version={}; version.dwOSVersionInfoSize=sizeof(version);
+   using Query=LONG (WINAPI *)(OSVERSIONINFOEXW *);
+   auto query=reinterpret_cast<Query>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
+   if (!query || query(&version)!=0) throw std::runtime_error("Cannot determine this Windows version's disk capabilities.");
+   bool firstPartitionOnly=device.removable && (version.dwMajorVersion<10 || (version.dwMajorVersion==10 && version.dwBuildNumber<15063));
+   SYSTEM_INFO system; GetNativeSystemInfo(&system);
+   bool noGpt=version.dwMajorVersion<6 && system.wProcessorArchitecture!=PROCESSOR_ARCHITECTURE_AMD64;
+   return windowsXp() || noGpt || firstPartitionOnly;
+}
+
 // Detect elevation through the current token, including ordinary XP administrator accounts.
 bool administrator()
 {
    SID_IDENTIFIER_AUTHORITY authority=SECURITY_NT_AUTHORITY; PSID group=nullptr; BOOL member=FALSE;
    if (AllocateAndInitializeSid(&authority,2,SECURITY_BUILTIN_DOMAIN_RID,DOMAIN_ALIAS_RID_ADMINS,0,0,0,0,0,0,&group)) { CheckTokenMembership(nullptr,group,&member); FreeSid(group); }
    return member;
+}
+
+// Use Windows' own BCD editor; Sysnative avoids WOW64 filesystem redirection.
+static std::wstring bcdEditor()
+{
+   wchar_t folder[MAX_PATH]; if (!GetWindowsDirectoryW(folder,MAX_PATH)) failed("Cannot locate Windows");
+   BOOL wow64=FALSE; using Query=BOOL (WINAPI *)(HANDLE,PBOOL);
+   auto query=reinterpret_cast<Query>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"IsWow64Process"));
+   if (query) query(GetCurrentProcess(),&wow64);
+   auto path=std::wstring(folder)+(wow64?L"\\Sysnative\\bcdedit.exe":L"\\System32\\bcdedit.exe");
+   return GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES?L"":path;
+}
+
+// Run BCDEdit directly and retain its full localized output for comparison and recovery.
+static std::string bcdCommand(const Partition &partition,const std::vector<std::wstring> &arguments)
+{
+   auto executable=bcdEditor(); if (executable.empty()) throw std::runtime_error("This Windows session cannot edit BCD natively.");
+   FileTree root(partition,false); std::wstring command=L"\""+executable+L"\" /store \""+wide(root.rootPath())+L"Boot\\BCD\"";
+   for (const auto &argument:arguments) command+=L" \""+argument+L"\"";
+   wchar_t temporary[32768]; DWORD count=GetTempPathW(32768,temporary);
+   if (!count || count>=32768) failed("Cannot locate the BCD log directory");
+   auto logPath=std::wstring(temporary)+L"slax-bcd-"+wide(randomId())+L".log";
+   SECURITY_ATTRIBUTES security={sizeof(security),nullptr,TRUE};
+   HANDLE log=CreateFileW(logPath.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
+   if (log==INVALID_HANDLE_VALUE) failed("Cannot create the BCD log");
+   STARTUPINFOW startup={}; startup.cb=sizeof(startup); startup.dwFlags=STARTF_USESTDHANDLES;
+   startup.hStdOutput=startup.hStdError=log; startup.hStdInput=GetStdHandle(STD_INPUT_HANDLE); PROCESS_INFORMATION child={};
+   bool started=CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&child); CloseHandle(log);
+   if (!started) { DeleteFileW(logPath.c_str()); failed("Cannot start Windows BCDEdit"); }
+   WaitForSingleObject(child.hProcess,INFINITE); DWORD code=1; GetExitCodeProcess(child.hProcess,&code); CloseHandle(child.hThread); CloseHandle(child.hProcess);
+   FILE *file=_wfopen(logPath.c_str(),L"rb"); std::string output; char buffer[4096]; size_t bytes;
+   if (file) { while ((bytes=fread(buffer,1,sizeof(buffer),file))) output.append(buffer,bytes); fclose(file); }
+   DeleteFileW(logPath.c_str());
+   if (code) throw std::runtime_error("Windows BCDEdit could not update this boot store (error "+std::to_string(code)+"). The original Windows boot entry was kept.");
+   return output;
+}
+
+// Snapshot BCD without parsing translated field names or requiring WMI/PowerShell.
+std::string readBcd(const Partition &partition)
+{
+   if (bcdEditor().empty()) return "";
+   return bcdCommand(partition,{L"/enum",L"all",L"/v"});
+}
+
+// Add only one legacy boot application; preserve all existing BCD entries and the default OS.
+void addBcdEntry(const InstallPlan &plan)
+{
+   auto id=randomId(),entry="{"+id.substr(0,8)+"-"+id.substr(8,4)+"-"+id.substr(12,4)+"-"+id.substr(16,4)+"-"+id.substr(20)+"}";
+   std::wstring guid=wide(entry); FileTree target(plan.device,true);
+   FILE *record=target.open("slax/boot/grub/boot-backup/bcd-entry.txt",true);
+   std::string recovery="Slax installer BCD recovery record\nAdded entry: "+entry+"\nBoot store: "+plan.bootPartition.label+"\\Boot\\BCD\nSector file: "+plan.bootFile+"\nOriginal entries and default OS were retained.\nTo remove only this entry, run from the original Windows installation:\nbcdedit /delete "+entry+"\nThe original menu dump is in original-menu.txt.\n";
+   try { if (fwrite(recovery.data(),1,recovery.size(),record)!=recovery.size()) throw std::runtime_error("Cannot save the BCD recovery record."); flushFile(record); }
+   catch (...) { fclose(record); throw; }
+   fclose(record); target.sync();
+   bcdCommand(plan.bootPartition,{L"/create",guid,L"/d",L"Slax Linux",L"/application",L"BOOTSECTOR"});
+   try
+   {
+      bcdCommand(plan.bootPartition,{L"/set",guid,L"device",L"boot"});
+      bcdCommand(plan.bootPartition,{L"/set",guid,L"path",L"\\"+wide(plan.bootFile)});
+      bcdCommand(plan.bootPartition,{L"/displayorder",guid,L"/addlast"});
+      OSVERSIONINFOEXW version={}; version.dwOSVersionInfoSize=sizeof(version);
+      using Query=LONG (WINAPI *)(OSVERSIONINFOEXW *); auto query=reinterpret_cast<Query>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"RtlGetVersion"));
+      if (!query || query(&version)!=0) throw std::runtime_error("Cannot determine the Windows boot-menu capabilities.");
+      if (version.dwMajorVersion>6 || (version.dwMajorVersion==6 && version.dwMinorVersion>=2)) bcdCommand(plan.bootPartition,{L"/set",L"{default}",L"bootmenupolicy",L"Legacy"});
+      bcdCommand(plan.bootPartition,{L"/timeout",L"10"});
+   }
+   catch (...)
+   {
+      auto failure=std::current_exception();
+      try { bcdCommand(plan.bootPartition,{L"/delete",guid}); } catch (...) { throw std::runtime_error("BCD activation failed and its new Slax entry could not be removed. Original Windows entries remain; review the saved boot-menu record."); }
+      std::rethrow_exception(failure);
+   }
 }
 
 // Let Mount Manager discover the completed table only after all raw volume locks are released.
@@ -604,8 +731,15 @@ bool firmwareAvailable()
    try { return !readFirmware("BootOrder").empty(); } catch (...) { return false; }
 }
 
+// Keep native tool diagnostics bounded while retaining the concrete reason for a rejected boot setup.
+static std::string toolLog(const std::wstring &path)
+{
+   FILE *file=_wfopen(path.c_str(),L"rb"); if (!file) failed("Cannot read the BIOS tool log");
+   char detail[1025]={}; size_t bytes=fread(detail,1,1024,file); fclose(file); return std::string(detail,bytes);
+}
+
 // Build the BIOS core with embedded, verified GNU tools rather than executing programs from the selected ISO.
-BiosImage buildBios(const Image &,FILE *,const std::string &uuid)
+BiosImage buildBios(const Partition &target,bool gpt)
 {
    wchar_t temporary[32768]; DWORD size=GetTempPathW(32768,temporary);
    if (!size || size>=32768) failed("Cannot find a temporary build directory");
@@ -622,24 +756,22 @@ BiosImage buildBios(const Image &,FILE *,const std::string &uuid)
          if (file==INVALID_HANDLE_VALUE) failed("Cannot stage the bundled BIOS tools");
          created.push_back(path); bool written=WriteFile(file,asset.data,asset.size,&done,nullptr) && done==asset.size; CloseHandle(file);
          if (!written) failed("Cannot write the bundled BIOS tools");
+         std::string name=asset.name;
+         if (name.size()>4 && (name.substr(name.size()-4)==".mod" || name.substr(name.size()-4)==".lst")) result.modules.push_back(generated("slax/boot/grub/"+name,std::string(reinterpret_cast<const char *>(asset.data),asset.size)));
       }
-      std::string text="search --no-floppy --fs-uuid --set=root "+uuid+"\nset prefix=($root)/slax/boot/grub\nconfigfile /slax/boot/grub.cfg\n";
-      FILE *config=_wfopen((folder+L"\\config").c_str(),L"wb");
-      if (!config) throw std::runtime_error("Cannot create the BIOS bootstrap configuration.");
-      created.push_back(folder+L"\\config"); bool saved=fwrite(text.data(),1,text.size(),config)==text.size(); fclose(config);
-      if (!saved) throw std::runtime_error("Cannot write the BIOS bootstrap configuration.");
       SECURITY_ATTRIBUTES security={sizeof(security),nullptr,TRUE};
       HANDLE log=CreateFileW((folder+L"\\log").c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
       if (log==INVALID_HANDLE_VALUE) failed("Cannot create the BIOS build log");
       created.push_back(folder+L"\\log"); created.push_back(folder+L"\\core");
       std::wstring executable=folder+L"\\grub-mkimage.exe";
-      std::wstring command=L"\""+executable+L"\" -O i386-pc -d \""+folder+L"\\i386-pc\" -p /slax/boot/grub -c \""+folder+L"\\config\" -o \""+folder+L"\\core\" biosdisk part_gpt part_msdos fat normal configfile search search_fs_uuid probe regexp linux chain boot all_video gfxterm gfxmenu gfxterm_background png font test echo";
+      std::wstring prefix=L"(,"+std::wstring(gpt?L"gpt":L"msdos")+std::to_wstring(target.number)+L")/slax/boot/grub";
+      std::wstring command=L"\""+executable+L"\" -O i386-pc -C xz -d \""+folder+L"\\i386-pc\" -p \""+prefix+L"\" -o \""+folder+L"\\core\" biosdisk "+(gpt?std::wstring(L"part_gpt"):std::wstring(L"part_msdos"))+L" "+wide(biosFilesystem(target));
       STARTUPINFOW startup={}; startup.cb=sizeof(startup); startup.dwFlags=STARTF_USESTDHANDLES; startup.hStdOutput=startup.hStdError=log; startup.hStdInput=GetStdHandle(STD_INPUT_HANDLE);
       PROCESS_INFORMATION process={};
       bool started=CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,folder.c_str(),&startup,&process); CloseHandle(log);
       if (!started) failed("Cannot start the bundled BIOS image builder");
       WaitForSingleObject(process.hProcess,INFINITE); DWORD code=1; GetExitCodeProcess(process.hProcess,&code); CloseHandle(process.hThread); CloseHandle(process.hProcess);
-      if (code) throw std::runtime_error("The bundled GNU GRUB image builder failed. No disk changes were made.");
+      if (code) throw std::runtime_error("The bundled GNU GRUB image builder failed. No disk changes were made.\n"+toolLog(folder+L"\\log"));
       for (int i=0; i<2; i++)
       {
          FILE *file=_wfopen((folder+(i?L"\\core":L"\\i386-pc\\boot.img")).c_str(),L"rb");
@@ -653,4 +785,41 @@ BiosImage buildBios(const Image &,FILE *,const std::string &uuid)
    for (const auto &path:created) DeleteFileW(path.c_str());
    RemoveDirectoryW((folder+L"\\i386-pc").c_str()); RemoveDirectoryW(folder.c_str());
    return result;
+}
+
+// Verify the real filesystem with GRUB's own reader before offering BIOS or replacing its MBR.
+void checkBiosFiles(const Device &device,bool installed)
+{
+   FileTree target(device,false);
+   wchar_t temporary[32768]; DWORD length=GetTempPathW(32768,temporary);
+   if (!length || length>=32768) failed("Cannot locate the BIOS verification workspace");
+   std::wstring folder=std::wstring(temporary)+L"slax-check-"+wide(randomId());
+   if (!CreateDirectoryW(folder.c_str(),nullptr)) failed("Cannot create the BIOS verification workspace");
+   std::wstring executable=folder+L"\\grub-fstest.exe",logPath=folder+L"\\log";
+   try
+   {
+      for (const auto &asset:grub_tools) if (!strcmp(asset.name,"grub-fstest.exe"))
+      {
+         HANDLE file=CreateFileW(executable.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr); DWORD done=0;
+         if (file==INVALID_HANDLE_VALUE) failed("Cannot stage the BIOS filesystem verifier");
+         bool written=WriteFile(file,asset.data,asset.size,&done,nullptr) && done==asset.size; CloseHandle(file);
+         if (!written) failed("Cannot write the BIOS filesystem verifier");
+      }
+      std::string volume=device.mount; if (!volume.empty() && volume.back()=='\\') volume.pop_back();
+      std::wstring command=L"\""+executable+L"\" \""+wide(volume)+L"\" ";
+      command+=installed?L"cmp /slax/boot \""+wide(target.rootPath())+L"slax\\boot\"":L"xnu_uuid";
+      SECURITY_ATTRIBUTES security={sizeof(security),nullptr,TRUE};
+      HANDLE log=CreateFileW(logPath.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+      if (log==INVALID_HANDLE_VALUE) failed("Cannot open the BIOS verification log");
+      STARTUPINFOW start={}; start.cb=sizeof(start); start.dwFlags=STARTF_USESTDHANDLES; start.hStdOutput=start.hStdError=log; start.hStdInput=GetStdHandle(STD_INPUT_HANDLE);
+      PROCESS_INFORMATION process={}; bool started=CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,folder.c_str(),&start,&process); CloseHandle(log);
+      if (!started) failed("Cannot start the BIOS filesystem verifier");
+      WaitForSingleObject(process.hProcess,INFINITE); DWORD code=1; GetExitCodeProcess(process.hProcess,&code); CloseHandle(process.hThread); CloseHandle(process.hProcess);
+      if (code)
+      {
+         throw std::runtime_error("GRUB cannot read this filesystem or verify its boot files. Existing BIOS boot settings will be kept.\n"+toolLog(logPath));
+      }
+   }
+   catch (...) { DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str()); RemoveDirectoryW(folder.c_str()); throw; }
+   DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str()); RemoveDirectoryW(folder.c_str());
 }

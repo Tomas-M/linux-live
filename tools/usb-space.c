@@ -22,6 +22,7 @@ typedef struct
    BYTE mbr[512],header[512],*table;
    DWORD count,table_bytes,table_sectors;
    uint64_t disk_bytes,start,size;
+   WCHAR livekit[33];
 } Plan;
 
 // Retain a plain explanation for the final Windows dialog.
@@ -176,11 +177,20 @@ static BOOL read_plan(HANDLE disk,uint64_t bytes,uint64_t source_offset,Plan *pl
       if (used==0 && (get64(entry+48)&hidden)!=hidden) return fail(L"The ISO partition is missing its hidden attributes.");
       if (used<3)
       {
-         if (!read_at(disk,first*512,sector,512)) return FALSE;
+         if (!read_at(disk,first*512,sector,sizeof(sector))) return FALSE;
          if (used==0)
          {
             if (memcmp(sector+1,"CD001",5)) return fail(L"The first partition is not a live ISO filesystem.");
             image_bytes=(uint64_t)get32(sector+80)*2048;
+            // makeiso.sh stores the live-data directory name in the ISO volume ID.
+            int length=32;
+            while (length && sector[40+length-1]==' ') length--;
+            for (int n=0;n<length;n++)
+               if (sector[40+n]<32) return fail(L"The live image has an unsupported data directory name.");
+            if (!length || !MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,(char *)sector+40,length,plan->livekit,33))
+               return fail(L"The live image has no valid data directory name.");
+            if (wcspbrk(plan->livekit,L"\\/:*?\"<>|") || plan->livekit[wcslen(plan->livekit)-1]==L'.')
+               return fail(L"The live image has an unsupported data directory name.");
          }
          else if (memcmp(sector+54,"FAT16   ",8)) return fail(L"The boot or setup partition is not the expected FAT16 image.");
       }
@@ -352,7 +362,7 @@ typedef struct
 static BOOL same_plan(const Plan *a,const Plan *b)
 {
    BOOL space=a->disk_bytes==b->disk_bytes && a->start==b->start && a->size==b->size;
-   BOOL headers=!memcmp(a->mbr,b->mbr,512) && !memcmp(a->header,b->header,512);
+   BOOL headers=!memcmp(a->mbr,b->mbr,512) && !memcmp(a->header,b->header,512) && !wcscmp(a->livekit,b->livekit);
    BOOL partitions=a->table_bytes==b->table_bytes && !memcmp(a->table,b->table,a->table_bytes);
    if (!space || !headers || !partitions) return fail(L"The USB disk or partition layout changed. No further changes were made. Run usb-space.exe again from USB-SPACE.");
    return TRUE;
@@ -540,6 +550,55 @@ static BOOL verify_data(const Job *job)
    return TRUE;
 }
 
+// Create and read back a small persistence file, preserving any existing contents.
+static BOOL create_changes_file(const WCHAR *path,const char *text)
+{
+   HANDLE file=CreateFileW(path,GENERIC_READ|GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_FLAG_WRITE_THROUGH,NULL);
+   if (file==INVALID_HANDLE_VALUE)
+   {
+      if (GetLastError()==ERROR_FILE_EXISTS) return TRUE;
+      return windows_error(L"Could not prepare persistent sessions on USB-DATA. USB-SPACE has been kept.");
+   }
+   DWORD length=strlen(text),count;
+   char read[512];
+   LARGE_INTEGER start={0};
+   BOOL ok=WriteFile(file,text,length,&count,NULL) && count==length && FlushFileBuffers(file);
+   if (ok) ok=SetFilePointerEx(file,start,NULL,FILE_BEGIN) && ReadFile(file,read,length,&count,NULL) && count==length;
+   if (ok) ok=!memcmp(text,read,length);
+   CloseHandle(file);
+   if (!ok)
+   {
+      DeleteFileW(path);
+      return fail(L"Persistent session files could not be written and verified. USB-SPACE has been kept.");
+   }
+   return TRUE;
+}
+
+// Seed a resumable session; Slax creates its valid DynFileFS container on first boot.
+static BOOL prepare_changes(const Job *job)
+{
+   WCHAR path[512];
+   const WCHAR *directories[]={L"",L"\\changes"};
+   for (int i=0;i<2;i++)
+   {
+      swprintf(path,512,L"%ls%ls%ls",job->drive,job->plan->livekit,directories[i]);
+      if (!CreateDirectoryW(path,NULL) && GetLastError()!=ERROR_ALREADY_EXISTS)
+         return windows_error(L"Could not create the changes directory on USB-DATA. USB-SPACE has been kept.");
+   }
+   swprintf(path,512,L"%ls%ls\\readme.txt",job->drive,job->plan->livekit);
+   if (!create_changes_file(path,"Changes made while running this live system with persistence enabled are\r\nautomatically saved in the changes directory and restored when that session\r\nis resumed. Keep this directory to retain your saved changes.\r\n")) return FALSE;
+   swprintf(path,512,L"%ls%ls\\changes\\last_session.txt",job->drive,job->plan->livekit);
+   if (GetFileAttributesW(path)!=INVALID_FILE_ATTRIBUTES) return TRUE;
+   swprintf(path,512,L"%ls%ls\\changes\\1",job->drive,job->plan->livekit);
+   if (!CreateDirectoryW(path,NULL) && GetLastError()!=ERROR_ALREADY_EXISTS)
+      return windows_error(L"Could not create the initial session on USB-DATA. USB-SPACE has been kept.");
+   swprintf(path,512,L"%ls%ls\\changes\\1\\session.txt",job->drive,job->plan->livekit);
+   if (!create_changes_file(path,"Initial session\r\n")) return FALSE;
+   // Publish the resume marker only after the session directory and README are ready.
+   swprintf(path,512,L"%ls%ls\\changes\\last_session.txt",job->drive,job->plan->livekit);
+   return create_changes_file(path,"1\n");
+}
+
 // Remove only the original setup entry while its volume remains locked.
 static BOOL remove_setup(const Job *job,const Plan *expected,HANDLE volume)
 {
@@ -581,6 +640,7 @@ static DWORD WINAPI prepare_worker(void *data)
       ok=windows_error(L"The data partition was created, but Windows could not refresh the disk. Reconnect the USB drive.");
    if (ok) ok=mount_data(job->number,job->plan->start,job->drive);
    if (ok) ok=verify_data(job);
+   if (ok) ok=prepare_changes(job);
    fresh.size=0;
    if (ok) ok=remove_setup(job,&fresh,volume);
    CloseHandle(volume);

@@ -42,6 +42,10 @@ std::string partitionSnapshot(Disk &disk,bool strict)
    }
    std::vector<unsigned char> mbr(sector); disk.read(0,mbr.data(),sector);
    Hash hash; hash.add(mbr.data(),mbr.size());
+   if (!disk.device.number && !disk.device.filesystem.empty() && disk.device.partitions.empty())
+   {
+      auto digest=hash.finish(); return std::string(reinterpret_cast<const char *>(digest.data()),digest.size());
+   }
    std::vector<unsigned char> primary(sector); disk.read(sector,primary.data(),sector);
    if (!memcmp(primary.data(),"EFI PART",8))
    {
@@ -66,10 +70,13 @@ std::string partitionSnapshot(Disk &disk,bool strict)
       if (!header || !geometry || !entries || !tableRange || !usable || !ordered || crc32(table.data(),tableBytes)!=disk32(primary.data()+88)) throw std::runtime_error("The GPT copies are inconsistent or damaged. Repair the partition table first.");
       disk.read(otherAt*sector,other.data(),rounded);
       if (table!=other) throw std::runtime_error("The primary and backup GPT partition arrays differ.");
-      std::vector<std::pair<uint64_t,uint64_t>> ranges;
+      std::vector<std::pair<uint64_t,uint64_t>> ranges; std::set<std::string> identities;
       for (uint32_t i=0; i<count; i++)
       {
          auto entry=table.data()+i*128; bool used=false; for (int b=0; b<16; b++) used=used || entry[b]; if (!used) continue;
+         std::string id(reinterpret_cast<const char *>(entry+16),16);
+         bool empty=std::all_of(id.begin(),id.end(),[](unsigned char c) { return c==0; });
+         if (empty || !identities.insert(id).second) throw std::runtime_error("The GPT has missing or duplicate partition identifiers. Repair its partition table first.");
          uint64_t first=disk64(entry+32),last=disk64(entry+40);
          if (first>last || first<disk64(primary.data()+40) || last>disk64(primary.data()+48)) throw std::runtime_error("A GPT partition is outside the usable disk area.");
          ranges.push_back({first,last});
@@ -80,21 +87,38 @@ std::string partitionSnapshot(Disk &disk,bool strict)
    }
    else if (mbr[510]==0x55 && mbr[511]==0xaa)
    {
-      std::set<uint64_t> visited;
+      std::set<uint64_t> visited; std::vector<std::pair<uint64_t,uint64_t>> primaryRanges;
       for (int i=0; i<4; i++)
       {
          auto entry=mbr.data()+446+i*16; unsigned type=entry[4];
          if (type==0xee) throw std::runtime_error("A protective MBR has no valid GPT header. Repair the disk first.");
+         uint64_t start=disk32(entry+8),count=disk32(entry+12);
+         if (!type && !count) continue;
+         if (!type || !count || !start || start>=sectors || count>sectors-start) throw std::runtime_error("An MBR partition has invalid boundaries. Repair the partition table first.");
+         primaryRanges.push_back({start,start+count});
          if (type!=5 && type!=15 && type!=0x85) continue;
-         uint64_t base=disk32(entry+8),next=base;
+         uint64_t base=start,next=base,limit=base+count; std::vector<std::pair<uint64_t,uint64_t>> logicalRanges;
          while (next)
          {
-            if (next>=sectors || visited.size()>1024 || !visited.insert(next).second) throw std::runtime_error("The disk has an invalid extended partition chain.");
+            if (next<base || next>=limit || visited.size()>1024 || !visited.insert(next).second) throw std::runtime_error("The disk has an invalid extended partition chain.");
             std::vector<unsigned char> ebr(sector); disk.read(next*sector,ebr.data(),sector); hash.add(ebr.data(),ebr.size());
             if (ebr[510]!=0x55 || ebr[511]!=0xaa) throw std::runtime_error("An extended partition record is damaged.");
-            uint64_t relative=disk32(ebr.data()+446+16+8); next=relative?base+relative:0;
+            logicalRanges.push_back({next,next+1});
+            auto data=ebr.data()+446; uint64_t relative=disk32(data+8),bytes=disk32(data+12);
+            if (data[4] || bytes)
+            {
+               if (!data[4] || !relative || !bytes || relative>=limit-next || bytes>limit-next-relative) throw std::runtime_error("A logical partition extends outside its MBR container.");
+               logicalRanges.push_back({next+relative,next+relative+bytes});
+            }
+            auto link=data+16; relative=disk32(link+8);
+            if (relative && link[4]!=5 && link[4]!=15 && link[4]!=0x85) throw std::runtime_error("The extended partition chain has an invalid link type.");
+            next=relative?base+relative:0;
          }
+         std::sort(logicalRanges.begin(),logicalRanges.end());
+         for (size_t n=1; n<logicalRanges.size(); n++) if (logicalRanges[n].first<logicalRanges[n-1].second) throw std::runtime_error("The disk has overlapping logical partitions or extended boot records.");
       }
+      std::sort(primaryRanges.begin(),primaryRanges.end());
+      for (size_t n=1; n<primaryRanges.size(); n++) if (primaryRanges[n].first<primaryRanges[n-1].second) throw std::runtime_error("The disk has overlapping MBR partitions.");
    }
    auto digest=hash.finish(); return std::string(reinterpret_cast<const char *>(digest.data()),digest.size());
 }
@@ -182,6 +206,247 @@ void writeLayout(Disk &disk,const Layout &layout)
 Content generated(const std::string &path,const std::string &text,bool directory)
 {
    return {{path,UINT64_MAX,uint64_t(text.size()),directory},text};
+}
+
+// Map supported data filesystems to the stock GRUB reader used before external modules are available.
+std::string biosFilesystem(const Partition &target)
+{
+   auto fs=target.filesystem;
+   for (char &c:fs) if (c>='A' && c<='Z') c+=32;
+   if (fs=="vfat" || fs=="fat32" || fs=="fat16") return "fat";
+   if (fs=="ext3" || fs=="ext4") return "ext2";
+   return fs;
+}
+
+// An occupied embedding area may belong to another loader, including its recovery/parity data.
+static bool emptyArea(Disk &disk,uint64_t start,uint64_t bytes)
+{
+   std::vector<unsigned char> buffer(1024*1024);
+   while (bytes)
+   {
+      size_t count=std::min<uint64_t>(buffer.size(),bytes); disk.read(start,buffer.data(),count);
+      if (std::any_of(buffer.begin(),buffer.begin()+count,[](unsigned char c) { return c!=0; })) return false;
+      start+=count; bytes-=count;
+   }
+   return true;
+}
+
+// Reclaim only a zero-filled extent for a declared new BIOS partition, outside every existing partition.
+static Partition emptyBootPartition(Disk &disk,const DiskRange &gap,uint64_t bytes)
+{
+   uint64_t sector=disk.device.sector,limit=std::min<uint64_t>(gap.start+gap.bytes,(uint64_t(UINT32_MAX)+1)*sector);
+   if (gap.start>=limit || bytes>limit-gap.start) return {};
+   uint64_t scan=std::min<uint64_t>(limit-gap.start,16*1024*1024);
+   std::vector<unsigned char> buffer(1024*1024);
+   for (uint64_t first:{gap.start,limit-scan})
+   {
+      uint64_t run=0;
+      for (uint64_t at=first; at<first+scan;)
+      {
+         size_t count=std::min<uint64_t>(buffer.size(),first+scan-at); disk.read(at,buffer.data(),count);
+         for (size_t n=0; n<count; n+=sector)
+         {
+            bool zero=std::all_of(buffer.begin()+n,buffer.begin()+n+sector,[](unsigned char c) { return c==0; });
+            run=zero?run+sector:0;
+            if (run>=bytes) { Partition part; part.start=at+n+sector-bytes; part.bytes=bytes; return part; }
+         }
+         at+=count;
+      }
+   }
+   return {};
+}
+
+// Add boot partitions only in unused space, preserving every existing partition byte and identifier.
+BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool addEfi)
+{
+   partitionSnapshot(disk);
+   BootLayout result; uint64_t sector=disk.device.sector,total=disk.device.diskBytes/sector;
+   std::vector<unsigned char> mbr(sector),header(sector),backup,table;
+   disk.read(0,mbr.data(),sector); disk.read(sector,header.data(),sector);
+   result.originalMbr.assign(reinterpret_cast<const char *>(mbr.data()),mbr.size());
+   if (!disk.device.number && !disk.device.filesystem.empty() && disk.device.partitions.empty()) return result;
+   result.gpt=!memcmp(header.data(),"EFI PART",8);
+   bool signature=mbr[510]==0x55 && mbr[511]==0xaa;
+   if (!signature && !result.gpt) return result;
+   uint64_t first=1,last=total,tableAt=0,backupAt=0,otherAt=0;
+   std::vector<DiskRange> occupied;
+   std::vector<unsigned> slots;
+   uint64_t coreSize=(coreBytes+sector-1)/sector*sector;
+   if (result.gpt)
+   {
+      if (!signature) throw std::runtime_error("The GPT disk has no valid protective MBR signature. Repair its partition table first.");
+      // Hybrid GPT/MBR loaders cannot safely be replaced or extended automatically.
+      for (unsigned i=0; i<4; i++) if (mbr[446+i*16+4] && mbr[446+i*16+4]!=0xee) throw std::runtime_error("This disk has a hybrid GPT/MBR table. Use a standard GPT or MBR layout; its existing boot configuration will not be changed.");
+      first=disk64(header.data()+40); last=disk64(header.data()+48)+1;
+      tableAt=disk64(header.data()+72); backupAt=disk64(header.data()+32);
+      uint32_t count=disk32(header.data()+80); table.resize((uint64_t(count)*128+sector-1)/sector*sector); backup.resize(sector);
+      disk.read(tableAt*sector,table.data(),table.size()); disk.read(backupAt*sector,backup.data(),sector); otherAt=disk64(backup.data()+72);
+      const unsigned char biosType[]={0x48,0x61,0x68,0x21,0x49,0x64,0x6f,0x6e,0x74,0x4e,0x65,0x65,0x64,0x45,0x46,0x49};
+      for (unsigned i=0; i<count; i++)
+      {
+         auto entry=table.data()+i*128;
+         if (std::all_of(entry,entry+16,[](unsigned char c) { return c==0; })) { slots.push_back(i); continue; }
+         uint64_t start=disk64(entry+32)*sector,bytes=(disk64(entry+40)+1)*sector-start;
+         occupied.push_back({start,bytes});
+         if (coreSize && !result.bios.bytes && !memcmp(entry,biosType,16) && bytes>=coreSize && bytes<=16*1024*1024 && emptyArea(disk,start,bytes)) { result.bios.start=start; result.bios.bytes=coreSize; result.bios.number=i+1; }
+      }
+   }
+   else
+   {
+      for (unsigned i=0; i<4; i++)
+      {
+         auto entry=mbr.data()+446+i*16; uint64_t start=disk32(entry+8),count=disk32(entry+12);
+         if (!entry[4] && !count) { slots.push_back(i); continue; }
+         if (!entry[4] || !count || !start || start>=total || count>total-start) throw std::runtime_error("An MBR partition has invalid boundaries. Repair the partition table first.");
+         occupied.push_back({start*sector,count*sector});
+      }
+   }
+   std::sort(occupied.begin(),occupied.end(),[](const DiskRange &a,const DiskRange &b) { return a.start<b.start; });
+   std::vector<DiskRange> gaps; uint64_t at=first*sector;
+   for (const auto &part:occupied)
+   {
+      if (part.start<at) throw std::runtime_error("The disk has overlapping partitions. Repair its partition table first.");
+      if (part.start>at) gaps.push_back({at,part.start-at});
+      at=part.start+part.bytes;
+   }
+   if (at<last*sector) gaps.push_back({at,last*sector-at});
+   auto allocate=[&](uint64_t bytes,bool bios)
+   {
+      Partition part;
+      for (auto &gap:gaps)
+      {
+         uint64_t start=bios?gap.start:(gap.start+1048575)/1048576*1048576;
+         if (start<gap.start || start-gap.start>gap.bytes || bytes>gap.bytes-(start-gap.start)) continue;
+         // MBR has no explicit BIOS partition: accept only completely empty, bounded gaps.
+         if (bios && !result.gpt && (gap.bytes>16*1024*1024 || !emptyArea(disk,gap.start,gap.bytes))) continue;
+         if (!emptyArea(disk,start,bytes)) continue;
+         part.start=start; part.bytes=bytes; gap.bytes-=start+bytes-gap.start; gap.start=start+bytes; break;
+      }
+      return part;
+   };
+   auto add=[&](Partition &part,bool bios)
+   {
+      if (!part.bytes || slots.empty()) return;
+      unsigned slot=slots.front(); slots.erase(slots.begin()); part.number=slot+1;
+      if (result.gpt)
+      {
+         const unsigned char biosType[]={0x48,0x61,0x68,0x21,0x49,0x64,0x6f,0x6e,0x74,0x4e,0x65,0x65,0x64,0x45,0x46,0x49};
+         const unsigned char efiType[]={0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b};
+         auto entry=table.data()+slot*128; memset(entry,0,128); memcpy(entry,bios?biosType:efiType,16); identity(entry+16,randomId());
+         put64(entry+32,part.start/sector); put64(entry+40,(part.start+part.bytes)/sector-1);
+         const char *name=bios?"Slax BIOS boot":"EFI System Partition";
+         for (size_t c=0; c<strlen(name); c++) put16(entry+56+c*2,name[c]);
+      }
+      else
+      {
+         auto entry=mbr.data()+446+slot*16; memset(entry,0,16); entry[4]=bios?0xda:0xef; chs(entry+1,part.start/sector); chs(entry+5,(part.start+part.bytes)/sector-1);
+         put32(entry+8,part.start/sector); put32(entry+12,part.bytes/sector);
+      }
+   };
+   if (coreSize && !result.bios.bytes)
+   {
+      if (!result.gpt)
+      {
+         result.bios=allocate(coreSize,true);
+         if (!result.bios.bytes && !slots.empty()) for (auto &gap:gaps)
+         {
+            if (gap.start==sector) continue; // Preserve an occupied traditional MBR embedding area in full.
+            result.bios=emptyBootPartition(disk,gap,coreSize);
+            if (result.bios.bytes)
+            {
+               add(result.bios,true); gap.bytes-=result.bios.start+result.bios.bytes-gap.start; gap.start=result.bios.start+result.bios.bytes; break;
+            }
+         }
+      }
+      else if (!slots.empty())
+      {
+         result.bios=allocate(1024*1024,true);
+         if (!result.bios.bytes) result.bios=allocate(std::max<uint64_t>(65536,coreSize),true);
+         add(result.bios,true);
+      }
+   }
+   if (addEfi && !slots.empty())
+   {
+      uint64_t bytes=std::max<uint64_t>(sector==4096?512ULL*1024*1024:128ULL*1024*1024,(efiBytes*2+1048575)/1048576*1048576);
+      result.efi=allocate(bytes,false);
+      if (result.efi.bytes && (result.gpt || (result.efi.start+result.efi.bytes)/sector<=uint64_t(UINT32_MAX)+1))
+      {
+         add(result.efi,false); result.efi.filesystem="FAT32"; result.efi.label="SLAXEFI"; result.efi.type=result.gpt?"c12a7328-f81f-11d2-ba4b-00a0c93ec93b":"0xef";
+         auto id=randomId().substr(24,8); for (char &c:id) if (c>='a' && c<='f') c-=32;
+         result.efi.uuid=id.substr(0,4)+"-"+id.substr(4); fatGeometry(result.efi.bytes,sector);
+         result.ranges.push_back({result.efi.start,result.efi.bytes});
+      }
+      else result.efi={};
+   }
+   auto patch=[&](uint64_t start,const std::vector<unsigned char> &after)
+   {
+      std::string before(after.size(),'\0'); disk.read(start,before.data(),before.size());
+      std::string value(reinterpret_cast<const char *>(after.data()),after.size());
+      if (before!=value) { result.patches.push_back({start,std::move(before),std::move(value)}); result.ranges.push_back({start,after.size()}); }
+   };
+   if (result.gpt)
+   {
+      put32(header.data()+88,crc32(table.data(),disk32(header.data()+80)*128)); put32(header.data()+16,0); put32(header.data()+16,crc32(header.data(),disk32(header.data()+12)));
+      put32(backup.data()+88,disk32(header.data()+88)); put32(backup.data()+16,0); put32(backup.data()+16,crc32(backup.data(),disk32(backup.data()+12)));
+      patch(otherAt*sector,table); patch(backupAt*sector,backup); patch(tableAt*sector,table); patch(sector,header);
+   }
+   patch(0,mbr);
+   if (result.bios.bytes)
+   {
+      result.biosBefore.assign(coreSize,'\0'); result.ranges.push_back({result.bios.start,coreSize}); result.ranges.push_back({0,sector});
+   }
+   return result;
+}
+
+// Recheck both partition metadata and the exact embedding bytes before activating any new boot path.
+void verifyBootLayout(Disk &disk,const BootLayout &layout)
+{
+   if (layout.efi.bytes && !emptyArea(disk,layout.efi.start,layout.efi.bytes)) throw std::runtime_error("The space approved for the new EFI partition is no longer empty. Existing partitions were kept.");
+   for (const auto &patch:layout.patches)
+   {
+      std::string value(patch.before.size(),'\0'); disk.read(patch.start,value.data(),value.size());
+      if (value!=patch.before) throw std::runtime_error("The boot partition layout changed after confirmation. Existing boot settings were kept.");
+   }
+   if (!layout.biosBefore.empty() && !emptyArea(disk,layout.bios.start,layout.biosBefore.size())) throw std::runtime_error("The approved BIOS embedding area is no longer empty. Existing boot settings were kept.");
+}
+
+// Publish table updates and the new MBR last; roll back original boot metadata on an ordinary I/O failure.
+void commitBootLayout(Disk &disk,const BootLayout &layout,const BiosImage *bios,bool preserveMbr)
+{
+   std::vector<unsigned char> mbr(layout.originalMbr.begin(),layout.originalMbr.end());
+   for (const auto &patch:layout.patches) if (!patch.start) mbr.assign(patch.after.begin(),patch.after.end());
+   try
+   {
+      if (bios) writeBios(disk,layout.bios.start,layout.biosBefore.size(),*bios,mbr);
+      if (preserveMbr) std::copy(layout.originalMbr.begin(),layout.originalMbr.begin()+440,mbr.begin());
+      for (const auto &patch:layout.patches) if (patch.start) disk.write(patch.start,patch.after.data(),patch.after.size());
+      disk.flush();
+      if (bios || std::any_of(layout.patches.begin(),layout.patches.end(),[](const DiskPatch &p) { return p.start==0; })) disk.write(0,mbr.data(),mbr.size());
+      disk.flush(); partitionSnapshot(disk);
+      for (const auto &patch:layout.patches)
+      {
+         const std::string expected=patch.start?patch.after:std::string(mbr.begin(),mbr.end());
+         std::string actual(expected.size(),'\0'); disk.read(patch.start,actual.data(),actual.size());
+         if (actual!=expected) throw std::runtime_error("Boot partition metadata failed read-back verification.");
+      }
+      if (bios)
+      {
+         std::vector<unsigned char> actual(mbr.size()); disk.read(0,actual.data(),actual.size());
+         if (actual!=mbr) throw std::runtime_error("The BIOS boot record failed read-back verification.");
+      }
+   }
+   catch (...)
+   {
+      auto failure=std::current_exception();
+      try
+      {
+         for (auto it=layout.patches.rbegin(); it!=layout.patches.rend(); it++) disk.write(it->start,it->before.data(),it->before.size());
+         if (bios) { disk.write(0,layout.originalMbr.data(),layout.originalMbr.size()); disk.write(layout.bios.start,layout.biosBefore.data(),layout.biosBefore.size()); }
+         disk.flush();
+      }
+      catch (...) { throw std::runtime_error("Boot setup failed and the disk refused rollback. Stop using this disk and restore its saved boot metadata from slax/boot/grub/boot-backup before restarting."); }
+      std::rethrow_exception(failure);
+   }
 }
 
 // Encode portable Unicode long filenames as FAT's UTF-16 directory records.
@@ -303,6 +568,14 @@ void writeFat(Disk &disk,const Partition &partition,const std::vector<Content> &
       completed+=size;
    }
    disk.flush();
+}
+
+// Build a standalone first-stage sector for NTLDR/BOOTMGR without replacing the disk's MBR.
+std::string biosBootSector(const BiosImage &image,uint64_t start)
+{
+   if (image.boot.size()!=512 || start%512) throw std::runtime_error("The BIOS chainloader geometry is invalid.");
+   std::string boot=image.boot; put64(reinterpret_cast<unsigned char *>(boot.data())+0x5c,start/512);
+   boot[0x64]=char(0xff); boot[510]=0x55; boot[511]=char(0xaa); return boot;
 }
 
 // Embed stock GRUB's contiguous core only in the explicitly reserved BIOS area.

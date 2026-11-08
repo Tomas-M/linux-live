@@ -24,7 +24,7 @@ struct Device:Partition
    std::string id,name,detail,blocked,eraseBlocked,disk,diskId,layout;
    uint64_t diskBytes=0,sequence=0;
    uint32_t sector=512;
-   bool usb=false,system=false;
+   bool usb=false,removable=false,system=false,virtualDisk=false;
    std::vector<Partition> partitions;
 };
 
@@ -33,17 +33,18 @@ struct ImageEntry
    std::string path;
    uint64_t offset=0,bytes=0;
    bool directory=false;
+   uint32_t mode=0644;
 };
 
 struct Image
 {
-   std::string path,name,error,identity;
+   std::string path,name,error;
    uint64_t bytes=0, payload=0;
    std::vector<ImageEntry> entries;
    std::vector<std::string> filesystems={"vfat","fat","fat16","fat32","ntfs","ext2","ext3","ext4","xfs"};
 };
 
-enum Action { None, Browse, Back, Next, Cancel, Erase, Select, Confirm, Close };
+enum Action { None, Browse, Back, Next, Erase, Select, Confirm, Close };
 struct InstallPlan;
 
 std::vector<Device> scanDevices(const std::string &source);
@@ -51,16 +52,18 @@ std::string sourceImage();
 FILE *openImage(const std::string &path);
 std::string chooseImage();
 bool confirmInstall(const std::string &target,bool erase);
+void showInstallError(const std::string &message);
 void invalidate();
 void windowAction(Action action);
 int runWindow();
 
 Image inspectImage(const std::string &path);
-std::string imageIdentity(FILE *file);
 std::string filenameKey(const std::string &name);
 std::string sizeText(uint64_t value,bool binary=false);
 void printDevices(const std::vector<Device> &devices);
 std::vector<Device> visibleTargets(std::vector<Device> devices);
+int deviceIcon(const Device &device);
+std::string deviceLocation(const Device &device);
 
 class Installer
 {
@@ -93,7 +96,9 @@ public:
    void tick();
    void activate(Action action,const std::string &id="");
    void stop();
-   std::string eligibility(const Device &device) const;
+   bool isSelected(const Device &device) const;
+   int displayPage() const;
+   bool indeterminate() const;
    std::string heading() const;
    std::string introduction() const;
    std::string progressText() const;

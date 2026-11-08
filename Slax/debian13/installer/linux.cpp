@@ -11,13 +11,13 @@
 #include <sys/sysmacros.h>
 
 static GtkWidget *window;
-static GdkPixbuf *images[2];
+static GdkPixbuf *images[7];
 
 struct GtkUi
 {
    GtkWidget *rail,*steps[4],*numbers[4],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox,*messageIcon;
-   GtkWidget *devices,*deviceScroll,*none,*erase,*target[2],*status,*percent,*progress,*result;
-   GtkWidget *back,*next,*cancel,*footerLabel,*content;
+   GtkWidget *devices,*deviceScroll,*erase,*target[2],*status,*percent,*progress,*result;
+   GtkWidget *back,*next,*footerLabel,*content;
    bool updating=false;
 } ui;
 
@@ -41,29 +41,56 @@ static void wrap(GtkWidget *widget)
    gtk_label_set_line_wrap_mode(GTK_LABEL(widget),PANGO_WRAP_WORD_CHAR);
 }
 
+// Tint Partition Manager's icon mask with the current GTK foreground, including dark themes.
+static gboolean drawIcon(GtkWidget *widget,cairo_t *cr,gpointer)
+{
+   auto context=gtk_widget_get_style_context(widget);
+   int width=gtk_widget_get_allocated_width(widget),height=gtk_widget_get_allocated_height(widget);
+   gtk_render_background(context,cr,0,0,width,height);
+   auto pixbuf=static_cast<GdkPixbuf *>(g_object_get_data(G_OBJECT(widget),"icon"));
+   cairo_push_group(cr); gdk_cairo_set_source_pixbuf(cr,pixbuf,(width-gdk_pixbuf_get_width(pixbuf))/2.0,(height-gdk_pixbuf_get_height(pixbuf))/2.0); cairo_paint(cr);
+   auto mask=cairo_pop_group(cr); GdkRGBA color;
+   gtk_style_context_get_color(context,gtk_widget_get_state_flags(widget),&color);
+   gdk_cairo_set_source_rgba(cr,&color); cairo_mask(cr,mask); cairo_pattern_destroy(mask);
+   return FALSE;
+}
+
+// Share the bundled status symbols between the final page and native error dialogs.
+static void setStatusIcon(GtkWidget *widget,bool failed)
+{
+   int icon=failed?6:5;
+   if (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget),"icon-id"))==icon) return;
+   g_object_set_data(G_OBJECT(widget),"icon-id",GINT_TO_POINTER(icon));
+   g_object_set_data_full(G_OBJECT(widget),"icon",gdk_pixbuf_scale_simple(images[icon],32,32,GDK_INTERP_BILINEAR),g_object_unref);
+   auto context=gtk_widget_get_style_context(widget);
+   gtk_style_context_remove_class(context,"installer-success"); gtk_style_context_remove_class(context,"installer-failure");
+   gtk_style_context_add_class(context,failed?"installer-failure":"installer-success"); gtk_widget_queue_draw(widget);
+}
+
 // Refresh native rows only when discovery changes, preserving focus between scans.
 static void updateWindow()
 {
    ui.updating=true;
+   int page=app.displayPage();
    gtk_window_set_deletable(GTK_WINDOW(window),app.page!=2);
-   gtk_label_set_text(GTK_LABEL(ui.step),("Step "+std::to_string(app.page+1)+" of 4").c_str());
+   gtk_label_set_text(GTK_LABEL(ui.step),("Step "+std::to_string(page+1)+" of 4").c_str());
    gtk_label_set_text(GTK_LABEL(ui.heading),app.heading().c_str());
    gtk_label_set_text(GTK_LABEL(ui.intro),app.introduction().c_str());
    for (int i=0; i<4; i++)
    {
       auto context=gtk_widget_get_style_context(ui.numbers[i]);
       gtk_style_context_remove_class(context,"current"); gtk_style_context_remove_class(context,"done");
-      if (i==app.page) gtk_style_context_add_class(context,"current");
-      if (i<app.page) gtk_style_context_add_class(context,"done");
-      gtk_widget_set_sensitive(ui.steps[i],i<=app.page);
+      if (i==page) gtk_style_context_add_class(context,"current");
+      if (i<page) gtk_style_context_add_class(context,"done");
+      gtk_widget_set_sensitive(ui.steps[i],i<=page);
    }
-   gtk_stack_set_visible_child_name(GTK_STACK(ui.stack),std::to_string(app.page).c_str());
-   gtk_box_set_child_packing(GTK_BOX(ui.content),ui.stack,app.page==1,app.page==1,0,GTK_PACK_START);
-   gtk_widget_set_margin_bottom(ui.content,app.page==1?12:29);
+   gtk_stack_set_visible_child_name(GTK_STACK(ui.stack),std::to_string(page).c_str());
+   gtk_box_set_child_packing(GTK_BOX(ui.content),ui.stack,page==1,page==1,0,GTK_PACK_START);
+   gtk_widget_set_margin_bottom(ui.content,page==1?12:29);
    if (app.iso.path!=gtk_entry_get_text(GTK_ENTRY(ui.path))) gtk_entry_set_text(GTK_ENTRY(ui.path),app.iso.path.c_str());
    gtk_label_set_text(GTK_LABEL(ui.message),app.message().c_str());
-   gtk_widget_set_size_request(ui.message,-1,app.page==0?42:-1);
-   gtk_widget_set_visible(ui.messageBox,app.page==0 || (app.page==1 && !app.message().empty()));
+   gtk_widget_set_size_request(ui.message,-1,page==0?42:-1);
+   gtk_widget_set_visible(ui.messageBox,page==0 || (page==1 && !app.message().empty()));
    gtk_widget_set_visible(ui.messageIcon,!app.error.empty() && app.pending==None);
    auto messageStyle=gtk_widget_get_style_context(ui.message);
    gtk_style_context_remove_class(messageStyle,"error");
@@ -82,51 +109,59 @@ static void updateWindow()
       auto children=gtk_container_get_children(GTK_CONTAINER(ui.devices));
       for (auto item=children; item; item=item->next) gtk_widget_destroy(GTK_WIDGET(item->data));
       g_list_free(children);
-      auto badges=gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL);
       for (const auto &device:app.devices)
       {
          auto row=gtk_list_box_row_new(),box=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12);
          gtk_widget_set_margin_start(box,11); gtk_widget_set_margin_end(box,11);
          gtk_widget_set_margin_top(box,9); gtk_widget_set_margin_bottom(box,9);
-         auto badge=label(device.path.c_str(),14,true); wrap(badge);
-         gtk_label_set_max_width_chars(GTK_LABEL(badge),16); gtk_label_set_justify(GTK_LABEL(badge),GTK_JUSTIFY_CENTER);
-         gtk_label_set_xalign(GTK_LABEL(badge),0.5); gtk_widget_set_size_request(badge,-1,42);
-         gtk_size_group_add_widget(badges,badge);
+         auto badge=gtk_drawing_area_new(); gtk_widget_set_size_request(badge,42,42); gtk_widget_set_valign(badge,GTK_ALIGN_CENTER);
+         g_signal_connect(badge,"draw",G_CALLBACK(drawIcon),nullptr);
          gtk_style_context_add_class(gtk_widget_get_style_context(badge),"drive-badge");
          auto text=gtk_box_new(GTK_ORIENTATION_VERTICAL,1); gtk_widget_set_valign(text,GTK_ALIGN_CENTER);
          auto name=label(device.name.c_str(),14,true),detail=label("",13);
          gtk_label_set_ellipsize(GTK_LABEL(name),PANGO_ELLIPSIZE_END);
          gtk_label_set_ellipsize(GTK_LABEL(detail),PANGO_ELLIPSIZE_END);
          gtk_box_pack_start(GTK_BOX(text),name,false,false,0); gtk_box_pack_start(GTK_BOX(text),detail,false,false,0);
-         auto radio=gtk_radio_button_new_from_widget(GTK_RADIO_BUTTON(ui.none)); gtk_widget_set_valign(radio,GTK_ALIGN_CENTER);
+         auto none=gtk_radio_button_new(nullptr); g_object_ref_sink(none);
+         auto radio=gtk_radio_button_new_from_widget(GTK_RADIO_BUTTON(none)); gtk_widget_set_valign(radio,GTK_ALIGN_CENTER);
+         g_object_set_data_full(G_OBJECT(radio),"none",none,g_object_unref);
          g_object_set_data_full(G_OBJECT(radio),"device-id",g_strdup(device.id.c_str()),g_free);
          g_object_set_data(G_OBJECT(row),"radio",radio); g_object_set_data(G_OBJECT(row),"detail",detail); g_object_set_data(G_OBJECT(row),"name",name); g_object_set_data(G_OBJECT(row),"badge",badge);
-         g_signal_connect(radio,"toggled",G_CALLBACK(+[](GtkToggleButton *button,gpointer)
+         g_signal_connect(radio,"clicked",G_CALLBACK(+[](GtkButton *button,gpointer)
          {
-            if (!ui.updating && gtk_toggle_button_get_active(button)) app.activate(Select,static_cast<const char *>(g_object_get_data(G_OBJECT(button),"device-id")));
+            if (!ui.updating) app.activate(Select,static_cast<const char *>(g_object_get_data(G_OBJECT(button),"device-id")));
          }),nullptr);
          gtk_box_pack_start(GTK_BOX(box),badge,false,false,0); gtk_box_pack_start(GTK_BOX(box),text,true,true,0); gtk_box_pack_end(GTK_BOX(box),radio,false,false,0);
          gtk_container_add(GTK_CONTAINER(row),box); gtk_container_add(GTK_CONTAINER(ui.devices),row);
       }
-      g_object_unref(badges);
       gtk_widget_show_all(ui.devices);
    }
-   if (app.selected.empty()) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ui.none),true);
    for (size_t i=0; i<app.devices.size(); i++)
    {
       const auto &device=app.devices[i];
       auto row=gtk_list_box_get_row_at_index(GTK_LIST_BOX(ui.devices),i);
       gtk_label_set_text(GTK_LABEL(g_object_get_data(G_OBJECT(row),"name")),device.name.c_str());
-      gtk_label_set_text(GTK_LABEL(g_object_get_data(G_OBJECT(row),"badge")),device.path.c_str());
+      auto badge=GTK_WIDGET(g_object_get_data(G_OBJECT(row),"badge"));
+      int icon=deviceIcon(device)+2;
+      if (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(badge),"icon-id"))!=icon)
+      {
+         g_object_set_data(G_OBJECT(badge),"icon-id",GINT_TO_POINTER(icon));
+         g_object_set_data_full(G_OBJECT(badge),"icon",gdk_pixbuf_scale_simple(images[icon],24,24,GDK_INTERP_BILINEAR),g_object_unref);
+         gtk_widget_queue_draw(badge);
+      }
       auto radio=GTK_TOGGLE_BUTTON(g_object_get_data(G_OBJECT(row),"radio"));
-      gtk_toggle_button_set_active(radio,device.id==app.selected);
+      bool selected=app.isSelected(device);
+      gtk_toggle_button_set_active(radio,selected);
+      if (!selected) gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_object_get_data(G_OBJECT(radio),"none")),true);
       auto rowStyle=gtk_widget_get_style_context(GTK_WIDGET(row));
       gtk_style_context_remove_class(rowStyle,"selected");
-      if (device.id==app.selected) gtk_style_context_add_class(rowStyle,"selected");
-      std::string reason=app.eligibility(device);
+      if (selected) gtk_style_context_add_class(rowStyle,"selected");
       auto detail=GTK_LABEL(g_object_get_data(G_OBJECT(row),"detail"));
-      gtk_label_set_text(detail,(sizeText(device.bytes)+" · "+(reason.empty()?device.detail:reason)).c_str());
-      gtk_widget_set_tooltip_text(GTK_WIDGET(row),(device.path+"\n"+device.name+"\n"+sizeText(device.bytes)+" · "+reason).c_str());
+      auto location=g_markup_escape_text(deviceLocation(device).c_str(),-1);
+      auto metadata=g_markup_escape_text((sizeText(device.bytes)+" · "+device.detail).c_str(),-1);
+      gtk_label_set_markup(detail,("<b>"+std::string(location)+"</b> · "+metadata).c_str());
+      g_free(location); g_free(metadata);
+      gtk_widget_set_tooltip_text(GTK_WIDGET(row),(device.path+"\n"+device.name+"\n"+sizeText(device.bytes)).c_str());
    }
    gtk_widget_set_sensitive(ui.devices,app.pending==None);
    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),app.devices.empty()?-1:62);
@@ -135,10 +170,10 @@ static void updateWindow()
    for (auto target:ui.target) gtk_label_set_text(GTK_LABEL(target),app.target.c_str());
    gtk_label_set_text(GTK_LABEL(ui.status),app.progressText().c_str());
    gtk_label_set_text(GTK_LABEL(ui.percent),(std::to_string(app.percent)+"%").c_str());
-   gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui.progress),app.percent/100.0);
-   gtk_image_set_from_icon_name(GTK_IMAGE(ui.result),app.error.empty()?"dialog-information":"dialog-error",GTK_ICON_SIZE_DIALOG);
-   gtk_widget_set_visible(ui.back,app.page<3); gtk_widget_set_sensitive(ui.back,app.page==1);
-   gtk_widget_set_visible(ui.cancel,app.page<3); gtk_widget_set_sensitive(ui.cancel,app.page!=2);
+   gtk_widget_set_visible(ui.percent,!app.indeterminate());
+   if (!app.indeterminate()) gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui.progress),app.percent/100.0);
+   setStatusIcon(ui.result,!app.error.empty());
+   gtk_widget_set_visible(ui.back,page<3); gtk_widget_set_sensitive(ui.back,page==1);
    gtk_widget_set_sensitive(ui.browse,app.pending==None);
    gtk_widget_set_sensitive(ui.path,app.pending==None);
    gtk_widget_set_sensitive(ui.next,app.canContinue());
@@ -199,14 +234,25 @@ bool confirmInstall(const std::string &target,bool erase)
    return accepted;
 }
 
+// Target errors are modal and use the native theme's ordinary text color.
+void showInstallError(const std::string &message)
+{
+   auto dialog=gtk_message_dialog_new(GTK_WINDOW(window),GTK_DIALOG_MODAL,GTK_MESSAGE_OTHER,GTK_BUTTONS_OK,"%s",message.c_str());
+   auto icon=gtk_drawing_area_new(); gtk_widget_set_size_request(icon,42,42); setStatusIcon(icon,true);
+   g_signal_connect(icon,"draw",G_CALLBACK(drawIcon),nullptr);
+   gtk_message_dialog_set_image(GTK_MESSAGE_DIALOG(dialog),icon); gtk_widget_show(icon);
+   gtk_window_set_title(GTK_WINDOW(dialog),"Slax cannot be installed here");
+   gtk_dialog_run(GTK_DIALOG(dialog)); gtk_widget_destroy(dialog);
+}
+
 // Build the reference layout from native GTK widgets in an ordinary decorated window.
 int runWindow()
 {
    if (!gtk_init_check(nullptr,nullptr)) { fprintf(stderr,"Open the installer in a Slax graphical session.\n"); return 1; }
-   for (int i=0; i<2; i++)
+   for (int i=0; i<7; i++)
    {
       auto loader=gdk_pixbuf_loader_new();
-      gdk_pixbuf_loader_write(loader,i?wordmark_png:clover_png,i?sizeof(wordmark_png):sizeof(clover_png),nullptr);
+      gdk_pixbuf_loader_write(loader,installer_images[i].data,installer_images[i].size,nullptr);
       gdk_pixbuf_loader_close(loader,nullptr); images[i]=GDK_PIXBUF(g_object_ref(gdk_pixbuf_loader_get_pixbuf(loader))); g_object_unref(loader);
    }
    gboolean dark=false; gchar *theme=nullptr;
@@ -214,7 +260,8 @@ int runWindow()
    dark=dark || (theme && (strstr(theme,"dark") || strstr(theme,"Dark"))); g_free(theme);
    std::string css=".slax-installer {font-size:14px;} #installer-rail {background:"+std::string(dark?"#263125":"#ecf3e7")+";} .step-number {border-radius:12px; border:1px solid "+(dark?"#434b42":"#d9e0d8")+";} .step-number.current {background:"+(dark?"#a8de89":"#397721")+";color:"+(dark?"#182810":"white")+";} .step-number.done,.drive-badge {color:"+(dark?"#a8de89":"#397721")+";} #installer-next {font-weight:600;} .installer-message.error {color:"+(dark?"#ffafaf":"#a22929")+";}";
    css+="#installer-devices {background:transparent;} #installer-devices row {padding:0; margin-bottom:8px; border:1px solid "+std::string(dark?"#434b42":"#d9e0d8")+"; border-radius:7px;} #installer-devices row:last-child {margin-bottom:0;} #installer-devices row.selected {background:"+(dark?"#293d25":"#eef7e7")+"; border-color:"+(dark?"#a8de89":"#397721")+";} .drive-badge {background:"+(dark?"#263125":"#ecf3e7")+"; border-radius:6px;} .installer-message {color:"+(dark?"#b4bfb2":"#546056")+";}";
-   css+=".installer-alert {background:#a33c36; color:white;} .drive-badge {padding:0 10px;}";
+   css+=".installer-alert {background:#a33c36; color:white;} .drive-badge {padding:0;}";
+   css+=".installer-success {color:"+std::string(dark?"#a8de89":"#397721")+";} .installer-failure {color:"+(dark?"#ffafaf":"#a33c36")+";}";
    auto provider=gtk_css_provider_new(); gtk_css_provider_load_from_data(provider,css.c_str(),-1,nullptr);
    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(provider),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION); g_object_unref(provider);
    window=gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -224,7 +271,7 @@ int runWindow()
    auto monitor=gdk_display_get_primary_monitor(gdk_display_get_default());
    if (!monitor) monitor=gdk_display_get_monitor(gdk_display_get_default(),0);
    GdkRectangle workarea; gdk_monitor_get_workarea(monitor,&workarea);
-   gtk_window_set_default_size(GTK_WINDOW(window),std::min(832,workarea.width-32),std::min(480,workarea.height-70));
+   gtk_window_set_default_size(GTK_WINDOW(window),std::min(832,workarea.width-32),std::min(540,workarea.height-70));
    gtk_window_set_position(GTK_WINDOW(window),GTK_WIN_POS_CENTER);
    GdkGeometry geometry={}; geometry.min_width=720; geometry.min_height=400;
    gtk_window_set_geometry_hints(GTK_WINDOW(window),nullptr,&geometry,GDK_HINT_MIN_SIZE);
@@ -236,7 +283,7 @@ int runWindow()
    gtk_widget_set_margin_top(brand,28); gtk_widget_set_margin_start(brand,25); gtk_widget_set_margin_bottom(brand,22);
    for (int i=0; i<2; i++)
    {
-      int width=i?83:31,height=i?30:33;
+      int width=i?83:32,height=i?30:32;
       auto pixbuf=gdk_pixbuf_scale_simple(images[i],width,height,GDK_INTERP_BILINEAR);
       gtk_box_pack_start(GTK_BOX(brand),gtk_image_new_from_pixbuf(pixbuf),false,false,0); g_object_unref(pixbuf);
    }
@@ -278,13 +325,15 @@ int runWindow()
    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),true);
    ui.devices=gtk_list_box_new(); gtk_widget_set_name(ui.devices,"installer-devices"); gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui.devices),GTK_SELECTION_NONE); gtk_list_box_set_activate_on_single_click(GTK_LIST_BOX(ui.devices),true);
    gtk_list_box_set_placeholder(GTK_LIST_BOX(ui.devices),empty); gtk_container_add(GTK_CONTAINER(ui.deviceScroll),ui.devices); gtk_box_pack_start(GTK_BOX(usb),ui.deviceScroll,true,true,0);
-   ui.none=gtk_radio_button_new(nullptr); g_object_ref_sink(ui.none);
-   g_signal_connect(ui.devices,"row-activated",G_CALLBACK(+[](GtkListBox *,GtkListBoxRow *row,gpointer) { gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(g_object_get_data(G_OBJECT(row),"radio")),true); }),nullptr);
-   ui.erase=gtk_check_button_new_with_label("Erase entire disk (all partitions)"); gtk_widget_set_size_request(ui.erase,-1,34); gtk_box_pack_start(GTK_BOX(usb),ui.erase,false,false,0);
+   g_signal_connect(ui.devices,"row-activated",G_CALLBACK(+[](GtkListBox *,GtkListBoxRow *row,gpointer) { app.activate(Select,static_cast<const char *>(g_object_get_data(G_OBJECT(g_object_get_data(G_OBJECT(row),"radio")),"device-id"))); }),nullptr);
+   ui.erase=gtk_check_button_new_with_label("Erase entire selected disk (including all other partitions on it)");
+   wrap(gtk_bin_get_child(GTK_BIN(ui.erase))); gtk_widget_set_size_request(ui.erase,-1,34); gtk_box_pack_start(GTK_BOX(usb),ui.erase,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),usb,"1");
    auto writing=gtk_box_new(GTK_ORIENTATION_VERTICAL,6),result=gtk_box_new(GTK_ORIENTATION_VERTICAL,13);
    for (int i=0; i<2; i++) { ui.target[i]=label("",14); wrap(ui.target[i]); gtk_box_pack_start(GTK_BOX(i?result:writing),ui.target[i],false,false,0); }
-   ui.result=gtk_image_new(); gtk_widget_set_halign(ui.result,GTK_ALIGN_START); gtk_box_pack_start(GTK_BOX(result),ui.result,false,false,0); gtk_box_reorder_child(GTK_BOX(result),ui.result,0);
+   ui.result=gtk_drawing_area_new(); gtk_widget_set_size_request(ui.result,42,42); gtk_widget_set_halign(ui.result,GTK_ALIGN_START);
+   g_signal_connect(ui.result,"draw",G_CALLBACK(drawIcon),nullptr);
+   gtk_box_pack_start(GTK_BOX(result),ui.result,false,false,0); gtk_box_reorder_child(GTK_BOX(result),ui.result,0);
    auto status=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_widget_set_margin_top(status,15);
    ui.status=label(""),ui.percent=label(""); wrap(ui.status); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
    gtk_box_pack_start(GTK_BOX(status),ui.status,true,true,0); gtk_box_pack_end(GTK_BOX(status),ui.percent,false,false,0);
@@ -302,15 +351,13 @@ int runWindow()
    gtk_box_pack_start(GTK_BOX(root),footer,false,false,0);
    ui.footerLabel=label("Slax Installer",13); gtk_box_pack_start(GTK_BOX(footer),ui.footerLabel,true,true,0);
    gtk_label_set_ellipsize(GTK_LABEL(ui.footerLabel),PANGO_ELLIPSIZE_END);
-   ui.cancel=gtk_button_new_with_label("Cancel"),ui.back=gtk_button_new_with_label("Back"),ui.next=gtk_button_new_with_label("Next");
-   gtk_widget_set_margin_end(ui.cancel,24);
+   ui.back=gtk_button_new_with_label("Back"),ui.next=gtk_button_new_with_label("Next");
    gtk_widget_set_name(ui.next,"installer-next"); gtk_style_context_add_class(gtk_widget_get_style_context(ui.next),"suggested-action");
    gtk_widget_set_size_request(ui.next,92,35); gtk_widget_set_can_default(ui.next,true); gtk_window_set_default(GTK_WINDOW(window),ui.next);
-   gtk_box_pack_end(GTK_BOX(footer),ui.next,false,false,0); gtk_box_pack_end(GTK_BOX(footer),ui.back,false,false,0); gtk_box_pack_end(GTK_BOX(footer),ui.cancel,false,false,0);
+   gtk_box_pack_end(GTK_BOX(footer),ui.next,false,false,0); gtk_box_pack_end(GTK_BOX(footer),ui.back,false,false,0);
    g_signal_connect(ui.browse,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Browse); }),nullptr);
    g_signal_connect(ui.next,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Next); }),nullptr);
    g_signal_connect(ui.back,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Back); }),nullptr);
-   g_signal_connect(ui.cancel,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Cancel); }),nullptr);
    g_signal_connect(ui.erase,"toggled",G_CALLBACK(+[](GtkToggleButton *button,gpointer) { if (!ui.updating && gtk_toggle_button_get_active(button)!=app.erase) app.activate(Erase); }),nullptr);
    g_signal_connect(window,"delete-event",G_CALLBACK(+[](GtkWidget *,GdkEvent *,gpointer)->gboolean { app.activate(Close); return true; }),nullptr);
    g_signal_connect(window,"destroy",G_CALLBACK(+[](GtkWidget *,gpointer)
@@ -324,11 +371,15 @@ int runWindow()
       gtk_widget_set_size_request(ui.rail,std::max(175,int(size->width*0.3)),-1);
       return false;
    }),nullptr);
-   guint timer=g_timeout_add(100,+[](gpointer)->gboolean { app.tick(); return G_SOURCE_CONTINUE; },nullptr);
+   guint timer=g_timeout_add(100,+[](gpointer)->gboolean
+   {
+      app.tick();
+      if (app.indeterminate()) gtk_progress_bar_pulse(GTK_PROGRESS_BAR(ui.progress));
+      return G_SOURCE_CONTINUE;
+   },nullptr);
    gtk_widget_show_all(window); updateWindow(); app.startScan(); gtk_main();
    g_source_remove(timer); app.stop();
    if (window) gtk_widget_destroy(window);
-   g_object_unref(ui.none);
    for (auto image:images) g_object_unref(image);
    return 0;
 }

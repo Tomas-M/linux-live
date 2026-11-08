@@ -13,6 +13,10 @@ In Windows
 2. Follow the prompts and wait for the tool to finish.
 3. Open the new USB-DATA drive in File Explorer and copy your files to it.
 
+The tool also prepares slax/changes for persistent sessions. Slax automatically
+saves your changes there when you use "Resume previous session automatically".
+Keep this directory to retain your saved changes.
+
 In Slax
 
 1. Open Partition Manager and select your USB drive.

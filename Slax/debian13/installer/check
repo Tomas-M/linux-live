@@ -9,11 +9,13 @@ mkdir -p "$TEMP/tree/slax/boot/EFI/BOOT" "$TEMP/tree/slax/boot/grub" "$TEMP/tree
 for FILE in vmlinuz initrfs.img EFI/BOOT/BOOTX64.EFI EFI/BOOT/grubx64.efi EFI/BOOT/mmx64.efi grub/entries.cfg grub/graphics.cfg grub/theme.txt grub.cfg; do
    printf 'Owned installer test fixture: %s\n' "$FILE" > "$TEMP/tree/slax/boot/$FILE"
 done
+printf 'Owned native installer fixture\n' > "$TEMP/tree/slax/slax-install-linux"
+chmod 755 "$TEMP/tree/slax/slax-install-linux"
 printf 'Owned core fixture\n' > "$TEMP/tree/slax/modules/01-core.sb"
 printf 'Unicode payload\n' > "$TEMP/tree/slax/modules/module-東京-İstanbul.sb"
 xorriso -as mkisofs -quiet -R -o "$TEMP/source.iso" "$TEMP/tree" 2>/dev/null
 g++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread -DINSTALLER_TEST \
-   -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" \
+   -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" \
    "$THIS/disk-format.cpp" "$THIS/firmware.cpp" "$THIS/test-storage.cpp" "$THIS/tests.cpp" \
    $(pkg-config --cflags --libs glib-2.0) -o "$TEMP/check"
 "$TEMP/check" "$ISO" "$TEMP/source.iso" "$TEMP"

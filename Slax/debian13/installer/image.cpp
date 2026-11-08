@@ -30,7 +30,7 @@ static std::vector<unsigned char> read(FILE *file,uint64_t offset,uint64_t bytes
 }
 
 // Read Rock Ridge names and reject links or relocation rather than copying ambiguous paths.
-static void extensions(FILE *file,uint64_t size,const unsigned char *data,size_t bytes,std::string &name,int depth=0)
+static void extensions(FILE *file,uint64_t size,const unsigned char *data,size_t bytes,std::string &name,uint32_t &mode,int depth=0)
 {
    if (depth>4) throw std::runtime_error("The ISO has recursive Rock Ridge continuation records.");
    for (size_t at=0; at+4<=bytes;)
@@ -39,6 +39,7 @@ static void extensions(FILE *file,uint64_t size,const unsigned char *data,size_t
       if (length<4 || at+length>bytes) throw std::runtime_error("The ISO contains an invalid Rock Ridge record.");
       if (!memcmp(p,"ST",2)) break;
       if (!memcmp(p,"SL",2) || !memcmp(p,"RE",2) || !memcmp(p,"CL",2)) throw std::runtime_error("This ISO contains links or relocated directories in slax; use an unmodified Slax ISO.");
+      if (!memcmp(p,"PX",2) && length>=12) mode=number(p+4);
       if (!memcmp(p,"NM",2) && length>=5)
       {
          if (p[4]&~1) throw std::runtime_error("The ISO contains an unsupported Rock Ridge filename.");
@@ -47,7 +48,7 @@ static void extensions(FILE *file,uint64_t size,const unsigned char *data,size_t
       if (!memcmp(p,"CE",2) && length==28)
       {
          auto continuation=read(file,uint64_t(number(p+4))*2048+number(p+12),number(p+20),size);
-         extensions(file,size,continuation.data(),continuation.size(),name,depth+1);
+         extensions(file,size,continuation.data(),continuation.size(),name,mode,depth+1);
       }
       at+=length;
    }
@@ -81,7 +82,7 @@ static void directory(FILE *file,Image &image,uint32_t sector,uint32_t bytes,con
       if (nameBytes==1 && p[33]<=1) continue;
       std::string name(reinterpret_cast<const char *>(p+33),nameBytes),rock;
       unsigned extension=33+nameBytes+(nameBytes%2==0);
-      extensions(file,image.bytes,p+extension,length-extension,rock);
+      uint32_t mode=0644; extensions(file,image.bytes,p+extension,length-extension,rock,mode);
       if (!rock.empty()) name=rock;
       else
       {
@@ -96,6 +97,9 @@ static void directory(FILE *file,Image &image,uint32_t sector,uint32_t bytes,con
       uint64_t offset=uint64_t(number(p+2))*2048,size=number(p+10);
       if (offset>image.bytes || size>image.bytes-offset || p[26] || p[27] || (p[25]&0x80)) throw std::runtime_error("The ISO contains an unsupported or out-of-range file extent.");
       ImageEntry item={parent.empty()?name:parent+"/"+name,offset,size,bool(p[25]&2)};
+      uint32_t type=mode&0170000;
+      if (type && type!=(item.directory?0040000:0100000)) throw std::runtime_error("The ISO contains an unsupported special file or inconsistent directory type.");
+      item.mode=mode&0777;
       image.entries.push_back(item);
       if (item.directory) directory(file,image,number(p+2),size,item.path,visited,depth+1);
       else
@@ -114,7 +118,6 @@ Image inspectImage(const std::string &path)
    if (!file) { image.error="The ISO file cannot be opened."; return image; }
    try
    {
-      image.identity=imageIdentity(file);
 #ifdef _WIN32
       if (_fseeki64(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
       image.bytes=_ftelli64(file);
@@ -138,7 +141,6 @@ Image inspectImage(const std::string &path)
          auto found=std::find_if(image.entries.begin(),image.entries.end(),[&](const ImageEntry &e) { return e.path==required && !e.directory && e.bytes>0; });
          if (found==image.entries.end()) throw std::runtime_error("Missing required file: "+std::string(required)+".");
       }
-      if (image.identity!=imageIdentity(file)) throw std::runtime_error("The source ISO changed during validation.");
    }
    catch (const std::exception &error) { image.error=error.what(); image.entries.clear(); }
    fclose(file); return image;

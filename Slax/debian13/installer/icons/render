@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+from pathlib import Path
+import subprocess
+
+# Rasterize the original Partition Manager SVGs once; normal builds embed the committed PNGs.
+for path in Path(__file__).resolve().parent.glob('*.svg'):
+    color='#a33c36' if path.stem=='triangle-exclamation' else '#397721'
+    source=path.read_text().replace('<path ', '<path fill="'+color+'" ')
+    result=subprocess.run(['rsvg-convert','--width','96','--height','96'],input=source.encode(),capture_output=True,check=True)
+    path.with_suffix('.png').write_bytes(result.stdout)
