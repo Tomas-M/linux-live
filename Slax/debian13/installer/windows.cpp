@@ -15,170 +15,13 @@
 #include <cstring>
 #include "installer.h"
 #include "images.h"
+#include "windows-native.h"
 
 static HWND window;
 static float scale=1;
 
-// Convert Windows Unicode paths at the platform boundary, preserving all characters.
-static std::wstring wide(const std::string &value)
-{
-   int length=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),value.size(),nullptr,0);
-   std::wstring result(length,L'\0');
-   if (length) MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),value.size(),result.data(),length);
-   return result;
-}
-
-// Expose native names to the shared GUI as UTF-8.
-static std::string utf8(const std::wstring &value)
-{
-   int length=WideCharToMultiByte(CP_UTF8,0,value.data(),value.size(),nullptr,0,nullptr,nullptr);
-   std::string result(length,'\0');
-   if (length) WideCharToMultiByte(CP_UTF8,0,value.data(),value.size(),result.data(),length,nullptr,nullptr);
-   return result;
-}
-
-// Resolve all physical disks behind a volume, including multi-extent volumes.
-static std::set<DWORD> volumeDisks(const std::wstring &name)
-{
-   std::set<DWORD> result;
-   std::wstring path=name;
-   if (!path.empty() && path.back()==L'\\') path.pop_back();
-   HANDLE volume=CreateFileW(path.c_str(),0,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
-   if (volume==INVALID_HANDLE_VALUE) return result;
-   std::vector<unsigned char> buffer(65536);
-   DWORD returned=0;
-   if (DeviceIoControl(volume,IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,nullptr,0,buffer.data(),buffer.size(),&returned,nullptr))
-   {
-      auto extents=reinterpret_cast<VOLUME_DISK_EXTENTS *>(buffer.data());
-      size_t offset=offsetof(VOLUME_DISK_EXTENTS,Extents);
-      if (returned>=offset && extents->NumberOfDiskExtents<=(returned-offset)/sizeof(DISK_EXTENT))
-         for (DWORD i=0; i<extents->NumberOfDiskExtents; i++) result.insert(extents->Extents[i].DiskNumber);
-   }
-   CloseHandle(volume);
-   return result;
-}
-
-// Map a file to physical storage without depending on a drive letter or disk number.
-static std::set<DWORD> fileDisks(const std::wstring &filename)
-{
-   wchar_t root[32768],volume[64];
-   if (!GetVolumePathNameW(filename.c_str(),root,32768)) return {};
-   if (!GetVolumeNameForVolumeMountPointW(root,volume,64)) return {};
-   return volumeDisks(volume);
-}
-
-// Use native SetupAPI and storage IOCTLs; never invoke PowerShell, WMI or disk writers.
-std::vector<Device> scanDevices(const std::string &source)
-{
-   static const GUID diskClass={0x53f56307,0xb6bf,0x11d0,{0x94,0xf2,0x00,0xa0,0xc9,0x1e,0xfb,0x8b}};
-   std::vector<Device> result;
-   wchar_t windows[32768];
-   GetWindowsDirectoryW(windows,32768);
-   auto system=fileDisks(windows),origin=source.empty()?std::set<DWORD>{}:fileDisks(wide(source));
-   HDEVINFO set=SetupDiGetClassDevsW(&diskClass,nullptr,nullptr,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
-   if (set==INVALID_HANDLE_VALUE) return result;
-   struct Volume { std::set<DWORD> disks; std::string label; uint64_t free; bool fat; };
-   std::vector<Volume> volumes;
-   wchar_t volumeName[64];
-   HANDLE search=FindFirstVolumeW(volumeName,64);
-   if (search!=INVALID_HANDLE_VALUE)
-   {
-      do
-      {
-         Volume volume;
-         volume.disks=volumeDisks(volumeName);
-         wchar_t filesystem[64],paths[32768];
-         DWORD needed=0;
-         ULARGE_INTEGER free={},total={},all={};
-         volume.fat=GetVolumeInformationW(volumeName,nullptr,0,nullptr,nullptr,nullptr,filesystem,64) && !_wcsicmp(filesystem,L"FAT32");
-         volume.free=GetDiskFreeSpaceExW(volumeName,&free,&total,&all)?free.QuadPart:0;
-         if (GetVolumePathNamesForVolumeNameW(volumeName,paths,32768,&needed))
-         {
-            for (wchar_t *path=paths; *path; path+=wcslen(path)+1)
-            {
-               std::wstring name=path;
-               if (name.size()==3 && name[1]==L':')
-               {
-                  if (!volume.label.empty()) volume.label+=", ";
-                  volume.label+=utf8(name.substr(0,2));
-               }
-            }
-         }
-         volumes.push_back(volume);
-      } while (FindNextVolumeW(search,volumeName,64));
-      FindVolumeClose(search);
-   }
-   SP_DEVICE_INTERFACE_DATA diskInterface={}; diskInterface.cbSize=sizeof(diskInterface);
-   for (DWORD index=0; SetupDiEnumDeviceInterfaces(set,nullptr,&diskClass,index,&diskInterface); index++)
-   {
-      DWORD needed=0;
-      SetupDiGetDeviceInterfaceDetailW(set,&diskInterface,nullptr,0,&needed,nullptr);
-      if (needed<sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)) continue;
-      std::vector<unsigned char> detailBuffer(needed);
-      auto detail=reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W *>(detailBuffer.data());
-      detail->cbSize=sizeof(*detail);
-      SP_DEVINFO_DATA info={}; info.cbSize=sizeof(info);
-      if (!SetupDiGetDeviceInterfaceDetailW(set,&diskInterface,detail,needed,nullptr,&info)) continue;
-      HANDLE disk=CreateFileW(detail->DevicePath,0,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
-      if (disk==INVALID_HANDLE_VALUE) continue;
-      STORAGE_PROPERTY_QUERY query={}; query.PropertyId=StorageDeviceProperty; query.QueryType=PropertyStandardQuery;
-      unsigned char descriptor[8192]={};
-      DWORD returned=0;
-      bool queried=DeviceIoControl(disk,IOCTL_STORAGE_QUERY_PROPERTY,&query,sizeof(query),descriptor,sizeof(descriptor),&returned,nullptr);
-      auto storage=reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR *>(descriptor);
-      if (!queried || returned<sizeof(STORAGE_DEVICE_DESCRIPTOR) || storage->BusType!=BusTypeUsb || storage->DeviceType!=0) { CloseHandle(disk); continue; }
-      STORAGE_DEVICE_NUMBER number={};
-      unsigned char geometry[1024]={};
-      bool numbered=DeviceIoControl(disk,IOCTL_STORAGE_GET_DEVICE_NUMBER,nullptr,0,&number,sizeof(number),&returned,nullptr);
-      bool sized=DeviceIoControl(disk,IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,nullptr,0,geometry,sizeof(geometry),&returned,nullptr);
-      if (numbered && sized && returned>=offsetof(DISK_GEOMETRY_EX,Data))
-      {
-         Device device;
-         auto size=reinterpret_cast<DISK_GEOMETRY_EX *>(geometry);
-         device.bytes=size->DiskSize.QuadPart;
-         device.path="\\\\.\\PhysicalDrive"+std::to_string(number.DeviceNumber);
-         wchar_t instance[4096]={},name[1024]={};
-         SetupDiGetDeviceInstanceIdW(set,&info,instance,4096,nullptr);
-         SetupDiGetDeviceRegistryPropertyW(set,&info,SPDRP_FRIENDLYNAME,nullptr,reinterpret_cast<BYTE *>(name),sizeof(name),nullptr);
-         device.name=name[0]?utf8(name):"USB drive";
-         device.id=utf8(instance[0]?instance:detail->DevicePath)+":"+std::to_string(device.bytes);
-         device.detail=storage->RemovableMedia?"Removable USB drive":"USB drive";
-         bool writable=DeviceIoControl(disk,IOCTL_DISK_IS_WRITABLE,nullptr,0,nullptr,0,&returned,nullptr);
-         if (!writable && GetLastError()==ERROR_WRITE_PROTECT) device.blocked="This drive is read-only.";
-         if (system.empty()) device.blocked="The running system disk could not be identified.";
-         if (system.count(number.DeviceNumber)) device.blocked="This drive contains the running Windows system.";
-         if (origin.count(number.DeviceNumber)) device.blocked="This drive contains the selected ISO image.";
-         for (const auto &volume:volumes)
-         {
-            if (!volume.disks.count(number.DeviceNumber)) continue;
-            if (!volume.label.empty()) { if (!device.label.empty()) device.label+=", "; device.label+=volume.label; }
-            if (volume.fat && volume.free>=device.free)
-            {
-               device.fat=true; device.free=volume.free;
-               device.detail=sizeText(device.free)+" free · FAT32";
-            }
-         }
-         if (device.label.empty()) device.label="USB";
-         if (device.bytes) result.push_back(device);
-      }
-      CloseHandle(disk);
-   }
-   SetupDiDestroyDeviceInfoList(set);
-   std::sort(result.begin(),result.end(),[](const Device &a,const Device &b) { return a.id<b.id; });
-   return result;
-}
-
-// Open only ordinary image files in read mode, with native Unicode path handling.
-FILE *openImage(const std::string &path)
-{
-   auto filename=wide(path);
-   DWORD attributes=GetFileAttributesW(filename.c_str());
-   if (attributes==INVALID_FILE_ATTRIBUTES || (attributes&FILE_ATTRIBUTE_DIRECTORY) || path.find("\\\\.")==0) return nullptr;
-   return _wfopen(filename.c_str(),L"rb");
-}
-
-enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,CancelButton,Separator };
-static const DWORD windowStyle=WS_OVERLAPPEDWINDOW;
+enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,CancelButton,Separator,ErrorIcon };
+static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
 
 struct WinCard
 {
@@ -193,7 +36,7 @@ struct WinUi
 {
    HWND panel=nullptr,controls[180]={};
    HFONT body=nullptr,small=nullptr,title=nullptr,intro=nullptr,bold=nullptr,badge=nullptr;
-   HBRUSH rail=nullptr,green=nullptr,selected=nullptr;
+   HBRUSH rail=nullptr,green=nullptr,selected=nullptr,red=nullptr;
    HBITMAP brand[2]={};
    std::vector<std::unique_ptr<WinCard>> cards;
    int scroll=0,deviceScroll=0,page=-1;
@@ -215,7 +58,7 @@ static void text(int id,const std::string &value) { text(ui.controls[id],value);
 // Create ordinary themed Windows controls with the system's message-font family.
 static HWND control(int id,const wchar_t *type,DWORD style,HWND parent,DWORD extended=0)
 {
-   HWND item=CreateWindowExW(extended,type,L"",WS_CHILD|WS_VISIBLE|style,0,0,1,1,parent,reinterpret_cast<HMENU>(INT_PTR(id)),GetModuleHandleW(nullptr),nullptr);
+   HWND item=CreateWindowExW(extended,type,L"",WS_CHILD|WS_VISIBLE|WS_CLIPSIBLINGS|style,0,0,1,1,parent,reinterpret_cast<HMENU>(INT_PTR(id)),GetModuleHandleW(nullptr),nullptr);
    ui.controls[id]=item;
    SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
    return item;
@@ -248,6 +91,7 @@ static void fonts()
    for (auto item:ui.controls) if (item) SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
    if (ui.controls[Heading]) SendMessageW(ui.controls[Heading],WM_SETFONT,reinterpret_cast<WPARAM>(ui.title),TRUE);
    if (ui.controls[Intro]) SendMessageW(ui.controls[Intro],WM_SETFONT,reinterpret_cast<WPARAM>(ui.intro),TRUE);
+   if (ui.controls[ErrorIcon]) SendMessageW(ui.controls[ErrorIcon],WM_SETFONT,reinterpret_cast<WPARAM>(ui.bold),TRUE);
    for (int id:{Step,Footer}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
    for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
    for (const auto &card:ui.cards)
@@ -287,10 +131,38 @@ static void branding()
    }
 }
 
+// Queue changed child geometry without copying old text pixels or repainting midway through layout.
+static bool position(HWND item,int x,int y,int width,int height)
+{
+   width=std::max(1,width); height=std::max(1,height);
+   RECT rect; GetWindowRect(item,&rect); MapWindowPoints(nullptr,GetParent(item),reinterpret_cast<POINT *>(&rect),2);
+   if (rect.left==x && rect.top==y && rect.right-rect.left==width && rect.bottom-rect.top==height) return false;
+   SetWindowPos(item,nullptr,x,y,width,height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+   return true;
+}
+
 // Position native child windows in logical pixels, applying content scrolling once.
 static void place(int id,float x,float y,float width,float height,bool content=true)
 {
-   MoveWindow(ui.controls[id],int(x*scale),int(y*scale)-(content?ui.scroll:0),std::max(1,int(width*scale)),std::max(1,int(height*scale)),TRUE);
+   position(ui.controls[id],int(x*scale),int(y*scale)-(content?ui.scroll:0),int(width*scale),int(height*scale));
+}
+
+// Center the editable line from its actual GDI metrics after resize, font and theme changes.
+static LRESULT CALLBACK pathEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR)
+{
+   LRESULT result=DefSubclassProc(hwnd,message,wp,lp);
+   if (message==WM_SIZE || message==WM_SETFONT || message==WM_THEMECHANGED)
+   {
+      RECT rect; GetClientRect(hwnd,&rect);
+      HDC dc=GetDC(hwnd); auto old=SelectObject(dc,reinterpret_cast<HFONT>(SendMessageW(hwnd,WM_GETFONT,0,0)));
+      TEXTMETRICW metrics; GetTextMetricsW(dc,&metrics); SelectObject(dc,old); ReleaseDC(hwnd,dc);
+      int inset=std::max(2,int(std::round(3*scale)));
+      rect.left+=inset; rect.right=std::max(rect.left+1,rect.right-inset);
+      rect.top=std::max(0,int((rect.bottom-metrics.tmHeight)/2)); rect.bottom=rect.top+metrics.tmHeight;
+      SendMessageW(hwnd,EM_SETRECTNP,0,reinterpret_cast<LPARAM>(&rect));
+      InvalidateRect(hwnd,nullptr,TRUE);
+   }
+   return result;
 }
 
 // Ask Windows to measure wrapped text with the exact font used by its STATIC control.
@@ -341,7 +213,9 @@ static void layoutCards()
    SCROLLINFO info={}; info.cbSize=sizeof(info); info.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
    info.nMin=0; info.nMax=std::max(0,int((int(ui.cards.size())*70-8)*scale)-1); info.nPage=bounds.bottom; info.nPos=ui.deviceScroll;
    SetScrollInfo(panel,SB_VERT,&info,TRUE); ui.deviceScroll=GetScrollPos(panel,SB_VERT); GetClientRect(panel,&bounds);
-   for (size_t i=0; i<ui.cards.size(); i++) MoveWindow(ui.cards[i]->window,0,int(i*70*scale)-ui.deviceScroll,bounds.right,int(62*scale),TRUE);
+   bool moved=false;
+   for (size_t i=0; i<ui.cards.size(); i++) moved=position(ui.cards[i]->window,0,int(i*70*scale)-ui.deviceScroll,bounds.right,int(62*scale)) || moved;
+   if (moved) RedrawWindow(panel,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
    ui.layingoutDevices=false;
 }
 
@@ -371,10 +245,10 @@ static LRESULT CALLBACK cardEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (message==WM_SIZE && card->radio)
    {
       RECT bounds; GetClientRect(hwnd,&bounds); int width=bounds.right;
-      MoveWindow(card->badge,int(12*scale),int(18*scale),int(42*scale),int(26*scale),TRUE);
-      MoveWindow(card->name,int(66*scale),int(9*scale),std::max(1,width-int(108*scale)),int(22*scale),TRUE);
-      MoveWindow(card->detail,int(66*scale),int(31*scale),std::max(1,width-int(108*scale)),int(21*scale),TRUE);
-      MoveWindow(card->radio,width-int(29*scale),int(22*scale),int(18*scale),int(18*scale),TRUE); return 0;
+      position(card->badge,int(12*scale),int(18*scale),int(42*scale),int(26*scale));
+      position(card->name,int(66*scale),int(9*scale),width-int(108*scale),int(22*scale));
+      position(card->detail,int(66*scale),int(31*scale),width-int(108*scale),int(21*scale));
+      position(card->radio,width-int(29*scale),int(22*scale),int(18*scale),int(18*scale)); return 0;
    }
    if (message==WM_PAINT)
    {
@@ -384,8 +258,9 @@ static LRESULT CALLBACK cardEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (message==WM_CTLCOLORSTATIC || message==WM_CTLCOLORBTN)
    {
       HDC dc=reinterpret_cast<HDC>(wp); bool selected=card->device.id==app.selected;
-      SetBkMode(dc,TRANSPARENT); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
-      if (reinterpret_cast<HWND>(lp)==card->badge) { SetTextColor(dc,RGB(57,119,33)); return reinterpret_cast<LRESULT>(ui.rail); }
+      COLORREF background=selected?RGB(238,247,231):GetSysColor(COLOR_WINDOW);
+      SetBkMode(dc,OPAQUE); SetBkColor(dc,background); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
+      if (reinterpret_cast<HWND>(lp)==card->badge) { SetBkColor(dc,RGB(236,243,231)); SetTextColor(dc,RGB(57,119,33)); return reinterpret_cast<LRESULT>(ui.rail); }
       if (reinterpret_cast<HWND>(lp)==card->detail) SetTextColor(dc,RGB(84,96,86));
       return reinterpret_cast<LRESULT>(selected?ui.selected:GetSysColorBrush(COLOR_WINDOW));
    }
@@ -441,22 +316,24 @@ static LRESULT CALLBACK deviceEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
          if (code==SB_BOTTOM) next=info.nMax;
          if (code==SB_THUMBTRACK || code==SB_THUMBPOSITION) next=info.nTrackPos;
       }
+      next=std::max(info.nMin,std::min(next,info.nMax-std::max(0,int(info.nPage)-1)));
+      if (next==info.nPos) return 0;
       SetScrollPos(hwnd,SB_VERT,next,TRUE); ui.deviceScroll=GetScrollPos(hwnd,SB_VERT); layoutCards(); return 0;
    }
    return DefWindowProcW(hwnd,message,wp,lp);
 }
 
-// Lay out native fields in a standard scrollable child window, keeping the footer fixed.
+// Measure before moving controls so scrollbar changes cannot leave stale geometry or copied pixels.
 static void layoutContent()
 {
    if (ui.layingout || !ui.panel) return;
    ui.layingout=true;
-   RECT rect; GetClientRect(ui.panel,&rect);
-   float width=rect.right/scale,x=30,w=width-60,y=29;
-      place(Step,x,y,w,20); y+=26;
-   float h=textHeight(Heading,w); place(Heading,x,y,w,h); y+=h+9;
-   h=textHeight(Intro,w); place(Intro,x,y,w,h); y+=h+22;
-   for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result})
+   RECT outer,viewport; GetWindowRect(ui.panel,&outer); GetClientRect(ui.panel,&viewport);
+   struct Field { int id; float x,y,width,height; };
+   std::vector<Field> fields;
+   bool messageVisible=app.page==0 || (app.page==1 && !app.message().empty());
+   bool errorVisible=messageVisible && app.pending==None && !app.error.empty();
+   for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message,ErrorIcon})
    {
       bool isoField=app.page==0 && (id==PathLabel || id==Path || id==BrowseButton);
       bool usbField=app.page==1 && (id==Drives || id==Empty || id==EraseButton);
@@ -466,51 +343,64 @@ static void layoutContent()
       if (id==Result) show=app.page==3;
       if (id==Drives) show=app.page==1 && !app.devices.empty();
       if (id==Empty) show=app.page==1 && app.devices.empty();
+      if (id==Message) show=messageVisible;
+      if (id==ErrorIcon) show=errorVisible;
       if (bool(GetWindowLongW(ui.controls[id],GWL_STYLE)&WS_VISIBLE)!=show) ShowWindow(ui.controls[id],show?SW_SHOW:SW_HIDE);
    }
-   if (app.page==0)
+   // Always measure the full width first; a needed scrollbar can only increase wrapped height.
+   int pixels=outer.right-outer.left;
+   for (int pass=0; pass<2; pass++)
    {
-      for (int id:{PathLabel,Path,BrowseButton}) ShowWindow(ui.controls[id],SW_SHOW);
-      place(PathLabel,x,y,w,21); y+=27;
-      place(Path,x,y,w-94,35); place(BrowseButton,x+w-86,y,86,35); y+=48;
-   }
-   if (app.page==1)
-   {
-      if (app.devices.empty()) { ShowWindow(ui.controls[Empty],SW_SHOW); h=textHeight(Empty,w); place(Empty,x,y,w,h); y+=h; }
-      else
+      fields.clear();
+      auto add=[&](int id,float x,float y,float width,float height) { fields.push_back({id,x,y,width,height}); };
+      float x=30,w=pixels/scale-60,y=29,h;
+      add(Step,x,y,w,20); y+=26;
+      h=textHeight(Heading,w); add(Heading,x,y,w,h); y+=h+9;
+      h=textHeight(Intro,w); add(Intro,x,y,w,h); y+=h+22;
+      float messageWidth=w-(errorVisible?36:0);
+      float messageHeight=messageVisible?textHeight(Message,messageWidth):0;
+      if (app.page==0)
       {
-         h=std::min(210,std::max(62,int(app.devices.size())*70-8)); ShowWindow(ui.controls[Drives],SW_SHOW); place(Drives,x,y,w,h); y+=h;
+         add(PathLabel,x,y,w,21); y+=27;
+         add(Path,x,y,w-94,35); add(BrowseButton,x+w-86,y,86,35); y+=48;
+         messageHeight=std::max(42.0f,messageHeight);
       }
-      y+=10; ShowWindow(ui.controls[EraseButton],SW_SHOW); place(EraseButton,x,y,w,34); y+=34;
-   }
-   if (app.page>=2)
-   {
-      if (app.page==3) { ShowWindow(ui.controls[Result],SW_SHOW); place(Result,x,y,42,42); y+=55; }
-      ShowWindow(ui.controls[Target],SW_SHOW); h=textHeight(Target,w-24); place(Target,x+12,y+10,w-24,h); y+=h+20;
-      if (app.page==2)
+      if (app.page==1)
       {
-         y+=21;
-         for (int id:{Status,Percent,Progress}) ShowWindow(ui.controls[id],SW_SHOW);
-         place(Status,x,y,w-50,21); place(Percent,x+w-45,y,45,21); y+=27; place(Progress,x,y,w,16); y+=16;
+         if (app.devices.empty()) { h=textHeight(Empty,w); add(Empty,x,y,w,h); }
+         else
+         {
+            float reserve=10+34+12+(messageVisible?13+messageHeight:0);
+            h=std::max(62.0f,viewport.bottom/scale-y-reserve);
+            add(Drives,x,y,w,h);
+         }
+         y+=h+10; add(EraseButton,x,y,w,34); y+=34;
       }
+      if (app.page>=2)
+      {
+         if (app.page==3) { add(Result,x,y,42,42); y+=55; }
+         h=textHeight(Target,w-24); add(Target,x+12,y+10,w-24,h); y+=h+20;
+         if (app.page==2)
+         {
+            y+=21; h=std::max(21.0f,textHeight(Status,w-58));
+            add(Status,x,y,w-58,h); add(Percent,x+w-45,y,45,21); y+=h+6; add(Progress,x,y,w,16); y+=16;
+         }
+      }
+      if (messageVisible)
+      {
+         if (app.page==1) y+=13;
+         if (errorVisible) add(ErrorIcon,x,y,24,24);
+         add(Message,x+(errorVisible?36:0),y,messageWidth,messageHeight); y+=messageHeight;
+      }
+      SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
+      scroll.nMin=0; scroll.nMax=int((y+(app.page==1?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
+      SetScrollInfo(ui.panel,SB_VERT,&scroll,TRUE); GetClientRect(ui.panel,&viewport);
+      if (viewport.right==pixels) break;
+      pixels=viewport.right;
    }
-   bool messageVisible=app.page==0 || (app.page==1 && !app.message().empty());
-   ShowWindow(ui.controls[Message],messageVisible?SW_SHOW:SW_HIDE);
-   if (messageVisible)
-   {
-      if (app.page==1) y+=13;
-      h=textHeight(Message,w);
-      if (app.page==0) h=std::max(42.0f,h);
-      place(Message,x,y,w,h); y+=h;
-   }
-   SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
-   scroll.nMin=0; scroll.nMax=int((y+(app.page==1?12:29))*scale)-1; scroll.nPage=rect.bottom; scroll.nPos=ui.scroll;
-   SetScrollInfo(ui.panel,SB_VERT,&scroll,TRUE);
-   int current=GetScrollPos(ui.panel,SB_VERT);
-   if (current!=ui.scroll) { ScrollWindowEx(ui.panel,0,ui.scroll-current,nullptr,nullptr,nullptr,nullptr,SW_SCROLLCHILDREN|SW_INVALIDATE); ui.scroll=current; }
-   RECT after; GetClientRect(ui.panel,&after);
+   ui.scroll=GetScrollPos(ui.panel,SB_VERT);
+   for (const auto &field:fields) place(field.id,field.x,field.y,field.width,field.height);
    ui.layingout=false;
-   if (after.right!=rect.right) PostMessageW(ui.panel,WM_APP,0,0);
 }
 
 // Let Windows provide its titlebar, shadow, resize borders and work-area maximization.
@@ -528,9 +418,9 @@ static void layoutWindow()
       ShowWindow(ui.controls[StepNumber+i],SW_SHOW); ShowWindow(ui.controls[StepName+i],SW_SHOW);
       place(StepNumber+i,22,86+i*40,24,24,false); place(StepName+i,56,83+i*40,rail-66,31,false);
    }
-   MoveWindow(ui.panel,int(rail*scale),0,int((width-rail)*scale),std::max(1,int(footer*scale)),TRUE);
-   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,width-275,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
-   place(CancelButton,width-253,footer+11,70,35,false); place(BackButton,width-175,footer+11,59,35,false); place(NextButton,width-108,footer+11,92,35,false);
+   position(ui.panel,int(rail*scale),0,int((width-rail)*scale),int(footer*scale));
+   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,width-299,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
+   place(CancelButton,width-277,footer+11,70,35,false); place(BackButton,width-175,footer+11,59,35,false); place(NextButton,width-108,footer+11,92,35,false);
    layoutContent();
 }
 
@@ -561,18 +451,24 @@ static void updateWindow()
       if (device==app.devices.end()) continue;
       card->device=*device;
       text(card->name,device->name); text(card->badge,device->label);
-      SendMessageW(card->badge,WM_SETFONT,reinterpret_cast<WPARAM>(device->label.size()>3?ui.bold:ui.badge),TRUE);
+      HFONT font=device->label.size()>3?ui.bold:ui.badge;
+      if (reinterpret_cast<HFONT>(SendMessageW(card->badge,WM_GETFONT,0,0))!=font) SendMessageW(card->badge,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
       std::string reason=app.eligibility(*device);
       text(card->detail,sizeText(device->bytes)+" · "+(reason.empty()?device->detail:reason));
-      SendMessageW(card->radio,BM_SETCHECK,device->id==app.selected?BST_CHECKED:BST_UNCHECKED,0);
-      RedrawWindow(card->window,nullptr,nullptr,RDW_INVALIDATE|RDW_ALLCHILDREN);
+      WPARAM checked=device->id==app.selected?BST_CHECKED:BST_UNCHECKED;
+      if (WPARAM(SendMessageW(card->radio,BM_GETCHECK,0,0))!=checked)
+      {
+         SendMessageW(card->radio,BM_SETCHECK,checked,0);
+         RedrawWindow(card->window,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+      }
    }
-   EnableWindow(ui.controls[Drives],app.pending==None); EnableWindow(ui.controls[BrowseButton],app.pending==None);
+   EnableWindow(ui.controls[Drives],app.pending==None); EnableWindow(ui.controls[BrowseButton],app.pending==None); EnableWindow(ui.controls[Path],app.pending==None);
    EnableWindow(ui.controls[EraseButton],!app.devices.empty() && app.pending==None);
    EnableWindow(ui.controls[NextButton],app.canContinue()); EnableWindow(ui.controls[BackButton],app.page==1); EnableWindow(ui.controls[CancelButton],app.page!=2);
    ShowWindow(ui.controls[BackButton],app.page<3?SW_SHOW:SW_HIDE); ShowWindow(ui.controls[CancelButton],app.page<3?SW_SHOW:SW_HIDE);
    if (ui.page!=app.page)
    {
+      EnableMenuItem(GetSystemMenu(window,FALSE),SC_CLOSE,MF_BYCOMMAND|(app.page==2?MF_GRAYED:MF_ENABLED));
       ui.page=app.page; ui.scroll=0;
       SetFocus(app.page==1?ui.controls[Drives]:ui.controls[NextButton]);
    }
@@ -608,18 +504,57 @@ std::string chooseImage()
    return GetOpenFileNameW(&dialog)?utf8(filename.data()):"";
 }
 
-// Confirm with a standard Windows dialog; No is the keyboard default.
+// Lay out a standard resizable review dialog with selectable, scrollable native text.
+static INT_PTR CALLBACK confirmEvents(HWND dialog,UINT message,WPARAM wp,LPARAM lp)
+{
+   if (message==WM_INITDIALOG)
+   {
+      auto text=reinterpret_cast<const std::wstring *>(lp);
+      HWND body=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",text->c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,1,1,dialog,reinterpret_cast<HMENU>(100),GetModuleHandleW(nullptr),nullptr);
+      HWND yes=CreateWindowExW(0,L"BUTTON",L"Install",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,1,1,dialog,reinterpret_cast<HMENU>(IDYES),GetModuleHandleW(nullptr),nullptr);
+      HWND no=CreateWindowExW(0,L"BUTTON",L"Cancel",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,0,0,1,1,dialog,reinterpret_cast<HMENU>(IDNO),GetModuleHandleW(nullptr),nullptr);
+      for (auto item:{body,yes,no}) SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
+      RECT work,parent; SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0); GetWindowRect(window,&parent);
+      int width=std::min(int(650*scale),int(work.right-work.left-32)),height=std::min(int(430*scale),int(work.bottom-work.top-48));
+      int x=std::max(int(work.left),std::min(int(work.right-width),int((parent.left+parent.right-width)/2)));
+      int y=std::max(int(work.top),std::min(int(work.bottom-height),int((parent.top+parent.bottom-height)/2)));
+      SetWindowPos(dialog,nullptr,x,y,width,height,SWP_NOZORDER);
+      SendMessageW(dialog,DM_SETDEFID,IDNO,0); SetFocus(no); return FALSE;
+   }
+   if (message==WM_SIZE)
+   {
+      RECT client; GetClientRect(dialog,&client); int margin=int(14*scale),button=int(86*scale),height=int(35*scale),gap=int(8*scale);
+      position(GetDlgItem(dialog,100),margin,margin,client.right-margin*2,client.bottom-margin*3-height);
+      position(GetDlgItem(dialog,IDYES),client.right-margin-button*2-gap,client.bottom-margin-height,button,height);
+      position(GetDlgItem(dialog,IDNO),client.right-margin-button,client.bottom-margin-height,button,height);
+      SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE;
+      GetScrollInfo(GetDlgItem(dialog,100),SB_VERT,&scroll); ShowScrollBar(GetDlgItem(dialog,100),SB_VERT,scroll.nPage && scroll.nMax>=int(scroll.nPage));
+      RedrawWindow(dialog,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
+      return TRUE;
+   }
+   if (message==WM_COMMAND && (LOWORD(wp)==IDYES || LOWORD(wp)==IDNO || LOWORD(wp)==IDCANCEL)) { EndDialog(dialog,LOWORD(wp)==IDYES?IDYES:IDNO); return TRUE; }
+   if (message==WM_CLOSE) { EndDialog(dialog,IDNO); return TRUE; }
+   if (message==WM_GETMINMAXINFO) { auto info=reinterpret_cast<MINMAXINFO *>(lp); info->ptMinTrackSize={LONG(420*scale),LONG(260*scale)}; return TRUE; }
+   return FALSE;
+}
+
+// Keep every affected partition reviewable and default to Cancel before any storage write.
 bool confirmInstall(const std::string &target,bool erase)
 {
-   std::string text="Simulate installation?\n\n"+target+"\n\n"+(erase?"Drive preparation, file copying and boot setup will only be simulated. No data will be erased.":"File copying and boot setup will only be simulated. No data will be changed.");
-   return MessageBoxW(window,wide(text).c_str(),L"Slax USB Installer",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)==IDYES;
+   DLGTEMPLATE layout={}; layout.style=WS_POPUP|WS_CAPTION|WS_SYSMENU|WS_THICKFRAME|WS_CLIPCHILDREN|DS_MODALFRAME; layout.cx=320; layout.cy=220;
+   std::wstring text;
+   for (auto c:wide(target)) { if (c==L'\n') text+=L'\r'; text+=c; }
+   std::wstring title=erase?L"Erase disk and install Slax?":L"Install Slax?";
+   std::vector<unsigned char> resource(sizeof(layout)+4+(title.size()+1)*sizeof(wchar_t));
+   memcpy(resource.data(),&layout,sizeof(layout)); memcpy(resource.data()+sizeof(layout)+4,title.c_str(),(title.size()+1)*sizeof(wchar_t));
+   return DialogBoxIndirectParamW(GetModuleHandleW(nullptr),reinterpret_cast<DLGTEMPLATE *>(resource.data()),window,confirmEvents,reinterpret_cast<LPARAM>(&text))==IDYES;
 }
 
 // Native scrolling moves child controls while Windows renders the scrollbar itself.
 static LRESULT CALLBACK contentEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
    if (message==WM_COMMAND || message==WM_NOTIFY || message==WM_CTLCOLORSTATIC || message==WM_CTLCOLOREDIT) return SendMessageW(window,message,wp,lp);
-   if (message==WM_SIZE || message==WM_APP) { layoutContent(); return 0; }
+   if (message==WM_SIZE || message==WM_APP) { layoutContent(); RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN); return 0; }
    if (message==WM_VSCROLL || message==WM_MOUSEWHEEL)
    {
       SCROLLINFO info={}; info.cbSize=sizeof(info); info.fMask=SIF_ALL; GetScrollInfo(hwnd,SB_VERT,&info);
@@ -636,8 +571,18 @@ static LRESULT CALLBACK contentEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp
          if (code==SB_BOTTOM) next=info.nMax;
          if (code==SB_THUMBTRACK || code==SB_THUMBPOSITION) next=info.nTrackPos;
       }
-      SetScrollPos(hwnd,SB_VERT,next,TRUE); ui.scroll=GetScrollPos(hwnd,SB_VERT); layoutContent(); return 0;
+      next=std::max(info.nMin,std::min(next,info.nMax-std::max(0,int(info.nPage)-1)));
+      if (next==info.nPos) return 0;
+      SetScrollPos(hwnd,SB_VERT,next,TRUE); ui.scroll=GetScrollPos(hwnd,SB_VERT); layoutContent(); RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN); return 0;
    }
+   return DefWindowProcW(hwnd,message,wp,lp);
+}
+
+// Give the sidebar its own clipped background instead of overlapping sibling STATIC windows.
+static LRESULT CALLBACK railEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
+{
+   if (message==WM_CTLCOLORSTATIC) return SendMessageW(window,message,wp,lp);
+   if (message==WM_ERASEBKGND) { RECT rect; GetClientRect(hwnd,&rect); FillRect(reinterpret_cast<HDC>(wp),&rect,ui.rail); return 1; }
    return DefWindowProcW(hwnd,message,wp,lp);
 }
 
@@ -667,6 +612,11 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (message==WM_COMMAND && !ui.updating)
    {
       int id=LOWORD(wp);
+      if (id==Path && HIWORD(wp)==EN_CHANGE)
+      {
+         std::wstring path(GetWindowTextLengthW(ui.controls[Path])+1,L'\0'); GetWindowTextW(ui.controls[Path],path.data(),path.size());
+         app.setImagePath(utf8(path.c_str()));
+      }
       if (id==BrowseButton) app.activate(Browse);
       if (id==BackButton) app.activate(Back);
       if (id==NextButton) app.activate(Next);
@@ -674,17 +624,19 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
       if (id==EraseButton) app.activate(Erase);
       return 0;
    }
-   if (message==WM_CTLCOLORSTATIC)
+   if (message==WM_CTLCOLORSTATIC || message==WM_CTLCOLOREDIT)
    {
       auto item=reinterpret_cast<HWND>(lp); auto dc=reinterpret_cast<HDC>(wp); int id=GetDlgCtrlID(item);
-      SetBkMode(dc,TRANSPARENT); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
+      SetBkMode(dc,OPAQUE); SetBkColor(dc,GetSysColor(COLOR_WINDOW)); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
       if (id==Message) SetTextColor(dc,!app.error.empty() && app.pending==None?RGB(162,41,41):RGB(84,96,86));
+      if (id==ErrorIcon) { SetBkColor(dc,RGB(163,60,54)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.red); }
       if (id==Step || (id>=StepName && id<StepName+4)) SetTextColor(dc,RGB(57,119,33));
-      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
+      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
       bool sidebar=id==Rail || (id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
+      if (sidebar) SetBkColor(dc,RGB(236,243,231));
       return reinterpret_cast<LRESULT>(sidebar?ui.rail:GetSysColorBrush(COLOR_WINDOW));
    }
-   if (message==WM_SIZE) { layoutWindow(); return 0; }
+   if (message==WM_SIZE) { if (wp!=SIZE_MINIMIZED) { layoutWindow(); RedrawWindow(hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN); } return 0; }
    if (message==WM_GETMINMAXINFO)
    {
       auto info=reinterpret_cast<MINMAXINFO *>(lp); auto bounds=windowBounds(720,400);
@@ -692,11 +644,13 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    }
    if (message==0x02e0)
    {
-      scale=HIWORD(wp)/96.0f; fonts(); branding(); auto rect=reinterpret_cast<RECT *>(lp);
+      float next=HIWORD(wp)/96.0f; ui.scroll=int(ui.scroll*next/scale); ui.deviceScroll=int(ui.deviceScroll*next/scale);
+      scale=next; fonts(); branding(); auto rect=reinterpret_cast<RECT *>(lp);
       SetWindowPos(hwnd,nullptr,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE); return 0;
    }
    if (message==WM_TIMER) { app.tick(); return 0; }
-   if (message==WM_CLOSE) { if (!app.confirming && !app.choosing) DestroyWindow(hwnd); return 0; }
+   if (message==WM_CLOSE) { if (!app.confirming && !app.choosing && app.page!=2) DestroyWindow(hwnd); return 0; }
+   if (message==WM_QUERYENDSESSION && app.page==2) return FALSE;
    if (message==WM_DESTROY) { PostQuitMessage(0); return 0; }
    return DefWindowProcW(hwnd,message,wp,lp);
 }
@@ -704,7 +658,6 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 // Start an ordinary Windows application with standard controls and no private titlebar.
 int runWindow()
 {
-   SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);
    using DpiContext=BOOL (WINAPI *)(HANDLE);
    auto dpi=reinterpret_cast<DpiContext>(GetProcAddress(GetModuleHandleW(L"user32.dll"),"SetProcessDpiAwarenessContext"));
    if (dpi) dpi(reinterpret_cast<HANDLE>(-4));
@@ -712,37 +665,40 @@ int runWindow()
    INITCOMMONCONTROLSEX common={sizeof(common),ICC_PROGRESS_CLASS|ICC_STANDARD_CLASSES}; InitCommonControlsEx(&common);
    Gdiplus::GdiplusStartupInput graphicsStartup; Gdiplus::GdiplusStartup(&graphicsToken,&graphicsStartup,nullptr);
    HINSTANCE instance=GetModuleHandleW(nullptr);
-   WNDCLASSW cls={}; cls.lpfnWndProc=events; cls.hInstance=instance; cls.lpszClassName=L"SlaxUsbInstaller";
+   WNDCLASSW cls={}; cls.style=CS_HREDRAW|CS_VREDRAW; cls.lpfnWndProc=events; cls.hInstance=instance; cls.lpszClassName=L"SlaxUsbInstaller";
    cls.hCursor=LoadCursorW(nullptr,IDC_ARROW); cls.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(1)); cls.hbrBackground=GetSysColorBrush(COLOR_WINDOW); RegisterClassW(&cls);
    cls.lpfnWndProc=contentEvents; cls.lpszClassName=L"SlaxInstallerContent"; RegisterClassW(&cls);
    cls.lpfnWndProc=deviceEvents; cls.lpszClassName=L"SlaxInstallerDevices"; RegisterClassW(&cls);
    cls.lpfnWndProc=cardEvents; cls.lpszClassName=L"SlaxInstallerCard"; RegisterClassW(&cls);
-   auto bounds=windowBounds(832,446); int width=bounds.right-bounds.left,height=bounds.bottom-bounds.top;
+   cls.lpfnWndProc=railEvents; cls.lpszClassName=L"SlaxInstallerRail"; RegisterClassW(&cls);
+   auto bounds=windowBounds(832,480); int width=bounds.right-bounds.left,height=bounds.bottom-bounds.top;
    RECT workarea; SystemParametersInfoW(SPI_GETWORKAREA,0,&workarea,0);
    width=std::min(width,int(workarea.right-workarea.left-16)); height=std::min(height,int(workarea.bottom-workarea.top-16));
-   window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxUsbInstaller",L"Slax USB Installer",windowStyle,workarea.left+(workarea.right-workarea.left-width)/2,workarea.top+(workarea.bottom-workarea.top-height)/2,width,height,nullptr,nullptr,instance,nullptr);
+   window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxUsbInstaller",L"Slax Installer",windowStyle,workarea.left+(workarea.right-workarea.left-width)/2,workarea.top+(workarea.bottom-workarea.top-height)/2,width,height,nullptr,nullptr,instance,nullptr);
    if (!window) return 1;
-   ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); fonts();
-   control(Rail,L"STATIC",SS_LEFT,window); control(Brand,L"STATIC",SS_BITMAP,window); control(Wordmark,L"STATIC",SS_BITMAP,window);
-   const char *steps[]={"ISO image","USB drive","Installation","Finish"};
+   ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); ui.red=CreateSolidBrush(RGB(163,60,54)); fonts();
+   control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_BITMAP,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
+   const char *steps[]={"ISO image","Target drive","Installation","Finish"};
    for (int i=0; i<4; i++)
    {
-      control(StepNumber+i,L"STATIC",SS_CENTER|SS_CENTERIMAGE,window); text(StepNumber+i,std::to_string(i+1));
-      control(StepName+i,L"STATIC",SS_LEFT|SS_CENTERIMAGE,window); text(StepName+i,steps[i]);
+      control(StepNumber+i,L"STATIC",SS_CENTER|SS_CENTERIMAGE,ui.controls[Rail]); text(StepNumber+i,std::to_string(i+1));
+      control(StepName+i,L"STATIC",SS_LEFT|SS_CENTERIMAGE,ui.controls[Rail]); text(StepName+i,steps[i]);
    }
    ui.panel=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxInstallerContent",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_CLIPCHILDREN,0,0,1,1,window,nullptr,instance,nullptr);
    for (int id:{Step,Heading,Intro,PathLabel,Message,Empty,Target,Status,Percent})
    {
-      bool single=id==Step || id==PathLabel || id==Status || id==Percent;
+      bool single=id==Step || id==PathLabel || id==Percent;
       control(id,L"STATIC",SS_LEFT|SS_NOPREFIX|(single?SS_CENTERIMAGE:SS_EDITCONTROL),ui.panel);
    }
-   control(Path,L"EDIT",ES_READONLY|ES_AUTOHSCROLL|WS_TABSTOP,ui.panel,WS_EX_CLIENTEDGE); control(BrowseButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,ui.panel);
+   control(Path,L"EDIT",ES_MULTILINE|ES_AUTOHSCROLL|WS_TABSTOP,ui.panel,WS_EX_CLIENTEDGE); SetWindowSubclass(ui.controls[Path],pathEvents,1,0);
+   control(ErrorIcon,L"STATIC",SS_CENTER|SS_CENTERIMAGE|SS_NOPREFIX,ui.panel); text(ErrorIcon,"!");
+   control(BrowseButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,ui.panel);
    control(Drives,L"SlaxInstallerDevices",WS_VSCROLL|WS_CLIPCHILDREN|WS_TABSTOP,ui.panel,WS_EX_CONTROLPARENT);
    control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
    control(Result,L"STATIC",SS_ICON,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
    control(CancelButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
-   text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No USB drives detected. Connect a USB drive to continue.");
-   text(EraseButton,"Erase all data on the selected device"); text(Footer,"Slax USB Installer · Simulation"); text(BackButton,"Back"); text(CancelButton,"Cancel");
+   text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No disks detected. Connect a writable disk to continue.");
+   text(EraseButton,"Erase entire disk (all partitions)"); text(Footer,"Slax Installer"); text(BackButton,"Back"); text(CancelButton,"Cancel");
    fonts(); branding(); updateWindow(); SetTimer(window,1,100,nullptr); ShowWindow(window,SW_SHOW); UpdateWindow(window); app.startScan();
    MSG message;
    while (GetMessageW(&message,nullptr,0,0)>0)
@@ -754,7 +710,7 @@ int runWindow()
    app.stop(); window=nullptr;
    for (auto font:{ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.badge}) DeleteObject(font);
    for (auto image:ui.brand) DeleteObject(image);
-   ui.cards.clear(); DeleteObject(ui.rail); DeleteObject(ui.green); DeleteObject(ui.selected);
+   ui.cards.clear(); DeleteObject(ui.rail); DeleteObject(ui.green); DeleteObject(ui.selected); DeleteObject(ui.red);
    Gdiplus::GdiplusShutdown(graphicsToken);
    return 0;
 }
@@ -762,6 +718,7 @@ int runWindow()
 // Native command-line checks share discovery and ISO validation with the GUI.
 int WINAPI wWinMain(HINSTANCE,HINSTANCE,LPWSTR,int)
 {
+   SetErrorMode(SEM_FAILCRITICALERRORS|SEM_NOOPENFILEERRORBOX);
    int count; auto args=CommandLineToArgvW(GetCommandLineW(),&count);
    if ((count==2 || count==3) && !wcscmp(args[1],L"--list-devices")) { printDevices(scanDevices(count==3?utf8(args[2]):"")); LocalFree(args); return 0; }
    if (count==3 && !wcscmp(args[1],L"--check-iso"))
@@ -770,7 +727,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,LPWSTR,int)
       if (!image.error.empty()) { fprintf(stderr,"%s\n",image.error.c_str()); return 1; }
       printf("%s · %s\n",image.name.c_str(),sizeText(image.bytes,true).c_str()); return 0;
    }
-   if (count==2) { app.iso=inspectImage(utf8(args[1])); app.source=app.iso.path; app.error=app.iso.error; }
+   app.setImagePath(count==2?utf8(args[1]):sourceImage(),count!=2);
    LocalFree(args);
    return runWindow();
 }

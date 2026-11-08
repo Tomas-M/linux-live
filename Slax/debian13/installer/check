@@ -1,10 +1,19 @@
 #!/bin/sh
-# Run the shared wizard checks with read-only access to an existing Slax ISO.
+# Exercise real write algorithms only on owned sparse files, with fake native boundaries.
 set -eu
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
 ISO=${1:?Usage: check /path/to/slax.iso}
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer-check.XXXXXX")
 trap 'rm -r "$TEMP"' 0
-g++ -std=c++17 -Wall -Wextra -Werror -pthread -DINSTALLER_TEST \
-   -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/tests.cpp" -o "$TEMP/check"
-"$TEMP/check" "$ISO"
+mkdir -p "$TEMP/tree/slax/boot/EFI/BOOT" "$TEMP/tree/slax/boot/grub" "$TEMP/tree/slax/modules" "$TEMP/tree/slax/changes"
+for FILE in vmlinuz initrfs.img EFI/BOOT/BOOTX64.EFI EFI/BOOT/grubx64.efi EFI/BOOT/mmx64.efi grub/entries.cfg grub/graphics.cfg grub/theme.txt grub.cfg; do
+   printf 'Owned installer test fixture: %s\n' "$FILE" > "$TEMP/tree/slax/boot/$FILE"
+done
+printf 'Owned core fixture\n' > "$TEMP/tree/slax/modules/01-core.sb"
+printf 'Unicode payload\n' > "$TEMP/tree/slax/modules/module-東京-İstanbul.sb"
+xorriso -as mkisofs -quiet -R -o "$TEMP/source.iso" "$TEMP/tree" 2>/dev/null
+g++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread -DINSTALLER_TEST \
+   -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" \
+   "$THIS/disk-format.cpp" "$THIS/firmware.cpp" "$THIS/test-storage.cpp" "$THIS/tests.cpp" \
+   $(pkg-config --cflags --libs glib-2.0) -o "$TEMP/check"
+"$TEMP/check" "$ISO" "$TEMP/source.iso" "$TEMP"
