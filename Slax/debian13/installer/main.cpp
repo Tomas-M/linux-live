@@ -190,7 +190,7 @@ void Installer::tick()
          if (error.empty() && !prepared) error="The target could not be prepared. Select the image and target again.";
          if (!error.empty())
          {
-            confirming=true; showInstallError(error); confirming=false; error.clear(); plan.reset();
+            confirming=true; invalidate(); showInstallError(error); confirming=false; error.clear(); plan.reset();
          }
          else if (action==Next)
          {
@@ -209,7 +209,7 @@ void Installer::tick()
             bool sameSummary=plan && prepared->confirmation==plan->confirmation;
             bool sameMenu=plan && prepared->bootConfig==plan->bootConfig && prepared->bootBefore==plan->bootBefore && prepared->bootPartition.uuid==plan->bootPartition.uuid && prepared->bootFile==plan->bootFile;
             bool same=sameDevice && sameEfi && sameBios && sameFirmware && sameSummary && sameMenu;
-            if (!same) { confirming=true; showInstallError("The installation plan changed after confirmation. Review and confirm the target again."); confirming=false; plan.reset(); }
+            if (!same) { confirming=true; invalidate(); showInstallError("The installation plan changed after confirmation. Review and confirm the target again."); confirming=false; plan.reset(); }
             else
             {
                running=false;
@@ -294,6 +294,9 @@ int Installer::displayPage() const { return page==1 && (pending!=None || confirm
 
 // Unknown work uses a moving indicator until real installation progress is available.
 bool Installer::indeterminate() const { return displayPage()==2 && (page!=2 || percent==0); }
+
+// Show work feedback for requested checks and writes, not routine background discovery.
+bool Installer::busy() const { return pending!=None || page==2; }
 
 // Shared page headings keep both native frontends in the same workflow.
 std::string Installer::heading() const

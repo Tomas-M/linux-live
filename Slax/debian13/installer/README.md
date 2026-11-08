@@ -41,6 +41,9 @@ Target Next immediately opens the progress page with preparation text and an
 indeterminate indicator. Cancellation or a failed check returns to target selection;
 approved work keeps this page visible through final checks and actual writes.
 The GUI never waits for scanner shutdown. ISO checks also show immediate status.
+Checks, preparation and installation use the system's arrow-with-busy cursor:
+Windows `IDC_APPSTARTING` and GTK's themed `progress` cursor when available.
+Normal cursors return when work finishes or a confirmation needs user input.
 Completion and error states use the bundled green check and muted-red warning
 symbols, including native error dialogs, instead of operating-system status icons.
 
