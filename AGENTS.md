@@ -136,6 +136,11 @@ reporting progress.
   it off restores only that clicked row. Unknown physical identities never group.
   Detect mounted-source files through Windows' optional native VirtDisk API or
   Linux loop metadata, without requiring PowerShell or a new runtime library.
+  On Linux, also detect optical sources from the resolved executable's mounted
+  filesystem and udev identity, independent of symlinks, working directory or
+  device names. Accept optical block devices and their aliases as ISO inputs;
+  obtain their capacity through BLKGETSIZE64 and run the normal Slax ISO checks
+  before automatically advancing to target selection. Reject other raw devices.
   Center the Win32 path line from actual font metrics and redraw moved controls
   without copying stale pixels. Validation errors use a muted-red square with
   an exclamation mark beside separate summary, reason and recovery lines.

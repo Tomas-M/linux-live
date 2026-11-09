@@ -3,6 +3,10 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#ifndef _WIN32
+#include <sys/ioctl.h>
+#include <linux/fs.h>
+#endif
 
 // Decode ISO9660's little-endian half without alignment assumptions.
 static uint32_t number(const unsigned char *p)
@@ -122,8 +126,12 @@ Image inspectImage(const std::string &path)
       if (_fseeki64(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
       image.bytes=_ftelli64(file);
 #else
-      if (fseeko(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
-      image.bytes=ftello(file);
+      // Optical block devices report their capacity through the kernel, not the file's seek endpoint.
+      if (ioctl(fileno(file),BLKGETSIZE64,&image.bytes))
+      {
+         if (fseeko(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
+         image.bytes=ftello(file);
+      }
 #endif
       auto p=read(file,16*2048,2048,image.bytes);
       bool valid=p[0]==1 && !memcmp(p.data()+1,"CD001",5) && p[6]==1 && p[128]==0 && p[129]==8 && p[156]>=34;
