@@ -3,6 +3,10 @@
 `../installers/slax-install-linux` runs in Slax. `slax-install.exe` is a standalone 32-bit
 Windows executable for Windows XP and later. Both perform real installations.
 The ISO places both executables directly in `/slax`.
+The desktop module also installs the unpacked Linux executable in `/usr/bin`
+and provides a Slax Installer entry in the xlunch application menu.
+Its icon combines the original Slax clover, a hard drive, a down arrow and a USB
+drive. Bundled icon sizes stop at 64 pixels.
 The GTK 3 and Win32 wizard uses native windows, controls and dialogs, with Slax
 branding and a permanent sidebar. Initial client size is 832 × 540 logical
 pixels, fitting four normal drive cards with a small reserve; minimum is
@@ -10,16 +14,29 @@ pixels, fitting four normal drive cards with a small reserve; minimum is
 
 ## Wizard
 
-The ISO path supports typing, paste and Browse. Edited paths are validated only
-after Next. An automatically detected source is checked immediately and opens
-the target step on success. Back returns to the path without advancing again.
+The source path supports typing and paste. Browse opens a native menu with
+ISO image and Slax directory choices and a visible dropdown arrow. Align the
+menu's right edge with Browse on both platforms. Both native
+folder pickers accept the Slax directory itself or a parent containing `slax`;
+validation normalizes the path and inventories the same required boot files and
+modules. Directory copies retain original file paths when creating EFI assets.
+Edited paths are validated only
+after Next. An automatically detected source is checked immediately and stays
+on the source step with its metadata. Only the user's Next opens target selection.
+Back returns to the editable source path.
+Source validation failures open a native modal error dialog with the reason and
+recovery instructions. Dismissing it keeps the source path editable on step 1;
+the page itself shows only source metadata and checking status.
 Windows uses optional native VirtDisk attachment metadata; Linux follows the
 ISO loop device. On Linux, the resolved executable's filesystem also identifies
 its optical device through udev, including execution through symlinks or bind
 mounts from any working directory. The installer reads that device directly as
-an ISO and advances only after the normal Slax payload checks succeed. Optical
+an ISO and validates it with the normal Slax payload checks. Optical
 aliases such as `/dev/cdrom` are accepted too; other raw block devices are not.
 Missing metadata leaves the path available for manual entry.
+When launched from the installed application menu entry, Linux checks the Slax data
+under `/run/initramfs/memory/toram`, `iso/slax` and `data/slax`, using the same
+validation while keeping the source page open. Copy-to-RAM retains the complete installation source.
 The footer contains Back and Next; the native window close control exits the
 wizard. Closing remains disabled during disk writes.
 
@@ -42,9 +59,10 @@ The checkbox reads **Erase entire selected disk (including all other partitions
 on it)**. When checked, every visible row on the last clicked physical disk is
 highlighted. Unchecking restores only the last clicked row, or no selection.
 Hidden sibling partitions still appear in erase warnings.
-Target Next immediately opens the progress page with preparation text and an
-indeterminate indicator. Cancellation or a failed check returns to target selection;
-approved work keeps this page visible through final checks and actual writes.
+Target Next keeps the target page visible during plan checks, with status text
+and a busy cursor. Native errors and confirmation dialogs appear above that page;
+cancellation or a failed check leaves the selection available there. Only approval
+and successful plan revalidation open the installation progress page.
 The GUI never waits for scanner shutdown. ISO checks also show immediate status.
 Checks, preparation and installation use the system's arrow-with-busy cursor:
 Windows `IDC_APPSTARTING` and GTK's themed `progress` cursor when available.
@@ -171,8 +189,10 @@ apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex g
 sh Slax/debian13/installer/build
 ```
 
-The build strips both executables, packs them with `upx --best` (without
-ultra-brute) and runs `upx -t`. It downloads and SHA-256 verifies the official
+The build strips both executables, packs only the Windows executable with
+`upx --best` (without ultra-brute) and runs `upx -t` on it. Linux remains an
+unpacked ELF executable so the desktop module's SquashFS can compress it.
+The build downloads and SHA-256 verifies the official
 GNU GRUB 2.12 Windows ZIP for its filesystem verifier and matching BIOS modules.
 The official Windows mkimage lacks XZ support, so `build-windows-grub` compiles
 the unmodified GNU utility with static, threadless liblzma from separately
@@ -202,8 +222,8 @@ new boot partitions, occupied embedding areas, rollback, encryption detection,
 UEFI entry parsing and the wizard's confirmation handoff. `test-native.cpp`
 accepts only owned Linux loop devices under `/tmp/slax-installer-native.*`.
 `check-linux` tests discovery using mocked hardware and an owned loop.
-`test-source.cpp` checks source detection, full ISO validation and automatic
-wizard advancement from mounted ISO/CD fixtures, including symlinks, bind mounts
+`test-source.cpp` checks source detection, full ISO validation and remaining on
+the source step for mounted ISO/CD fixtures, including symlinks, bind mounts
 and optical media without a valid Slax payload. It performs no installation writes.
 Native GUI fixtures cover resizing, DPI, text alignment, four-card defaults,
 whole-disk highlighting, restored selection and wheel-boundary repainting.

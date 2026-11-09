@@ -65,6 +65,7 @@ i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-functi
    "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
    -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/slax-install.exe"
 i686-w64-mingw32-strip "$TEMP/slax-install.exe"
-upx --best --no-progress "$TEMP/slax-install-linux" "$TEMP/slax-install.exe"
-upx -t "$TEMP/slax-install-linux" "$TEMP/slax-install.exe"
+# SquashFS compresses the Linux executable inside Slax; only pack the standalone Windows installer.
+upx --best --no-progress "$TEMP/slax-install.exe"
+upx -t "$TEMP/slax-install.exe"
 install -m 755 "$TEMP/slax-install-linux" "$TEMP/slax-install.exe" "$OUT/"

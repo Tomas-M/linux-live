@@ -11,7 +11,9 @@ Open slax on this disc and start the installer:
    Windows XP or later: run slax-install.exe as administrator.
    Slax:                run slax-install-linux as root.
 
-Choose the Slax ISO image and target, then review the installation plan.
+Slax also provides Slax Installer in its application menu.
+Choose a Slax ISO image or directory using Browse, then select the target and
+review the installation plan. You can select slax itself or its parent directory.
 No internet connection is needed.
 
 Without erasing, supported existing filesystems and files are kept. An existing
@@ -28,7 +30,8 @@ separate bootable USB drive does not. The plan explains the available boot modes
 
 "Erase entire selected disk" deletes ALL partitions and files on the physical disk,
 including its other drive letters. Review every listed partition carefully.
-The installer creates GPT, BIOS boot, FAT32 EFI and FAT32 Slax data partitions.
+The installer creates GPT with reserved BIOS boot space, a FAT32 EFI partition
+and a FAT32 Slax data partition.
 Native 4096-byte-sector disks support UEFI boot only. Windows XP, and older Windows
 versions limited to one removable partition, use MBR with FAT32 Slax data first
 and a small FAT32 EFI partition second. This keeps the data accessible in those

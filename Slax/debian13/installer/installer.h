@@ -34,6 +34,7 @@ struct ImageEntry
    uint64_t offset=0,bytes=0;
    bool directory=false;
    uint32_t mode=0644;
+   std::string source={};
 };
 
 struct Image
@@ -44,13 +45,13 @@ struct Image
    std::vector<std::string> filesystems={"vfat","fat","fat16","fat32","ntfs","ext2","ext3","ext4","xfs"};
 };
 
-enum Action { None, Browse, Back, Next, Erase, Select, Confirm, Close };
+enum Action { None, Browse, BrowseDirectory, Back, Next, Erase, Select, CheckSource, Confirm, Close };
 struct InstallPlan;
 
 std::vector<Device> scanDevices(const std::string &source);
 std::string sourceImage();
 FILE *openImage(const std::string &path);
-std::string chooseImage();
+std::string chooseImage(bool directory=false);
 bool confirmInstall(const std::string &target,bool erase);
 void showInstallError(const std::string &message);
 void invalidate();
@@ -97,7 +98,6 @@ public:
    void activate(Action action,const std::string &id="");
    void stop();
    bool isSelected(const Device &device) const;
-   int displayPage() const;
    bool indeterminate() const;
    bool busy() const;
    std::string heading() const;
@@ -108,3 +108,14 @@ public:
 };
 
 extern Installer app;
+
+// Read one original source file, retaining ISO offsets when the source is an image.
+class SourceFile
+{
+   FILE *file=nullptr;
+   bool owned=false;
+public:
+   SourceFile(FILE *image,const ImageEntry &entry);
+   ~SourceFile();
+   void read(void *data,size_t bytes);
+};

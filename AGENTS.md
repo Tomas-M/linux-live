@@ -113,11 +113,18 @@ reporting progress.
   or controls. USB entries use rounded cards, a tinted device badge and native
   radio buttons. Keep the left step panel visible; use a 720 by 400 logical-pixel
   minimum client size. Reserve one consistently spaced message area under the
-  ISO path for metadata, checking and validation errors.
-  Keep the ISO path editable, including clipboard paste. Typing and Browse only
+  source path for metadata and checking status. Show source validation errors in
+  a native modal dialog, retaining the editable source page after dismissal.
+  Keep the source path editable, including clipboard paste. Browse has a dropdown
+  arrow and a native menu for ISO image or Slax directory selection in both
+  frontends, with the menu's right edge aligned to the button's right edge.
+  Accept either the Slax directory or a parent containing `slax`,
+  normalize to its data and validate the same payload before target selection.
+  Stream directory files directly, retaining original paths for renamed EFI assets.
+  Typing and Browse only
   fill the path; validate asynchronously on Next. Automatically detected sources
-  validate immediately and advance to step 2 only on success. Back must return
-  to the editable path without advancing again. Keep only Back and Next in the
+  validate immediately but stay on the editable source page. Only the user's
+  Next advances to step 2. Back returns to the editable path. Keep only Back and Next in the
   wizard footer; close through the native window controls. Preserve the write-phase
   close protection and Cancel in file/installation confirmation dialogs.
   The sidebar clover is 32 by 32 logical pixels, using slax.ico's exact 32-pixel
@@ -125,8 +132,9 @@ reporting progress.
   Default client size is 832 by 540 logical pixels, fitting four normal drive
   cards with a small reserve. Keep target errors off the selection page; Next
   always opens a neutral native error or a short, plain-language confirmation.
-  Target Next immediately shows preparation on the progress page, with a moving
-  indicator and status text before approval and actual writes. Keep scanner joins
+  Target Next checks the plan on step 2 with status text and a busy cursor. Native
+  error and confirmation dialogs keep step 2 behind them; cancellation stays there.
+  Enter step 3 only after approval and successful plan revalidation. Keep scanner joins
   off the GUI thread. Use bundled check/warning symbols instead of system status icons.
   During requested ISO/target checks and installation, use the native arrow-with-busy
   cursor over the client area: Windows IDC_APPSTARTING and GTK's themed progress
@@ -140,21 +148,33 @@ reporting progress.
   filesystem and udev identity, independent of symlinks, working directory or
   device names. Accept optical block devices and their aliases as ISO inputs;
   obtain their capacity through BLKGETSIZE64 and run the normal Slax ISO checks
-  before automatically advancing to target selection. Reject other raw devices.
+  while retaining the source page for explicit Next. Reject other raw devices.
   Center the Win32 path line from actual font metrics and redraw moved controls
-  without copying stale pixels. Validation errors use a muted-red square with
-  an exclamation mark beside separate summary, reason and recovery lines.
+  without copying stale pixels. Source and target error dialogs use the bundled
+  warning symbol, ordinary native text colors and plain recovery instructions.
   Windows must use only system DLLs; Linux may use libraries
   already installed in Slax. Do not require a browser or download fonts.
   Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
-  it strips them, compresses both with `upx --best` (without `--ultra-brute`),
-  and checks their packed integrity. Ordinary ISO builds only copy them.
+  it strips both and compresses only Windows with `upx --best` (without
+  `--ultra-brute`), checking its packed integrity. Keep Linux as an unpacked ELF;
+  `03-desktop/copy` installs it at `/usr/bin/slax-install-linux`, compressed by
+  SquashFS, with a Slax Installer entry in xlunch and no desktop shortcut.
+  Use the selected generated icon with Slax's original clover behind a hard drive,
+  a downward arrow and a large blue USB drive, matching the other application icons.
+  Ship icon sizes only up to 64 px; do not generate or retain larger variants.
+  The installed launcher detects
+  the current Slax data in `/run/initramfs/memory/{toram,iso/slax,data/slax}`.
+  Copy-to-RAM contains the complete source and must work without the original CD.
+  When incrementally changing application entries or icons, also refresh the final
+  icon and xlunch caches in `04-chromium`, which override the desktop module's caches.
+  Ordinary ISO builds only copy the prebuilt executables onto the media.
   Installation now performs real writes after a concrete native confirmation.
   Offer partitions strictly larger than 1 GB (1,000,000,000 bytes). Hide whole
   disks when any partition exceeds this limit, and hide unformatted partitions
   when a formatted partition above the limit exists on the same disk. Retain
   every sibling in native discovery and erase warnings, including hidden ones.
   Bare disks and disks with only small partitions remain whole-disk targets.
+  Hide the whole-disk erase checkbox when no eligible targets are available.
   Sort Windows drive letters alphabetically before the remaining targets;
   sort Linux targets by full device path. Use Partition Manager's hard-drive,
   USB and virtual-storage icons in fixed square badges. Begin the second line
@@ -1185,6 +1205,17 @@ must follow the general Slax repair rules above.
   even when booting from CD. `sync` does not replace unmounting. Use VirtualBox
   `controlvm ... poweroff` only when no writable filesystems remain mounted.
   Shut the Debian work VM down normally.
+- Once SSH has been started in a local test VM, leave it running between tasks.
+  Do not stop it or remove its key authorization after individual transfers or
+  previews; reuse the existing connection unless Tomas asks to stop it. The current
+  Slax preview helper uses root, port 2222 and the local `VM/id_ed25519` key.
+  Discover the current guest address through VirtualBox guest properties. Keep this
+  development access in the running VM, separate from shipped Slax configuration.
+- During requested live icon comparisons, add each finished variant to xlunch
+  immediately as a numbered preview entry. Keep these comparison entries in the
+  running test VM until Tomas selects a design for the distribution.
+  Use the boot-menu clover and bundled File Manager icon as the visual references:
+  preserve Slax's original mark and the menu icons' clean outlines and gradients.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
   Slax. Use `Choose session during startup` to select or create sessions on
