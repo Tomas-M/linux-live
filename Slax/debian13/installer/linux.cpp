@@ -115,7 +115,7 @@ static void updateWindow()
          g_signal_connect(badge,"draw",G_CALLBACK(drawIcon),nullptr);
          gtk_style_context_add_class(gtk_widget_get_style_context(badge),"drive-badge");
          auto text=gtk_box_new(GTK_ORIENTATION_VERTICAL,1); gtk_widget_set_valign(text,GTK_ALIGN_CENTER);
-         auto name=label(device.name.c_str(),14,true),detail=label("",13);
+         auto name=label(device.name.c_str(),13,true),detail=label("",13);
          gtk_label_set_ellipsize(GTK_LABEL(name),PANGO_ELLIPSIZE_END);
          gtk_label_set_ellipsize(GTK_LABEL(detail),PANGO_ELLIPSIZE_END);
          gtk_box_pack_start(GTK_BOX(text),name,false,false,0); gtk_box_pack_start(GTK_BOX(text),detail,false,false,0);
@@ -266,7 +266,7 @@ int runWindow()
    gboolean dark=false; gchar *theme=nullptr;
    g_object_get(gtk_settings_get_default(),"gtk-application-prefer-dark-theme",&dark,"gtk-theme-name",&theme,nullptr);
    dark=dark || (theme && (strstr(theme,"dark") || strstr(theme,"Dark"))); g_free(theme);
-   std::string css=".slax-installer {font-size:14px;} #installer-rail {background:"+std::string(dark?"#263125":"#ecf3e7")+";} .step-number {border-radius:12px; border:1px solid "+(dark?"#434b42":"#d9e0d8")+";} .step-number.current {background:"+(dark?"#a8de89":"#397721")+";color:"+(dark?"#182810":"white")+";} .step-number.done,.drive-badge {color:"+(dark?"#a8de89":"#397721")+";} #installer-next {font-weight:600;}";
+   std::string css=".slax-installer {font-size:14px;} #installer-content {font-size:13px;} #installer-rail {background:"+std::string(dark?"#263125":"#ecf3e7")+";} .step-number {border-radius:0;} .step-number.current {background:"+(dark?"#a8de89":"#397721")+";color:"+(dark?"#182810":"white")+";} .step-number.done,.drive-badge {color:"+(dark?"#a8de89":"#397721")+";} #installer-next {font-weight:normal;}";
    css+="#installer-devices {background:transparent;} #installer-devices row {padding:0; margin-bottom:8px; border:1px solid "+std::string(dark?"#434b42":"#d9e0d8")+"; border-radius:7px;} #installer-devices row:last-child {margin-bottom:0;} #installer-devices row.selected {background:"+(dark?"#293d25":"#eef7e7")+"; border-color:"+(dark?"#a8de89":"#397721")+";} .drive-badge {background:"+(dark?"#263125":"#ecf3e7")+"; border-radius:6px;} .installer-message {color:"+(dark?"#b4bfb2":"#546056")+";}";
    css+=".drive-badge {padding:0;}";
    css+=".installer-success {color:"+std::string(dark?"#a8de89":"#397721")+";} .installer-failure {color:"+(dark?"#ffafaf":"#a33c36")+";}";
@@ -307,17 +307,17 @@ int runWindow()
    }
    auto scroller=gtk_scrolled_window_new(nullptr,nullptr); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroller),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
    gtk_box_pack_start(GTK_BOX(body),scroller,true,true,0);
-   auto main=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); ui.content=main;
+   auto main=gtk_box_new(GTK_ORIENTATION_VERTICAL,0); ui.content=main; gtk_widget_set_name(main,"installer-content");
    gtk_widget_set_margin_top(main,29); gtk_widget_set_margin_bottom(main,29); gtk_widget_set_margin_start(main,30); gtk_widget_set_margin_end(main,30);
    gtk_container_add(GTK_CONTAINER(scroller),main);
-   ui.step=label("",13,true); ui.heading=label("",28,true); ui.intro=label("",16); wrap(ui.heading); wrap(ui.intro);
-   gtk_box_pack_start(GTK_BOX(main),ui.step,false,false,0); gtk_widget_set_margin_bottom(ui.step,6);
+   ui.step=label("",13); ui.heading=label("",28); ui.intro=label("",14); wrap(ui.heading); wrap(ui.intro);
+   gtk_box_pack_start(GTK_BOX(main),ui.step,false,false,0); gtk_widget_set_margin_bottom(ui.step,12);
    gtk_box_pack_start(GTK_BOX(main),ui.heading,false,false,0); gtk_widget_set_margin_bottom(ui.heading,9);
    gtk_box_pack_start(GTK_BOX(main),ui.intro,false,false,0); gtk_widget_set_margin_bottom(ui.intro,22);
    ui.stack=gtk_stack_new(); gtk_stack_set_hhomogeneous(GTK_STACK(ui.stack),true); gtk_stack_set_vhomogeneous(GTK_STACK(ui.stack),false);
    gtk_box_pack_start(GTK_BOX(main),ui.stack,false,false,0);
    auto iso=gtk_box_new(GTK_ORIENTATION_VERTICAL,0),isoRow=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
-   auto pathLabel=label("Source ISO image or Slax directory",14,true); gtk_box_pack_start(GTK_BOX(iso),pathLabel,false,false,0); gtk_widget_set_margin_bottom(pathLabel,6);
+   auto pathLabel=label("Source ISO image or Slax directory",13); gtk_box_pack_start(GTK_BOX(iso),pathLabel,false,false,0); gtk_widget_set_margin_bottom(pathLabel,6);
    ui.path=gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(ui.path),8);
    gtk_entry_set_activates_default(GTK_ENTRY(ui.path),true);
    g_signal_connect(ui.path,"changed",G_CALLBACK(+[](GtkEntry *entry,gpointer) { if (!ui.updating) app.setImagePath(gtk_entry_get_text(entry)); }),nullptr);
@@ -325,7 +325,7 @@ int runWindow()
    ui.browse=gtk_menu_button_new();
    auto browseLabel=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,4),browseMenu=gtk_menu_new();
    gtk_widget_set_halign(browseMenu,GTK_ALIGN_END);
-   gtk_box_pack_start(GTK_BOX(browseLabel),label("Browse…"),false,false,0);
+   gtk_box_pack_start(GTK_BOX(browseLabel),label("Browse…",13),false,false,0);
    gtk_box_pack_start(GTK_BOX(browseLabel),gtk_image_new_from_icon_name("pan-down-symbolic",GTK_ICON_SIZE_MENU),false,false,0);
    gtk_container_add(GTK_CONTAINER(ui.browse),browseLabel);
    auto isoItem=gtk_menu_item_new_with_label("Source ISO image…"),directoryItem=gtk_menu_item_new_with_label("Source Slax directory…");
@@ -338,7 +338,7 @@ int runWindow()
    gtk_box_pack_start(GTK_BOX(iso),isoRow,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),iso,"0");
    auto usb=gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
-   ui.empty=label("No suitable disks found. Connect a disk to continue."); wrap(ui.empty);
+   ui.empty=label("No suitable disks found. Connect a disk to continue.",13); wrap(ui.empty);
    gtk_box_pack_start(GTK_BOX(usb),ui.empty,false,false,0);
    ui.deviceScroll=gtk_scrolled_window_new(nullptr,nullptr); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(ui.deviceScroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),62);
@@ -350,16 +350,16 @@ int runWindow()
    wrap(gtk_bin_get_child(GTK_BIN(ui.erase))); gtk_widget_set_size_request(ui.erase,-1,34); gtk_box_pack_start(GTK_BOX(usb),ui.erase,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),usb,"1");
    auto writing=gtk_box_new(GTK_ORIENTATION_VERTICAL,6),result=gtk_box_new(GTK_ORIENTATION_VERTICAL,13);
-   for (int i=0; i<2; i++) { ui.target[i]=label("",14); wrap(ui.target[i]); gtk_box_pack_start(GTK_BOX(i?result:writing),ui.target[i],false,false,0); }
+   for (int i=0; i<2; i++) { ui.target[i]=label("",13); wrap(ui.target[i]); gtk_box_pack_start(GTK_BOX(i?result:writing),ui.target[i],false,false,0); }
    ui.result=gtk_drawing_area_new(); gtk_widget_set_size_request(ui.result,42,42); gtk_widget_set_halign(ui.result,GTK_ALIGN_START);
    g_signal_connect(ui.result,"draw",G_CALLBACK(drawIcon),nullptr);
    gtk_box_pack_start(GTK_BOX(result),ui.result,false,false,0); gtk_box_reorder_child(GTK_BOX(result),ui.result,0);
    auto status=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_widget_set_margin_top(status,15);
-   ui.status=label(""),ui.percent=label(""); wrap(ui.status); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
+   ui.status=label("",13),ui.percent=label("",13); wrap(ui.status); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
    gtk_box_pack_start(GTK_BOX(status),ui.status,true,true,0); gtk_box_pack_end(GTK_BOX(status),ui.percent,false,false,0);
    gtk_box_pack_start(GTK_BOX(writing),status,false,false,0); ui.progress=gtk_progress_bar_new(); gtk_box_pack_start(GTK_BOX(writing),ui.progress,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),writing,"2"); gtk_stack_add_named(GTK_STACK(ui.stack),result,"3");
-   ui.message=label(""); wrap(ui.message); gtk_label_set_yalign(GTK_LABEL(ui.message),0);
+   ui.message=label("",13); wrap(ui.message); gtk_label_set_yalign(GTK_LABEL(ui.message),0);
    gtk_style_context_add_class(gtk_widget_get_style_context(ui.message),"installer-message");
    ui.messageBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12); gtk_widget_set_margin_top(ui.messageBox,13);
    gtk_widget_set_size_request(ui.message,-1,42);
