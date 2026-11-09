@@ -224,6 +224,10 @@ reporting progress.
   Keep raw ISO writing instructions and boot parameter
   documentation out of it. USB-SPACE has its own separate instructions.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
+- Keep `CHANGES.txt` current with concise English entries for completed changes,
+  separating generic Live Kit changes from Slax-specific changes. It tracks
+  what is new for the next Slax release; omit proposals and GitHub housekeeping.
+  Clear its entries after publishing a new Slax release, not during preparation.
 - Add an item to `TODO.md` only when Tomas explicitly requests a TODO entry.
   Other change requests are work to complete, not backlog items.
 - Tomas has authorized focused testing and a combined final deployment of the
