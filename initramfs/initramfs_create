@@ -14,8 +14,8 @@ INITRAMFS=${TMPDIR:-/tmp}/$LIVEKITNAME-initramfs-$$
 # $1 = file to copy (full path)
 copy_including_deps()
 {
-   # if source doesn't exist or target exists, do nothing
-   if [ ! -e "$1" -o -e "$INITRAMFS"/"$1" ]; then
+   # Existing directories may contain only a previously copied dependency.
+   if [ ! -e "$1" ] || [ -f "$1" -a -e "$INITRAMFS/$1" ]; then
       return
    fi
 
@@ -109,6 +109,7 @@ done
 copy_including_deps /$LMK/kernel/drivers/staging/zsmalloc # needed by zram
 copy_including_deps /$LMK/kernel/drivers/block/zram
 copy_including_deps /$LMK/kernel/drivers/block/loop.*
+copy_including_deps /$LMK/kernel/drivers/block/virtio_blk.*
 
 # usb drivers
 copy_including_deps /$LMK/kernel/drivers/usb/storage
@@ -128,11 +129,15 @@ copy_including_deps /$LMK/kernel/drivers/input/serio
 copy_including_deps /$LMK/kernel/drivers/cdrom
 copy_including_deps /$LMK/kernel/drivers/scsi/sr_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/sd_mod.*
+copy_including_deps /$LMK/kernel/drivers/scsi/virtio_scsi.*
 copy_including_deps /$LMK/kernel/drivers/scsi/scsi_mod.*
 copy_including_deps /$LMK/kernel/drivers/scsi/sg.*
 copy_including_deps /$LMK/kernel/drivers/ata
 copy_including_deps /$LMK/kernel/drivers/nvme
 copy_including_deps /$LMK/kernel/drivers/mmc
+
+# Include modular VirtIO transports and auxiliary drivers on supported kernels.
+copy_including_deps /$LMK/kernel/drivers/virtio
 
 # network support drivers
 if [ "$NETWORK" = "true" ]; then
