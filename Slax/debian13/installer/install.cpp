@@ -244,7 +244,7 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
       for (const auto &part:device.partitions) plan.confirmation+="  "+part.label+" — "+sizeText(part.bytes)+" · "+(part.filesystem.empty()?"unformatted/unknown":part.filesystem)+"\n";
       plan.confirmation+="\nCreate a large FAT32 partition for the slax folder and a small, separate EFI partition for starting the computer. ";
       if (mbrRequired(device)) plan.confirmation+="Use MBR with the data partition first so this Windows version can still open and use it. ";
-      else plan.confirmation+="Use GPT, with a small BIOS boot partition for older computers. ";
+      else plan.confirmation+="Use GPT, with reserved BIOS boot space for older computers. ";
    }
    else
    {

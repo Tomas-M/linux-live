@@ -221,6 +221,7 @@ bool confirmInstall(const std::string &target,bool erase)
    auto dialog=gtk_dialog_new_with_buttons(erase?"Erase disk and install Slax?":"Install Slax?",GTK_WINDOW(window),GTK_DIALOG_MODAL,"Install",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,nullptr);
    gtk_window_set_default_size(GTK_WINDOW(dialog),640,430);
    auto content=gtk_dialog_get_content_area(GTK_DIALOG(dialog)); gtk_container_set_border_width(GTK_CONTAINER(content),14);
+   gtk_box_set_spacing(GTK_BOX(content),12);
    auto scroll=gtk_scrolled_window_new(nullptr,nullptr); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(scroll),GTK_SHADOW_IN);
    auto text=gtk_text_view_new(); gtk_text_view_set_editable(GTK_TEXT_VIEW(text),false); gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(text),false);

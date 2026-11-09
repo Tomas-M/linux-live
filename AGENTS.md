@@ -170,7 +170,11 @@ reporting progress.
   to the original system, then offers Slax Linux. Slax itself keeps its original
   logo/countdown and Escape menu. Do not add other OS choices to the Slax menu.
   Erase means the entire physical parent, with all sibling partitions listed:
-  create GPT, 1 MiB BIOS boot, FAT32 EFI and full-capacity FAT32 data partitions.
+  create GPT with BIOS embedding space reserved before FirstUsableLBA, followed
+  by a 1 MiB-aligned FAT32 EFI partition and full-capacity FAT32 data partition.
+  Do not create a separate raw BIOS partition in this new whole-disk layout:
+  Windows can expose it and offer to format it. Preserve-mode boot planning
+  still uses the existing partition layout and its verified safe embedding areas.
   On actual Windows XP, including XP x64, or hosts restricted to the first
   removable partition (Windows before 10 build 15063), create compatible MBR:
   active FAT32 Slax data first, FAT32 ESP second (type 0xEF), GRUB BIOS in the
@@ -265,6 +269,8 @@ must follow the general Slax repair rules above.
 - Use VirtualBox for the current work VM. VM files and helpers belong in `VM`.
   Run OS windows visibly (`--type gui`). Only background collectors/helpers
   may be hidden.
+- Run boot-test VMs directly in the host's VirtualBox, never as nested guests
+  inside the work VM.
 - VirtualBox CLI: `C:/Program Files/Oracle/VirtualBox/VBoxManage.exe`.
 - Work VM: `Slax Debian work`, 16 vCPUs, 24 GB RAM, root account, Xfce desktop.
   Slax itself uses Fluxbox; these are separate environments.
@@ -308,6 +314,13 @@ must follow the general Slax repair rules above.
   instead of retaining differently named copies, and keep the test VM attached
   to this path. Remove superseded ISO files, preserving kernel packages and disks.
 - Always include the resulting ISO size in MiB when reporting a build or ISO update.
+- Save requested Slax releases in the Git-ignored repository directory `releases`,
+  named `slax-YYYY.MM-64bit-n.iso`, with a four-digit year, two-digit month
+  and sequential release number. Honor an explicitly requested number;
+  otherwise use the next available number for that year and month.
+  Keep earlier releases. Create a release only when Tomas asks, and size it to
+  exactly 512 MiB minimum by enlarging the USB-SPACE FAT16 filesystem, not by appending
+  bytes outside the image's partition layout.
 
 ## Slax build and signed boot
 

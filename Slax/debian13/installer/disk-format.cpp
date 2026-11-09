@@ -161,16 +161,17 @@ Layout newLayout(const Device &device,bool mbr)
       result.mbr[510]=0x55; result.mbr[511]=0xaa;
       return result;
    }
-   result.bios.start=1024*1024; result.bios.bytes=1024*1024; result.bios.number=1;
-   result.efi.start=2*1024*1024; result.efi.bytes=espBytes; result.efi.number=2;
-   result.data.start=result.efi.start+espBytes; result.data.bytes=(total-tableSectors-1)*sector-result.data.start; result.data.number=3;
+   // Reserve BIOS embedding space outside the GPT's usable range, without exposing a raw partition.
+   result.bios.start=(tableSectors+2)*sector; result.bios.bytes=1024*1024-result.bios.start;
+   result.efi.start=1024*1024; result.efi.bytes=espBytes; result.efi.number=1;
+   result.data.start=result.efi.start+espBytes; result.data.bytes=(total-tableSectors-1)*sector-result.data.start; result.data.number=2;
    if (result.data.bytes/sector>UINT32_MAX) throw std::runtime_error("The disk cannot hold the requested full-capacity GPT/FAT32 layout.");
    result.mbr.resize(sector); result.mbr[446+4]=0xee; put32(result.mbr.data()+446+8,1); put32(result.mbr.data()+446+12,std::min<uint64_t>(total-1,UINT32_MAX)); result.mbr[510]=0x55; result.mbr[511]=0xaa;
    result.mbr[447]=0; result.mbr[448]=2; result.mbr[449]=0; result.mbr[451]=result.mbr[452]=result.mbr[453]=0xff;
    result.table.resize(16384);
-   const unsigned char types[3][16]={{0x48,0x61,0x68,0x21,0x49,0x64,0x6f,0x6e,0x74,0x4e,0x65,0x65,0x64,0x45,0x46,0x49},{0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b},{0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7}};
-   const char *names[]={"Slax BIOS boot","EFI System Partition","Slax data"}; Partition parts[]={result.bios,result.efi,result.data};
-   for (int i=0; i<3; i++)
+   const unsigned char types[2][16]={{0x28,0x73,0x2a,0xc1,0x1f,0xf8,0xd2,0x11,0xba,0x4b,0x00,0xa0,0xc9,0x3e,0xc9,0x3b},{0xa2,0xa0,0xd0,0xeb,0xe5,0xb9,0x33,0x44,0x87,0xc0,0x68,0xb6,0xb7,0x26,0x99,0xc7}};
+   const char *names[]={"EFI System Partition","Slax data"}; Partition parts[]={result.efi,result.data};
+   for (int i=0; i<2; i++)
    {
       auto entry=result.table.data()+i*128; memcpy(entry,types[i],16); identity(entry+16,randomId());
       put64(entry+32,parts[i].start/sector); put64(entry+40,(parts[i].start+parts[i].bytes)/sector-1);
@@ -178,7 +179,7 @@ Layout newLayout(const Device &device,bool mbr)
    }
    result.primary.resize(sector); auto header=result.primary.data();
    memcpy(header,"EFI PART",8); put32(header+8,0x10000); put32(header+12,92); put64(header+24,1); put64(header+32,total-1);
-   put64(header+40,tableSectors+2); put64(header+48,total-tableSectors-2); identity(header+56,randomId()); put64(header+72,2);
+   put64(header+40,result.efi.start/sector); put64(header+48,total-tableSectors-2); identity(header+56,randomId()); put64(header+72,2);
    put32(header+80,128); put32(header+84,128); put32(header+88,crc32(result.table.data(),result.table.size())); put32(header+16,crc32(header,92));
    result.backup=result.primary; header=result.backup.data(); put64(header+24,total-1); put64(header+32,1); put64(header+72,total-tableSectors-1); put32(header+16,0); put32(header+16,crc32(header,92));
    return result;
