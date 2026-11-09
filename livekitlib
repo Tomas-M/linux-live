@@ -755,7 +755,7 @@ find_data()
    if [ "$FROM" = "ask" ]; then
       (
          while true; do
-            blkid -o full -s TYPE -s LABEL | grep -E -v "/loop|/ram|/zram|swap" | while read LINE; do
+            blkid -o full -s TYPE -s LABEL | grep -E -v '/loop|/ram|/zram|TYPE="swap"' | while read LINE; do
                DISK="$(echo "$LINE" | cut -d : -f 1)"
                SIZE="$(fdisk -l "$DISK" 2>/dev/null | grep $DISK | grep : | sed -r "s/.*: |,.*//g")"
                echo -n "$DISK: $SIZE, "
