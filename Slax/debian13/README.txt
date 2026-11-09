@@ -1,41 +1,23 @@
 Slax
 ====
 
-The CD/DVD is already bootable.
+I burn the ISO file to a CD/DVD disc, it will be already bootable.
 
-Install Slax to a USB drive or hard disk
---------------------------------------
+To boot Slax from a USB drive:
 
-Open slax/installer on this disc and start the installer:
+1. Navigate to the installer directory, for example
+   
+   Windows: E:\slax\installer\
+   Linux: /media/cdrom/slax/installer/
 
-   Windows XP or later: run slax-install.exe as administrator.
-   Slax:                run slax-install-linux as root.
+2. Locate and run the slax-install executable, for example
 
-Choose a Slax ISO image or directory using Browse, then select the target and
-review the installation plan. You can select slax itself or its parent directory.
-No internet connection is needed.
+   Windows: double-click slax-install.exe and approve administrator access.
+   Linux:   run sudo ./slax-install-linux from a terminal opened in that directory.
 
-Without erasing, supported existing filesystems and files are kept. An existing
-slax directory must first be moved or renamed. BIOS multiboot keeps a backup of
-the original loader and adds Slax to a supported existing system menu, keeping
-the original system as the default. Other loaders use a separate text selector.
-Selecting Slax starts its normal logo and countdown; Escape opens its boot menu.
-UEFI uses an existing EFI
-partition, or creates one in unused space without moving existing partitions.
-If neither is possible, an existing FAT target can hold the EFI files itself.
-Existing system boot files and firmware entries are retained. Adding an internal
-UEFI boot entry requires a session started in 64-bit UEFI mode; preparing a
-separate bootable USB drive does not. The plan explains the available boot modes.
+4. Select source for Slax files (either ISO or a source directory)
+5. Select target device (optioinally check to erase all data)
+6. Confirm the installation after understanding the plan.
 
-"Erase entire selected disk" deletes ALL partitions and files on the physical disk,
-including its other drive letters. Review every listed partition carefully.
-The installer creates GPT with reserved BIOS boot space, a FAT32 EFI partition
-and a FAT32 Slax data partition.
-Native 4096-byte-sector disks support UEFI boot only. Windows XP, and older Windows
-versions limited to one removable partition, use MBR with FAT32 Slax data first
-and a small FAT32 EFI partition second. This keeps the data accessible in those
-Windows versions while retaining BIOS and UEFI boot. This compatible layout
-supports 512-byte-sector disks up to 2 TiB. Other systems normally use GPT.
-
-The installer explains unsupported configurations before writing. Keep the
-computer powered and both source and target connected until it finishes.
+7. Wait for the installer to finish. Restart the computer and select
+   the USB drive in its boot menu, which is usually invoked by F2, F12 or Del
