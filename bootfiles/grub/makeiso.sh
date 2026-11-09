@@ -73,7 +73,8 @@ if [ -f "$NAME/boot/grub/cdboot.img" ]; then
    set -- -b "$NAME/boot/grub/cdboot.img" -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info -eltorito-alt-boot "$@"
    set -- --grub2-mbr "$BOOT/grub/boot_hybrid.img" --mbr-force-bootable "$@"
 fi
-set -- -as mkisofs -J -R -A "$NAME" -V "$NAME" -c "$NAME/boot/grub/boot.cat" "$@" --
+# Allow SquashFS modules larger than 4 GiB through ISO9660 multi-extent files.
+set -- -as mkisofs -iso-level 3 -J -R -A "$NAME" -V "$NAME" -c "$NAME/boot/grub/boot.cat" "$@" --
 if [ -n "${XORRISO_PATH_LIST:-}" ]; then
    set -- "$@" -pathspecs on -backslash_codes with_quoted_input -quoted_path_list "$XORRISO_PATH_LIST"
 fi
