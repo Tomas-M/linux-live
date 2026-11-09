@@ -14,7 +14,12 @@ The ISO path supports typing, paste and Browse. Edited paths are validated only
 after Next. An automatically detected source is checked immediately and opens
 the target step on success. Back returns to the path without advancing again.
 Windows uses optional native VirtDisk attachment metadata; Linux follows the
-ISO loop device. Missing metadata leaves the path available for manual entry.
+ISO loop device. On Linux, the resolved executable's filesystem also identifies
+its optical device through udev, including execution through symlinks or bind
+mounts from any working directory. The installer reads that device directly as
+an ISO and advances only after the normal Slax payload checks succeed. Optical
+aliases such as `/dev/cdrom` are accepted too; other raw block devices are not.
+Missing metadata leaves the path available for manual entry.
 The footer contains Back and Next; the native window close control exits the
 wizard. Closing remains disabled during disk writes.
 
@@ -197,6 +202,9 @@ new boot partitions, occupied embedding areas, rollback, encryption detection,
 UEFI entry parsing and the wizard's confirmation handoff. `test-native.cpp`
 accepts only owned Linux loop devices under `/tmp/slax-installer-native.*`.
 `check-linux` tests discovery using mocked hardware and an owned loop.
+`test-source.cpp` checks source detection, full ISO validation and automatic
+wizard advancement from mounted ISO/CD fixtures, including symlinks, bind mounts
+and optical media without a valid Slax payload. It performs no installation writes.
 Native GUI fixtures cover resizing, DPI, text alignment, four-card defaults,
 whole-disk highlighting, restored selection and wheel-boundary repainting.
 

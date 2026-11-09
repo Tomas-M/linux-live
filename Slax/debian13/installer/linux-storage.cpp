@@ -17,6 +17,7 @@
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
 #include <linux/fs.h>
+#include <linux/cdrom.h>
 #include <linux/btrfs.h>
 #include <linux/magic.h>
 #include <unistd.h>
@@ -29,7 +30,7 @@
 // Preserve the native error as part of every actionable storage failure.
 static void failed(const std::string &message) { throw std::runtime_error(message+": "+strerror(errno)); }
 
-// A mounted ISO identifies its original file through the executable's loop device.
+// The resolved executable identifies its mounted filesystem even through symlinks and bind mounts.
 std::string sourceImage()
 {
    struct stat executable,backing; struct statfs filesystem;
@@ -37,7 +38,17 @@ std::string sourceImage()
    if (filesystem.f_type!=ISOFS_SUPER_MAGIC && filesystem.f_type!=UDF_SUPER_MAGIC) return "";
    std::ifstream file("/sys/dev/block/"+std::to_string(major(executable.st_dev))+":"+std::to_string(minor(executable.st_dev))+"/loop/backing_file");
    std::string path; std::getline(file,path);
-   if (stat(path.c_str(),&backing) || !S_ISREG(backing.st_mode)) return "";
+   if (!stat(path.c_str(),&backing) && S_ISREG(backing.st_mode)) return path;
+   path.clear();
+   auto context=udev_new(); if (!context) return "";
+   auto device=udev_device_new_from_devnum(context,'b',executable.st_dev);
+   if (device)
+   {
+      auto node=udev_device_get_devnode(device),optical=udev_device_get_property_value(device,"ID_CDROM");
+      if (node && optical && !strcmp(optical,"1")) path=node;
+      udev_device_unref(device);
+   }
+   udev_unref(context);
    return path;
 }
 
@@ -285,13 +296,16 @@ std::vector<Device> scanDevices(const std::string &source)
    return result;
 }
 
-// Open a regular source file for this validation or copy operation only.
+// Read files or optical devices, following aliases such as /dev/cdrom but rejecting other raw block devices.
 FILE *openImage(const std::string &path)
 {
-   int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
+   auto resolved=realpath(path.c_str(),nullptr); if (!resolved) return nullptr;
+   int fd=open(resolved,O_RDONLY|O_CLOEXEC|O_NOFOLLOW); free(resolved);
    if (fd<0) return nullptr;
    struct stat info;
-   if (fstat(fd,&info) || !S_ISREG(info.st_mode)) { close(fd); return nullptr; }
+   if (fstat(fd,&info)) { close(fd); return nullptr; }
+   bool optical=S_ISBLK(info.st_mode) && ioctl(fd,CDROM_GET_CAPABILITY)>=0;
+   if (!S_ISREG(info.st_mode) && !optical) { close(fd); return nullptr; }
    return fdopen(fd,"rb");
 }
 
