@@ -17,7 +17,7 @@ struct GtkUi
 {
    GtkWidget *rail,*steps[4],*numbers[4],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox;
    GtkWidget *devices,*deviceScroll,*empty,*erase,*target[2],*status,*percent,*progress,*result;
-   GtkWidget *back,*next,*footerLabel,*content;
+   GtkWidget *back,*next,*footerLabel,*footerStatus,*content;
    GdkCursor *progressCursor=nullptr;
    bool updating=false;
 } ui;
@@ -90,8 +90,8 @@ static void updateWindow()
    gtk_widget_set_margin_bottom(ui.content,page==1?12:29);
    if (app.iso.path!=gtk_entry_get_text(GTK_ENTRY(ui.path))) gtk_entry_set_text(GTK_ENTRY(ui.path),app.iso.path.c_str());
    gtk_label_set_text(GTK_LABEL(ui.message),app.message().c_str());
-   gtk_widget_set_size_request(ui.message,-1,page==0?42:-1);
-   gtk_widget_set_visible(ui.messageBox,page==0 || (page==1 && !app.message().empty()));
+   gtk_widget_set_visible(ui.messageBox,page==0);
+   gtk_label_set_text(GTK_LABEL(ui.footerStatus),(page<2 && app.pending!=None?app.progressText():"").c_str());
    auto currentRows=gtk_container_get_children(GTK_CONTAINER(ui.devices));
    bool changed=g_list_length(currentRows)!=app.devices.size();
    for (size_t i=0; !changed && i<app.devices.size(); i++)
@@ -219,7 +219,7 @@ std::string chooseImage(bool directory)
 // Confirm with a normal GTK dialog and default to Cancel.
 bool confirmInstall(const std::string &target,bool erase)
 {
-   auto dialog=gtk_dialog_new_with_buttons(erase?"Erase disk and install Slax?":"Install Slax?",GTK_WINDOW(window),GTK_DIALOG_MODAL,"Install",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,nullptr);
+   auto dialog=gtk_dialog_new_with_buttons(erase?"Erase disk and install Slax?":"Install Slax?",GTK_WINDOW(window),GTK_DIALOG_MODAL,"Cancel",GTK_RESPONSE_CANCEL,"Install",GTK_RESPONSE_ACCEPT,nullptr);
    gtk_window_set_default_size(GTK_WINDOW(dialog),640,430);
    auto content=gtk_dialog_get_content_area(GTK_DIALOG(dialog)); gtk_container_set_border_width(GTK_CONTAINER(content),14);
    gtk_box_set_spacing(GTK_BOX(content),12);
@@ -365,14 +365,23 @@ int runWindow()
    gtk_widget_set_size_request(ui.message,-1,42);
    gtk_box_pack_start(GTK_BOX(ui.messageBox),ui.message,true,true,0); gtk_box_pack_start(GTK_BOX(main),ui.messageBox,false,false,0);
    gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),false,false,0);
-   auto footer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_container_set_border_width(GTK_CONTAINER(footer),11); gtk_widget_set_margin_start(footer,4); gtk_widget_set_margin_end(footer,4);
+   auto footer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0),brandFooter=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0),actions=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
    gtk_box_pack_start(GTK_BOX(root),footer,false,false,0);
-   ui.footerLabel=label("Slax Installer",13); gtk_box_pack_start(GTK_BOX(footer),ui.footerLabel,true,true,0);
+   gtk_box_pack_start(GTK_BOX(footer),brandFooter,false,true,0); gtk_box_pack_start(GTK_BOX(footer),actions,true,true,0);
+   // Keep the footer status aligned with the content while the sidebar and window resize.
+   auto columns=gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL);
+   gtk_size_group_add_widget(columns,ui.rail); gtk_size_group_add_widget(columns,brandFooter); g_object_unref(columns);
+   gtk_widget_set_margin_start(actions,30); gtk_widget_set_margin_end(actions,15); gtk_widget_set_margin_top(actions,11); gtk_widget_set_margin_bottom(actions,11);
+   ui.footerLabel=label("Slax Installer",13); gtk_widget_set_margin_start(ui.footerLabel,15); gtk_widget_set_margin_end(ui.footerLabel,15);
+   gtk_box_pack_start(GTK_BOX(brandFooter),ui.footerLabel,true,true,0);
    gtk_label_set_ellipsize(GTK_LABEL(ui.footerLabel),PANGO_ELLIPSIZE_END);
+   ui.footerStatus=label("",13); gtk_label_set_ellipsize(GTK_LABEL(ui.footerStatus),PANGO_ELLIPSIZE_END);
+   gtk_style_context_add_class(gtk_widget_get_style_context(ui.footerStatus),"installer-message");
+   gtk_box_pack_start(GTK_BOX(actions),ui.footerStatus,true,true,0);
    ui.back=gtk_button_new_with_label("Back"),ui.next=gtk_button_new_with_label("Next");
    gtk_widget_set_name(ui.next,"installer-next"); gtk_style_context_add_class(gtk_widget_get_style_context(ui.next),"suggested-action");
    gtk_widget_set_size_request(ui.next,92,35); gtk_widget_set_can_default(ui.next,true); gtk_window_set_default(GTK_WINDOW(window),ui.next);
-   gtk_box_pack_end(GTK_BOX(footer),ui.next,false,false,0); gtk_box_pack_end(GTK_BOX(footer),ui.back,false,false,0);
+   gtk_box_pack_end(GTK_BOX(actions),ui.next,false,false,0); gtk_box_pack_end(GTK_BOX(actions),ui.back,false,false,0);
    g_signal_connect(ui.next,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Next); }),nullptr);
    g_signal_connect(ui.back,"clicked",G_CALLBACK(+[](GtkButton *,gpointer) { app.activate(Back); }),nullptr);
    g_signal_connect(ui.erase,"toggled",G_CALLBACK(+[](GtkToggleButton *button,gpointer) { if (!ui.updating && gtk_toggle_button_get_active(button)!=app.erase) app.activate(Erase); }),nullptr);

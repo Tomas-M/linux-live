@@ -209,7 +209,7 @@ void Installer::tick()
             bool newEfi=plan && plan->bootLayout && plan->bootLayout->efi.bytes;
             bool sameEfi=plan && prepared->efi.start==plan->efi.start && prepared->efi.bytes==plan->efi.bytes && (newEfi || prepared->efi.uuid==plan->efi.uuid);
             bool sameBios=plan && prepared->bios==plan->bios && prepared->previousBios==plan->previousBios;
-            if (sameBios && plan->bios && !plan->erase) sameBios=prepared->bootLayout->bios.start==plan->bootLayout->bios.start && prepared->biosImage->core==plan->biosImage->core;
+            if (sameBios && plan->bios && !plan->erase) sameBios=prepared->bootLayout->bios.start==plan->bootLayout->bios.start && prepared->biosImage->core==plan->biosImage->core && prepared->bootLayout->biosBefore==plan->bootLayout->biosBefore;
             bool sameFirmware=plan && prepared->bootOrder==plan->bootOrder && prepared->fallbackDigest==plan->fallbackDigest && prepared->efiLoaders==plan->efiLoaders && prepared->efiFirst==plan->efiFirst;
             bool sameSummary=plan && prepared->confirmation==plan->confirmation;
             bool sameMenu=plan && prepared->bootConfig==plan->bootConfig && prepared->bootBefore==plan->bootBefore && prepared->bootPartition.uuid==plan->bootPartition.uuid && prepared->bootFile==plan->bootFile;
@@ -319,18 +319,16 @@ std::string Installer::introduction() const
 // Progress is supplied by real completed I/O, never by an elapsed-time simulation.
 std::string Installer::progressText() const
 {
-   if (page==1 && pending==Next) return "Checking the target and preparing the installation plan…";
-   if (page==1 && pending==Confirm) return "Rechecking the approved installation plan…";
-   if (page==1 && confirming) return "Waiting for your confirmation…";
+   if (page==0 && pending!=None) return "Checking source…";
+   if (page==1 && pending==Next) return "Preparing installation plan…";
+   if (page==1 && pending==Confirm) return "Rechecking plan…";
    std::lock_guard<std::mutex> lock(mutex); return status;
 }
 
-// Keep source metadata and check status inline; validation failures use native dialogs.
+// Only source metadata belongs in the page; checks use the footer and errors use dialogs.
 std::string Installer::message() const
 {
-   if (page==1) return pending!=None?progressText():"";
-   if (pending!=None) return "Checking the Slax source…";
-   if (page==0 && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
+   if (page==0 && pending==None && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
    return "";
 }
 

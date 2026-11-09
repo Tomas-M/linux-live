@@ -6,12 +6,11 @@ The CD/DVD is already bootable.
 Install Slax to a USB drive or hard disk
 --------------------------------------
 
-Open slax on this disc and start the installer:
+Open slax/installer on this disc and start the installer:
 
    Windows XP or later: run slax-install.exe as administrator.
    Slax:                run slax-install-linux as root.
 
-Slax also provides Slax Installer in its application menu.
 Choose a Slax ISO image or directory using Browse, then select the target and
 review the installation plan. You can select slax itself or its parent directory.
 No internet connection is needed.
