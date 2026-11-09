@@ -762,7 +762,7 @@ int runWindow()
    control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
    control(Result,L"STATIC",SS_BITMAP,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
    control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
-   text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No disks detected. Connect a writable disk to continue.");
+   text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No suitable disks found. Connect a disk to continue.");
    text(EraseButton,"Erase entire selected disk (including all other partitions on it)"); text(Footer,"Slax Installer"); text(BackButton,"Back");
    fonts(); branding(); updateWindow(); SetTimer(window,1,100,nullptr); ShowWindow(window,SW_SHOW); UpdateWindow(window); app.startScan();
    MSG message;

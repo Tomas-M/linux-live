@@ -16,7 +16,7 @@ static GdkPixbuf *images[7];
 struct GtkUi
 {
    GtkWidget *rail,*steps[4],*numbers[4],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox,*messageIcon;
-   GtkWidget *devices,*deviceScroll,*erase,*target[2],*status,*percent,*progress,*result;
+   GtkWidget *devices,*deviceScroll,*empty,*erase,*target[2],*status,*percent,*progress,*result;
    GtkWidget *back,*next,*footerLabel,*content;
    GdkCursor *progressCursor=nullptr;
    bool updating=false;
@@ -165,7 +165,8 @@ static void updateWindow()
       gtk_widget_set_tooltip_text(GTK_WIDGET(row),(device.path+"\n"+device.name+"\n"+sizeText(device.bytes)).c_str());
    }
    gtk_widget_set_sensitive(ui.devices,app.pending==None);
-   gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),app.devices.empty()?-1:62);
+   gtk_widget_set_visible(ui.empty,app.devices.empty());
+   gtk_widget_set_visible(ui.deviceScroll,!app.devices.empty());
    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(ui.erase),app.erase);
    gtk_widget_set_sensitive(ui.erase,!app.devices.empty() && app.pending==None);
    for (auto target:ui.target) gtk_label_set_text(GTK_LABEL(target),app.target.c_str());
@@ -323,12 +324,13 @@ int runWindow()
    gtk_box_pack_start(GTK_BOX(iso),isoRow,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),iso,"0");
    auto usb=gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
-   auto empty=label("No disks detected. Connect a writable disk to continue."); wrap(empty);
+   ui.empty=label("No suitable disks found. Connect a disk to continue."); wrap(ui.empty);
+   gtk_box_pack_start(GTK_BOX(usb),ui.empty,false,false,0);
    ui.deviceScroll=gtk_scrolled_window_new(nullptr,nullptr); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(ui.deviceScroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
    gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),62);
    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(ui.deviceScroll),true);
    ui.devices=gtk_list_box_new(); gtk_widget_set_name(ui.devices,"installer-devices"); gtk_list_box_set_selection_mode(GTK_LIST_BOX(ui.devices),GTK_SELECTION_NONE); gtk_list_box_set_activate_on_single_click(GTK_LIST_BOX(ui.devices),true);
-   gtk_list_box_set_placeholder(GTK_LIST_BOX(ui.devices),empty); gtk_container_add(GTK_CONTAINER(ui.deviceScroll),ui.devices); gtk_box_pack_start(GTK_BOX(usb),ui.deviceScroll,true,true,0);
+   gtk_container_add(GTK_CONTAINER(ui.deviceScroll),ui.devices); gtk_box_pack_start(GTK_BOX(usb),ui.deviceScroll,true,true,0);
    g_signal_connect(ui.devices,"row-activated",G_CALLBACK(+[](GtkListBox *,GtkListBoxRow *row,gpointer) { app.activate(Select,static_cast<const char *>(g_object_get_data(G_OBJECT(g_object_get_data(G_OBJECT(row),"radio")),"device-id"))); }),nullptr);
    ui.erase=gtk_check_button_new_with_label("Erase entire selected disk (including all other partitions on it)");
    wrap(gtk_bin_get_child(GTK_BIN(ui.erase))); gtk_widget_set_size_request(ui.erase,-1,34); gtk_box_pack_start(GTK_BOX(usb),ui.erase,false,false,0);
