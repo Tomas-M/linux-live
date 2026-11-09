@@ -40,6 +40,10 @@ Note:
      perch
   This parameter activates persistent changes
 
+* To boot an ISO over HTTP, build with NETWORK=true in ./config and use
+  from=http://server/path/image.iso ip=dhcp as kernel parameters.
+  The HTTP server must support byte-range requests. NFS is not supported.
+
 * If you have tmpfs mounted on /tmp during building your Live Kit ISO,
   make sure you have enough RAM since LiveKit will store lots of data in /tmp.
   If you are low on RAM, make sure /tmp is a regular on-disk directory.
