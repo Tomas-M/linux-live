@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Slax Installer
+Comment=Install Slax to a disk or USB drive
+Exec=slax-install-linux
+Icon=slax-installer
+Categories=System;
+Terminal=false
+StartupNotify=true
+StartupWMClass=SlaxUsbInstaller

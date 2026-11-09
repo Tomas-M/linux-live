@@ -30,11 +30,11 @@
 // Preserve the native error as part of every actionable storage failure.
 static void failed(const std::string &message) { throw std::runtime_error(message+": "+strerror(errno)); }
 
-// The resolved executable identifies its mounted filesystem even through symlinks and bind mounts.
-std::string sourceImage()
+// Resolve a source file's mounted filesystem even through symlinks and bind mounts.
+static std::string mountedSource(const char *source)
 {
    struct stat executable,backing; struct statfs filesystem;
-   if (stat("/proc/self/exe",&executable) || statfs("/proc/self/exe",&filesystem)) return "";
+   if (stat(source,&executable) || statfs(source,&filesystem)) return "";
    if (filesystem.f_type!=ISOFS_SUPER_MAGIC && filesystem.f_type!=UDF_SUPER_MAGIC) return "";
    std::ifstream file("/sys/dev/block/"+std::to_string(major(executable.st_dev))+":"+std::to_string(minor(executable.st_dev))+"/loop/backing_file");
    std::string path; std::getline(file,path);
@@ -50,6 +50,19 @@ std::string sourceImage()
    }
    udev_unref(context);
    return path;
+}
+
+// Installed desktop launchers use the active Slax data, including a complete copy-to-RAM tree.
+std::string sourceImage()
+{
+   auto source=mountedSource("/proc/self/exe");
+   if (!source.empty()) return source;
+   for (const char *path:{"/run/initramfs/memory/toram","/run/initramfs/memory/iso/slax","/run/initramfs/memory/data/slax"})
+   {
+      struct stat boot;
+      if (!stat((std::string(path)+"/boot/vmlinuz").c_str(),&boot) && S_ISREG(boot.st_mode)) return path;
+   }
+   return "";
 }
 
 // Read optional udev strings without substituting an unstable physical identity.

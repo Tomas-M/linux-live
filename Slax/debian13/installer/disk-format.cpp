@@ -549,13 +549,13 @@ void writeFat(Disk &disk,const Partition &partition,const std::vector<Content> &
          continue;
       }
       const auto &file=*node.file; Hash expected,actual; uint64_t size=file.entry.bytes;
-      if (file.entry.offset!=UINT64_MAX) seekImage(source,file.entry.offset);
+      SourceFile input(source,file.entry);
       for (uint64_t copied=0; copied<size;)
       {
          size_t bytes=std::min<uint64_t>(buffer.size(),size-copied),rounded=(bytes+sector-1)/sector*sector;
          memset(buffer.data(),0,rounded);
          if (file.entry.offset==UINT64_MAX) memcpy(buffer.data(),file.data.data()+copied,bytes);
-         else if (fread(buffer.data(),1,bytes,source)!=bytes) throw std::runtime_error("The source ISO could not be read during installation.");
+         else input.read(buffer.data(),bytes);
          expected.add(buffer.data(),bytes); disk.write(at+copied,buffer.data(),rounded); copied+=bytes;
          progress("Copying "+file.entry.path,payload?int((completed+copied)*75/payload):75);
       }

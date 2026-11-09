@@ -3,7 +3,7 @@
 #include <stdexcept>
 
 // Exercise source detection and wizard transitions without opening installation dialogs.
-std::string chooseImage() { return ""; }
+std::string chooseImage(bool) { return ""; }
 bool confirmInstall(const std::string &,bool) { return false; }
 void showInstallError(const std::string &) {}
 void invalidate() {}
@@ -26,11 +26,11 @@ int main(int argc,char **argv)
       while (std::chrono::steady_clock::now()<deadline)
       {
          app.tick();
-         if (app.page==1 || !app.iso.error.empty()) break;
+         if (app.pending==None) break;
          std::this_thread::sleep_for(std::chrono::milliseconds(20));
       }
       app.stop();
-      if (app.page!=(valid?1:0) || (!valid && app.iso.error.empty())) throw std::runtime_error("Unexpected automatic wizard transition.");
+      if (app.page!=0 || app.pending!=None || (!valid && app.iso.error.empty())) throw std::runtime_error("Unexpected automatic source validation.");
       printf("PASS: %s, %zu payload entries, wizard page %d\n",source.c_str(),image.entries.size(),app.page);
       return 0;
    }

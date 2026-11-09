@@ -7,6 +7,13 @@
 #include <setupapi.h>
 #include <winioctl.h>
 #include <shellapi.h>
+// Expose optional Vista COM interfaces while retaining XP as the executable's API target.
+#pragma push_macro("NTDDI_VERSION")
+#undef NTDDI_VERSION
+#define NTDDI_VERSION 0x06000000
+#include <shlobj.h>
+#include <shobjidl.h>
+#pragma pop_macro("NTDDI_VERSION")
 #include <objidl.h>
 #include <gdiplus.h>
 #include <set>
@@ -20,7 +27,7 @@
 static HWND window;
 static float scale=1;
 
-enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,ErrorIcon };
+enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator };
 static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
 
 struct WinCard
@@ -36,7 +43,7 @@ struct WinUi
 {
    HWND panel=nullptr,controls[180]={};
    HFONT body=nullptr,small=nullptr,title=nullptr,intro=nullptr,bold=nullptr,smallBold=nullptr;
-   HBRUSH rail=nullptr,green=nullptr,selected=nullptr,red=nullptr;
+   HBRUSH rail=nullptr,green=nullptr,selected=nullptr;
    HBITMAP brand[7]={};
    HICON clover=nullptr;
    std::vector<std::unique_ptr<WinCard>> cards;
@@ -92,9 +99,8 @@ static void fonts()
    for (auto item:ui.controls) if (item) SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
    if (ui.controls[Heading]) SendMessageW(ui.controls[Heading],WM_SETFONT,reinterpret_cast<WPARAM>(ui.title),TRUE);
    if (ui.controls[Intro]) SendMessageW(ui.controls[Intro],WM_SETFONT,reinterpret_cast<WPARAM>(ui.intro),TRUE);
-   if (ui.controls[ErrorIcon]) SendMessageW(ui.controls[ErrorIcon],WM_SETFONT,reinterpret_cast<WPARAM>(ui.bold),TRUE);
    for (int id:{Step,Footer}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
-   for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.displayPage()?ui.bold:ui.body),TRUE);
+   for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
    for (const auto &card:ui.cards)
    {
       SendMessageW(card->location,WM_SETFONT,reinterpret_cast<WPARAM>(ui.smallBold),TRUE);
@@ -178,6 +184,8 @@ static void place(int id,float x,float y,float width,float height,bool content=t
 static LRESULT CALLBACK pathEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR)
 {
    LRESULT result=DefSubclassProc(hwnd,message,wp,lp);
+   // The visually single-line path must pass Tab and Enter to native dialog navigation.
+   if (message==WM_GETDLGCODE) return result&~(DLGC_WANTTAB|DLGC_WANTALLKEYS);
    if (message==WM_SIZE || message==WM_SETFONT || message==WM_THEMECHANGED)
    {
       RECT rect; GetClientRect(hwnd,&rect);
@@ -317,6 +325,22 @@ static void createCard(const Device &device)
    ui.cards.push_back(std::move(card));
 }
 
+// Add a font-independent dropdown indicator while preserving the native button's frame and states.
+static LRESULT CALLBACK browseEvents(HWND button,UINT message,WPARAM wp,LPARAM lp,UINT_PTR,DWORD_PTR)
+{
+   auto result=DefSubclassProc(button,message,wp,lp);
+   if (message==WM_PAINT)
+   {
+      RECT rect; GetClientRect(button,&rect); auto dc=GetDC(button);
+      int x=rect.right-int(13*scale),y=rect.bottom/2;
+      POINT arrow[]={{x-int(4*scale),y-int(2*scale)},{x+int(4*scale),y-int(2*scale)},{x,y+int(3*scale)}};
+      auto brush=SelectObject(dc,GetSysColorBrush(IsWindowEnabled(button)?COLOR_BTNTEXT:COLOR_GRAYTEXT));
+      auto pen=SelectObject(dc,GetStockObject(NULL_PEN)); Polygon(dc,arrow,3);
+      SelectObject(dc,pen); SelectObject(dc,brush); ReleaseDC(button,dc);
+   }
+   return result;
+}
+
 // Delegate scrolling to a native scrollbar while the cards retain their own controls.
 static LRESULT CALLBACK deviceEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
@@ -353,13 +377,12 @@ static void layoutContent()
 {
    if (ui.layingout || !ui.panel) return;
    ui.layingout=true;
-   int page=app.displayPage();
+   int page=app.page;
    RECT outer,viewport; GetWindowRect(ui.panel,&outer); GetClientRect(ui.panel,&viewport);
    struct Field { int id; float x,y,width,height; };
    std::vector<Field> fields;
    bool messageVisible=page==0 || (page==1 && !app.message().empty());
-   bool errorVisible=messageVisible && app.pending==None && !app.error.empty();
-   for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message,ErrorIcon})
+   for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message})
    {
       bool isoField=page==0 && (id==PathLabel || id==Path || id==BrowseButton);
       bool usbField=page==1 && (id==Drives || id==Empty || id==EraseButton);
@@ -370,8 +393,8 @@ static void layoutContent()
       if (id==Percent) show=progressField && !app.indeterminate();
       if (id==Drives) show=page==1 && !app.devices.empty();
       if (id==Empty) show=page==1 && app.devices.empty();
+      if (id==EraseButton) show=page==1 && !app.devices.empty();
       if (id==Message) show=messageVisible;
-      if (id==ErrorIcon) show=errorVisible;
       if (bool(GetWindowLongW(ui.controls[id],GWL_STYLE)&WS_VISIBLE)!=show) ShowWindow(ui.controls[id],show?SW_SHOW:SW_HIDE);
    }
    // Always measure the full width first; a needed scrollbar can only increase wrapped height.
@@ -384,12 +407,12 @@ static void layoutContent()
       add(Step,x,y,w,20); y+=26;
       h=textHeight(Heading,w); add(Heading,x,y,w,h); y+=h+9;
       h=textHeight(Intro,w); add(Intro,x,y,w,h); y+=h+22;
-      float messageWidth=w-(errorVisible?36:0);
+      float messageWidth=w;
       float messageHeight=messageVisible?textHeight(Message,messageWidth):0;
       if (page==0)
       {
          add(PathLabel,x,y,w,21); y+=27;
-         add(Path,x,y,w-94,35); add(BrowseButton,x+w-86,y,86,35); y+=48;
+         add(Path,x,y,w-108,35); add(BrowseButton,x+w-100,y,100,35); y+=48;
          messageHeight=std::max(42.0f,messageHeight);
       }
       if (page==1)
@@ -397,11 +420,12 @@ static void layoutContent()
          if (app.devices.empty()) { h=textHeight(Empty,w); add(Empty,x,y,w,h); }
          else
          {
-            float reserve=10+std::max(34.0f,textHeight(EraseButton,w-20))+12;
+            float reserve=10+std::max(34.0f,textHeight(EraseButton,w-20))+12+(messageVisible?messageHeight+13:0);
             h=std::max(62.0f,viewport.bottom/scale-y-reserve);
             add(Drives,x,y,w,h);
+            y+=h+10; h=std::max(34.0f,textHeight(EraseButton,w-20)); add(EraseButton,x,y,w,h);
          }
-         y+=h+10; h=std::max(34.0f,textHeight(EraseButton,w-20)); add(EraseButton,x,y,w,h); y+=h;
+         y+=h;
       }
       if (page>=2)
       {
@@ -417,8 +441,7 @@ static void layoutContent()
       if (messageVisible)
       {
          if (page==1) y+=13;
-         if (errorVisible) add(ErrorIcon,x,y,24,24);
-         add(Message,x+(errorVisible?36:0),y,messageWidth,messageHeight); y+=messageHeight;
+         add(Message,x,y,messageWidth,messageHeight); y+=messageHeight;
       }
       SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
       scroll.nMin=0; scroll.nMax=int((y+(page==1?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
@@ -457,7 +480,7 @@ static void updateWindow()
 {
    if (ui.updating || !ui.panel) return;
    ui.updating=true;
-   int page=app.displayPage();
+   int page=app.page;
    text(Step,"Step "+std::to_string(page+1)+" of 4"); text(Heading,app.heading()); text(Intro,app.introduction());
    text(Path,app.iso.path); text(Message,app.message());
    text(Target,app.target); text(Status,app.progressText()); text(Percent,std::to_string(app.percent)+"%");
@@ -546,12 +569,42 @@ void windowAction(Action action)
 }
 
 // Keep Browse native, modal, keyboard accessible and independent of shell quoting.
-std::string chooseImage()
+std::string chooseImage(bool directory)
 {
+   if (directory)
+   {
+      if (FAILED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED))) return "";
+      std::string path; IFileOpenDialog *picker=nullptr;
+      if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&picker))))
+      {
+         DWORD options=0; picker->GetOptions(&options); picker->SetOptions(options|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST);
+         picker->SetTitle(L"Choose a Slax source directory");
+         if (SUCCEEDED(picker->Show(window)))
+         {
+            IShellItem *item=nullptr;
+            if (SUCCEEDED(picker->GetResult(&item)))
+            {
+               wchar_t *name=nullptr;
+               if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&name))) { path=utf8(name); CoTaskMemFree(name); }
+               item->Release();
+            }
+         }
+         picker->Release();
+      }
+      else
+      {
+         // XP has no Common Item Dialog; use its native folder picker without a new DLL dependency.
+         BROWSEINFOW info={}; info.hwndOwner=window; info.lpszTitle=L"Choose a Slax source directory";
+         info.ulFlags=BIF_RETURNONLYFSDIRS|BIF_USENEWUI|BIF_NONEWFOLDERBUTTON;
+         auto item=SHBrowseForFolderW(&info);
+         if (item) { wchar_t name[MAX_PATH]; if (SHGetPathFromIDListW(item,name)) path=utf8(name); CoTaskMemFree(item); }
+      }
+      CoUninitialize(); return path;
+   }
    std::vector<wchar_t> filename(32768); auto previous=wide(app.iso.path); wcsncpy(filename.data(),previous.c_str(),filename.size()-1);
    OPENFILENAMEW dialog={}; dialog.lStructSize=sizeof(dialog); dialog.hwndOwner=window;
    dialog.lpstrFilter=L"ISO images (*.iso)\0*.iso\0All files\0*.*\0"; dialog.lpstrFile=filename.data(); dialog.nMaxFile=filename.size();
-   dialog.lpstrTitle=L"Choose a Slax ISO image"; dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER;
+   dialog.lpstrTitle=L"Choose a source Slax ISO image"; dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_NOCHANGEDIR|OFN_EXPLORER;
    return GetOpenFileNameW(&dialog)?utf8(filename.data()):"";
 }
 
@@ -601,12 +654,12 @@ bool confirmInstall(const std::string &target,bool erase)
    return DialogBoxIndirectParamW(GetModuleHandleW(nullptr),reinterpret_cast<DLGTEMPLATE *>(resource.data()),window,confirmEvents,reinterpret_cast<LPARAM>(&text))==IDYES;
 }
 
-// Report preflight failures only after Next, using the ordinary native dialog palette.
+// Report source and target failures using the ordinary native dialog palette.
 void showInstallError(const std::string &message)
 {
    auto text=wide(message); MSGBOXPARAMSW dialog={}; dialog.cbSize=sizeof(dialog);
    dialog.hwndOwner=window; dialog.hInstance=GetModuleHandleW(nullptr); dialog.lpszText=text.c_str();
-   dialog.lpszCaption=L"Cannot install Slax"; dialog.dwStyle=MB_OK|MB_USERICON; dialog.lpszIcon=MAKEINTRESOURCEW(2);
+   dialog.lpszCaption=app.page==0?L"Cannot use this Slax source":L"Cannot install Slax"; dialog.dwStyle=MB_OK|MB_USERICON; dialog.lpszIcon=MAKEINTRESOURCEW(2);
    MessageBoxIndirectW(&dialog);
 }
 
@@ -681,7 +734,14 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
          std::wstring path(GetWindowTextLengthW(ui.controls[Path])+1,L'\0'); GetWindowTextW(ui.controls[Path],path.data(),path.size());
          app.setImagePath(utf8(path.c_str()));
       }
-      if (id==BrowseButton) app.activate(Browse);
+      if (id==BrowseButton)
+      {
+         auto menu=CreatePopupMenu();
+         AppendMenuW(menu,MF_STRING,Browse,L"Source ISO image…"); AppendMenuW(menu,MF_STRING,BrowseDirectory,L"Source Slax directory…");
+         RECT rect; GetWindowRect(ui.controls[BrowseButton],&rect);
+         auto action=TrackPopupMenu(menu,TPM_RIGHTALIGN|TPM_TOPALIGN|TPM_RETURNCMD|TPM_NONOTIFY,rect.right,rect.bottom,0,window,nullptr);
+         DestroyMenu(menu); if (action) app.activate(static_cast<Action>(action));
+      }
       if (id==BackButton) app.activate(Back);
       if (id==NextButton) app.activate(Next);
       if (id==EraseButton) app.activate(Erase);
@@ -691,10 +751,9 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    {
       auto item=reinterpret_cast<HWND>(lp); auto dc=reinterpret_cast<HDC>(wp); int id=GetDlgCtrlID(item);
       SetBkMode(dc,OPAQUE); SetBkColor(dc,GetSysColor(COLOR_WINDOW)); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
-      if (id==Message) SetTextColor(dc,!app.error.empty() && app.pending==None?RGB(162,41,41):RGB(84,96,86));
-      if (id==ErrorIcon) { SetBkColor(dc,RGB(163,60,54)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.red); }
+      if (id==Message) SetTextColor(dc,RGB(84,96,86));
       if (id==Step || (id>=StepName && id<StepName+4)) SetTextColor(dc,RGB(57,119,33));
-      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.displayPage()) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
+      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
       bool stepControl=(id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
       bool branding=id==Brand || id==Wordmark;
       bool sidebar=id==Rail || branding || stepControl;
@@ -741,9 +800,9 @@ int runWindow()
    width=std::min(width,int(workarea.right-workarea.left-16)); height=std::min(height,int(workarea.bottom-workarea.top-16));
    window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxUsbInstaller",L"Slax Installer",windowStyle,workarea.left+(workarea.right-workarea.left-width)/2,workarea.top+(workarea.bottom-workarea.top-height)/2,width,height,nullptr,nullptr,instance,nullptr);
    if (!window) return 1;
-   ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); ui.red=CreateSolidBrush(RGB(163,60,54)); fonts();
+   ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); fonts();
    control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_ICON|SS_REALSIZEIMAGE,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
-   const char *steps[]={"ISO image","Target drive","Installation","Finish"};
+   const char *steps[]={"Slax source","Target drive","Installation","Finish"};
    for (int i=0; i<4; i++)
    {
       control(StepNumber+i,L"STATIC",SS_CENTER|SS_CENTERIMAGE,ui.controls[Rail]); text(StepNumber+i,std::to_string(i+1));
@@ -756,13 +815,13 @@ int runWindow()
       control(id,L"STATIC",SS_LEFT|SS_NOPREFIX|(single?SS_CENTERIMAGE:SS_EDITCONTROL),ui.panel);
    }
    control(Path,L"EDIT",ES_MULTILINE|ES_AUTOHSCROLL|WS_TABSTOP,ui.panel,WS_EX_CLIENTEDGE); SetWindowSubclass(ui.controls[Path],pathEvents,1,0);
-   control(ErrorIcon,L"STATIC",SS_CENTER|SS_CENTERIMAGE|SS_NOPREFIX,ui.panel); text(ErrorIcon,"!");
    control(BrowseButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,ui.panel);
+   SetWindowSubclass(ui.controls[BrowseButton],browseEvents,1,0);
    control(Drives,L"SlaxInstallerDevices",WS_VSCROLL|WS_CLIPCHILDREN|WS_TABSTOP,ui.panel,WS_EX_CONTROLPARENT);
    control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
    control(Result,L"STATIC",SS_BITMAP,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
    control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
-   text(PathLabel,"ISO file path"); text(BrowseButton,"Browse…"); text(Empty,"No suitable disks found. Connect a disk to continue.");
+   text(PathLabel,"Source ISO image or Slax directory"); text(BrowseButton,"Browse…"); text(Empty,"No suitable disks found. Connect a disk to continue.");
    text(EraseButton,"Erase entire selected disk (including all other partitions on it)"); text(Footer,"Slax Installer"); text(BackButton,"Back");
    fonts(); branding(); updateWindow(); SetTimer(window,1,100,nullptr); ShowWindow(window,SW_SHOW); UpdateWindow(window); app.startScan();
    MSG message;
@@ -776,7 +835,7 @@ int runWindow()
    for (auto font:{ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.smallBold}) DeleteObject(font);
    for (auto image:ui.brand) DeleteObject(image);
    DestroyIcon(ui.clover);
-   ui.cards.clear(); DeleteObject(ui.rail); DeleteObject(ui.green); DeleteObject(ui.selected); DeleteObject(ui.red);
+   ui.cards.clear(); DeleteObject(ui.rail); DeleteObject(ui.green); DeleteObject(ui.selected);
    Gdiplus::GdiplusShutdown(graphicsToken);
    return 0;
 }

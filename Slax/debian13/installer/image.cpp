@@ -3,10 +3,13 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <filesystem>
 #ifndef _WIN32
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 #endif
+
+static const char *requiredFiles[]={"slax/boot/vmlinuz","slax/boot/initrfs.img","slax/modules/01-core.sb","slax/boot/EFI/BOOT/BOOTX64.EFI","slax/boot/EFI/BOOT/grubx64.efi","slax/boot/grub/entries.cfg"};
 
 // Decode ISO9660's little-endian half without alignment assumptions.
 static uint32_t number(const unsigned char *p)
@@ -114,42 +117,99 @@ static void directory(FILE *file,Image &image,uint32_t sector,uint32_t bytes,con
    }
 }
 
+// Read either an ISO extent or an ordinary file from an inventoried Slax directory.
+SourceFile::SourceFile(FILE *image,const ImageEntry &entry)
+{
+   if (entry.offset==UINT64_MAX) return;
+   owned=!entry.source.empty(); file=owned?openImage(entry.source):image;
+   if (!file) throw std::runtime_error("A Slax source file cannot be opened.");
+   if (!owned) seekImage(file,entry.offset);
+}
+
+// Image streams belong to the installation; directory-file streams belong to this reader.
+SourceFile::~SourceFile() { if (owned) fclose(file); }
+
+// A short source read must stop installation before boot activation.
+void SourceFile::read(void *data,size_t bytes)
+{
+   if (fread(data,1,bytes,file)!=bytes) throw std::runtime_error("The Slax source could not be read completely.");
+}
+
+// Accept the Slax directory itself or its parent, preserving the ISO reader's portable-path rules.
+static void directorySource(Image &image)
+{
+   namespace fs=std::filesystem;
+   auto root=fs::canonical(fs::u8path(image.path));
+   bool complete=true;
+   for (const char *required:requiredFiles)
+   {
+      auto file=root/(required+5);
+      if (!fs::is_regular_file(file) || !fs::file_size(file)) complete=false;
+   }
+   if (!complete && fs::is_directory(root/"slax")) root=fs::canonical(root/"slax");
+   for (const char *required:requiredFiles)
+      if (!fs::is_regular_file(root/(required+5))) throw std::runtime_error("Missing required file: "+std::string(required)+".");
+   image.path=root.u8string(); image.name=root.filename().u8string();
+   image.entries.push_back({"slax",0,0,true});
+   std::set<std::string> names;
+   for (auto item=fs::recursive_directory_iterator(root); item!=fs::recursive_directory_iterator(); ++item)
+   {
+      auto status=item->symlink_status(); bool folder=fs::is_directory(status);
+      if (!folder && !fs::is_regular_file(status)) throw std::runtime_error("The Slax directory contains links or special files.");
+      if (item.depth()>24 || image.entries.size()>32768) throw std::runtime_error("The Slax directory contains too many files or nested directories.");
+      auto relative=item->path().lexically_relative(root);
+      for (const auto &part:relative) if (!component(part.u8string())) throw std::runtime_error("The Slax directory contains an unsafe or non-portable filename.");
+      auto path="slax/"+relative.generic_u8string();
+      if (!names.insert(filenameKey(path)).second) throw std::runtime_error("The Slax directory contains duplicate destination filenames.");
+      ImageEntry entry={path,0,folder?0:item->file_size(),folder};
+      entry.mode=uint32_t(status.permissions())&0777; entry.source=item->path().u8string();
+      image.payload+=entry.bytes; image.entries.push_back(std::move(entry));
+   }
+   image.bytes=image.payload;
+}
+
 // Validate and inventory the actual payload before any destination is opened for writing.
 Image inspectImage(const std::string &path)
 {
    Image image; image.path=path; image.name=path.substr(path.find_last_of("/\\")+1);
-   FILE *file=openImage(path);
-   if (!file) { image.error="The ISO file cannot be opened."; return image; }
+   FILE *file=nullptr;
    try
    {
-#ifdef _WIN32
-      if (_fseeki64(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
-      image.bytes=_ftelli64(file);
-#else
-      // Optical block devices report their capacity through the kernel, not the file's seek endpoint.
-      if (ioctl(fileno(file),BLKGETSIZE64,&image.bytes))
+      if (std::filesystem::is_directory(std::filesystem::u8path(path))) directorySource(image);
+      else
       {
-         if (fseeko(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
-         image.bytes=ftello(file);
-      }
+         file=openImage(path);
+         if (!file) throw std::runtime_error("The ISO file cannot be opened.");
+#ifdef _WIN32
+         if (_fseeki64(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
+         image.bytes=_ftelli64(file);
+#else
+         // Optical block devices report their capacity through the kernel, not the file's seek endpoint.
+         if (ioctl(fileno(file),BLKGETSIZE64,&image.bytes))
+         {
+            if (fseeko(file,0,SEEK_END)) throw std::runtime_error("Cannot determine the ISO size.");
+            image.bytes=ftello(file);
+         }
 #endif
-      auto p=read(file,16*2048,2048,image.bytes);
-      bool valid=p[0]==1 && !memcmp(p.data()+1,"CD001",5) && p[6]==1 && p[128]==0 && p[129]==8 && p[156]>=34;
-      if (!valid || uint64_t(number(p.data()+80))*2048>image.bytes) throw std::runtime_error("This is not a valid ISO9660 Slax image.");
-      std::set<uint32_t> visited;
-      directory(file,image,number(p.data()+158),number(p.data()+166),"",visited,0);
+         auto p=read(file,16*2048,2048,image.bytes);
+         bool valid=p[0]==1 && !memcmp(p.data()+1,"CD001",5) && p[6]==1 && p[128]==0 && p[129]==8 && p[156]>=34;
+         if (!valid || uint64_t(number(p.data()+80))*2048>image.bytes) throw std::runtime_error("This is not a valid ISO9660 Slax image.");
+         std::set<uint32_t> visited;
+         directory(file,image,number(p.data()+158),number(p.data()+166),"",visited,0);
+      }
       for (const auto &entry:image.entries) if (entry.path=="slax/boot/grub/filesystems.txt" && !entry.directory)
       {
          if (entry.bytes>1024) throw std::runtime_error("The ISO filesystem capability list is invalid.");
-         auto data=read(file,entry.offset,entry.bytes,image.bytes); std::string list(data.begin(),data.end());
+         std::string list(entry.bytes,'\0'); SourceFile source(file,entry); source.read(list.data(),list.size());
          for (const char *name:{"btrfs","exfat"}) if (("\n"+list+"\n").find("\n"+std::string(name)+"\n")!=std::string::npos) image.filesystems.push_back(name);
       }
-      for (const char *required:{"slax/boot/vmlinuz","slax/boot/initrfs.img","slax/modules/01-core.sb","slax/boot/EFI/BOOT/BOOTX64.EFI","slax/boot/EFI/BOOT/grubx64.efi","slax/boot/grub/entries.cfg"})
+      for (const char *required:requiredFiles)
       {
          auto found=std::find_if(image.entries.begin(),image.entries.end(),[&](const ImageEntry &e) { return e.path==required && !e.directory && e.bytes>0; });
          if (found==image.entries.end()) throw std::runtime_error("Missing required file: "+std::string(required)+".");
       }
    }
    catch (const std::exception &error) { image.error=error.what(); image.entries.clear(); }
-   fclose(file); return image;
+   if (file) fclose(file);
+   return image;
 }

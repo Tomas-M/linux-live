@@ -3,6 +3,7 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <filesystem>
 
 // Compare filesystem/type identifiers without changing international user-facing labels.
 static std::string lower(std::string text)
@@ -273,8 +274,7 @@ InstallPlan prepareInstall(Device device,const Image &image,bool erase)
 static std::string contents(FILE *source,const ImageEntry &entry)
 {
    if (entry.bytes>8*1024*1024) throw std::runtime_error("A boot configuration file is unexpectedly large.");
-   std::string text(entry.bytes,'\0'); seekImage(source,entry.offset);
-   if (fread(text.data(),1,text.size(),source)!=text.size()) throw std::runtime_error("Cannot read a boot configuration file from the ISO.");
+   std::string text(entry.bytes,'\0'); SourceFile input(source,entry); input.read(text.data(),text.size());
    return text;
 }
 
@@ -384,12 +384,12 @@ static void copyTree(FileTree &tree,const std::vector<Content> &files,FILE *sour
          try
          {
             Hash expected;
-            if (entry.offset!=UINT64_MAX) seekImage(source,entry.offset);
+            SourceFile input(source,entry);
             for (uint64_t copied=0; copied<entry.bytes;)
             {
                size_t count=std::min<uint64_t>(sizeof(buffer),entry.bytes-copied);
                if (entry.offset==UINT64_MAX) memcpy(buffer,file.data.data()+copied,count);
-               else if (fread(buffer,1,count,source)!=count) throw std::runtime_error("The source ISO stopped responding during copying.");
+               else input.read(buffer,count);
                expected.add(buffer,count);
                if (fwrite(buffer,1,count,output)!=count) throw std::runtime_error("The destination is full or stopped accepting file writes.");
                copied+=count; progress("Copying "+entry.path,total?int((completed+copied)*75/total):75);
@@ -414,7 +414,7 @@ void install(const InstallPlan &plan,const Progress &progress)
 {
    using File=std::unique_ptr<FILE,int (*)(FILE *)>;
    File source(openImage(plan.image.path),fclose);
-   if (!source) throw std::runtime_error("The selected ISO cannot be opened. No changes were made.");
+   if (!source && !std::filesystem::is_directory(std::filesystem::u8path(plan.image.path))) throw std::runtime_error("The selected Slax source cannot be opened. No changes were made.");
    if (partitionSnapshot(*plan.disk,!plan.erase)!=plan.snapshot) throw std::runtime_error("The approved partition table changed. No changes were made.");
    auto reason=basicEligibility(plan.device,plan.image,plan.erase); if (!reason.empty()) throw std::runtime_error(reason);
    progress("Preparing verified boot files…",1);

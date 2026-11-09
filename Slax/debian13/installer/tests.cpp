@@ -17,13 +17,31 @@ extern bool xpHost;
 static std::vector<Device> hardware;
 static Action native=None;
 static bool approve=false;
+static Installer *dialogWizard=nullptr;
 
 // Stub only GUI and discovery; planning, extraction, FAT, GPT and firmware code stays real.
 std::vector<Device> scanDevices(const std::string &) { return hardware; }
-std::string chooseImage() { return ""; }
-bool confirmInstall(const std::string &text,bool) { assert(text.find("Install Slax")!=std::string::npos); return approve; }
+std::string chooseImage(bool) { return ""; }
+bool confirmInstall(const std::string &text,bool)
+{
+   assert(text.find("Install Slax")!=std::string::npos);
+   if (dialogWizard)
+   {
+      assert(dialogWizard->page==1 && dialogWizard->confirming && !dialogWizard->busy());
+      assert(dialogWizard->heading()=="Choose a target drive" && !dialogWizard->canContinue());
+   }
+   return approve;
+}
 static std::string dialogError;
-void showInstallError(const std::string &message) { dialogError=message; }
+void showInstallError(const std::string &message)
+{
+   if (dialogWizard)
+   {
+      assert(dialogWizard->page<=1 && dialogWizard->confirming && !dialogWizard->busy());
+      assert(dialogWizard->message().empty() && !dialogWizard->canContinue());
+   }
+   dialogError=message;
+}
 void invalidate() {}
 void windowAction(Action action) { native=action; }
 int runWindow() { return 0; }
@@ -114,6 +132,19 @@ int main(int argc,char **argv)
    auto real=inspectImage(argv[1]); assert(real.error.empty() && real.entries.size()>20 && real.payload>0);
    auto image=inspectImage(argv[2]); assert(image.error.empty() && image.entries.size()>6);
    assert(!inspectImage("/missing.iso").error.empty() && !inspectImage(argv[0]).error.empty());
+   // A directory and its parent resolve to the same complete Slax source, including Unicode files.
+   auto folder=inspectImage(fixtureRoot+"/tree/slax"),parentFolder=inspectImage(fixtureRoot+"/tree");
+   assert(folder.error.empty() && parentFolder.error.empty() && folder.path==parentFolder.path);
+   assert(folder.payload==image.payload && folder.entries.size()==image.entries.size());
+   std::filesystem::create_directory(fixtureRoot+"/tree/boot"); std::ofstream(fixtureRoot+"/tree/boot/vmlinuz")<<"Another operating system's kernel";
+   assert(inspectImage(fixtureRoot+"/tree").path==folder.path);
+   std::filesystem::create_directory_symlink(folder.path,fixtureRoot+"/source alias 東京");
+   assert(inspectImage(fixtureRoot+"/source alias 東京").path==folder.path);
+   std::filesystem::create_directory(fixtureRoot+"/parent alias");
+   std::filesystem::create_directory_symlink(folder.path,fixtureRoot+"/parent alias/slax");
+   assert(inspectImage(fixtureRoot+"/parent alias").path==folder.path);
+   std::filesystem::create_symlink("modules/01-core.sb",folder.path+"/unsafe-link");
+   assert(!inspectImage(folder.path).error.empty()); std::filesystem::remove(folder.path+"/unsafe-link");
    // Target filtering preserves erase metadata and distinguishes the exact decimal 1 GB boundary.
    Device parent; parent.id="parent"; parent.bytes=parent.diskBytes=10000000000;
    Partition tinyPartition,boundaryPartition,formattedPartition,unformattedPartition;
@@ -147,6 +178,17 @@ int main(int argc,char **argv)
    auto windowsEntry=firmware["Boot0000"],otherEntry=firmware["Boot0001"];
 
    auto disk=fixture(1); assert(basicEligibility(disk,image,false).empty());
+   // Exercise both directory-copy and raw FAT writers, retaining original paths for renamed EFI payloads.
+   auto beforeFolderFirmware=firmware;
+   auto folderTarget=fixture(28); install(prepareInstall(folderTarget,folder,false),[](const auto &,int) {});
+   assert(text(folderTarget.mount+"/slax/boot/vmlinuz")==text(folder.path+"/boot/vmlinuz"));
+   assert(text(folderTarget.mount+"/slax/modules/module-東京-İstanbul.sb")=="Unicode payload\n");
+   bool copiedKernel=false;
+   for (const auto &entry:std::filesystem::recursive_directory_iterator(folderTarget.partitions[1].mount))
+      if (entry.path().filename()=="vmlinuz") { assert(text(entry.path())==text(folder.path+"/boot/vmlinuz")); copiedKernel=true; }
+   assert(copiedKernel);
+   auto folderErase=fixture(29,true); install(prepareInstall(folderErase,parentFolder,true),[](const auto &,int) {});
+   firmware=beforeFolderFirmware;
    auto system=disk; system.eraseBlocked="The running system is protected";
    assert(!basicEligibility(system,image,true).empty() && basicEligibility(system,image,false).empty());
    auto encrypted=disk; encrypted.filesystem="BitLocker";
@@ -287,8 +329,11 @@ int main(int argc,char **argv)
 
    auto unsupported=fixture(14); unsupported.blocked="Owned read-only fixture"; hardware={unsupported};
    Installer modal; modal.iso=image; modal.page=1; modal.devices=hardware; modal.activate(Select,unsupported.id);
-   assert(modal.canContinue() && modal.message().empty()); modal.activate(Next); unsigned modalWrites=writeCalls; deliver(modal);
-   assert(dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites); hardware.clear();
+   dialogWizard=&modal;
+   assert(modal.canContinue() && modal.message().empty()); modal.activate(Next); unsigned modalWrites=writeCalls;
+   assert(modal.page==1 && !modal.message().empty() && !modal.indeterminate()); deliver(modal);
+   assert(modal.page==1 && dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites);
+   dialogWizard=nullptr; hardware.clear();
 
    // Whole-disk selection is derived from the latest click and restores a single row when disabled.
    Installer selection; selection.page=1; selection.iso=image;
@@ -350,37 +395,48 @@ int main(int argc,char **argv)
    assert(!partitionSnapshot(*xpPlan.disk).empty()); xpHost=false;
    assert(newLayout(xp).primary.size()==512 && prepareInstall(xp,image,true).confirmation.find("Use GPT")!=std::string::npos);
 
-   // Automatic validation advances once without selecting a target or starting writes.
+   // Automatic validation fills source metadata but only an explicit Next advances.
    Installer automatic; before=writeCalls; automatic.setImagePath(image.path,true);
-   assert(automatic.pending==Next && automatic.source==image.path && !automatic.canContinue() && automatic.busy());
+   assert(automatic.pending==CheckSource && automatic.source==image.path && !automatic.canContinue() && automatic.busy());
    deliver(automatic);
-   assert(automatic.page==1 && automatic.selected.empty() && !automatic.plan && writeCalls==before && !automatic.busy());
+   assert(automatic.page==0 && !automatic.iso.entries.empty() && automatic.canContinue() && !automatic.message().empty());
+   assert(automatic.selected.empty() && !automatic.plan && writeCalls==before && !automatic.busy());
+   automatic.activate(Next); assert(automatic.page==0 && automatic.pending==Next); deliver(automatic);
+   assert(automatic.page==1 && automatic.pending==None && writeCalls==before);
    automatic.activate(Back); deliver(automatic);
    assert(automatic.page==0 && automatic.pending==None && automatic.source.empty() && automatic.iso.path==image.path);
-   Installer invalidSource; invalidSource.setImagePath(fixtureRoot+"/missing-source.iso",true); deliver(invalidSource);
-   assert(invalidSource.page==0 && !invalidSource.error.empty() && invalidSource.pending==None && writeCalls==before);
+   Installer invalidSource; dialogWizard=&invalidSource; dialogError.clear();
+   invalidSource.setImagePath(fixtureRoot+"/missing-source.iso",true); deliver(invalidSource);
+   assert(invalidSource.page==0 && !invalidSource.iso.error.empty() && invalidSource.error.empty() && invalidSource.pending==None && writeCalls==before);
+   assert(dialogError.find(invalidSource.iso.error)!=std::string::npos && invalidSource.message().empty());
+   dialogError.clear(); deliver(invalidSource); assert(dialogError.empty()); dialogWizard=nullptr;
    Installer noSource; noSource.setImagePath("",true); assert(noSource.page==0 && noSource.pending==None);
 
    // Typed and pasted paths are not validated until Next, including a retry at the same path.
    Installer input; input.setImagePath(fixtureRoot+"/missing-東京-İstanbul.iso");
    assert(input.source.empty() && input.message().empty() && input.canContinue());
-   input.activate(Next); deliver(input);
-   assert(input.page==0 && !input.error.empty() && input.source.empty() && input.canContinue());
-   auto feedback=input.message(); assert(std::count(feedback.begin(),feedback.end(),'\n')==2 && feedback.find("\nReason: ")!=std::string::npos);
+   dialogWizard=&input; input.activate(Next); deliver(input);
+   assert(input.page==0 && !input.iso.error.empty() && input.error.empty() && input.source.empty() && input.canContinue());
+   assert(input.message().empty() && dialogError.find(input.iso.error)!=std::string::npos);
+   dialogError.clear(); input.activate(Next); deliver(input);
+   assert(input.page==0 && !dialogError.empty() && input.message().empty() && writeCalls==before);
+   dialogWizard=nullptr;
    input.setImagePath("\""+image.path+"\""); assert(input.error.empty() && input.source.empty());
    input.activate(Next); deliver(input); assert(input.page==1 && input.iso.path==image.path && input.iso.error.empty());
    input.activate(Back); input.setImagePath(fixtureRoot+"/different.iso");
    assert(input.page==0 && input.iso.entries.empty() && input.message().empty() && input.source.empty());
 
    auto drive=fixture(5,true); hardware={drive}; Installer wizard; wizard.iso=image;
+   dialogWizard=&wizard;
    wizard.activate(Next); wizard.scannedRevision=wizard.revision-1; wizard.scanReady=true; wizard.tick(); assert(wizard.page==0);
    deliver(wizard); assert(wizard.page==1 && wizard.pending==None); wizard.activate(Select,drive.id); wizard.activate(Erase);
-   wizard.activate(Next); assert(wizard.displayPage()==2 && wizard.indeterminate() && !wizard.progressText().empty() && wizard.busy());
-   before=writeCalls; deliver(wizard); assert(wizard.page==1 && wizard.displayPage()==1 && !wizard.plan && writeCalls==before && !wizard.busy());
+   wizard.activate(Next); assert(wizard.page==1 && !wizard.indeterminate() && !wizard.message().empty() && wizard.busy());
+   assert(wizard.heading()=="Choose a target drive" && !wizard.canContinue());
+   before=writeCalls; deliver(wizard); assert(wizard.page==1 && !wizard.plan && writeCalls==before && !wizard.busy());
    approve=true; wizard.activate(Next); deliver(wizard); assert(wizard.pending==Confirm);
    hardware.clear(); deliver(wizard); assert(wizard.page==1 && !dialogError.empty() && wizard.message().empty() && writeCalls==before);
    hardware={drive}; deliver(wizard); wizard.activate(Select,drive.id); wizard.activate(Next); deliver(wizard);
-   assert(wizard.displayPage()==2 && wizard.pending==Confirm);
+   assert(wizard.page==1 && wizard.pending==Confirm && !wizard.message().empty() && writeCalls==before);
    // A slow scanner must not block the GUI handoff or allow writes before it finishes.
    std::atomic<bool> releaseScan{false},scanFinished{false};
    wizard.scanner=std::thread([&]
@@ -394,5 +450,6 @@ int main(int argc,char **argv)
    wizard.activate(Close); assert(native==None);
    for (int i=0; i<1000 && wizard.page==2; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); wizard.tick(); }
    wizard.stop(); assert(wizard.page==3 && wizard.error.empty() && wizard.percent==100 && !wizard.busy()); wizard.activate(Next); assert(native==Close);
+   dialogWizard=nullptr;
    puts("Installer: ISO, SHA-256, GPT/FAT32 writes, existing files, Windows multiboot, firmware rollback, disconnection and confirmation checks passed.");
 }

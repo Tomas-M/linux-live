@@ -134,7 +134,8 @@ void Installer::refresh(Action action)
 {
    pending=action;
    std::lock_guard<std::mutex> lock(mutex);
-   source=page==0 && action!=Next?"":iso.path; requestId=page==1 && (action==Next || action==Confirm)?selected:"";
+   bool checkingSource=action==Next || action==CheckSource;
+   source=page==0 && !checkingSource?"":iso.path; requestId=page==1 && (action==Next || action==Confirm)?selected:"";
    requestErase=erase; revision++;
 }
 
@@ -143,7 +144,7 @@ void Installer::setImagePath(const std::string &path,bool automatic)
 {
    if (page!=0 || pending!=None || iso.path==path) return;
    iso={}; iso.path=path; selected.clear(); error.clear(); plan.reset();
-   refresh(automatic?Next:None); invalidate();
+   refresh(automatic?CheckSource:None); invalidate();
 }
 
 // Whole-disk highlighting is derived from the last clicked row, never a second selection list.
@@ -181,7 +182,11 @@ void Installer::tick()
       if (page==0)
       {
          iso=checked; error=iso.error;
-         if (error.empty() && action==Next) page=1;
+         if (!error.empty())
+         {
+            confirming=true; invalidate(); showInstallError(error+"\n\nCheck the source path or choose a source ISO image or Slax directory."); confirming=false; error.clear();
+         }
+         if (iso.error.empty() && action==Next) page=1;
          else refresh(None);
       }
       else if (page==1)
@@ -244,9 +249,9 @@ void Installer::activate(Action action,const std::string &id)
    if (action==Close) { windowAction(Close); return; }
    if (action==Back && page==1) { plan.reset(); page=0; refresh(None); error=iso.error; }
    if (pending!=None) { invalidate(); return; }
-   if (action==Browse)
+   if (action==Browse || action==BrowseDirectory)
    {
-      choosing=true; auto path=chooseImage();
+      choosing=true; auto path=chooseImage(action==BrowseDirectory);
       if (!path.empty()) setImagePath(path);
       choosing=false;
    }
@@ -289,11 +294,8 @@ void Installer::stop()
    if (scanner.joinable()) scanner.join();
 }
 
-// Show preparation immediately without treating preflight as an active disk writer.
-int Installer::displayPage() const { return page==1 && (pending!=None || confirming)?2:page; }
-
 // Unknown work uses a moving indicator until real installation progress is available.
-bool Installer::indeterminate() const { return displayPage()==2 && (page!=2 || percent==0); }
+bool Installer::indeterminate() const { return page==2 && percent==0; }
 
 // Show work feedback for requested checks and writes, not routine background discovery.
 bool Installer::busy() const { return pending!=None || page==2; }
@@ -301,8 +303,7 @@ bool Installer::busy() const { return pending!=None || page==2; }
 // Shared page headings keep both native frontends in the same workflow.
 std::string Installer::heading() const
 {
-   const char *titles[]={"Choose an ISO file","Choose a target drive","Installing Slax","Installation complete"};
-   if (page==1 && displayPage()==2) return "Preparing installation";
+   const char *titles[]={"Choose a Slax source","Choose a target drive","Installing Slax","Installation complete"};
    if (page==3 && !error.empty()) return "Installation failed";
    return titles[page];
 }
@@ -310,8 +311,7 @@ std::string Installer::heading() const
 // Describe actual writes and keep the result tied to verified completion.
 std::string Installer::introduction() const
 {
-   const char *text[]={"Select the Slax ISO image you want to install.","Select a disk or partition that will hold Slax.","Keep the source and target connected. Do not turn off the computer.","Slax was copied and verified, and its boot files are ready. Restart and select Slax or the target disk in the boot menu."};
-   if (page==1 && displayPage()==2) return "Please wait while the installation is prepared.";
+   const char *text[]={"Select a source ISO image or source folder containing Slax files.","Select a disk or partition that will hold Slax.","Keep the source and target connected. Do not turn off the computer.","Slax was copied and verified, and its boot files are ready. Restart and select Slax or the target disk in the boot menu."};
    if (page==3 && !error.empty()) return error;
    return text[page];
 }
@@ -319,24 +319,17 @@ std::string Installer::introduction() const
 // Progress is supplied by real completed I/O, never by an elapsed-time simulation.
 std::string Installer::progressText() const
 {
-   if (page==1 && pending==Next) return "Checking the target and preparing installation…";
-   if (page==1 && pending==Confirm) return "Preparing installation…";
+   if (page==1 && pending==Next) return "Checking the target and preparing the installation plan…";
+   if (page==1 && pending==Confirm) return "Rechecking the approved installation plan…";
    if (page==1 && confirming) return "Waiting for your confirmation…";
    std::lock_guard<std::mutex> lock(mutex); return status;
 }
 
-// Keep metadata, checks and validation feedback in the same consistently spaced slot.
+// Keep source metadata and check status inline; validation failures use native dialogs.
 std::string Installer::message() const
 {
-   if (page==1) return "";
-   if (pending!=None) return "Checking the ISO image…";
-   if (!error.empty())
-   {
-      auto reason=error;
-      while (!reason.empty() && (reason.back()=='\r' || reason.back()=='\n')) reason.pop_back();
-      return std::string(page==0?"The selected ISO image cannot be used.":"The selected target cannot be used.")+"\nReason: "+reason+"\n"+
-         (page==0?"Check the path or choose a current Slax ISO image.":"Review the target or choose another disk or partition.");
-   }
+   if (page==1) return pending!=None?progressText():"";
+   if (pending!=None) return "Checking the Slax source…";
    if (page==0 && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
    return "";
 }

@@ -22,6 +22,18 @@ Linux Live Kit
 
 Slax
 ----
+- Show source validation errors in native dialogs in both installers, keeping
+  the source page available for correcting the path.
+- Keep automatically detected sources on the source page until Next in both
+  installers. Check and confirm target plans on the target page; show installation
+  progress only after approval and successful revalidation.
+- Add Slax Installer to the xlunch application menu with a clover, disk and USB
+  icon. Store its unpacked Linux executable in the desktop
+  module and detect the current Slax data under /run/initramfs, including
+  copy-to-RAM sessions.
+- Let both installers select an ISO image or Slax directory from a Browse menu.
+  Accept either the Slax directory itself or its parent and stream its files
+  directly while preserving the normal source checks and copy verification.
 - Replace the separate BIOS boot partition on newly erased GPT disks with
   reserved BIOS embedding space before the first usable LBA. Preserve BIOS
   and UEFI boot without exposing a raw partition that Windows offers to format.
@@ -29,8 +41,9 @@ Slax
   directly, including virtual CD/DVD drives, without requiring another ISO
   file. Follow executable symlinks and bind mounts independently of the working
   directory. Support optical-device aliases and validate the Slax payload
-  before advancing to target selection.
+  while retaining the source page for review.
 - Show a clear message when no suitable target disks are found. Hide it when
   a disk becomes available and restore it when the last disk is removed.
+  Hide the whole-disk erase option while no targets are available.
 - Fix spacing above the Install and Cancel buttons in the Linux installer's
   confirmation dialog.

@@ -3,6 +3,7 @@ set -e
 # Preserve patched Debian packages across ordinary system upgrades.
 apt-mark hold libimlib2t64 libgtk-3-0t64 libgtk2.0-0t64 fluxbox picom xfce4-panel xfce4-docklike-plugin volumeicon-alsa connman-gtk libfm4t64 libfm-gtk3-4t64 pcmanfm
 cp -a rootcopy/. /
+install -m 755 /kit/Slax/debian13/installers/slax-install-linux /usr/bin/slax-install-linux
 # Preserve Debian's other driver rules while coordinating the boot splash.
 mkdir -p /etc/udev/rules.d
 sed '/^ENV{MODALIAS}==/ {
