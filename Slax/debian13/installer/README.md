@@ -77,7 +77,7 @@ The small BIOS core loads matching external modules from the new Slax folder.
 Its prefix follows the disk selected by the BIOS and the approved partition
 number, so it does not assume a fixed BIOS disk number. A traditional MBR gap
 must be entirely empty; occupied original embedding areas are retained intact.
-GPT uses an empty BIOS boot partition or creates one in verified free space.
+Preserving an existing GPT uses an empty BIOS boot partition or creates one in verified free space.
 If necessary, MBR can add a small type 0xDA BIOS partition in a zero-filled free
 extent outside every existing partition. No existing filesystem is resized.
 
@@ -120,8 +120,11 @@ is absent or zero; no force-mount option is used.
 
 Erase means the complete physical parent, including all sibling drive letters
 and hidden partitions. The confirmation lists them. The usual layout is GPT:
-a 1 MiB BIOS boot partition, a FAT32 ESP (256 MiB with 512-byte sectors or
-512 MiB with 4096-byte sectors), then a full-capacity FAT32 Slax data partition.
+reserved BIOS boot space before the 1 MiB-aligned FAT32 ESP (256 MiB with
+512-byte sectors or 512 MiB with 4096-byte sectors), then a full-capacity FAT32
+Slax data partition. The GPT's first usable LBA starts at the ESP, protecting
+the preceding embedding space without a separate raw BIOS partition that
+Windows could expose and offer to format.
 
 Actual Windows XP, including XP x64, uses MBR with active Slax data first and a
 small type 0xEF ESP second. This keeps the Slax folder accessible on XP USB media.

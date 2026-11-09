@@ -34,6 +34,12 @@ static std::string text(const std::string &path)
    std::ifstream file(path,std::ios::binary); return {std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>()};
 }
 
+// Write portable little-endian fields in the legacy GPT fixture.
+static void putLittle(std::vector<unsigned char> &data,size_t offset,uint64_t value,unsigned bytes)
+{
+   for (unsigned i=0; i<bytes; i++) data[offset+i]=value>>(i*8);
+}
+
 // Create an owned sparse disk with valid redundant GPT and separate mounted-filesystem fixtures.
 static Device fixture(unsigned n,bool usb=false,uint32_t sector=512)
 {
@@ -41,7 +47,21 @@ static Device fixture(unsigned n,bool usb=false,uint32_t sector=512)
    d.sector=sector;
    d.id=d.diskId="fixture-"+std::to_string(n); d.path=d.disk; d.name="Owned test disk 東京"; d.label="Disk "+std::to_string(n); d.usb=usb;
    int fd=open(d.disk.c_str(),O_RDWR|O_CREAT|O_EXCL,0600); assert(fd>=0 && !ftruncate(fd,d.diskBytes)); close(fd);
-   auto layout=newLayout(d); Disk disk(d); disk.claim(true); writeLayout(disk,layout);
+   auto layout=newLayout(d);
+   assert(!layout.bios.number && layout.efi.number==1 && layout.data.number==2);
+   assert(layout.bios.start+layout.bios.bytes==layout.efi.start && disk64(layout.primary.data()+40)*sector==layout.efi.start);
+   assert(std::all_of(layout.table.begin()+256,layout.table.end(),[](unsigned char c) { return c==0; }));
+   // Preserve-mode fixtures retain an existing BIOS partition inside their older usable range.
+   layout.bios.number=3;
+   const unsigned char biosType[]={0x48,0x61,0x68,0x21,0x49,0x64,0x6f,0x6e,0x74,0x4e,0x65,0x65,0x64,0x45,0x46,0x49};
+   memcpy(layout.table.data()+256,biosType,16); memcpy(layout.table.data()+272,layout.primary.data()+56,16);
+   putLittle(layout.table,288,layout.bios.start/sector,8); putLittle(layout.table,296,(layout.bios.start+layout.bios.bytes)/sector-1,8);
+   for (auto header:{&layout.primary,&layout.backup})
+   {
+      putLittle(*header,40,layout.bios.start/sector,8); putLittle(*header,88,crc32(layout.table.data(),layout.table.size()),4);
+      putLittle(*header,16,0,4); putLittle(*header,16,crc32(header->data(),92),4);
+   }
+   Disk disk(d); disk.claim(true); writeLayout(disk,layout);
    std::vector<unsigned char> ntfs(sector); memcpy(ntfs.data()+3,"NTFS    ",8); disk.write(layout.data.start,ntfs.data(),ntfs.size()); disk.release();
    layout.efi.mount=fixtureRoot+"/efi"+std::to_string(n); layout.data.mount=fixtureRoot+"/data"+std::to_string(n);
    std::filesystem::create_directories(layout.efi.mount+"/EFI/Microsoft/Boot"); std::filesystem::create_directory(layout.data.mount);
@@ -49,7 +69,7 @@ static Device fixture(unsigned n,bool usb=false,uint32_t sector=512)
    layout.data.label="D:"; layout.data.filesystem="NTFS"; layout.data.uuid="1122334455667788";
    layout.efi.type="c12a7328-f81f-11d2-ba4b-00a0c93ec93b"; layout.efi.filesystem="FAT32";
    d.partitions={layout.bios,layout.efi,layout.data}; d.layout="gpt-owned-fixture";
-   static_cast<Partition &>(d)=layout.data; d.path=d.disk+"#3"; d.free=UINT64_MAX;
+   static_cast<Partition &>(d)=layout.data; d.path=d.disk+"#"+std::to_string(d.number); d.free=UINT64_MAX;
    return d;
 }
 
@@ -148,7 +168,8 @@ int main(int argc,char **argv)
    append(0,2);
    option.insert(option.end(),{4,1,42,0}); append(disk.partitions[1].number,4); append(disk.partitions[1].start/512,8); append(disk.partitions[1].bytes/512,8);
    std::vector<unsigned char> entries(512); { Disk raw(disk); raw.read(1024,entries.data(),entries.size()); }
-   option.insert(option.end(),entries.begin()+128+16,entries.begin()+128+32); option.insert(option.end(),{2,2,4,4}); append(4+(loader.size()+1)*2,2);
+   auto efiGuid=entries.begin()+(disk.partitions[1].number-1)*128+16;
+   option.insert(option.end(),efiGuid,efiGuid+16); option.insert(option.end(),{2,2,4,4}); append(4+(loader.size()+1)*2,2);
    for (char16_t c:loader) append(c,2);
    append(0,2); option.insert(option.end(),{0x7f,0xff,4,0});
    firmware["Boot0005"]=option; firmware["BootOrder"]={0,0,1,0,5,0};
@@ -162,7 +183,7 @@ int main(int argc,char **argv)
    option.clear(); loader=u"\\EFI\\Microsoft\\Boot\\bootmgfw.efi";
    append(1,4); append(42+4+(loader.size()+1)*2+4,2); append('W',2); append(0,2);
    option.insert(option.end(),{4,1,42,0}); append(disk.partitions[1].number,4); append(disk.partitions[1].start/512,8); append(disk.partitions[1].bytes/512,8);
-   option.insert(option.end(),entries.begin()+128+16,entries.begin()+128+32); option.insert(option.end(),{2,2,4,4}); append(4+(loader.size()+1)*2,2);
+   option.insert(option.end(),efiGuid,efiGuid+16); option.insert(option.end(),{2,2,4,4}); append(4+(loader.size()+1)*2,2);
    for (char16_t c:loader) append(c,2);
    append(0,2); option.insert(option.end(),{0x7f,0xff,4,0,1,2,3,4}); firmware["Boot0005"]=option;
    assert(prepareInstall(disk,image,false).efiFirst=="/EFI/Microsoft/Boot/bootmgfw.efi");
