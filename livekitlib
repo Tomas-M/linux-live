@@ -537,7 +537,7 @@ init_network_ip()
 
    echo "* Setting up network" >&2
 
-   if [ "$IP" != "" ]; then
+   if [ "$IP" != "" -a "$IP" != dhcp ]; then
       # set IP address as given by boot paramter
       echo "$IP" | while IFS=":" read CLIENT SERVER GW MASK; do
          ifconfig $ETH "$CLIENT" netmask "$MASK"
@@ -546,9 +546,11 @@ init_network_ip()
          echo nameserver "$SERVER" >> /etc/resolv.conf
       done
    else
-      # if client ip is unknown, try to get a DHCP lease
+      # An omitted address or ip=dhcp requests a DHCP lease.
       ifconfig $ETH up
-      echo -e '#!/bin/sh\nif [ "$1" != "bound" ]; then exit; fi\nifconfig $interface $ip netmask $subnet\nroute add default gw $router\necho nameserver $dns >>/etc/resolv.conf' >$SCRIPT
+      printf '%s\n' '#!/bin/sh' 'if [ "$1" != "bound" ]; then exit; fi' \
+         'ifconfig $interface $ip netmask $subnet' 'route add default gw $router' \
+         'echo nameserver $dns >>/etc/resolv.conf' >"$SCRIPT"
       chmod a+x $SCRIPT
       udhcpc -i $ETH -n -s $SCRIPT -q >/dev/null
    fi
@@ -1485,6 +1487,7 @@ fstab_create()
 change_root()
 {
    debug_log "change_root" "$*"
+   local LOG
    if [ -e /run/bootsplash.disabled ]; then splash_disable; fi
 
    # if we are booting over httpfs, we need to copyup some files so they are
@@ -1527,10 +1530,11 @@ change_root()
    if [ "$INIT" = "" ]; then fatal "Can't find executable init command"; fi
 
    mkdir -p run
-   if [ -f /var/log/boot.log ]; then
-      mkdir -p var/log
-      cp /var/log/boot.log var/log/boot.log
-   fi
+   # Preserve initramfs diagnostics in the booted system, including text boots.
+   mkdir -p var/log
+   for LOG in boot.log livedbg from.log; do
+      if [ -f "/var/log/$LOG" ]; then cp "/var/log/$LOG" "var/log/$LOG"; fi
+   done
    mount -t tmpfs tmpfs run
    # Let the splash release the initrd and follow startup until a console or X takes over.
    if [ "$SPLASH_PID" ]; then
