@@ -15,9 +15,9 @@ CWD="$(pwd)"
 allow_only_root
 
 # check for xz
-if [ "$(xz --help 2>&1 | grep -i "Compress")" = "" ]; then
-   echo "xz not found or cannot compress"
-   echo "you may consider installing xz-tools package"
+if ! command -v xz >/dev/null; then
+   echo "xz not found"
+   echo "Install XZ Utils before building your Live Kit"
    exit 1
 fi
 
