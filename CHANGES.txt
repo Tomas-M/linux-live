@@ -22,6 +22,15 @@ Linux Live Kit
 
 Slax
 ----
+- Put Cancel before Install in both installers' confirmation dialogs.
+- Place both media installers in /slax/installer.
+- Keep Linux installer plans read-only and open writable disk handles under
+  the approved disk lock, avoiding a race with udev after plan confirmation.
+- Reuse reserved GPT BIOS space when installing again to an existing partition.
+  On data-only disks, allow replacing the old BIOS loader after a clear plan
+  warning; retain OS protection and back up all overwritten boot bytes.
+- Show short source and target check status in the installer footer, keeping
+  the target list and whole-disk erase option in place during checks.
 - Show source validation errors in native dialogs in both installers, keeping
   the source page available for correcting the path.
 - Keep automatically detected sources on the source page until Next in both

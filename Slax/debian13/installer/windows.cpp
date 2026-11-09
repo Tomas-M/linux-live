@@ -27,7 +27,7 @@
 static HWND window;
 static float scale=1;
 
-enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator };
+enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,FooterStatus };
 static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
 
 struct WinCard
@@ -99,7 +99,7 @@ static void fonts()
    for (auto item:ui.controls) if (item) SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
    if (ui.controls[Heading]) SendMessageW(ui.controls[Heading],WM_SETFONT,reinterpret_cast<WPARAM>(ui.title),TRUE);
    if (ui.controls[Intro]) SendMessageW(ui.controls[Intro],WM_SETFONT,reinterpret_cast<WPARAM>(ui.intro),TRUE);
-   for (int id:{Step,Footer}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
+   for (int id:{Step,Footer,FooterStatus}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
    for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
    for (const auto &card:ui.cards)
    {
@@ -381,7 +381,7 @@ static void layoutContent()
    RECT outer,viewport; GetWindowRect(ui.panel,&outer); GetClientRect(ui.panel,&viewport);
    struct Field { int id; float x,y,width,height; };
    std::vector<Field> fields;
-   bool messageVisible=page==0 || (page==1 && !app.message().empty());
+   bool messageVisible=page==0;
    for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message})
    {
       bool isoField=page==0 && (id==PathLabel || id==Path || id==BrowseButton);
@@ -420,7 +420,7 @@ static void layoutContent()
          if (app.devices.empty()) { h=textHeight(Empty,w); add(Empty,x,y,w,h); }
          else
          {
-            float reserve=10+std::max(34.0f,textHeight(EraseButton,w-20))+12+(messageVisible?messageHeight+13:0);
+            float reserve=10+std::max(34.0f,textHeight(EraseButton,w-20))+12;
             h=std::max(62.0f,viewport.bottom/scale-y-reserve);
             add(Drives,x,y,w,h);
             y+=h+10; h=std::max(34.0f,textHeight(EraseButton,w-20)); add(EraseButton,x,y,w,h);
@@ -440,7 +440,6 @@ static void layoutContent()
       }
       if (messageVisible)
       {
-         if (page==1) y+=13;
          add(Message,x,y,messageWidth,messageHeight); y+=messageHeight;
       }
       SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
@@ -470,7 +469,8 @@ static void layoutWindow()
       place(StepNumber+i,22,86+i*40,24,24,false); place(StepName+i,56,83+i*40,rail-66,31,false);
    }
    position(ui.panel,int(rail*scale),0,int((width-rail)*scale),int(footer*scale));
-   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,width-197,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
+   place(Separator,0,footer,width,1,false); place(Footer,15,footer+11,rail-30,35,false); ShowWindow(ui.controls[Footer],SW_SHOW);
+   place(FooterStatus,rail+30,footer+11,width-rail-217,35,false); ShowWindow(ui.controls[FooterStatus],SW_SHOW);
    place(BackButton,width-175,footer+11,59,35,false); place(NextButton,width-108,footer+11,92,35,false);
    layoutContent();
 }
@@ -483,6 +483,7 @@ static void updateWindow()
    int page=app.page;
    text(Step,"Step "+std::to_string(page+1)+" of 4"); text(Heading,app.heading()); text(Intro,app.introduction());
    text(Path,app.iso.path); text(Message,app.message());
+   text(FooterStatus,page<2 && app.pending!=None?app.progressText():"");
    text(Target,app.target); text(Status,app.progressText()); text(Percent,std::to_string(app.percent)+"%");
    text(NextButton,app.page==3?(app.error.empty()?"Finish":"Try again"):"Next");
    LONG progressStyle=GetWindowLongW(ui.controls[Progress],GWL_STYLE); bool pulse=app.indeterminate();
@@ -615,8 +616,8 @@ static INT_PTR CALLBACK confirmEvents(HWND dialog,UINT message,WPARAM wp,LPARAM 
    {
       auto text=reinterpret_cast<const std::wstring *>(lp);
       HWND body=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",text->c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|ES_MULTILINE|ES_READONLY|ES_AUTOVSCROLL,0,0,1,1,dialog,reinterpret_cast<HMENU>(100),GetModuleHandleW(nullptr),nullptr);
-      HWND yes=CreateWindowExW(0,L"BUTTON",L"Install",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,1,1,dialog,reinterpret_cast<HMENU>(IDYES),GetModuleHandleW(nullptr),nullptr);
       HWND no=CreateWindowExW(0,L"BUTTON",L"Cancel",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_DEFPUSHBUTTON,0,0,1,1,dialog,reinterpret_cast<HMENU>(IDNO),GetModuleHandleW(nullptr),nullptr);
+      HWND yes=CreateWindowExW(0,L"BUTTON",L"Install",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,0,0,1,1,dialog,reinterpret_cast<HMENU>(IDYES),GetModuleHandleW(nullptr),nullptr);
       for (auto item:{body,yes,no}) SendMessageW(item,WM_SETFONT,reinterpret_cast<WPARAM>(ui.body),TRUE);
       RECT work,parent; SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0); GetWindowRect(window,&parent);
       int width=std::min(int(650*scale),int(work.right-work.left-32)),height=std::min(int(430*scale),int(work.bottom-work.top-48));
@@ -629,8 +630,8 @@ static INT_PTR CALLBACK confirmEvents(HWND dialog,UINT message,WPARAM wp,LPARAM 
    {
       RECT client; GetClientRect(dialog,&client); int margin=int(14*scale),button=int(86*scale),height=int(35*scale),gap=int(8*scale);
       position(GetDlgItem(dialog,100),margin,margin,client.right-margin*2,client.bottom-margin*3-height);
-      position(GetDlgItem(dialog,IDYES),client.right-margin-button*2-gap,client.bottom-margin-height,button,height);
-      position(GetDlgItem(dialog,IDNO),client.right-margin-button,client.bottom-margin-height,button,height);
+      position(GetDlgItem(dialog,IDNO),client.right-margin-button*2-gap,client.bottom-margin-height,button,height);
+      position(GetDlgItem(dialog,IDYES),client.right-margin-button,client.bottom-margin-height,button,height);
       SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE;
       GetScrollInfo(GetDlgItem(dialog,100),SB_VERT,&scroll); ShowScrollBar(GetDlgItem(dialog,100),SB_VERT,scroll.nPage && scroll.nMax>=int(scroll.nPage));
       RedrawWindow(dialog,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
@@ -751,7 +752,7 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    {
       auto item=reinterpret_cast<HWND>(lp); auto dc=reinterpret_cast<HDC>(wp); int id=GetDlgCtrlID(item);
       SetBkMode(dc,OPAQUE); SetBkColor(dc,GetSysColor(COLOR_WINDOW)); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
-      if (id==Message) SetTextColor(dc,RGB(84,96,86));
+      if (id==Message || id==FooterStatus) SetTextColor(dc,RGB(84,96,86));
       if (id==Step || (id>=StepName && id<StepName+4)) SetTextColor(dc,RGB(57,119,33));
       if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
       bool stepControl=(id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
@@ -820,6 +821,7 @@ int runWindow()
    control(Drives,L"SlaxInstallerDevices",WS_VSCROLL|WS_CLIPCHILDREN|WS_TABSTOP,ui.panel,WS_EX_CONTROLPARENT);
    control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
    control(Result,L"STATIC",SS_BITMAP,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
+   control(FooterStatus,L"STATIC",SS_LEFT|SS_CENTERIMAGE|SS_ENDELLIPSIS|SS_NOPREFIX,window);
    control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
    text(PathLabel,"Source ISO image or Slax directory"); text(BrowseButton,"Browse…"); text(Empty,"No suitable disks found. Connect a disk to continue.");
    text(EraseButton,"Erase entire selected disk (including all other partitions on it)"); text(Footer,"Slax Installer"); text(BackButton,"Back");

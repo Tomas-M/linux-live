@@ -329,7 +329,7 @@ std::string filenameKey(const std::string &name)
    char *folded=g_utf8_casefold(name.c_str(),name.size()); std::string result=folded; g_free(folded); return result;
 }
 
-struct Disk::Impl { int fd=-1,exclusive=-1; bool claimed=false; std::vector<DiskRange> ranges; };
+struct Disk::Impl { int fd=-1,writable=-1,exclusive=-1; bool claimed=false; std::vector<DiskRange> ranges; };
 
 // Reopen the exact physical device, refusing stale identities before taking an exclusive write claim.
 Disk::Disk(const Device &expected):impl(new Impl),device(expected)
@@ -337,7 +337,7 @@ Disk::Disk(const Device &expected):impl(new Impl),device(expected)
    auto current=scanDevices("");
    auto found=std::find_if(current.begin(),current.end(),[&](const Device &d) { return d.id==expected.id; });
    if (found==current.end() || found->layout!=expected.layout || found->diskId!=expected.diskId) throw std::runtime_error("The selected disk or partition layout changed. Select it again.");
-   impl->fd=open(expected.disk.c_str(),O_RDWR|O_CLOEXEC|O_NOFOLLOW);
+   impl->fd=open(expected.disk.c_str(),O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
    if (impl->fd<0) failed("Cannot open the selected physical disk; run the installer as root");
    struct stat s; uint64_t bytes=0; int sector=0;
    bool valid=!fstat(impl->fd,&s) && S_ISBLK(s.st_mode) && !ioctl(impl->fd,BLKGETSIZE64,&bytes) && !ioctl(impl->fd,BLKSSZGET,&sector);
@@ -347,10 +347,21 @@ Disk::Disk(const Device &expected):impl(new Impl),device(expected)
 }
 
 // Release the kernel's exclusive disk claim only after all writes and verification finish.
-Disk::~Disk() { if (impl->exclusive>=0) close(impl->exclusive); if (impl->fd>=0) close(impl->fd); }
+Disk::~Disk() { release(); if (impl->fd>=0) close(impl->fd); }
 
-// Serialize cooperating installers across all target partitions on this physical disk.
-void Disk::reserve() { if (flock(impl->fd,LOCK_EX|LOCK_NB)) failed("Another disk operation is already using this physical disk"); }
+// Planning stays read-only: closing a writable block handle would trigger a competing udev probe.
+void Disk::reserve()
+{
+   if (impl->writable>=0) return;
+   if (flock(impl->fd,LOCK_EX|LOCK_NB)) failed("Another disk operation is already using this physical disk");
+   verify();
+   impl->writable=open(device.disk.c_str(),O_RDWR|O_CLOEXEC|O_NOFOLLOW);
+   if (impl->writable<0) failed("Cannot open the selected physical disk for writing");
+   struct stat original,current; uint64_t sequence=0;
+   bool sameNode=!fstat(impl->fd,&original) && !fstat(impl->writable,&current) && original.st_dev==current.st_dev && original.st_ino==current.st_ino && original.st_rdev==current.st_rdev;
+   bool sameMedium=!device.sequence || (!ioctl(impl->writable,BLKGETDISKSEQ,&sequence) && sequence==device.sequence);
+   if (!sameNode || !sameMedium) throw std::runtime_error("The approved disk or removable medium changed; installation was stopped.");
+}
 
 // Claim the whole device only after approval, while retaining the originally approved disk handle.
 void Disk::claim(bool erase)
@@ -386,6 +397,8 @@ void Disk::release()
    impl->ranges.clear();
    impl->claimed=false;
    if (impl->exclusive>=0) { close(impl->exclusive); impl->exclusive=-1; }
+   // Keep udev excluded until every writable block handle has closed.
+   if (impl->writable>=0) { close(impl->writable); impl->writable=-1; }
    flock(impl->fd,LOCK_UN);
 }
 
@@ -404,7 +417,7 @@ void Disk::write(uint64_t offset,const void *data,size_t bytes)
    for (const auto &range:impl->ranges) if (offset>=range.start && offset-range.start<=range.bytes && bytes<=range.bytes-(offset-range.start)) approved=true;
    verify();
    if (!approved || offset>device.diskBytes || bytes>device.diskBytes-offset || offset%device.sector || bytes%device.sector) throw std::runtime_error("An unapproved, unaligned or out-of-range disk write was refused.");
-   if (pwrite(impl->fd,data,bytes,offset)!=ssize_t(bytes)) failed("Cannot write the selected disk completely");
+   if (pwrite(impl->writable,data,bytes,offset)!=ssize_t(bytes)) failed("Cannot write the selected disk completely");
 }
 
 // The kernel generation counter distinguishes card-reader media replacements from the same device node.
@@ -415,7 +428,7 @@ void Disk::verify()
 }
 
 // Report device flush failures instead of showing installation success prematurely.
-void Disk::flush() { if (fsync(impl->fd)) failed("Cannot flush the target disk"); }
+void Disk::flush() { if (fsync(impl->writable)) failed("Cannot flush the target disk"); }
 
 struct FileTree::Impl
 {

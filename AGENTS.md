@@ -104,8 +104,8 @@ reporting progress.
   Inspect nearby code before changing `livekitlib` or other existing scripts.
   Prefer familiar `if ... then ... fi` blocks and `while true`. Do not introduce
   `case`, `while :`, or standalone `[ ... ]` guards in newly written shell code.
-- Slax's USB installer is native: `/slax/slax-install-linux` for Slax and
-  `/slax/slax-install.exe` for Windows XP and later. Prebuilt binaries live in
+- Slax's USB installer is native: `/slax/installer/slax-install-linux` for Slax and
+  `/slax/installer/slax-install.exe` for Windows XP and later. Prebuilt binaries live in
   `Slax/debian13/installers`. Sources, original branding
   and the ICO are in `Slax/debian13/installer`. Use standard GTK 3 and Win32
   windows, controls, file choosers and confirmation dialogs; retain the supplied
@@ -113,7 +113,9 @@ reporting progress.
   or controls. USB entries use rounded cards, a tinted device badge and native
   radio buttons. Keep the left step panel visible; use a 720 by 400 logical-pixel
   minimum client size. Reserve one consistently spaced message area under the
-  source path for metadata and checking status. Show source validation errors in
+  source path for metadata. Show short source and target check status in a fixed
+  footer area aligned with the content, without moving drive rows or Erase.
+  Show source validation errors in
   a native modal dialog, retaining the editable source page after dismissal.
   Keep the source path editable, including clipboard paste. Browse has a dropdown
   arrow and a native menu for ISO image or Slax directory selection in both
@@ -127,12 +129,14 @@ reporting progress.
   Next advances to step 2. Back returns to the editable path. Keep only Back and Next in the
   wizard footer; close through the native window controls. Preserve the write-phase
   close protection and Cancel in file/installation confirmation dialogs.
+  Installation confirmations place Cancel on the left and Install on the right,
+  with Cancel remaining the keyboard default on both platforms.
   The sidebar clover is 32 by 32 logical pixels, using slax.ico's exact 32-pixel
   frame. Windows loads the ICO natively for DPI scaling; GTK uses its extracted PNG.
   Default client size is 832 by 540 logical pixels, fitting four normal drive
   cards with a small reserve. Keep target errors off the selection page; Next
   always opens a neutral native error or a short, plain-language confirmation.
-  Target Next checks the plan on step 2 with status text and a busy cursor. Native
+  Target Next checks the plan on step 2 with footer status and a busy cursor. Native
   error and confirmation dialogs keep step 2 behind them; cancellation stays there.
   Enter step 3 only after approval and successful plan revalidation. Keep scanner joins
   off the GUI thread. Use bundled check/warning symbols instead of system status icons.
@@ -200,6 +204,12 @@ reporting progress.
   Do not create a separate raw BIOS partition in this new whole-disk layout:
   Windows can expose it and offer to format it. Preserve-mode boot planning
   still uses the existing partition layout and its verified safe embedding areas.
+  Preserve-mode BIOS planning also checks space reserved before GPT FirstUsableLBA.
+  Reuse an existing core only when its complete image and MBR boot code match the
+  requested Slax loader exactly. On verified data-only disks, allow replacing an
+  old BIOS loader in bounded embedding space or an unformatted BIOS partition,
+  with a short warning in the confirmed plan. Keep OS-bearing and unverifiable
+  disks protected. Back up overwritten MBR and core bytes and revalidate both.
   On actual Windows XP, including XP x64, or hosts restricted to the first
   removable partition (Windows before 10 build 15063), create compatible MBR:
   active FAT32 Slax data first, FAT32 ESP second (type 0xEF), GRUB BIOS in the
@@ -210,6 +220,9 @@ reporting progress.
   Keep BIOS support on 512-byte sectors and explain UEFI-only configurations.
   Protect the running system, live session, ISO and executable from erasure.
   Pin and revalidate destination disk handles and metadata across approval.
+  Linux plans open disks read-only to avoid udev close-write probes. Open and
+  validate writable handles under the disk lock after approval; close every
+  writable block handle before unlocking the retained read-only handle.
   Reopen the ISO between steps without comparing source file IDs, timestamps
   or content changes. Keep normal ISO validation and destination read-back checks.
   Verify copied files before boot activation; never force a dirty NTFS mount.
@@ -236,7 +249,7 @@ reporting progress.
   and provenance in `bootfiles/grub`, without external Windows executables or
   modules. Generic Live Kit does not include these installers. The old BAT, shell and VBS
   installers have been replaced. Keep only `vmlinuz`, `initrfs.img`, `grub.cfg`,
-  `grub` and `EFI` directly under `slax/boot`; both installers belong in `/slax`.
+  `grub` and `EFI` directly under `slax/boot`; both installers belong in `/slax/installer`.
   Slax's media README belongs at `/README.txt`; its source is
   `Slax/debian13/README.txt`, also installed as `/usr/share/slax-media/README.txt`
   so `genslaxiso` retains it after copy-to-RAM boot.

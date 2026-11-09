@@ -30,10 +30,10 @@ trap 'exit 143' TERM
 MEDIA=$BUILD/media
 unshare --mount --propagation private sh "$THIS/buildmods" "$SUITE" "$BUILD" "$MEDIA"
 BOOT=$MEDIA/slax/boot
-mkdir -p "$BOOT" "$MEDIA/slax/changes"
+mkdir -p "$BOOT" "$MEDIA/slax/changes" "$MEDIA/slax/installer"
 cp -a "$KIT/bootfiles/." "$BOOT/"
 cp -a "$THIS/bootfiles/." "$BOOT/"
-install -m 755 "$THIS/installers/slax-install-linux" "$THIS/installers/slax-install.exe" "$MEDIA/slax/"
+install -m 755 "$THIS/installers/slax-install-linux" "$THIS/installers/slax-install.exe" "$MEDIA/slax/installer/"
 cp "$THIS/README.txt" "$MEDIA/"
 sh "$THIS/build-boot" "$MEDIA" "$BUILD"
 sh "$BOOT/grub/makeiso.sh" "$BUILD/slax-amd64.iso"

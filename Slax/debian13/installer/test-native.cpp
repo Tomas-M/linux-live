@@ -32,6 +32,19 @@ int main(int argc,char **argv)
       // This owned loop models removable media; its test transport is unrelated to the work VM firmware.
       found->usb=true;
       auto plan=prepareInstall(*found,image,erase);
+      // Replacing a read-only plan must not wake udev; concurrent writers must still be refused.
+      for (int i=0; i<20; i++)
+      {
+         auto previous=std::make_unique<Disk>(*found);
+         Disk refreshed(*found); previous.reset();
+      }
+      plan.disk->reserve();
+      {
+         Disk competing(*found); bool blocked=false;
+         try { competing.reserve(); }
+         catch (const std::exception &error) { blocked=std::string(error.what()).find("Another disk operation is already using this physical disk")==0; }
+         if (!blocked) throw std::runtime_error("The physical disk lock did not reject a concurrent writer.");
+      }
       install(plan,[](const std::string &text,int percent)
       {
          static int previous=-1;

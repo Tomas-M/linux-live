@@ -246,10 +246,89 @@ int main(int argc,char **argv)
    std::vector<unsigned char> mbr(1024); mbr[450]=0x0c; mbr[510]=0x55; mbr[511]=0xaa;
    for (int b=0; b<4; b++) { mbr[454+b]=(cached.start/512)>>(b*8); mbr[458+b]=(cached.bytes/512)>>(b*8); }
    { Disk physical(cached); physical.claim(true); physical.write(0,mbr.data(),mbr.size()); physical.release(); }
-   assert(!prepareInstall(cached,image,false).bios); // Stale nonzero boot-gap metadata is never overwritten.
+   std::ofstream(cached.mount+"/bootmgr")<<"Existing Windows loader";
+   assert(!prepareInstall(cached,image,false).bios); // Occupied embedding bytes remain protected when an OS exists.
+   std::filesystem::remove(cached.mount+"/bootmgr");
+   auto replaceGap=prepareInstall(cached,image,false);
+   assert(replaceGap.bios && replaceGap.confirmation.find("BIOS boot loader on this disk will be replaced")!=std::string::npos);
    mbr.resize(1024*1024);
    { Disk physical(cached); physical.claim(true); physical.write(0,mbr.data(),mbr.size()); physical.release(); }
    assert(prepareInstall(cached,image,false).bios);
+
+   // Newly erased GPT disks reserve BIOS bytes before FirstUsableLBA without a BIOS partition.
+   auto beforeReinstallFirmware=firmware;
+   auto reinstall=fixture(50,true); auto reservedLayout=newLayout(reinstall);
+   reinstall.partitions.erase(reinstall.partitions.begin());
+   auto reinstallCore=buildBios(reinstall,true);
+   {
+      Disk raw(reinstall); raw.claim(true); writeLayout(raw,reservedLayout); raw.release();
+   }
+   auto emptyReserved=prepareInstall(reinstall,image,false);
+   assert(emptyReserved.bios && emptyReserved.bootLayout->bios.start==reservedLayout.bios.start && !emptyReserved.bootLayout->bios.number);
+   assert(emptyReserved.bootLayout->patches.empty()); emptyReserved.disk.reset();
+   std::vector<unsigned char> reservedBefore(1024*1024),reservedAfter(reservedBefore.size());
+   {
+      Disk raw(reinstall); raw.claim(true);
+      writeBios(raw,reservedLayout.bios.start,reservedLayout.bios.bytes,reinstallCore,reservedLayout.mbr);
+      raw.write(0,reservedLayout.mbr.data(),reservedLayout.mbr.size()); raw.read(0,reservedBefore.data(),reservedBefore.size()); raw.release();
+   }
+   auto repeatPlan=prepareInstall(reinstall,image,false);
+   assert(repeatPlan.bios && repeatPlan.previousBios.empty() && repeatPlan.bootLayout->patches.empty());
+   assert(repeatPlan.bootLayout->bios.start==reservedLayout.bios.start && !repeatPlan.bootLayout->bios.number);
+   assert(std::any_of(repeatPlan.bootLayout->biosBefore.begin(),repeatPlan.bootLayout->biosBefore.end(),[](char c) { return c!=0; }));
+   // Reusing an identical core still requires exact approval-time revalidation.
+   auto changed=reservedBefore; changed[reservedLayout.bios.start+600]^=1;
+   {
+      Disk raw(reinstall); raw.claim(true); raw.write(0,changed.data(),changed.size()); raw.release();
+   }
+   assert(!fails([&] { verifyBootLayout(*repeatPlan.disk,*repeatPlan.bootLayout); }).empty());
+   assert(!prepareInstall(reinstall,image,false).bios);
+   {
+      Disk raw(reinstall); raw.claim(true); raw.write(0,reservedBefore.data(),reservedBefore.size()); raw.release();
+   }
+   install(repeatPlan,[](const auto &,int) {});
+   repeatPlan.disk->read(0,reservedAfter.data(),reservedAfter.size()); assert(reservedAfter==reservedBefore);
+   std::filesystem::remove_all(reinstall.mount+"/slax");
+   auto repeated=prepareInstall(reinstall,image,false); assert(repeated.bios && repeated.previousBios.empty());
+   install(repeated,[](const auto &,int) {});
+   repeated.disk->read(0,reservedAfter.data(),reservedAfter.size()); assert(reservedAfter==reservedBefore);
+   // Data-only disks can replace an unrelated loader, with a warning and durable original bytes.
+   std::filesystem::remove_all(reinstall.mount+"/slax");
+   std::filesystem::remove_all(reinstall.partitions[0].mount+"/EFI/Microsoft");
+   std::ofstream(reinstall.mount+"/KEEP.txt")<<"Existing user data";
+   auto foreign=reservedBefore; memcpy(foreign.data(),"Foreign BIOS loader",19); foreign[reservedLayout.bios.start+600]^=1;
+   {
+      Disk raw(reinstall); raw.claim(true); raw.write(0,foreign.data(),foreign.size()); raw.release();
+   }
+   std::filesystem::create_directory(reinstall.mount+"/Windows");
+   assert(!prepareInstall(reinstall,image,false).bios);
+   std::filesystem::remove(reinstall.mount+"/Windows");
+   std::filesystem::create_directories(reinstall.partitions[0].mount+"/EFI/UnknownOS");
+   assert(!prepareInstall(reinstall,image,false).bios);
+   std::filesystem::remove(reinstall.partitions[0].mount+"/EFI/UnknownOS");
+   auto unknownSibling=reinstall; Partition unknown; unknown.number=4; unknown.bytes=1024*1024;
+   unknownSibling.partitions.push_back(unknown); assert(!prepareInstall(unknownSibling,image,false).bios);
+   auto replacePlan=prepareInstall(reinstall,image,false);
+   assert(replacePlan.bios && replacePlan.previousBios.empty() && replacePlan.bootLayout->patches.empty());
+   assert(replacePlan.confirmation.find("Any existing BIOS boot loader on this disk will be replaced.")!=std::string::npos);
+   // Approval must pin occupied BIOS bytes too, even when replacement is allowed.
+   hardware={reinstall}; Installer replacement; replacement.iso=image; replacement.page=1; replacement.devices=hardware;
+   replacement.activate(Select,reinstall.id); approve=true; replacement.activate(Next); deliver(replacement); assert(replacement.pending==Confirm);
+   changed=foreign; changed[reservedLayout.bios.start+601]^=1;
+   {
+      Disk raw(reinstall); raw.claim(true); raw.write(0,changed.data(),changed.size()); raw.release();
+   }
+   unsigned beforeReplace=writeCalls; deliver(replacement);
+   assert(replacement.page==1 && dialogError.find("changed after confirmation")!=std::string::npos && writeCalls==beforeReplace);
+   approve=false; hardware.clear();
+   {
+      Disk raw(reinstall); raw.claim(true); raw.write(0,foreign.data(),foreign.size()); raw.release();
+   }
+   install(replacePlan,[](const auto &,int) {});
+   assert(text(reinstall.mount+"/KEEP.txt")=="Existing user data");
+   assert(text(reinstall.mount+"/slax/boot/grub/boot-backup/bios-core.bin")==replacePlan.bootLayout->biosBefore);
+   assert(text(reinstall.mount+"/slax/boot/grub/boot-backup/original-mbr.bin")==replacePlan.bootLayout->originalMbr);
+   firmware=beforeReinstallFirmware;
 
    // BIOS-only NTFS installs preserve MBR partition/signature bytes and offer the original loader.
    auto legacy=biosFixture(9); auto legacyPlan=prepareInstall(legacy,image,false);
@@ -261,7 +340,7 @@ int main(int argc,char **argv)
    assert(text(legacy.mount+"/slax/boot/grub/boot-backup/original-mbr.bin")==originalMbr);
    assert(text(legacy.mount+"/slax/boot/grub/grub.cfg").find("Windows (BIOS)")!=std::string::npos);
    assert(text(legacy.mount+"/ntldr")=="Owned Windows loader sentinel");
-   assert((std::filesystem::status(legacy.mount+"/slax/slax-install-linux").permissions()&std::filesystem::perms::owner_exec)!=std::filesystem::perms::none);
+   assert((std::filesystem::status(legacy.mount+"/slax/installer/slax-install-linux").permissions()&std::filesystem::perms::owner_exec)!=std::filesystem::perms::none);
    std::string activeMbr(512,'\0'); legacyPlan.disk->read(0,activeMbr.data(),512);
    assert(activeMbr.substr(440)==originalMbr.substr(440));
 
@@ -331,7 +410,7 @@ int main(int argc,char **argv)
    Installer modal; modal.iso=image; modal.page=1; modal.devices=hardware; modal.activate(Select,unsupported.id);
    dialogWizard=&modal;
    assert(modal.canContinue() && modal.message().empty()); modal.activate(Next); unsigned modalWrites=writeCalls;
-   assert(modal.page==1 && !modal.message().empty() && !modal.indeterminate()); deliver(modal);
+   assert(modal.page==1 && modal.message().empty() && modal.progressText()=="Preparing installation plan…" && !modal.indeterminate()); deliver(modal);
    assert(modal.page==1 && dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites);
    dialogWizard=nullptr; hardware.clear();
 
@@ -398,6 +477,7 @@ int main(int argc,char **argv)
    // Automatic validation fills source metadata but only an explicit Next advances.
    Installer automatic; before=writeCalls; automatic.setImagePath(image.path,true);
    assert(automatic.pending==CheckSource && automatic.source==image.path && !automatic.canContinue() && automatic.busy());
+   assert(automatic.message().empty() && automatic.progressText()=="Checking source…");
    deliver(automatic);
    assert(automatic.page==0 && !automatic.iso.entries.empty() && automatic.canContinue() && !automatic.message().empty());
    assert(automatic.selected.empty() && !automatic.plan && writeCalls==before && !automatic.busy());
@@ -430,13 +510,13 @@ int main(int argc,char **argv)
    dialogWizard=&wizard;
    wizard.activate(Next); wizard.scannedRevision=wizard.revision-1; wizard.scanReady=true; wizard.tick(); assert(wizard.page==0);
    deliver(wizard); assert(wizard.page==1 && wizard.pending==None); wizard.activate(Select,drive.id); wizard.activate(Erase);
-   wizard.activate(Next); assert(wizard.page==1 && !wizard.indeterminate() && !wizard.message().empty() && wizard.busy());
+   wizard.activate(Next); assert(wizard.page==1 && !wizard.indeterminate() && wizard.message().empty() && wizard.progressText()=="Preparing installation plan…" && wizard.busy());
    assert(wizard.heading()=="Choose a target drive" && !wizard.canContinue());
    before=writeCalls; deliver(wizard); assert(wizard.page==1 && !wizard.plan && writeCalls==before && !wizard.busy());
    approve=true; wizard.activate(Next); deliver(wizard); assert(wizard.pending==Confirm);
    hardware.clear(); deliver(wizard); assert(wizard.page==1 && !dialogError.empty() && wizard.message().empty() && writeCalls==before);
    hardware={drive}; deliver(wizard); wizard.activate(Select,drive.id); wizard.activate(Next); deliver(wizard);
-   assert(wizard.page==1 && wizard.pending==Confirm && !wizard.message().empty() && writeCalls==before);
+   assert(wizard.page==1 && wizard.pending==Confirm && wizard.message().empty() && wizard.progressText()=="Rechecking plan…" && writeCalls==before);
    // A slow scanner must not block the GUI handoff or allow writes before it finishes.
    std::atomic<bool> releaseScan{false},scanFinished{false};
    wizard.scanner=std::thread([&]

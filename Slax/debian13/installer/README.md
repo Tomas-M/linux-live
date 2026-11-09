@@ -2,7 +2,7 @@
 
 `../installers/slax-install-linux` runs in Slax. `slax-install.exe` is a standalone 32-bit
 Windows executable for Windows XP and later. Both perform real installations.
-The ISO places both executables directly in `/slax`.
+The ISO places both executables in `/slax/installer`.
 The desktop module also installs the unpacked Linux executable in `/usr/bin`
 and provides a Slax Installer entry in the xlunch application menu.
 Its icon combines the original Slax clover, a hard drive, a down arrow and a USB
@@ -26,7 +26,9 @@ on the source step with its metadata. Only the user's Next opens target selectio
 Back returns to the editable source path.
 Source validation failures open a native modal error dialog with the reason and
 recovery instructions. Dismissing it keeps the source path editable on step 1;
-the page itself shows only source metadata and checking status.
+the page itself shows only source metadata. Short source and target check status
+appears in a fixed footer slot aligned with the content; it never moves the drive
+list or whole-disk erase checkbox.
 Windows uses optional native VirtDisk attachment metadata; Linux follows the
 ISO loop device. On Linux, the resolved executable's filesystem also identifies
 its optical device through udev, including execution through symlinks or bind
@@ -59,7 +61,7 @@ The checkbox reads **Erase entire selected disk (including all other partitions
 on it)**. When checked, every visible row on the last clicked physical disk is
 highlighted. Unchecking restores only the last clicked row, or no selection.
 Hidden sibling partitions still appear in erase warnings.
-Target Next keeps the target page visible during plan checks, with status text
+Target Next keeps the target page visible during plan checks, with footer status
 and a busy cursor. Native errors and confirmation dialogs appear above that page;
 cancellation or a failed check leaves the selection available there. Only approval
 and successful plan revalidation open the installation progress page.
@@ -100,7 +102,14 @@ The small BIOS core loads matching external modules from the new Slax folder.
 Its prefix follows the disk selected by the BIOS and the approved partition
 number, so it does not assume a fixed BIOS disk number. A traditional MBR gap
 must be entirely empty; occupied original embedding areas are retained intact.
-Preserving an existing GPT uses an empty BIOS boot partition or creates one in verified free space.
+Preserving an existing GPT also checks BIOS space reserved before FirstUsableLBA.
+An identical existing Slax MBR/core can be reused without consuming another extent.
+Otherwise it uses an empty BIOS boot partition or creates one in verified free space.
+On readable data-only disks, the confirmed plan warns that any existing BIOS loader
+will be replaced. Only bounded embedding space or an unformatted BIOS partition
+may be overwritten; existing filesystems and partition boundaries stay intact.
+Detected operating systems and unreadable or ambiguous partitions retain the
+preservation rules. Original MBR and overwritten core bytes are saved for recovery.
 If necessary, MBR can add a small type 0xDA BIOS partition in a zero-filled free
 extent outside every existing partition. No existing filesystem is resized.
 
@@ -164,7 +173,10 @@ rejected before writing. The running system, live session, ISO and executable
 disks cannot be erased. All sibling volumes must be safely locked/unmounted
 before erase writes; preserve installs do not lock or unmount live data volumes.
 
-Disk handles stay pinned across confirmation. The ISO is reopened between steps;
+Disk handles stay pinned across confirmation. Linux plans hold read-only handles;
+writable handles open only under the disk lock after approval and close before
+unlocking, so replacing a plan cannot trigger a competing udev probe.
+The ISO is reopened between steps;
 source file IDs, timestamps and content changes are not compared. Table integrity,
 geometry, media-generation tokens when available, free space, approved empty
 ranges and firmware state are rechecked. Closing cannot interrupt installation.

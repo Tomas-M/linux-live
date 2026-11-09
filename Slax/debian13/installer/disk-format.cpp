@@ -257,8 +257,17 @@ static Partition emptyBootPartition(Disk &disk,const DiskRange &gap,uint64_t byt
    return {};
 }
 
+// Construct the exact contiguous core image used for both recognition and verified BIOS writes.
+static std::vector<unsigned char> biosCore(const BiosImage &image,uint64_t start)
+{
+   size_t sectors=(image.core.size()+511)/512;
+   std::vector<unsigned char> core(sectors*512); memcpy(core.data(),image.core.data(),image.core.size());
+   memset(core.data()+512-24,0,12); put64(core.data()+512-12,start/512+1); put16(core.data()+512-4,sectors-1); put16(core.data()+512-2,0x820);
+   return core;
+}
+
 // Add boot partitions only in unused space, preserving every existing partition byte and identifier.
-BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool addEfi)
+BootLayout planBootLayout(Disk &disk,const BiosImage *bios,uint64_t efiBytes,bool addEfi,bool replaceBios)
 {
    partitionSnapshot(disk);
    BootLayout result; uint64_t sector=disk.device.sector,total=disk.device.diskBytes/sector;
@@ -272,7 +281,7 @@ BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool a
    uint64_t first=1,last=total,tableAt=0,backupAt=0,otherAt=0;
    std::vector<DiskRange> occupied;
    std::vector<unsigned> slots;
-   uint64_t coreSize=(coreBytes+sector-1)/sector*sector;
+   uint64_t coreSize=bios?(bios->core.size()+sector-1)/sector*sector:0;
    if (result.gpt)
    {
       if (!signature) throw std::runtime_error("The GPT disk has no valid protective MBR signature. Repair its partition table first.");
@@ -289,7 +298,34 @@ BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool a
          if (std::all_of(entry,entry+16,[](unsigned char c) { return c==0; })) { slots.push_back(i); continue; }
          uint64_t start=disk64(entry+32)*sector,bytes=(disk64(entry+40)+1)*sector-start;
          occupied.push_back({start,bytes});
-         if (coreSize && !result.bios.bytes && !memcmp(entry,biosType,16) && bytes>=coreSize && bytes<=16*1024*1024 && emptyArea(disk,start,bytes)) { result.bios.start=start; result.bios.bytes=coreSize; result.bios.number=i+1; }
+         bool bootPartition=!memcmp(entry,biosType,16);
+         bool fits=coreSize && bytes>=coreSize && bytes<=16*1024*1024;
+         if (!result.bios.bytes && bootPartition && fits)
+         {
+            bool formatted=std::any_of(disk.device.partitions.begin(),disk.device.partitions.end(),[&](const Partition &part) { return part.number==i+1 && !part.filesystem.empty(); });
+            if (!formatted && (replaceBios || emptyArea(disk,start,bytes))) { result.bios.start=start; result.bios.bytes=coreSize; result.bios.number=i+1; }
+         }
+      }
+      // FirstUsableLBA deliberately excludes Slax's reserved BIOS space from partition allocation.
+      uint64_t reserved=(tableAt+table.size()/sector)*sector,limit=first*sector;
+      bool room=sector==512 && coreSize>=1024 && limit>reserved && limit-reserved<=16*1024*1024;
+      if (!result.bios.bytes && room && coreSize<=limit-reserved)
+      {
+         if (replaceBios || emptyArea(disk,reserved,limit-reserved)) { result.bios.start=reserved; result.bios.bytes=coreSize; }
+         else
+         {
+            uint64_t at=disk64(mbr.data()+0x5c);
+            bool bounded=at>=reserved/sector && at<first && coreSize/sector<=first-at;
+            if (bounded && result.originalMbr.compare(0,440,biosBootSector(*bios,at*sector),0,440)==0)
+            {
+               auto expected=biosCore(*bios,at*sector); std::vector<unsigned char> existing(expected.size()); disk.read(at*sector,existing.data(),existing.size());
+               if (existing==expected)
+               {
+                  result.bios.start=at*sector; result.bios.bytes=coreSize;
+                  result.biosBefore.assign(reinterpret_cast<const char *>(existing.data()),existing.size());
+               }
+            }
+         }
       }
    }
    else
@@ -319,8 +355,9 @@ BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool a
          uint64_t start=bios?gap.start:(gap.start+1048575)/1048576*1048576;
          if (start<gap.start || start-gap.start>gap.bytes || bytes>gap.bytes-(start-gap.start)) continue;
          // MBR has no explicit BIOS partition: accept only completely empty, bounded gaps.
-         if (bios && !result.gpt && (gap.bytes>16*1024*1024 || !emptyArea(disk,gap.start,gap.bytes))) continue;
-         if (!emptyArea(disk,start,bytes)) continue;
+         bool replace=bios && !result.gpt && replaceBios && gap.start==sector && gap.bytes<=16*1024*1024;
+         if (bios && !result.gpt && !replace && (gap.bytes>16*1024*1024 || !emptyArea(disk,gap.start,gap.bytes))) continue;
+         if (!replace && !emptyArea(disk,start,bytes)) continue;
          part.start=start; part.bytes=bytes; gap.bytes-=start+bytes-gap.start; gap.start=start+bytes; break;
       }
       return part;
@@ -394,7 +431,12 @@ BootLayout planBootLayout(Disk &disk,uint64_t coreBytes,uint64_t efiBytes,bool a
    patch(0,mbr);
    if (result.bios.bytes)
    {
-      result.biosBefore.assign(coreSize,'\0'); result.ranges.push_back({result.bios.start,coreSize}); result.ranges.push_back({0,sector});
+      if (result.biosBefore.empty())
+      {
+         result.biosBefore.assign(coreSize,'\0');
+         if (replaceBios) disk.read(result.bios.start,result.biosBefore.data(),result.biosBefore.size());
+      }
+      result.ranges.push_back({result.bios.start,coreSize}); result.ranges.push_back({0,sector});
    }
    return result;
 }
@@ -408,7 +450,11 @@ void verifyBootLayout(Disk &disk,const BootLayout &layout)
       std::string value(patch.before.size(),'\0'); disk.read(patch.start,value.data(),value.size());
       if (value!=patch.before) throw std::runtime_error("The boot partition layout changed after confirmation. Existing boot settings were kept.");
    }
-   if (!layout.biosBefore.empty() && !emptyArea(disk,layout.bios.start,layout.biosBefore.size())) throw std::runtime_error("The approved BIOS embedding area is no longer empty. Existing boot settings were kept.");
+   if (!layout.biosBefore.empty())
+   {
+      std::string before(layout.biosBefore.size(),'\0'); disk.read(layout.bios.start,before.data(),before.size());
+      if (before!=layout.biosBefore) throw std::runtime_error("The approved BIOS embedding area changed. Existing boot settings were kept.");
+   }
 }
 
 // Publish table updates and the new MBR last; roll back original boot metadata on an ordinary I/O failure.
@@ -585,8 +631,7 @@ void writeBios(Disk &disk,uint64_t start,uint64_t capacity,const BiosImage &imag
    if (disk.device.sector!=512 || image.boot.size()!=512 || image.core.size()<1024) throw std::runtime_error("The BIOS loader or device sector geometry is unsupported.");
    size_t sectors=(image.core.size()+511)/512;
    if (sectors*512>capacity || sectors>65536) throw std::runtime_error("The GRUB BIOS image does not fit in the reserved embedding area.");
-   std::vector<unsigned char> core(sectors*512); memcpy(core.data(),image.core.data(),image.core.size());
-   memset(core.data()+512-24,0,12); put64(core.data()+512-12,start/512+1); put16(core.data()+512-4,sectors-1); put16(core.data()+512-2,0x820);
+   auto core=biosCore(image,start);
    disk.write(start,core.data(),core.size()); std::vector<unsigned char> verified(core.size()); disk.read(start,verified.data(),verified.size());
    if (verified!=core) throw std::runtime_error("BIOS core verification failed.");
    memcpy(mbr.data(),image.boot.data(),440); put64(mbr.data()+0x5c,start/512); mbr[0x64]=0xff;
