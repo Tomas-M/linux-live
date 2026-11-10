@@ -117,6 +117,8 @@ reporting progress.
   a small bundled green check, hiding both immediately when the source changes.
   Show short source and target check status in a fixed
   footer area aligned with the content, without moving drive rows or Erase.
+  Installation progress status stays on one line, ellipsizing long paths while
+  retaining their filename end; never let the progress bar move as names change.
   Show source validation errors in
   a native modal dialog, retaining the editable source page after dismissal.
   Keep the source path editable, including clipboard paste. Browse has a dropdown

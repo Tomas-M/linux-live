@@ -362,8 +362,9 @@ int runWindow()
    ui.result=gtk_drawing_area_new(); gtk_widget_set_size_request(ui.result,42,42); gtk_widget_set_halign(ui.result,GTK_ALIGN_START);
    g_signal_connect(ui.result,"draw",G_CALLBACK(drawIcon),nullptr);
    gtk_box_pack_start(GTK_BOX(result),ui.result,false,false,0); gtk_box_reorder_child(GTK_BOX(result),ui.result,0);
-   auto status=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_widget_set_margin_top(status,15);
-   ui.status=label("",13),ui.percent=label("",13); wrap(ui.status); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
+   auto status=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_widget_set_margin_top(status,15); gtk_widget_set_size_request(status,-1,21);
+   ui.status=label("",13),ui.percent=label("",13); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
+   gtk_label_set_single_line_mode(GTK_LABEL(ui.status),true); gtk_label_set_ellipsize(GTK_LABEL(ui.status),PANGO_ELLIPSIZE_START);
    gtk_box_pack_start(GTK_BOX(status),ui.status,true,true,0); gtk_box_pack_end(GTK_BOX(status),ui.percent,false,false,0);
    gtk_box_pack_start(GTK_BOX(writing),status,false,false,0); ui.progress=gtk_progress_bar_new(); gtk_box_pack_start(GTK_BOX(writing),ui.progress,false,false,0);
    gtk_stack_add_named(GTK_STACK(ui.stack),writing,"3"); gtk_stack_add_named(GTK_STACK(ui.stack),result,"4");
