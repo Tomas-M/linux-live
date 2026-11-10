@@ -9,3 +9,6 @@ Slax
 - Keep installer progress on one line when copying files with long paths.
 - Mount ISO images read-only from the file manager and remove their sidebar links after unmounting.
 - Show Windows installer progress on its taskbar button when supported.
+- Refine file-manager navigation, integrate Go into the location bar and improve icon spacing and sidebar appearance.
+- Keep an ordinary drag pointer, center translucent file previews and highlight drop targets.
+- Give standard GTK message dialogs more padding and compact action buttons.

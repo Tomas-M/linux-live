@@ -929,6 +929,9 @@ must follow the general Slax repair rules above.
   it in `03-desktop/copy` after cleanup and enable it there. Keep native themes,
   application commands and launchers unchanged; styles must work from xlunch,
   Fluxbox and the terminal without leaking a theme environment to child apps.
+  Its shared GtkMessageDialog show hook replaces expanded action layouts with
+  compact right-aligned buttons and keeps at least 14 px around the content.
+  Preserve larger application margins, custom button layouts, order and defaults.
   Rebuilt Debian packages keep their original names and binary versions, including
   Debian's binary rebuild suffixes. Do not add Slax version suffixes. In
   `03-desktop/copy`, hold the patched GTK runtime, Fluxbox, Picom, Xfce panel and
@@ -958,6 +961,27 @@ must follow the general Slax repair rules above.
   PCManFM keeps the icon's position across a rename and saves it under the new
   name. Its selected desktop captions have a 3 px corner radius and 4 px padding
   on both the left and right.
+- File-manager windows use icon view with 64 px icons and a 200 px sidebar.
+  `pcmanfm-browser.diff` orders compact symbolic navigation as Back, Forward,
+  History, Up and hides the sidebar mode selector through the public title-bar
+  API. Keep Go as the location entry's native secondary icon, without a separate
+  toolbar button. Clicking it activates the same path as Enter; preserve Ctrl+L,
+  completion and the breadcrumb-mode switch. `libfm-icon-label.diff` adds 2 px
+  above and below icon captions and renders their selection through GTK, using
+  the scoped 3 px rounded-caption CSS.
+  Double the native horizontal caption padding and include it in the preferred
+  width, so both rounded edges stay inside the allocated cell.
+  Remove monochrome applications category icons at every size during cleanup,
+  retaining ordinary blue-folder fallback and regenerating the final icon caches.
+  The PCManFM-only GTK module keeps ordinary pointers for folder-view and Places
+  drags, preserving the drag previews in both panes.
+  `libfm-drag-preview.diff` uses the folder model's displayed icon or thumbnail
+  at the current zoom for single-file drags, and a folder icon for multiple files.
+  Center folder-view previews under the pointer at 60% opacity. Draw a themed
+  frame around the complete drop target independently from keyboard focus outlines.
+  Scope Places styling with the GTK module's `slax-places` class: use a light-blue
+  selection with dark text and a 6 px vertical separator, adding 2 px per row edge.
+  Preserve the selected drag action, drop validation and bookmark reordering.
 - PCManFM's ISO context action uses the matching `libfm-modules` package and
   the short rootcopy shell helper `slax-mount-iso`. Mount ISO/UDF read-only with
   nodev/nosuid under `/media/ISO-DEVICE-INODE`; serialize clicks and reuse this

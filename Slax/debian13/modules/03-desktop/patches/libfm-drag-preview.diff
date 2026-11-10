@@ -1,0 +1,84 @@
+--- a/src/gtk/fm-standard-view.c
++++ b/src/gtk/fm-standard-view.c
+@@ -316,6 +316,36 @@
+         g_signal_handlers_disconnect_by_func(model, on_row_changed, fv);
+         fv->model = NULL;
+     }
++}
++
++/* Use the displayed item image, or a folder for multiple files, at the current zoom. */
++static void on_drag_begin(GtkWidget* view, GdkDragContext* context, FmStandardView* fv)
++{
++    GList* paths = fm_standard_view_get_selected_tree_paths(fv);
++    GdkPixbuf* icon = NULL;
++    if(paths && paths->next)
++        icon = gtk_icon_theme_load_icon(gtk_icon_theme_get_for_screen(gtk_widget_get_screen(view)),
++                                       "folder", fm_folder_model_get_icon_size(fv->model), 0, NULL);
++    else if(paths)
++    {
++        GtkTreeIter iter;
++        if(gtk_tree_model_get_iter(GTK_TREE_MODEL(fv->model), &iter, paths->data))
++            gtk_tree_model_get(GTK_TREE_MODEL(fv->model), &iter, FM_FOLDER_MODEL_COL_ICON, &icon, -1);
++    }
++    if(icon)
++    {
++        gint width = gdk_pixbuf_get_width(icon), height = gdk_pixbuf_get_height(icon);
++        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
++        cairo_t* cr = cairo_create(surface);
++        gdk_cairo_set_source_pixbuf(cr, icon, 0, 0);
++        cairo_paint_with_alpha(cr, 0.6);
++        cairo_destroy(cr);
++        cairo_surface_set_device_offset(surface, -width / 2.0, -height / 2.0);
++        gtk_drag_set_icon_surface(context, surface);
++        cairo_surface_destroy(surface);
++        g_object_unref(icon);
++    }
++    g_list_free_full(paths, (GDestroyNotify)gtk_tree_path_free);
+ }
+
+ static void unset_view(FmStandardView* fv);
+@@ -1078,6 +1108,7 @@
+         g_signal_handlers_disconnect_by_func(fv->view, on_icon_view_item_activated, fv);
+     }
+     /* these signals connected by fm_standard_view_set_mode() */
++    g_signal_handlers_disconnect_by_func(fv->view, on_drag_begin, fv);
+     g_signal_handlers_disconnect_by_func(fv->view, on_drag_motion, fv);
+     g_signal_handlers_disconnect_by_func(fv->view, on_btn_pressed, fv);
+
+@@ -1245,6 +1276,7 @@
+         g_list_free(sels);
+
+         fm_dnd_src_set_widget(fv->dnd_src, fv->view);
++        g_signal_connect_after(fv->view, "drag-begin", G_CALLBACK(on_drag_begin), fv);
+         fm_dnd_dest_set_widget(fv->dnd_dest, fv->view);
+         g_signal_connect_after(fv->view, "drag-motion", G_CALLBACK(on_drag_motion), fv);
+         /* connecting it after sometimes conflicts with system configuration
+--- a/src/gtk/exo/exo-icon-view.c
++++ b/src/gtk/exo/exo-icon-view.c
+@@ -2063,13 +2063,24 @@
+           g_assert_not_reached ();
+         }
+ #if GTK_CHECK_VERSION(3, 0, 0)
+-      gtk_render_focus (style, cr,
++      /* A drop target must stay visible even when keyboard focus outlines are hidden. */
++      if (dest_pos == EXO_ICON_VIEW_DROP_INTO)
++        {
++          gtk_style_context_save (style);
++          gtk_style_context_add_class (style, "slax-drop-target");
++          gtk_style_context_set_state (style, gtk_style_context_get_state (style) | GTK_STATE_FLAG_DROP_ACTIVE);
++          gtk_render_background (style, cr, rect.x, rect.y, rect.width, rect.height);
++          gtk_render_frame (style, cr, rect.x, rect.y, rect.width, rect.height);
++          gtk_style_context_restore (style);
++        }
++      else
++        gtk_render_focus (style, cr, rect.x, rect.y, rect.width, rect.height);
+ #else
+       gtk_paint_focus (style, priv->bin_window,
+                        gtk_widget_get_state (widget), NULL, widget,
+                        "iconview-drop-indicator",
++                       rect.x, rect.y, rect.width, rect.height);
+ #endif
+-                       rect.x, rect.y, rect.width, rect.height);
+     }
+
+   /* draw the rubberband border */

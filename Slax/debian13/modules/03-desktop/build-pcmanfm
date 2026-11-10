@@ -12,5 +12,7 @@ cd pcmanfm-*/
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 # Keep desktop drag state, captions and icon redraws consistent after every drop.
 patch -p1 < "$CWD/patches/pcmanfm-desktop.diff"
+# Use compact navigation and an unlabelled sidebar in file-manager windows.
+patch -p1 < "$CWD/patches/pcmanfm-browser.diff"
 dpkg-buildpackage -b -us -uc
 cp ../pcmanfm_*.deb "$OUTPUT/"

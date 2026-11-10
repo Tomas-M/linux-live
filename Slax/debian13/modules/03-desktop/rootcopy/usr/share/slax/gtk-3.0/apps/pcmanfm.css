@@ -1,7 +1,19 @@
 /* Give both status columns breathing room without inset frames. */
 statusbar frame > border { border: 0; }
 statusbar frame label { padding: 2px 8px; }
-toolbar { padding: 6px 8px; }
+toolbar { padding: 4px 6px; }
+toolbar button { padding: 3px; min-width: 16px; min-height: 16px; color: #707070; }
+toolbar button:disabled { color: #b8b8b8; }
+
+/* Round the custom icon captions without changing list-row selection. */
+.slax-icon-label:selected { border-radius: 3px; }
+
+/* Show the whole destination item independently from keyboard focus outlines. */
+.slax-drop-target { box-shadow: none; border: 1px solid @theme_selected_bg_color; border-radius: 3px; background-color: alpha(@theme_selected_bg_color, 0.08); }
+
+/* Add two pixels at each row edge and use a light selection in Places. */
+treeview.slax-places { -GtkTreeView-vertical-separator: 6; }
+treeview.slax-places:selected { background-color: #cce8ff; color: #202020; }
 
 /* Keep mount actions recognizable before the native hover highlight appears. */
 button.sidebar-button:not(:hover):not(:active) { border-color: alpha(currentColor, 0.15); }

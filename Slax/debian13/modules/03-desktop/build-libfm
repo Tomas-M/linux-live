@@ -14,5 +14,9 @@ sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 patch -p1 < "$CWD/patches/libfm-rename.diff"
 # Offer unmount buttons for bookmarks pointing at mounted filesystems.
 patch -p1 < "$CWD/patches/libfm-places.diff"
+# Pad icon captions symmetrically and render their themed selection background.
+patch -p1 < "$CWD/patches/libfm-icon-label.diff"
+# Match drag previews to the displayed image, using a folder for multiple files.
+patch -p1 < "$CWD/patches/libfm-drag-preview.diff"
 dpkg-buildpackage -b -us -uc
 cp ../libfm4t64_*.deb ../libfm-gtk3-4t64_*.deb ../libfm-modules_*.deb "$OUTPUT/"

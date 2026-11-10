@@ -1,0 +1,168 @@
+--- a/src/main-win.c
++++ b/src/main-win.c
+@@ -77,7 +77,7 @@
+
+ static void on_add_bookmark(GtkAction* act, FmMainWin* win);
+
+-static void on_go(GtkAction* act, FmMainWin* win);
++static void on_location_icon_release(GtkEntry* entry, GtkEntryIconPosition position, GdkEvent* event, gpointer data);
+ static void on_go_back(GtkAction* act, FmMainWin* win);
+ static void on_go_forward(GtkAction* act, FmMainWin* win);
+ static void on_go_up(GtkAction* act, FmMainWin* win);
+@@ -191,7 +191,6 @@
+     {
+         /* recover from Ctrl+L mode change */
+         gtk_widget_hide(GTK_WIDGET(win->location));
+-        gtk_widget_hide(gtk_ui_manager_get_widget(win->ui, "/toolbar/Go"));
+         gtk_widget_show(GTK_WIDGET(win->path_bar));
+     }
+
+@@ -229,7 +228,6 @@
+         pcmanfm_save_config(FALSE);
+     }
+     gtk_widget_set_visible(GTK_WIDGET(win->location), mode == 0);
+-    gtk_widget_set_visible(gtk_ui_manager_get_widget(win->ui, "/toolbar/Go"), mode == 0);
+     gtk_widget_set_visible(GTK_WIDGET(win->path_bar), mode);
+ }
+
+@@ -680,13 +678,13 @@
+         toolitem = gtk_ui_manager_get_widget(win->ui, "/toolbar/Next");
+         gtk_widget_set_visible(toolitem, active);
+         n = gtk_toolbar_get_item_index(win->toolbar, GTK_TOOL_ITEM(toolitem));
+-        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n-1));
++        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n+1));
+         gtk_widget_set_visible(toolitem, active); /* Hist */
+ #if FM_CHECK_VERSION(1, 2, 0)
+-        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n-2));
++        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n-1));
+         gtk_widget_set_visible(toolitem, active); /* Prev */
+ #endif
+-        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n+1));
++        toolitem = GTK_WIDGET(gtk_toolbar_get_nth_item(win->toolbar, n+2));
+         gtk_widget_set_visible(toolitem, active); /* Up */
+         toolitem = gtk_ui_manager_get_widget(win->ui, "/toolbar/Home");
+         gtk_widget_set_visible(toolitem, cfg->tb.home);
+@@ -920,9 +918,9 @@
+     gtk_toolbar_set_style(win->toolbar, GTK_TOOLBAR_ICONS);
+
+ #if FM_CHECK_VERSION(1, 2, 0)
+-    /* create history button after 'Prev' and add a popup menu to it */
++    /* create history button after 'Next' and add a popup menu to it */
+     toolitem = fm_menu_tool_item_new();
+-    gtk_toolbar_insert(win->toolbar, toolitem, 3);
++    gtk_toolbar_insert(win->toolbar, toolitem, 4);
+ #else
+     /* create 'Prev' button manually and add a popup menu to it */
+     toolitem = (GtkToolItem*)g_object_new(GTK_TYPE_MENU_TOOL_BUTTON, NULL);
+@@ -954,6 +952,9 @@
+
+     /* the location bar */
+     win->location = fm_path_entry_new();
++    gtk_entry_set_icon_from_stock(GTK_ENTRY(win->location), GTK_ENTRY_ICON_SECONDARY, GTK_STOCK_JUMP_TO);
++    gtk_entry_set_icon_tooltip_text(GTK_ENTRY(win->location), GTK_ENTRY_ICON_SECONDARY, _("Go to the path in the location bar"));
++    g_signal_connect(win->location, "icon-release", G_CALLBACK(on_location_icon_release), NULL);
+     g_signal_connect(win->location, "activate", G_CALLBACK(on_location_activate), win);
+     if(geteuid() == 0) /* if we're using root, Give the user some warnings */
+     {
+@@ -976,7 +977,7 @@
+     toolitem = (GtkToolItem*)gtk_tool_item_new();
+     gtk_container_add(GTK_CONTAINER(toolitem), GTK_WIDGET(pathbox));
+     gtk_tool_item_set_expand(toolitem, TRUE);
+-    gtk_toolbar_insert(win->toolbar, toolitem, gtk_toolbar_get_n_items(win->toolbar) - 1);
++    gtk_toolbar_insert(win->toolbar, toolitem, -1);
+     g_signal_connect(app_config, "changed::toolsbar",
+                      G_CALLBACK(on_toolsbar_changed), win);
+
+@@ -1018,14 +1019,8 @@
+     g_object_unref(act_grp);
+     win->ui = ui;
+
+-    /* accessibility: setup relation for Go button and location entry */
++    /* Keep the entry's accessibility relations with the folder view. */
+     atk_obj = gtk_widget_get_accessible(GTK_WIDGET(win->location));
+-    relation = atk_relation_new(&atk_obj, 1, ATK_RELATION_LABEL_FOR);
+-    /* use atk_view for button temporarily */
+-    atk_view = gtk_widget_get_accessible(gtk_ui_manager_get_widget(ui, "/toolbar/Go"));
+-    atk_relation_set_add(atk_object_ref_relation_set(atk_view), relation);
+-    g_object_unref(relation);
+-    /* setup relations with view */
+     atk_view = gtk_widget_get_accessible(GTK_WIDGET(win->notebook));
+     relation = atk_relation_new(&atk_obj, 1, ATK_RELATION_CONTROLLED_BY);
+     atk_relation_set_add(atk_object_ref_relation_set(atk_view), relation);
+@@ -1505,10 +1500,11 @@
+ }
+
+
+-static void on_go(GtkAction* act, FmMainWin* win)
+-{
+-    /* fm_main_win_chdir_by_name(win, gtk_entry_get_text(GTK_ENTRY(win->location))); */
+-    g_signal_emit_by_name(win->location, "activate");
++/* Activate the path through the entry's native secondary icon. */
++static void on_location_icon_release(GtkEntry* entry, GtkEntryIconPosition position, GdkEvent* event, gpointer data)
++{
++    if(position == GTK_ENTRY_ICON_SECONDARY && event->button.button == 1)
++        g_signal_emit_by_name(entry, "activate");
+ }
+
+ static void _update_hist_buttons(FmMainWin* win)
+@@ -1857,7 +1853,7 @@
+     pcmanfm_save_config(FALSE);
+ }
+
+-/* toolbar items: NewWin NewTab Prev (Hist) Next Up Home (Location) Go */
++/* toolbar items: NewWin NewTab Prev Next (Hist) Up Home (Location) */
+ static void on_toolbar_new_win(GtkToggleAction *act, FmMainWin *win)
+ {
+     gboolean active = gtk_toggle_action_get_active(act);
+@@ -1900,7 +1896,6 @@
+     if (app_config->pathbar_mode_buttons)
+     {
+         gtk_widget_show(GTK_WIDGET(win->location));
+-        gtk_widget_show(gtk_ui_manager_get_widget(win->ui, "/toolbar/Go"));
+         gtk_widget_hide(GTK_WIDGET(win->path_bar));
+     }
+ }
+--- a/src/main-win-ui.c
++++ b/src/main-win-ui.c
+@@ -175,7 +175,6 @@
+     "<toolitem action='Next'/>"
+     "<toolitem action='Up'/>"
+     "<toolitem action='Home'/>"
+-    "<toolitem action='Go'/>"
+ "</toolbar>"
+ "<accelerator action='Location2'/>"
+ "<accelerator action='Prev2'/>"
+@@ -231,9 +230,9 @@
+         {"About", GTK_STOCK_ABOUT, NULL, NULL, NULL, G_CALLBACK(on_about)},
+         {"KeyNavList", GTK_STOCK_INFO, N_("_Keyboard Navigation"), NULL, NULL, G_CALLBACK(on_key_nav_list)},
+     {"GoMenu", NULL, N_("_Go"), NULL, NULL, NULL},
+-        {"Prev", GTK_STOCK_GO_BACK, N_("_Previous Folder"), "<Alt>Left", N_("Return to previous folder in history"), G_CALLBACK(on_go_back)},
+-        {"Next", GTK_STOCK_GO_FORWARD, N_("_Next Folder"), "<Alt>Right", N_("Go forward to next folder in history"), G_CALLBACK(on_go_forward)},
+-        {"Up", GTK_STOCK_GO_UP, N_("Pa_rent Folder"), "<Alt>Up", N_("Go to parent Folder"), G_CALLBACK(on_go_up)},
++        {"Prev", "slax-go-previous-symbolic", N_("_Previous Folder"), "<Alt>Left", N_("Return to previous folder in history"), G_CALLBACK(on_go_back)},
++        {"Next", "slax-go-next-symbolic", N_("_Next Folder"), "<Alt>Right", N_("Go forward to next folder in history"), G_CALLBACK(on_go_forward)},
++        {"Up", "slax-go-up-symbolic", N_("Pa_rent Folder"), "<Alt>Up", N_("Go to parent Folder"), G_CALLBACK(on_go_up)},
+         {"Home", "user-home", N_("H_ome Folder"), "<Alt>Home", N_("Go to home folder"), G_CALLBACK(on_go_home)},
+         {"Desktop", "user-desktop", N_("_Desktop"), NULL, N_("Go to desktop folder"), G_CALLBACK(on_go_desktop)},
+         {"Trash", "user-trash", N_("_Trash Can"), NULL, N_("Open trash can"), G_CALLBACK(on_go_trash)},
+@@ -243,7 +242,6 @@
+         {"Network", GTK_STOCK_NETWORK, N_("Net_work"), NULL, N_("Go to list of places on the network"), G_CALLBACK(on_go_network)},
+         {"Location", GTK_STOCK_JUMP_TO, N_("_Go to Location..."), "<Ctrl>L", NULL, G_CALLBACK(on_location)},
+         {"Connect", NULL, N_("_Connect to Server..."), NULL, N_("Open a window to choose remote folder location"), G_CALLBACK(on_go_connect)},
+-        {"Go", GTK_STOCK_JUMP_TO, NULL, NULL, N_("Go to the path in the location bar"), G_CALLBACK(on_go)},
+     {"BookmarksMenu", NULL, N_("_Bookmarks"), NULL, NULL, NULL},
+         {"AddBookmark", GTK_STOCK_ADD, N_("_Add to Bookmarks..."), "<Ctrl>D", N_("Add current folder to bookmarks list"), G_CALLBACK(on_add_bookmark)},
+     {"ToolMenu", NULL, N_("Too_ls"), NULL, NULL, NULL},
+--- a/src/tab-page.c
++++ b/src/tab-page.c
+@@ -924,6 +924,10 @@
+
+     page->side_pane = fm_side_pane_new();
+     fm_side_pane_set_mode(page->side_pane, (mode & FM_SP_MODE_MASK));
++    /* Keep the sidebar without its redundant mode selector. */
++    GtkWidget* title_bar = fm_side_pane_get_title_bar(page->side_pane);
++    gtk_widget_set_no_show_all(title_bar, TRUE);
++    gtk_widget_hide(title_bar);
+ #if FM_CHECK_VERSION(1, 2, 0)
+     fm_side_pane_set_popup_updater(page->side_pane, _update_sidepane_popup, page);
+     if (app_config->home_path && app_config->home_path[0])
