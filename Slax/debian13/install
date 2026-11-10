@@ -3,6 +3,8 @@ set -e
 [ -f /build/buildmods ] || { echo "Run Slax's build script instead of install." >&2; exit 1; }
 
 apt-get update
+# Refresh packages seeded by debootstrap before installing or customizing the runtime.
+apt-get dist-upgrade --yes --no-install-recommends
 # ConnMan handles NTP; the EFI compiler stays on the build host.
 # Install Wacom data here so Xorg can reuse the complete hardware database.
 # PXE needs GNU cpio and BusyBox's HTTP server; both reuse the existing libc6.
