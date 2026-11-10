@@ -6,3 +6,4 @@ Linux Live Kit
 
 Slax
 ----
+- Keep installer progress on one line when copying files with long paths.

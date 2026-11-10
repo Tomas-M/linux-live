@@ -202,13 +202,15 @@ static LRESULT CALLBACK pathEvents(HWND hwnd,UINT message,WPARAM wp,LPARAM lp,UI
    return result;
 }
 
-// Ask Windows to measure wrapped text with the exact font used by its STATIC control.
+// Match native wrapping, keeping progress status to one line at every DPI.
 static float textHeight(int id,float width)
 {
    HWND item=ui.controls[id];
    std::wstring value(GetWindowTextLengthW(item)+1,L'\0'); GetWindowTextW(item,value.data(),value.size());
    HDC dc=GetDC(item); auto previous=SelectObject(dc,reinterpret_cast<HFONT>(SendMessageW(item,WM_GETFONT,0,0)));
-   RECT rect={0,0,LONG(width*scale),0}; DrawTextW(dc,value.c_str(),-1,&rect,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX|DT_EDITCONTROL);
+   UINT flags=DT_CALCRECT|DT_NOPREFIX;
+   flags|=id==Status?DT_SINGLELINE:DT_WORDBREAK|DT_EDITCONTROL;
+   RECT rect={0,0,LONG(width*scale),0}; DrawTextW(dc,value.c_str(),-1,&rect,flags);
    SelectObject(dc,previous); ReleaseDC(item,dc);
    return std::max(1.0f,rect.bottom/scale);
 }
@@ -821,11 +823,12 @@ int runWindow()
       control(StepName+i,L"STATIC",SS_LEFT|SS_CENTERIMAGE,ui.controls[Rail]); text(StepName+i,wizardSteps[i]);
    }
    ui.panel=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxInstallerContent",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_CLIPCHILDREN,0,0,1,1,window,nullptr,instance,nullptr);
-   for (int id:{Step,Heading,Intro,PathLabel,Message,Empty,Target,Status,Percent})
+   for (int id:{Step,Heading,Intro,PathLabel,Message,Empty,Target,Percent})
    {
       bool single=id==Step || id==PathLabel || id==Percent;
       control(id,L"STATIC",SS_LEFT|SS_NOPREFIX|(single?SS_CENTERIMAGE:SS_EDITCONTROL),ui.panel);
    }
+   control(Status,L"STATIC",SS_LEFT|SS_CENTERIMAGE|SS_PATHELLIPSIS|SS_NOPREFIX,ui.panel);
    // Ordinary static labels use native font metrics and wrap each welcome paragraph.
    for (int i=0; i<3; i++) { control(WelcomeText+i,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_EDITCONTROL,ui.panel); text(WelcomeText+i,welcomeText[i]); }
    control(Path,L"EDIT",ES_MULTILINE|ES_AUTOHSCROLL|WS_TABSTOP,ui.panel,WS_EX_CLIENTEDGE); SetWindowSubclass(ui.controls[Path],pathEvents,1,0);
