@@ -14,19 +14,32 @@ pixels, fitting four normal drive cards with a small reserve; minimum is
 
 ## Wizard
 
+The wizard always starts with Welcome, explaining source selection, USB or local
+disk installation, preservation or whole-disk erasure and confirmation before
+writes. Both frontends share the same copy and five steps: Welcome, Slax source,
+Target drive, Installation and Finish. Next opens source selection; Back returns
+to Welcome without clearing the source. Automatic source checks may finish in
+the background but never advance Welcome or show an error dialog above it.
+
 The source path supports typing and paste. Browse opens a native menu with
 ISO image and Slax directory choices and a visible dropdown arrow. Align the
 menu's right edge with Browse on both platforms. Both native
 folder pickers accept the Slax directory itself or a parent containing `slax`;
 validation normalizes the path and inventories the same required boot files and
 modules. Directory copies retain original file paths when creating EFI assets.
-Edited paths are validated only
-after Next. An automatically detected source is checked immediately and stays
-on the source step with its metadata. Only the user's Next opens target selection.
+Edited paths are validated after a 300 ms pause in typing. Browse and automatic
+source detection validate immediately. Next stays disabled while checking, but
+the source path and Browse remain usable. Superseded results are discarded, and
+background validation never changes the path being edited or opens error dialogs.
+Next revalidates the source and displays any error in the native dialog.
+An automatically detected source is checked immediately; its metadata
+appears when source selection opens. Only the user's Next opens target selection.
 Back returns to the editable source path.
 Source validation failures open a native modal error dialog with the reason and
-recovery instructions. Dismissing it keeps the source path editable on step 1;
-the page itself shows only source metadata. Short source and target check status
+recovery instructions. Dismissing it keeps the source path editable on step 2;
+the page itself shows only source metadata, preceded by a small green check after
+successful validation. Editing the path or choosing another source clears both
+the metadata and check until that source passes validation. Short source and target check status
 appears in a fixed footer slot aligned with the content; it never moves the drive
 list or whole-disk erase checkbox.
 Windows uses optional native VirtDisk attachment metadata; Linux follows the

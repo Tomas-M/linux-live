@@ -113,7 +113,9 @@ reporting progress.
   or controls. USB entries use rounded cards, a tinted device badge and native
   radio buttons. Keep the left step panel visible; use a 720 by 400 logical-pixel
   minimum client size. Reserve one consistently spaced message area under the
-  source path for metadata. Show short source and target check status in a fixed
+  source path for metadata. Prefix successfully validated source metadata with
+  a small bundled green check, hiding both immediately when the source changes.
+  Show short source and target check status in a fixed
   footer area aligned with the content, without moving drive rows or Erase.
   Show source validation errors in
   a native modal dialog, retaining the editable source page after dismissal.
@@ -123,10 +125,17 @@ reporting progress.
   Accept either the Slax directory or a parent containing `slax`,
   normalize to its data and validate the same payload before target selection.
   Stream directory files directly, retaining original paths for renamed EFI assets.
-  Typing and Browse only
-  fill the path; validate asynchronously on Next. Automatically detected sources
-  validate immediately but stay on the editable source page. Only the user's
-  Next advances to step 2. Back returns to the editable path. Keep only Back and Next in the
+  Validate typed paths asynchronously after a 300 ms pause, and chosen or detected
+  sources immediately. Keep the path and Browse editable while checking, disable
+  Next until the check finishes and discard superseded results. Background checks
+  must not rewrite the input or show error dialogs; explicit Next revalidates and
+  shows any error in a native dialog. Automatically detected sources
+  validate immediately without advancing. Always start with Welcome, followed
+  by Slax source, Target drive, Installation and Finish. Both frontends share
+  the approved welcome copy. Source checks stay in the background on Welcome
+  without dialogs or navigation. Next opens source selection, then target
+  selection. Back from source returns to Welcome without clearing the path.
+  Keep only Back and Next in the
   wizard footer; close through the native window controls. Preserve the write-phase
   close protection and Cancel in file/installation confirmation dialogs.
   Installation confirmations place Cancel on the left and Install on the right,
@@ -136,9 +145,9 @@ reporting progress.
   Default client size is 832 by 540 logical pixels, fitting four normal drive
   cards with a small reserve. Keep target errors off the selection page; Next
   always opens a neutral native error or a short, plain-language confirmation.
-  Target Next checks the plan on step 2 with footer status and a busy cursor. Native
-  error and confirmation dialogs keep step 2 behind them; cancellation stays there.
-  Enter step 3 only after approval and successful plan revalidation. Keep scanner joins
+  Target Next checks the plan on step 3 with footer status and a busy cursor. Native
+  error and confirmation dialogs keep step 3 behind them; cancellation stays there.
+  Enter step 4 only after approval and successful plan revalidation. Keep scanner joins
   off the GUI thread. Use bundled check/warning symbols instead of system status icons.
   During requested ISO/target checks and installation, use the native arrow-with-busy
   cursor over the client area: Windows IDC_APPSTARTING and GTK's themed progress

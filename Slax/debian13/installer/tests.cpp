@@ -27,7 +27,7 @@ bool confirmInstall(const std::string &text,bool)
    assert(text.find("Install Slax")!=std::string::npos);
    if (dialogWizard)
    {
-      assert(dialogWizard->page==1 && dialogWizard->confirming && !dialogWizard->busy());
+      assert(dialogWizard->page==TargetPage && dialogWizard->confirming && !dialogWizard->busy());
       assert(dialogWizard->heading()=="Choose a target drive" && !dialogWizard->canContinue());
    }
    return approve;
@@ -37,7 +37,7 @@ void showInstallError(const std::string &message)
 {
    if (dialogWizard)
    {
-      assert(dialogWizard->page<=1 && dialogWizard->confirming && !dialogWizard->busy());
+      assert(dialogWizard->page<=TargetPage && dialogWizard->confirming && !dialogWizard->busy());
       assert(dialogWizard->message().empty() && !dialogWizard->canContinue());
    }
    dialogError=message;
@@ -168,7 +168,7 @@ int main(int argc,char **argv)
    for (size_t i=0; i<unordered.size(); i++) unordered[i].path=paths[i];
    menu=visibleTargets(unordered);
    assert(menu[0].path=="/dev/nvme0n1p2" && menu[1].path=="/dev/sda" && menu[2].path=="/dev/sdb1" && menu[3].path=="/dev/sdb2");
-   parent.partitions={formattedPartition,unformattedPartition}; Installer hidden; hidden.page=1; hidden.iso=image; hidden.selected="part-4";
+   parent.partitions={formattedPartition,unformattedPartition}; Installer hidden; hidden.page=TargetPage; hidden.iso=image; hidden.selected="part-4";
    hardware={parent,row(formattedPartition),row(unformattedPartition)}; deliver(hidden);
    assert(hidden.selected.empty() && !hidden.canContinue() && hidden.message().empty()); hardware.clear();
    Hash hash; hash.add("abc",3);
@@ -312,14 +312,14 @@ int main(int argc,char **argv)
    assert(replacePlan.bios && replacePlan.previousBios.empty() && replacePlan.bootLayout->patches.empty());
    assert(replacePlan.confirmation.find("Any existing BIOS boot loader on this disk will be replaced.")!=std::string::npos);
    // Approval must pin occupied BIOS bytes too, even when replacement is allowed.
-   hardware={reinstall}; Installer replacement; replacement.iso=image; replacement.page=1; replacement.devices=hardware;
+   hardware={reinstall}; Installer replacement; replacement.iso=image; replacement.page=TargetPage; replacement.devices=hardware;
    replacement.activate(Select,reinstall.id); approve=true; replacement.activate(Next); deliver(replacement); assert(replacement.pending==Confirm);
    changed=foreign; changed[reservedLayout.bios.start+601]^=1;
    {
       Disk raw(reinstall); raw.claim(true); raw.write(0,changed.data(),changed.size()); raw.release();
    }
    unsigned beforeReplace=writeCalls; deliver(replacement);
-   assert(replacement.page==1 && dialogError.find("changed after confirmation")!=std::string::npos && writeCalls==beforeReplace);
+   assert(replacement.page==TargetPage && dialogError.find("changed after confirmation")!=std::string::npos && writeCalls==beforeReplace);
    approve=false; hardware.clear();
    {
       Disk raw(reinstall); raw.claim(true); raw.write(0,foreign.data(),foreign.size()); raw.release();
@@ -407,15 +407,15 @@ int main(int argc,char **argv)
    assert(fails([&] { prepareInstall(unlocked,image,false); }).find("encrypted")!=std::string::npos);
 
    auto unsupported=fixture(14); unsupported.blocked="Owned read-only fixture"; hardware={unsupported};
-   Installer modal; modal.iso=image; modal.page=1; modal.devices=hardware; modal.activate(Select,unsupported.id);
+   Installer modal; modal.iso=image; modal.page=TargetPage; modal.devices=hardware; modal.activate(Select,unsupported.id);
    dialogWizard=&modal;
    assert(modal.canContinue() && modal.message().empty()); modal.activate(Next); unsigned modalWrites=writeCalls;
-   assert(modal.page==1 && modal.message().empty() && modal.progressText()=="Preparing installation plan…" && !modal.indeterminate()); deliver(modal);
-   assert(modal.page==1 && dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites);
+   assert(modal.page==TargetPage && modal.message().empty() && modal.progressText()=="Preparing installation plan…" && !modal.indeterminate()); deliver(modal);
+   assert(modal.page==TargetPage && dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites);
    dialogWizard=nullptr; hardware.clear();
 
    // Whole-disk selection is derived from the latest click and restores a single row when disabled.
-   Installer selection; selection.page=1; selection.iso=image;
+   Installer selection; selection.page=TargetPage; selection.iso=image;
    auto sibling=legacy; sibling.id="sibling"; auto other=legacy; other.id=other.diskId="another-disk";
    selection.devices={legacy,sibling,other}; selection.activate(Erase);
    assert(!selection.isSelected(legacy) && !selection.isSelected(sibling));
@@ -474,49 +474,70 @@ int main(int argc,char **argv)
    assert(!partitionSnapshot(*xpPlan.disk).empty()); xpHost=false;
    assert(newLayout(xp).primary.size()==512 && prepareInstall(xp,image,true).confirmation.find("Use GPT")!=std::string::npos);
 
+   // Background validation must never dismiss Welcome, show errors over it or start writes.
+   Installer welcome; before=writeCalls; dialogError.clear();
+   assert(welcome.page==WelcomePage && welcome.canContinue() && welcome.heading()=="Welcome to Slax Installer");
+   welcome.setImagePath(image.path,true); assert(welcome.canContinue() && !welcome.busy()); deliver(welcome);
+   assert(welcome.page==WelcomePage && welcome.message().empty() && dialogError.empty() && writeCalls==before);
+   welcome.activate(Next); assert(welcome.page==SourcePage && !welcome.message().empty());
+   welcome.activate(Back); assert(welcome.page==WelcomePage && welcome.iso.path==image.path);
+   welcome.activate(Next); welcome.activate(Next); welcome.activate(Back); deliver(welcome);
+   assert(welcome.page==WelcomePage && welcome.pending==None && writeCalls==before);
+   welcome.activate(Next); assert(welcome.page==SourcePage && welcome.canContinue());
+   Installer missingWelcome; missingWelcome.setImagePath(fixtureRoot+"/missing-welcome.iso",true); deliver(missingWelcome);
+   assert(missingWelcome.page==WelcomePage && missingWelcome.canContinue() && dialogError.empty());
+
    // Automatic validation fills source metadata but only an explicit Next advances.
-   Installer automatic; before=writeCalls; automatic.setImagePath(image.path,true);
+   Installer automatic; automatic.activate(Next); before=writeCalls; automatic.setImagePath(image.path,true);
    assert(automatic.pending==CheckSource && automatic.source==image.path && !automatic.canContinue() && automatic.busy());
    assert(automatic.message().empty() && automatic.progressText()=="Checking source…");
    deliver(automatic);
-   assert(automatic.page==0 && !automatic.iso.entries.empty() && automatic.canContinue() && !automatic.message().empty());
+   assert(automatic.page==SourcePage && !automatic.iso.entries.empty() && automatic.canContinue() && !automatic.message().empty());
    assert(automatic.selected.empty() && !automatic.plan && writeCalls==before && !automatic.busy());
-   automatic.activate(Next); assert(automatic.page==0 && automatic.pending==Next); deliver(automatic);
-   assert(automatic.page==1 && automatic.pending==None && writeCalls==before);
+   automatic.activate(Next); assert(automatic.page==SourcePage && automatic.pending==Next); deliver(automatic);
+   assert(automatic.page==TargetPage && automatic.pending==None && writeCalls==before);
    automatic.activate(Back); deliver(automatic);
-   assert(automatic.page==0 && automatic.pending==None && automatic.source.empty() && automatic.iso.path==image.path);
-   Installer invalidSource; dialogWizard=&invalidSource; dialogError.clear();
+   assert(automatic.page==SourcePage && automatic.pending==None && automatic.source.empty() && automatic.iso.path==image.path);
+   Installer invalidSource; invalidSource.activate(Next); dialogWizard=&invalidSource; dialogError.clear();
    invalidSource.setImagePath(fixtureRoot+"/missing-source.iso",true); deliver(invalidSource);
-   assert(invalidSource.page==0 && !invalidSource.iso.error.empty() && invalidSource.error.empty() && invalidSource.pending==None && writeCalls==before);
+   assert(invalidSource.page==SourcePage && !invalidSource.iso.error.empty() && invalidSource.error.empty() && invalidSource.pending==None && writeCalls==before);
+   assert(dialogError.empty()); invalidSource.activate(Next); deliver(invalidSource);
    assert(dialogError.find(invalidSource.iso.error)!=std::string::npos && invalidSource.message().empty());
    dialogError.clear(); deliver(invalidSource); assert(dialogError.empty()); dialogWizard=nullptr;
-   Installer noSource; noSource.setImagePath("",true); assert(noSource.page==0 && noSource.pending==None);
+   Installer noSource; noSource.activate(Next); noSource.setImagePath("",true); assert(noSource.page==SourcePage && noSource.pending==None && !noSource.canContinue());
 
-   // Typed and pasted paths are not validated until Next, including a retry at the same path.
-   Installer input; input.setImagePath(fixtureRoot+"/missing-東京-İstanbul.iso");
-   assert(input.source.empty() && input.message().empty() && input.canContinue());
-   dialogWizard=&input; input.activate(Next); deliver(input);
-   assert(input.page==0 && !input.iso.error.empty() && input.error.empty() && input.source.empty() && input.canContinue());
-   assert(input.message().empty() && dialogError.find(input.iso.error)!=std::string::npos);
+   // Edits schedule checks, keep Next disabled and silently discard obsolete results.
+   Installer input; input.activate(Next); input.setImagePath(fixtureRoot+"/missing-東京-İstanbul.iso");
+   assert(input.pending==CheckSource && input.message().empty() && !input.canContinue());
+   assert(input.sourceCheckAfter>std::chrono::steady_clock::now());
+   dialogWizard=&input; dialogError.clear(); input.activate(Next); assert(input.pending==CheckSource); deliver(input);
+   assert(input.page==SourcePage && !input.iso.error.empty() && input.error.empty() && input.source.empty() && input.canContinue());
+   assert(input.message().empty() && dialogError.empty());
    dialogError.clear(); input.activate(Next); deliver(input);
-   assert(input.page==0 && !dialogError.empty() && input.message().empty() && writeCalls==before);
+   assert(input.page==SourcePage && !dialogError.empty() && input.message().empty() && writeCalls==before);
    dialogWizard=nullptr;
-   input.setImagePath("\""+image.path+"\""); assert(input.error.empty() && input.source.empty());
-   input.activate(Next); deliver(input); assert(input.page==1 && input.iso.path==image.path && input.iso.error.empty());
+   input.setImagePath(fixtureRoot+"/old-source.iso"); auto obsolete=input.revision;
+   input.setImagePath(image.path,true); assert(input.revision>obsolete && input.pending==CheckSource && !input.canContinue());
+   input.scannedIso=image; input.scannedRevision=obsolete; input.scanReady=true; input.tick();
+   assert(input.pending==CheckSource && input.message().empty() && !input.canContinue());
+   deliver(input); assert(!input.message().empty() && input.canContinue() && input.page==SourcePage);
+   input.setImagePath("\""+image.path+"\""); assert(input.error.empty() && input.message().empty() && !input.canContinue()); deliver(input);
+   input.activate(Next); deliver(input); assert(input.page==TargetPage && input.iso.path==image.path && input.iso.error.empty());
    input.activate(Back); input.setImagePath(fixtureRoot+"/different.iso");
-   assert(input.page==0 && input.iso.entries.empty() && input.message().empty() && input.source.empty());
+   assert(input.page==SourcePage && input.iso.entries.empty() && input.message().empty() && input.pending==CheckSource && !input.canContinue());
+   input.setImagePath(""); assert(input.pending==None && input.source.empty() && !input.canContinue());
 
-   auto drive=fixture(5,true); hardware={drive}; Installer wizard; wizard.iso=image;
+   auto drive=fixture(5,true); hardware={drive}; Installer wizard; wizard.activate(Next); wizard.iso=image;
    dialogWizard=&wizard;
-   wizard.activate(Next); wizard.scannedRevision=wizard.revision-1; wizard.scanReady=true; wizard.tick(); assert(wizard.page==0);
-   deliver(wizard); assert(wizard.page==1 && wizard.pending==None); wizard.activate(Select,drive.id); wizard.activate(Erase);
-   wizard.activate(Next); assert(wizard.page==1 && !wizard.indeterminate() && wizard.message().empty() && wizard.progressText()=="Preparing installation plan…" && wizard.busy());
+   wizard.activate(Next); wizard.scannedRevision=wizard.revision-1; wizard.scanReady=true; wizard.tick(); assert(wizard.page==SourcePage);
+   deliver(wizard); assert(wizard.page==TargetPage && wizard.pending==None); wizard.activate(Select,drive.id); wizard.activate(Erase);
+   wizard.activate(Next); assert(wizard.page==TargetPage && !wizard.indeterminate() && wizard.message().empty() && wizard.progressText()=="Preparing installation plan…" && wizard.busy());
    assert(wizard.heading()=="Choose a target drive" && !wizard.canContinue());
-   before=writeCalls; deliver(wizard); assert(wizard.page==1 && !wizard.plan && writeCalls==before && !wizard.busy());
+   before=writeCalls; deliver(wizard); assert(wizard.page==TargetPage && !wizard.plan && writeCalls==before && !wizard.busy());
    approve=true; wizard.activate(Next); deliver(wizard); assert(wizard.pending==Confirm);
-   hardware.clear(); deliver(wizard); assert(wizard.page==1 && !dialogError.empty() && wizard.message().empty() && writeCalls==before);
+   hardware.clear(); deliver(wizard); assert(wizard.page==TargetPage && !dialogError.empty() && wizard.message().empty() && writeCalls==before);
    hardware={drive}; deliver(wizard); wizard.activate(Select,drive.id); wizard.activate(Next); deliver(wizard);
-   assert(wizard.page==1 && wizard.pending==Confirm && wizard.message().empty() && wizard.progressText()=="Rechecking plan…" && writeCalls==before);
+   assert(wizard.page==TargetPage && wizard.pending==Confirm && wizard.message().empty() && wizard.progressText()=="Rechecking plan…" && writeCalls==before);
    // A slow scanner must not block the GUI handoff or allow writes before it finishes.
    std::atomic<bool> releaseScan{false},scanFinished{false};
    wizard.scanner=std::thread([&]
@@ -525,11 +546,11 @@ int main(int argc,char **argv)
       scanFinished=true;
    });
    deliver(wizard); assert(!scanFinished && writeCalls==before); releaseScan=true;
-   if (wizard.page!=2) fprintf(stderr,"Wizard page %d, pending %d: %s\n",wizard.page,int(wizard.pending),wizard.error.c_str());
-   assert(wizard.page==2 && wizard.busy());
+   if (wizard.page!=InstallationPage) fprintf(stderr,"Wizard page %d, pending %d: %s\n",wizard.page,int(wizard.pending),wizard.error.c_str());
+   assert(wizard.page==InstallationPage && wizard.busy());
    wizard.activate(Close); assert(native==None);
-   for (int i=0; i<1000 && wizard.page==2; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); wizard.tick(); }
-   wizard.stop(); assert(wizard.page==3 && wizard.error.empty() && wizard.percent==100 && !wizard.busy()); wizard.activate(Next); assert(native==Close);
+   for (int i=0; i<1000 && wizard.page==InstallationPage; i++) { std::this_thread::sleep_for(std::chrono::milliseconds(10)); wizard.tick(); }
+   wizard.stop(); assert(wizard.page==FinishPage && wizard.error.empty() && wizard.percent==100 && !wizard.busy()); wizard.activate(Next); assert(native==Close);
    dialogWizard=nullptr;
    puts("Installer: ISO, SHA-256, GPT/FAT32 writes, existing files, Windows multiboot, firmware rollback, disconnection and confirmation checks passed.");
 }

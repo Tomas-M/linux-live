@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -46,6 +47,14 @@ struct Image
 };
 
 enum Action { None, Browse, BrowseDirectory, Back, Next, Erase, Select, CheckSource, Confirm, Close };
+enum WizardPage { WelcomePage, SourcePage, TargetPage, InstallationPage, FinishPage, PageCount };
+inline constexpr const char *wizardSteps[]={"Welcome","Slax source","Target drive","Installation","Finish"};
+// Share the approved welcome copy between both native frontends.
+inline constexpr const char *welcomeText[]={
+   "Slax Installer copies Slax to your chosen drive and makes it bootable, so you can start your computer directly into Slax.",
+   "You will choose a source ISO image or a folder containing Slax files, then select the drive you want to install to.",
+   "You can keep your existing files or erase the entire disk. Before installation begins, you will review and confirm a plan showing what will change."
+};
 struct InstallPlan;
 
 std::vector<Device> scanDevices(const std::string &source);
@@ -72,7 +81,7 @@ public:
    Image iso;
    std::vector<Device> devices;
    std::string selected,target,targetId,error;
-   int page=0,percent=0;
+   int page=WelcomePage,percent=0;
    Action pending=None;
    bool erase=false,confirming=false,choosing=false;
    std::atomic<bool> running{true};
@@ -81,6 +90,7 @@ public:
    Image scannedIso;
    std::string source;
    uint64_t revision=0,scannedRevision=0;
+   std::chrono::steady_clock::time_point sourceCheckAfter;
    bool scanReady=false;
    std::thread scanner;
    std::thread writer;
@@ -92,8 +102,8 @@ public:
    bool requestErase=false;
 
    void startScan();
-   void setImagePath(const std::string &path,bool automatic=false);
-   void refresh(Action action);
+   void setImagePath(const std::string &path,bool immediate=false);
+   void refresh(Action action,bool debounce=false);
    void tick();
    void activate(Action action,const std::string &id="");
    void stop();

@@ -27,7 +27,7 @@
 static HWND window;
 static float scale=1;
 
-enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,FooterStatus };
+enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,FooterStatus,WelcomeText,SourceCheck=WelcomeText+3 };
 static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
 
 struct WinCard
@@ -44,7 +44,7 @@ struct WinUi
    HWND panel=nullptr,controls[180]={};
    HFONT body=nullptr,small=nullptr,title=nullptr,intro=nullptr,bold=nullptr,smallBold=nullptr;
    HBRUSH rail=nullptr,green=nullptr,selected=nullptr;
-   HBITMAP brand[7]={};
+   HBITMAP brand[8]={};
    HICON clover=nullptr;
    std::vector<std::unique_ptr<WinCard>> cards;
    int scroll=0,deviceScroll=0,page=-1;
@@ -100,7 +100,7 @@ static void fonts()
    if (ui.controls[Heading]) SendMessageW(ui.controls[Heading],WM_SETFONT,reinterpret_cast<WPARAM>(ui.title),TRUE);
    if (ui.controls[Intro]) SendMessageW(ui.controls[Intro],WM_SETFONT,reinterpret_cast<WPARAM>(ui.intro),TRUE);
    for (int id:{Step,Footer,FooterStatus}) if (ui.controls[id]) SendMessageW(ui.controls[id],WM_SETFONT,reinterpret_cast<WPARAM>(ui.small),TRUE);
-   for (int i=0; i<4; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
+   for (int i=0; i<PageCount; i++) if (ui.controls[StepName+i]) SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==app.page?ui.bold:ui.body),TRUE);
    for (const auto &card:ui.cards)
    {
       SendMessageW(card->location,WM_SETFONT,reinterpret_cast<WPARAM>(ui.smallBold),TRUE);
@@ -117,12 +117,13 @@ static void branding()
    SendMessageW(ui.controls[Brand],STM_SETICON,reinterpret_cast<WPARAM>(icon),0);
    if (ui.clover) DestroyIcon(ui.clover);
    ui.clover=icon;
-   const int widths[]={32,83,24,24,24,42,42},heights[]={32,30,24,24,24,42,42};
-   for (int i=1; i<7; i++)
+   const int widths[]={32,83,24,24,24,42,42,16},heights[]={32,30,24,24,24,42,42,16};
+   for (int i=1; i<8; i++)
    {
-      size_t length=installer_images[i].size;
+      int image=i==7?5:i;
+      size_t length=installer_images[image].size;
       HGLOBAL data=GlobalAlloc(GMEM_MOVEABLE,length);
-      memcpy(GlobalLock(data),installer_images[i].data,length); GlobalUnlock(data);
+      memcpy(GlobalLock(data),installer_images[image].data,length); GlobalUnlock(data);
       IStream *stream; CreateStreamOnHGlobal(data,TRUE,&stream);
       HBITMAP bitmap;
       {
@@ -133,7 +134,7 @@ static void branding()
             COLORREF background=i>=5?GetSysColor(COLOR_WINDOW):RGB(236,243,231);
             graphics.Clear(Gdiplus::Color(255,GetRValue(background),GetGValue(background),GetBValue(background)));
             graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-            int inset=i>=5?int(5*scale):0;
+            int inset=i==5 || i==6?int(5*scale):0;
             graphics.DrawImage(&source,inset,inset,int(resized.GetWidth())-2*inset,int(resized.GetHeight())-2*inset);
          }
          resized.GetHBITMAP(Gdiplus::Color(255,236,243,231),&bitmap);
@@ -141,6 +142,7 @@ static void branding()
       stream->Release();
       if (i<2) SendMessageW(ui.controls[Brand+i],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
       else if (i<5) for (auto &card:ui.cards) { if (deviceIcon(card->device)+2==i) SendMessageW(card->badge,STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap)); }
+      else if (i==7) SendMessageW(ui.controls[SourceCheck],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
       else if (i==(app.error.empty()?5:6)) SendMessageW(ui.controls[Result],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(bitmap));
       if (ui.brand[i]) DeleteObject(ui.brand[i]);
       ui.brand[i]=bitmap;
@@ -381,19 +383,22 @@ static void layoutContent()
    RECT outer,viewport; GetWindowRect(ui.panel,&outer); GetClientRect(ui.panel,&viewport);
    struct Field { int id; float x,y,width,height; };
    std::vector<Field> fields;
-   bool messageVisible=page==0;
+   bool messageVisible=page==SourcePage;
+   bool sourceValid=messageVisible && !app.message().empty();
+   ShowWindow(ui.controls[SourceCheck],sourceValid?SW_SHOW:SW_HIDE);
+   for (int i=0; i<3; i++) ShowWindow(ui.controls[WelcomeText+i],page==WelcomePage?SW_SHOW:SW_HIDE);
    for (int id:{PathLabel,Path,BrowseButton,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Message})
    {
-      bool isoField=page==0 && (id==PathLabel || id==Path || id==BrowseButton);
-      bool usbField=page==1 && (id==Drives || id==Empty || id==EraseButton);
-      bool progressField=page==2 && (id==Status || id==Percent || id==Progress);
+      bool isoField=page==SourcePage && (id==PathLabel || id==Path || id==BrowseButton);
+      bool usbField=page==TargetPage && (id==Drives || id==Empty || id==EraseButton);
+      bool progressField=page==InstallationPage && (id==Status || id==Percent || id==Progress);
       bool show=isoField || usbField || progressField;
-      if (id==Target) show=page>=2;
-      if (id==Result) show=page==3;
+      if (id==Target) show=page>=InstallationPage;
+      if (id==Result) show=page==FinishPage;
       if (id==Percent) show=progressField && !app.indeterminate();
-      if (id==Drives) show=page==1 && !app.devices.empty();
-      if (id==Empty) show=page==1 && app.devices.empty();
-      if (id==EraseButton) show=page==1 && !app.devices.empty();
+      if (id==Drives) show=page==TargetPage && !app.devices.empty();
+      if (id==Empty) show=page==TargetPage && app.devices.empty();
+      if (id==EraseButton) show=page==TargetPage && !app.devices.empty();
       if (id==Message) show=messageVisible;
       if (bool(GetWindowLongW(ui.controls[id],GWL_STYLE)&WS_VISIBLE)!=show) ShowWindow(ui.controls[id],show?SW_SHOW:SW_HIDE);
    }
@@ -407,15 +412,19 @@ static void layoutContent()
       add(Step,x,y,w,20); y+=26;
       h=textHeight(Heading,w); add(Heading,x,y,w,h); y+=h+9;
       h=textHeight(Intro,w); add(Intro,x,y,w,h); y+=h+22;
-      float messageWidth=w;
+      float messageInset=sourceValid?24:0,messageWidth=w-messageInset;
       float messageHeight=messageVisible?textHeight(Message,messageWidth):0;
-      if (page==0)
+      if (page==WelcomePage)
+      {
+         for (int i=0; i<3; i++) { h=textHeight(WelcomeText+i,w); add(WelcomeText+i,x,y,w,h); y+=h+18; }
+      }
+      if (page==SourcePage)
       {
          add(PathLabel,x,y,w,21); y+=27;
          add(Path,x,y,w-108,35); add(BrowseButton,x+w-100,y,100,35); y+=48;
          messageHeight=std::max(42.0f,messageHeight);
       }
-      if (page==1)
+      if (page==TargetPage)
       {
          if (app.devices.empty()) { h=textHeight(Empty,w); add(Empty,x,y,w,h); }
          else
@@ -427,11 +436,11 @@ static void layoutContent()
          }
          y+=h;
       }
-      if (page>=2)
+      if (page>=InstallationPage)
       {
-         if (page==3) { add(Result,x,y,42,42); y+=55; }
+         if (page==FinishPage) { add(Result,x,y,42,42); y+=55; }
          h=textHeight(Target,w-24); add(Target,x+12,y+10,w-24,h); y+=h+20;
-         if (page==2)
+         if (page==InstallationPage)
          {
             float statusWidth=w-(app.indeterminate()?0:58);
             y+=21; h=std::max(21.0f,textHeight(Status,statusWidth));
@@ -440,10 +449,11 @@ static void layoutContent()
       }
       if (messageVisible)
       {
-         add(Message,x,y,messageWidth,messageHeight); y+=messageHeight;
+         add(SourceCheck,x,y+(textHeight(PathLabel,w)-16)/2,16,16);
+         add(Message,x+messageInset,y,messageWidth,messageHeight); y+=messageHeight;
       }
       SCROLLINFO scroll={}; scroll.cbSize=sizeof(scroll); scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
-      scroll.nMin=0; scroll.nMax=int((y+(page==1?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
+      scroll.nMin=0; scroll.nMax=int((y+(page==TargetPage?12:29))*scale)-1; scroll.nPage=viewport.bottom; scroll.nPos=ui.scroll;
       SetScrollInfo(ui.panel,SB_VERT,&scroll,TRUE); GetClientRect(ui.panel,&viewport);
       if (viewport.right==pixels) break;
       pixels=viewport.right;
@@ -463,7 +473,7 @@ static void layoutWindow()
    for (int id:{Rail,Brand,Wordmark}) ShowWindow(ui.controls[id],SW_SHOW);
    place(Rail,0,0,rail,footer,false);
    place(Brand,25,28,32,32,false); place(Wordmark,66,29,83,30,false);
-   for (int i=0; i<4; i++)
+   for (int i=0; i<PageCount; i++)
    {
       ShowWindow(ui.controls[StepNumber+i],SW_SHOW); ShowWindow(ui.controls[StepName+i],SW_SHOW);
       place(StepNumber+i,22,86+i*40,24,24,false); place(StepName+i,56,83+i*40,rail-66,31,false);
@@ -481,11 +491,11 @@ static void updateWindow()
    if (ui.updating || !ui.panel) return;
    ui.updating=true;
    int page=app.page;
-   text(Step,"Step "+std::to_string(page+1)+" of 4"); text(Heading,app.heading()); text(Intro,app.introduction());
+   text(Step,"Step "+std::to_string(page+1)+" of "+std::to_string(PageCount)); text(Heading,app.heading()); text(Intro,app.introduction());
    text(Path,app.iso.path); text(Message,app.message());
-   text(FooterStatus,page<2 && app.pending!=None?app.progressText():"");
+   text(FooterStatus,page>=SourcePage && page<InstallationPage && app.pending!=None?app.progressText():"");
    text(Target,app.target); text(Status,app.progressText()); text(Percent,std::to_string(app.percent)+"%");
-   text(NextButton,app.page==3?(app.error.empty()?"Finish":"Try again"):"Next");
+   text(NextButton,app.page==FinishPage?(app.error.empty()?"Finish":"Try again"):"Next");
    LONG progressStyle=GetWindowLongW(ui.controls[Progress],GWL_STYLE); bool pulse=app.indeterminate();
    if (pulse!=bool(progressStyle&PBS_MARQUEE))
    {
@@ -523,20 +533,21 @@ static void updateWindow()
          RedrawWindow(card->window,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);
       }
    }
-   EnableWindow(ui.controls[Drives],app.pending==None); EnableWindow(ui.controls[BrowseButton],app.pending==None); EnableWindow(ui.controls[Path],app.pending==None);
+   EnableWindow(ui.controls[Drives],app.pending==None);
+   EnableWindow(ui.controls[BrowseButton],app.pending==None || app.pending==CheckSource); EnableWindow(ui.controls[Path],app.pending==None || app.pending==CheckSource);
    EnableWindow(ui.controls[EraseButton],!app.devices.empty() && app.pending==None);
-   EnableWindow(ui.controls[NextButton],app.canContinue()); EnableWindow(ui.controls[BackButton],page==1);
-   ShowWindow(ui.controls[BackButton],page<3?SW_SHOW:SW_HIDE);
-   EnableMenuItem(GetSystemMenu(window,FALSE),SC_CLOSE,MF_BYCOMMAND|(app.page==2?MF_GRAYED:MF_ENABLED));
+   EnableWindow(ui.controls[NextButton],app.canContinue()); EnableWindow(ui.controls[BackButton],page>=SourcePage && page<=TargetPage);
+   ShowWindow(ui.controls[BackButton],page<FinishPage?SW_SHOW:SW_HIDE);
+   EnableMenuItem(GetSystemMenu(window,FALSE),SC_CLOSE,MF_BYCOMMAND|(app.page==InstallationPage?MF_GRAYED:MF_ENABLED));
    if (ui.page!=page)
    {
       ui.page=page; ui.scroll=0;
       HWND focus=ui.controls[NextButton];
-      if (page==1) focus=ui.controls[Drives];
-      if (page==2) focus=window;
+      if (page==TargetPage) focus=ui.controls[Drives];
+      if (page==InstallationPage) focus=window;
       SetFocus(focus);
    }
-   for (int i=0; i<4; i++)
+   for (int i=0; i<PageCount; i++)
    {
       SendMessageW(ui.controls[StepName+i],WM_SETFONT,reinterpret_cast<WPARAM>(i==page?ui.bold:ui.body),TRUE);
       InvalidateRect(ui.controls[StepNumber+i],nullptr,TRUE); InvalidateRect(ui.controls[StepName+i],nullptr,TRUE);
@@ -660,7 +671,7 @@ void showInstallError(const std::string &message)
 {
    auto text=wide(message); MSGBOXPARAMSW dialog={}; dialog.cbSize=sizeof(dialog);
    dialog.hwndOwner=window; dialog.hInstance=GetModuleHandleW(nullptr); dialog.lpszText=text.c_str();
-   dialog.lpszCaption=app.page==0?L"Cannot use this Slax source":L"Cannot install Slax"; dialog.dwStyle=MB_OK|MB_USERICON; dialog.lpszIcon=MAKEINTRESOURCEW(2);
+   dialog.lpszCaption=app.page==SourcePage?L"Cannot use this Slax source":L"Cannot install Slax"; dialog.dwStyle=MB_OK|MB_USERICON; dialog.lpszIcon=MAKEINTRESOURCEW(2);
    MessageBoxIndirectW(&dialog);
 }
 
@@ -753,9 +764,9 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
       auto item=reinterpret_cast<HWND>(lp); auto dc=reinterpret_cast<HDC>(wp); int id=GetDlgCtrlID(item);
       SetBkMode(dc,OPAQUE); SetBkColor(dc,GetSysColor(COLOR_WINDOW)); SetTextColor(dc,GetSysColor(COLOR_WINDOWTEXT));
       if (id==Message || id==FooterStatus) SetTextColor(dc,RGB(84,96,86));
-      if (id==Step || (id>=StepName && id<StepName+4)) SetTextColor(dc,RGB(57,119,33));
-      if (id>=StepNumber && id<StepNumber+4 && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
-      bool stepControl=(id>=StepNumber && id<StepNumber+4) || (id>=StepName && id<StepName+4);
+      if (id==Step || (id>=StepName && id<StepName+PageCount)) SetTextColor(dc,RGB(57,119,33));
+      if (id>=StepNumber && id<StepNumber+PageCount && id-StepNumber==app.page) { SetBkColor(dc,RGB(57,119,33)); SetTextColor(dc,RGB(255,255,255)); return reinterpret_cast<LRESULT>(ui.green); }
+      bool stepControl=(id>=StepNumber && id<StepNumber+PageCount) || (id>=StepName && id<StepName+PageCount);
       bool branding=id==Brand || id==Wordmark;
       bool sidebar=id==Rail || branding || stepControl;
       if (sidebar) SetBkColor(dc,RGB(236,243,231));
@@ -774,8 +785,8 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
       SetWindowPos(hwnd,nullptr,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top,SWP_NOZORDER|SWP_NOACTIVATE); return 0;
    }
    if (message==WM_TIMER) { app.tick(); return 0; }
-   if (message==WM_CLOSE) { if (!app.confirming && !app.choosing && app.page!=2) DestroyWindow(hwnd); return 0; }
-   if (message==WM_QUERYENDSESSION && app.page==2) return FALSE;
+   if (message==WM_CLOSE) { if (!app.confirming && !app.choosing && app.page!=InstallationPage) DestroyWindow(hwnd); return 0; }
+   if (message==WM_QUERYENDSESSION && app.page==InstallationPage) return FALSE;
    if (message==WM_DESTROY) { PostQuitMessage(0); return 0; }
    return DefWindowProcW(hwnd,message,wp,lp);
 }
@@ -803,11 +814,11 @@ int runWindow()
    if (!window) return 1;
    ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); fonts();
    control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_ICON|SS_REALSIZEIMAGE,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
-   const char *steps[]={"Slax source","Target drive","Installation","Finish"};
-   for (int i=0; i<4; i++)
+
+   for (int i=0; i<PageCount; i++)
    {
       control(StepNumber+i,L"STATIC",SS_CENTER|SS_CENTERIMAGE,ui.controls[Rail]); text(StepNumber+i,std::to_string(i+1));
-      control(StepName+i,L"STATIC",SS_LEFT|SS_CENTERIMAGE,ui.controls[Rail]); text(StepName+i,steps[i]);
+      control(StepName+i,L"STATIC",SS_LEFT|SS_CENTERIMAGE,ui.controls[Rail]); text(StepName+i,wizardSteps[i]);
    }
    ui.panel=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxInstallerContent",L"",WS_CHILD|WS_VISIBLE|WS_VSCROLL|WS_CLIPCHILDREN,0,0,1,1,window,nullptr,instance,nullptr);
    for (int id:{Step,Heading,Intro,PathLabel,Message,Empty,Target,Status,Percent})
@@ -815,12 +826,15 @@ int runWindow()
       bool single=id==Step || id==PathLabel || id==Percent;
       control(id,L"STATIC",SS_LEFT|SS_NOPREFIX|(single?SS_CENTERIMAGE:SS_EDITCONTROL),ui.panel);
    }
+   // Ordinary static labels use native font metrics and wrap each welcome paragraph.
+   for (int i=0; i<3; i++) { control(WelcomeText+i,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_EDITCONTROL,ui.panel); text(WelcomeText+i,welcomeText[i]); }
    control(Path,L"EDIT",ES_MULTILINE|ES_AUTOHSCROLL|WS_TABSTOP,ui.panel,WS_EX_CLIENTEDGE); SetWindowSubclass(ui.controls[Path],pathEvents,1,0);
    control(BrowseButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,ui.panel);
    SetWindowSubclass(ui.controls[BrowseButton],browseEvents,1,0);
    control(Drives,L"SlaxInstallerDevices",WS_VSCROLL|WS_CLIPCHILDREN|WS_TABSTOP,ui.panel,WS_EX_CONTROLPARENT);
    control(EraseButton,L"BUTTON",BS_AUTOCHECKBOX|BS_MULTILINE|WS_TABSTOP,ui.panel); control(Progress,PROGRESS_CLASSW,0,ui.panel); SendMessageW(ui.controls[Progress],PBM_SETRANGE32,0,100);
    control(Result,L"STATIC",SS_BITMAP,ui.panel); control(Separator,L"STATIC",SS_ETCHEDHORZ,window); control(Footer,L"STATIC",SS_LEFT|SS_NOPREFIX|SS_CENTERIMAGE,window);
+   control(SourceCheck,L"STATIC",SS_BITMAP,ui.panel);
    control(FooterStatus,L"STATIC",SS_LEFT|SS_CENTERIMAGE|SS_ENDELLIPSIS|SS_NOPREFIX,window);
    control(BackButton,L"BUTTON",BS_PUSHBUTTON|WS_TABSTOP,window); control(NextButton,L"BUTTON",BS_DEFPUSHBUTTON|WS_TABSTOP,window);
    text(PathLabel,"Source ISO image or Slax directory"); text(BrowseButton,"Browse…"); text(Empty,"No suitable disks found. Connect a disk to continue.");
@@ -829,7 +843,7 @@ int runWindow()
    MSG message;
    while (GetMessageW(&message,nullptr,0,0)>0)
    {
-      if (message.message==WM_KEYDOWN && message.wParam==VK_ESCAPE && app.page!=2) { app.activate(Close); continue; }
+      if (message.message==WM_KEYDOWN && message.wParam==VK_ESCAPE && app.page!=InstallationPage) { app.activate(Close); continue; }
       if (!IsDialogMessageW(window,&message)) { TranslateMessage(&message); DispatchMessageW(&message); }
       if (message.message==WM_KEYDOWN && (message.wParam==VK_TAB || message.wParam==VK_UP || message.wParam==VK_DOWN)) revealFocus();
    }
@@ -854,7 +868,7 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,LPWSTR,int)
       if (!image.error.empty()) { fprintf(stderr,"%s\n",image.error.c_str()); return 1; }
       printf("%s · %s\n",image.name.c_str(),sizeText(image.bytes,true).c_str()); return 0;
    }
-   app.setImagePath(count==2?utf8(args[1]):sourceImage(),count!=2);
+   app.setImagePath(count==2?utf8(args[1]):sourceImage(),true);
    LocalFree(args);
    return runWindow();
 }

@@ -6,3 +6,7 @@ Linux Live Kit
 
 Slax
 ----
+- Add a welcome page to both installers explaining the installation choices
+  and confirmation before any changes are written.
+- Check installation sources while editing or browsing, show a green check
+  when valid and disable Next while checking.
