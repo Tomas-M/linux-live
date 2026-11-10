@@ -6,6 +6,7 @@ Linux Live Kit
 
 Slax
 ----
+- Default to a 790 by 500 file-manager window with an editable path and navigation arrows.
 - Keep installer progress on one line when copying files with long paths.
 - Mount ISO images read-only from the file manager and remove their sidebar links after unmounting.
 - Show Windows installer progress on its taskbar button when supported.
