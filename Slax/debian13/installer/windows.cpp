@@ -7,10 +7,10 @@
 #include <setupapi.h>
 #include <winioctl.h>
 #include <shellapi.h>
-// Expose optional Vista COM interfaces while retaining XP as the executable's API target.
+// Expose optional modern COM interfaces while retaining XP as the executable's API target.
 #pragma push_macro("NTDDI_VERSION")
 #undef NTDDI_VERSION
-#define NTDDI_VERSION 0x06000000
+#define NTDDI_VERSION 0x06010000
 #include <shlobj.h>
 #include <shobjidl.h>
 #pragma pop_macro("NTDDI_VERSION")
@@ -26,6 +26,8 @@
 
 static HWND window;
 static float scale=1;
+static UINT taskbarCreated;
+static ITaskbarList3 *taskbar=nullptr;
 
 enum { Rail=100,StepNumber=110,StepName=120,Brand=130,Wordmark,Step=140,Heading,Intro,PathLabel,Path,BrowseButton,Message,Drives,Empty,EraseButton,Target,Status,Percent,Progress,Result,Footer,BackButton,NextButton,Separator,FooterStatus,WelcomeText,SourceCheck=WelcomeText+3 };
 static const DWORD windowStyle=WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN;
@@ -50,6 +52,16 @@ struct WinUi
    int scroll=0,deviceScroll=0,page=-1;
    bool updating=false,layingout=false,layingoutDevices=false;
 } ui;
+
+// Mirror the visible installation bar through the optional Windows 7 shell interface.
+static void updateTaskbar()
+{
+   if (!taskbar) return;
+   TBPFLAG state=TBPF_NOPROGRESS;
+   if (app.page==InstallationPage) state=app.indeterminate()?TBPF_INDETERMINATE:TBPF_NORMAL;
+   taskbar->SetProgressState(window,state);
+   if (state==TBPF_NORMAL) taskbar->SetProgressValue(window,app.percent,100);
+}
 
 // Set native text only when changed, preserving edit selection and accessibility focus.
 static void text(HWND control,const std::string &value)
@@ -506,6 +518,7 @@ static void updateWindow()
       if (pulse) SendMessageW(ui.controls[Progress],PBM_SETMARQUEE,TRUE,40);
    }
    if (!pulse) SendMessageW(ui.controls[Progress],PBM_SETPOS,app.percent,0);
+   updateTaskbar();
    SendMessageW(ui.controls[EraseButton],BM_SETCHECK,app.erase?BST_CHECKED:BST_UNCHECKED,0);
    auto result=ui.brand[app.error.empty()?5:6];
    if (reinterpret_cast<HBITMAP>(SendMessageW(ui.controls[Result],STM_GETIMAGE,IMAGE_BITMAP,0))!=result) SendMessageW(ui.controls[Result],STM_SETIMAGE,IMAGE_BITMAP,reinterpret_cast<LPARAM>(result));
@@ -736,6 +749,17 @@ static void revealFocus()
 // Handle native control notifications; leave all nonclient behavior to Windows.
 static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
 {
+   if (taskbarCreated && message==taskbarCreated)
+   {
+      // Explorer can recreate the taskbar while an installation is running.
+      if (taskbar) { taskbar->Release(); taskbar=nullptr; }
+      if (SUCCEEDED(CoCreateInstance(CLSID_TaskbarList,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&taskbar))))
+      {
+         if (SUCCEEDED(taskbar->HrInit())) updateTaskbar();
+         else { taskbar->Release(); taskbar=nullptr; }
+      }
+      return 0;
+   }
    if (message==WM_SETCURSOR && LOWORD(lp)==HTCLIENT && app.busy())
    {
       SetCursor(LoadCursorW(nullptr,IDC_APPSTARTING)); return TRUE;
@@ -789,7 +813,11 @@ static LRESULT CALLBACK events(HWND hwnd,UINT message,WPARAM wp,LPARAM lp)
    if (message==WM_TIMER) { app.tick(); return 0; }
    if (message==WM_CLOSE) { if (!app.confirming && !app.choosing && app.page!=InstallationPage) DestroyWindow(hwnd); return 0; }
    if (message==WM_QUERYENDSESSION && app.page==InstallationPage) return FALSE;
-   if (message==WM_DESTROY) { PostQuitMessage(0); return 0; }
+   if (message==WM_DESTROY)
+   {
+      if (taskbar) { taskbar->SetProgressState(hwnd,TBPF_NOPROGRESS); taskbar->Release(); taskbar=nullptr; }
+      PostQuitMessage(0); return 0;
+   }
    return DefWindowProcW(hwnd,message,wp,lp);
 }
 
@@ -814,6 +842,12 @@ int runWindow()
    width=std::min(width,int(workarea.right-workarea.left-16)); height=std::min(height,int(workarea.bottom-workarea.top-16));
    window=CreateWindowExW(WS_EX_CONTROLPARENT,L"SlaxUsbInstaller",L"Slax Installer",windowStyle,workarea.left+(workarea.right-workarea.left-width)/2,workarea.top+(workarea.bottom-workarea.top-height)/2,width,height,nullptr,nullptr,instance,nullptr);
    if (!window) return 1;
+   HRESULT com=CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
+   taskbarCreated=RegisterWindowMessageW(L"TaskbarButtonCreated");
+   // Let Explorer's notification reach this administrator window without a new XP import.
+   using MessageFilter=BOOL (WINAPI *)(HWND,UINT,DWORD,void *);
+   auto filter=reinterpret_cast<MessageFilter>(GetProcAddress(GetModuleHandleW(L"user32.dll"),"ChangeWindowMessageFilterEx"));
+   if (filter && taskbarCreated) filter(window,taskbarCreated,1,nullptr);
    ui.rail=CreateSolidBrush(RGB(236,243,231)); ui.green=CreateSolidBrush(RGB(57,119,33)); ui.selected=CreateSolidBrush(RGB(238,247,231)); fonts();
    control(Rail,L"SlaxInstallerRail",WS_CLIPCHILDREN,window); control(Brand,L"STATIC",SS_ICON|SS_REALSIZEIMAGE,ui.controls[Rail]); control(Wordmark,L"STATIC",SS_BITMAP,ui.controls[Rail]);
 
@@ -851,6 +885,8 @@ int runWindow()
       if (message.message==WM_KEYDOWN && (message.wParam==VK_TAB || message.wParam==VK_UP || message.wParam==VK_DOWN)) revealFocus();
    }
    app.stop(); window=nullptr;
+   if (taskbar) { taskbar->Release(); taskbar=nullptr; }
+   if (SUCCEEDED(com)) CoUninitialize();
    for (auto font:{ui.body,ui.small,ui.title,ui.intro,ui.bold,ui.smallBold}) DeleteObject(font);
    for (auto image:ui.brand) DeleteObject(image);
    DestroyIcon(ui.clover);
