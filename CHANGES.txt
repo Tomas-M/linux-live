@@ -3,56 +3,8 @@ Unreleased changes
 
 Linux Live Kit
 --------------
-- Preserve the initramfs diagnostic logs livedbg and from.log after switching
-  to the live system, including text-mode boots.
-- Allow individual files larger than 4 GiB in generated ISOs, including large
-  SquashFS modules, using ISO 9660 level 3.
-- Fix DHCP configuration for HTTP ISO boot with ip=dhcp and generate the DHCP
-  script portably across supported shells.
-- Support Zstandard-compressed kernel modules (*.ko.zst), remove their
-  compressed copies after extraction and abort the build if extraction fails.
-  Normalize modules.order entries for gzip, XZ and Zstandard compression.
-- Detect XZ Utils without relying on English text in its help output.
-- Include VirtIO block, SCSI, transport and auxiliary drivers and their
-  dependencies in the initramfs. Complete partially copied module directories
-  instead of skipping their remaining drivers.
-- Document HTTP ISO boot with DHCP and the optional Zstandard build dependency.
-- In the from=ask disk picker, exclude swap by filesystem type rather than by
-  matching "swap" anywhere in a device label.
+- Limit the shutdown splash to ten seconds, then restore the console without
+  interrupting filesystem cleanup or forcing a reboot or poweroff.
 
 Slax
 ----
-- Put Cancel before Install in both installers' confirmation dialogs.
-- Place both media installers in /slax/installer.
-- Keep Linux installer plans read-only and open writable disk handles under
-  the approved disk lock, avoiding a race with udev after plan confirmation.
-- Reuse reserved GPT BIOS space when installing again to an existing partition.
-  On data-only disks, allow replacing the old BIOS loader after a clear plan
-  warning; retain OS protection and back up all overwritten boot bytes.
-- Show short source and target check status in the installer footer, keeping
-  the target list and whole-disk erase option in place during checks.
-- Show source validation errors in native dialogs in both installers, keeping
-  the source page available for correcting the path.
-- Keep automatically detected sources on the source page until Next in both
-  installers. Check and confirm target plans on the target page; show installation
-  progress only after approval and successful revalidation.
-- Add Slax Installer to the xlunch application menu with a clover, disk and USB
-  icon. Store its unpacked Linux executable in the desktop
-  module and detect the current Slax data under /run/initramfs, including
-  copy-to-RAM sessions.
-- Let both installers select an ISO image or Slax directory from a Browse menu.
-  Accept either the Slax directory itself or its parent and stream its files
-  directly while preserving the normal source checks and copy verification.
-- Replace the separate BIOS boot partition on newly erased GPT disks with
-  reserved BIOS embedding space before the first usable LBA. Preserve BIOS
-  and UEFI boot without exposing a raw partition that Windows offers to format.
-- Let the Linux installer detect and read its current optical boot medium
-  directly, including virtual CD/DVD drives, without requiring another ISO
-  file. Follow executable symlinks and bind mounts independently of the working
-  directory. Support optical-device aliases and validate the Slax payload
-  while retaining the source page for review.
-- Show a clear message when no suitable target disks are found. Hide it when
-  a disk becomes available and restore it when the last disk is removed.
-  Hide the whole-disk erase option while no targets are available.
-- Fix spacing above the Install and Cancel buttons in the Linux installer's
-  confirmation dialog.

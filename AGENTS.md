@@ -1414,6 +1414,9 @@ must follow the general Slax repair rules above.
   Reuse the logo and dots timing. Esc restores the console's existing shutdown
   output and kernel verbosity while shutdown continues. Quiet text/debug boots
   keep their console, and unavailable framebuffer graphics must not block shutdown.
+  Bound the shutdown renderer to ten seconds, restoring the console like Escape.
+  Allow one further second for console cleanup before exiting the renderer;
+  this deadline never interrupts filesystem cleanup or applies to boot menus.
   Keep shutdown IPC at `/fbmenu-shutdown.sock`: systemd overlays `/run` during
   the exitrd pivot and resets the console to KD_TEXT. At the start of `shutdown`,
   before sourcing configuration, call `fbmenu --start /fbmenu-shutdown.sock` to

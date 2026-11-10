@@ -63,7 +63,7 @@ static char input[1024];
 static char activity[128];
 static size_t input_cursor;
 static struct timespec menu_time;
-static volatile sig_atomic_t running=1, released;
+static volatile sig_atomic_t running=1, released, shutdown_expired;
 
 /* Finish a message even when a signal interrupts a local socket or tty write. */
 static int write_all(int fd, const void *data, size_t size)
@@ -511,6 +511,15 @@ static void stop_server(int signal_number)
    running=0;
 }
 
+/* Bound the shutdown renderer even if console restoration itself stalls. */
+static void shutdown_timeout(int signal_number)
+{
+   (void)signal_number;
+   if (shutdown_expired) _exit(0);
+   shutdown_expired=1; running=0;
+   alarm(1);
+}
+
 /* Release display memory before a driver replaces the framebuffer. */
 static void pause_graphics(unsigned frame)
 {
@@ -547,6 +556,11 @@ static void resume_graphics(unsigned frame, int wait_for_driver)
 static int serve(const char *directory, const char *log, enum phase phase, int ready_fd, unsigned frame)
 {
    int resumed=phase==HANDOFF, shutting_down=phase==SHUTDOWN;
+   if (shutting_down) {
+      struct sigaction action={.sa_handler=shutdown_timeout};
+      sigemptyset(&action.sa_mask); sigaction(SIGALRM,&action,NULL);
+      alarm(10);
+   }
    signal(SIGTERM,stop_server); signal(SIGINT,stop_server); signal(SIGHUP,stop_server); signal(SIGPIPE,SIG_IGN);
    signal(SIGUSR1,stop_server);
    tty=open("/dev/tty1",O_RDWR|O_NOCTTY);
@@ -728,6 +742,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
       }
       if (disabled && menu_client<0) show_log();
    }
+   if (shutdown_expired) disable_splash();
    if (released) keep=!disabled;
    if (!taken) {
       keyboard(0);
@@ -739,6 +754,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
       }
    }
    unlink(socket_path); close(listener); close(keyboard_fd); close(tty); close(animation);
+   if (shutting_down) alarm(0);
    return 0;
 }
 
