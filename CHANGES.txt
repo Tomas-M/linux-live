@@ -6,6 +6,8 @@ Linux Live Kit
 
 Slax
 ----
+- Upgrade the fresh Debian base from the configured update and security
+  repositories before installing Slax packages.
 - Add a welcome page to both installers explaining the installation choices
   and confirmation before any changes are written.
 - Check installation sources while editing or browsing, show a green check

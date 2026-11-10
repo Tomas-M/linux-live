@@ -393,6 +393,8 @@ must follow the general Slax repair rules above.
   ```
 
 - `buildmods` creates a minimal Debian with `debootstrap --variant=minbase`
+  and upgrades that base from the configured repositories before installing or
+  customizing Slax packages, so seeded packages receive updates too. It runs
   inside a private mount namespace and an OverlayFS root. Changing layers
   unmounts the root and all helper mounts, then remounts the complete new stack.
   Use a disposable compiler upper layer and discard it before runtime cleanup.
