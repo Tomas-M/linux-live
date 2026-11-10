@@ -101,7 +101,10 @@ void Installer::startScan()
       while (running)
       {
          std::string current,requested; uint64_t version; bool eraseRequested;
-         { std::lock_guard<std::mutex> lock(mutex); current=source; version=revision; requested=requestId; eraseRequested=requestErase; }
+         std::chrono::steady_clock::time_point checkAfter;
+         { std::lock_guard<std::mutex> lock(mutex); current=source; version=revision; requested=requestId; eraseRequested=requestErase; checkAfter=sourceCheckAfter; }
+         // Wait briefly after typing and reread the revision before accessing a source.
+         if (std::chrono::steady_clock::now()<checkAfter) { std::this_thread::sleep_for(std::chrono::milliseconds(50)); continue; }
          auto result=scanDevices(current); Image image;
          if (!current.empty()) image=inspectImage(current);
          std::shared_ptr<InstallPlan> prepared; std::string failure;
@@ -130,21 +133,23 @@ void Installer::startScan()
 }
 
 // Version each requested plan so a stale discovery result can never authorize writes.
-void Installer::refresh(Action action)
+void Installer::refresh(Action action,bool debounce)
 {
    pending=action;
    std::lock_guard<std::mutex> lock(mutex);
    bool checkingSource=action==Next || action==CheckSource;
-   source=page==0 && !checkingSource?"":iso.path; requestId=page==1 && (action==Next || action==Confirm)?selected:"";
+   source=page<=SourcePage && !checkingSource?"":iso.path; requestId=page==TargetPage && (action==Next || action==Confirm)?selected:"";
+   sourceCheckAfter=debounce?std::chrono::steady_clock::now()+std::chrono::milliseconds(300):std::chrono::steady_clock::time_point{};
    requestErase=erase; revision++;
 }
 
-// Validate automatic sources immediately; edited paths wait for Next.
-void Installer::setImagePath(const std::string &path,bool automatic)
+// Check chosen sources immediately and debounce typing while invalidating old results.
+void Installer::setImagePath(const std::string &path,bool immediate)
 {
-   if (page!=0 || pending!=None || iso.path==path) return;
+   if (page>SourcePage || (pending!=None && pending!=CheckSource)) return;
+   if (iso.path==path && !immediate) return;
    iso={}; iso.path=path; selected.clear(); error.clear(); plan.reset();
-   refresh(automatic?CheckSource:None); invalidate();
+   refresh(path.empty()?None:CheckSource,!immediate); invalidate();
 }
 
 // Whole-disk highlighting is derived from the last clicked row, never a second selection list.
@@ -158,11 +163,11 @@ bool Installer::isSelected(const Device &device) const
 // Consume worker results on the GUI thread and launch only the exact plan the user approved.
 void Installer::tick()
 {
-   if (page==2)
+   if (page==InstallationPage)
    {
       bool done;
       { std::lock_guard<std::mutex> lock(mutex); percent=writtenPercent; done=writeDone; if (done) error=writeError; }
-      if (done) { if (writer.joinable()) writer.join(); page=3; plan.reset(); }
+      if (done) { if (writer.joinable()) writer.join(); page=FinishPage; plan.reset(); }
       invalidate(); return;
    }
    bool ready=false; Image checked; std::shared_ptr<InstallPlan> prepared; std::string failure;
@@ -179,17 +184,20 @@ void Installer::tick()
    {
       Action action=pending; pending=None;
       { std::lock_guard<std::mutex> lock(mutex); requestId.clear(); }
-      if (page==0)
+      if (page<=SourcePage)
       {
+         // Background checks update metadata without rewriting the path being edited.
+         if (action==CheckSource) checked.path=iso.path;
          iso=checked; error=iso.error;
+         if (page==WelcomePage || action==CheckSource) error.clear();
          if (!error.empty())
          {
             confirming=true; invalidate(); showInstallError(error+"\n\nCheck the source path or choose a source ISO image or Slax directory."); confirming=false; error.clear();
          }
-         if (iso.error.empty() && action==Next) page=1;
+         if (page==SourcePage && iso.error.empty() && action==Next) page=TargetPage;
          else refresh(None);
       }
-      else if (page==1)
+      else if (page==TargetPage)
       {
          error=failure;
          if (error.empty() && !prepared) error="The target could not be prepared. Select the image and target again.";
@@ -218,7 +226,7 @@ void Installer::tick()
             else
             {
                running=false;
-               page=2; percent=0;
+               page=InstallationPage; percent=0;
                { std::lock_guard<std::mutex> lock(mutex); writeDone=false; writeError.clear(); writtenPercent=0; status="Preparing installation…"; }
                // Use the latest parsed ISO inventory when reopening the source for copying.
                plan=prepared; auto approved=plan;
@@ -245,14 +253,18 @@ void Installer::tick()
 // Closing and navigation cannot interrupt an active writer or alter its immutable approved plan.
 void Installer::activate(Action action,const std::string &id)
 {
-   if (confirming || choosing || page==2) return;
+   if (confirming || choosing || page==InstallationPage) return;
    if (action==Close) { windowAction(Close); return; }
-   if (action==Back && page==1) { plan.reset(); page=0; refresh(None); error=iso.error; }
-   if (pending!=None) { invalidate(); return; }
-   if (action==Browse || action==BrowseDirectory)
+   // Welcome navigation never waits for discovery or permits a check to skip ahead.
+   if (action==Next && page==WelcomePage) { page=SourcePage; invalidate(); return; }
+   if (action==Back && page==SourcePage) { page=WelcomePage; invalidate(); return; }
+   if (action==Back && page==TargetPage) { plan.reset(); page=SourcePage; refresh(None); error=iso.error; }
+   bool browsing=action==Browse || action==BrowseDirectory;
+   if (pending!=None && !(browsing && pending==CheckSource)) { invalidate(); return; }
+   if (browsing)
    {
       choosing=true; auto path=chooseImage(action==BrowseDirectory);
-      if (!path.empty()) setImagePath(path);
+      if (!path.empty()) setImagePath(path,true);
       choosing=false;
    }
    if (action==Erase)
@@ -266,10 +278,10 @@ void Installer::activate(Action action,const std::string &id)
    }
    if (action==Next)
    {
-      if (page<2)
+      if (page<InstallationPage)
       {
-         if (page==0 && iso.path.size()>1 && iso.path.front()=='"' && iso.path.back()=='"') iso.path=iso.path.substr(1,iso.path.size()-2);
-         if (page==1)
+         if (page==SourcePage && iso.path.size()>1 && iso.path.front()=='"' && iso.path.back()=='"') iso.path=iso.path.substr(1,iso.path.size()-2);
+         if (page==TargetPage)
          {
             auto device=std::find_if(devices.begin(),devices.end(),[&](const Device &d) { return d.id==selected; });
             if (device!=devices.end()) target=device->name+" ("+device->label+") · "+sizeText(erase?device->diskBytes:device->bytes);
@@ -277,9 +289,9 @@ void Installer::activate(Action action,const std::string &id)
          }
          error.clear(); refresh(Next);
       }
-      else if (page==3)
+      else if (page==FinishPage)
       {
-         if (!error.empty()) { page=1; error.clear(); percent=0; startScan(); refresh(None); }
+         if (!error.empty()) { page=TargetPage; error.clear(); percent=0; startScan(); refresh(None); }
          else windowAction(Close);
       }
    }
@@ -295,49 +307,50 @@ void Installer::stop()
 }
 
 // Unknown work uses a moving indicator until real installation progress is available.
-bool Installer::indeterminate() const { return page==2 && percent==0; }
+bool Installer::indeterminate() const { return page==InstallationPage && percent==0; }
 
 // Show work feedback for requested checks and writes, not routine background discovery.
-bool Installer::busy() const { return pending!=None || page==2; }
+bool Installer::busy() const { return (page!=WelcomePage && pending!=None) || page==InstallationPage; }
 
 // Shared page headings keep both native frontends in the same workflow.
 std::string Installer::heading() const
 {
-   const char *titles[]={"Choose a Slax source","Choose a target drive","Installing Slax","Installation complete"};
-   if (page==3 && !error.empty()) return "Installation failed";
+   const char *titles[]={"Welcome to Slax Installer","Choose a Slax source","Choose a target drive","Installing Slax","Installation complete"};
+   if (page==FinishPage && !error.empty()) return "Installation failed";
    return titles[page];
 }
 
 // Describe actual writes and keep the result tied to verified completion.
 std::string Installer::introduction() const
 {
-   const char *text[]={"Select a source ISO image or source folder containing Slax files.","Select a disk or partition that will hold Slax.","Keep the source and target connected. Do not turn off the computer.","Slax was copied and verified, and its boot files are ready. Restart and select Slax or the target disk in the boot menu."};
-   if (page==3 && !error.empty()) return error;
+   const char *text[]={"Install Slax on a USB drive or a local disk.","Select a source ISO image or source folder containing Slax files.","Select a disk or partition that will hold Slax.","Keep the source and target connected. Do not turn off the computer.","Slax was copied and verified, and its boot files are ready. Restart and select Slax or the target disk in the boot menu."};
+   if (page==FinishPage && !error.empty()) return error;
    return text[page];
 }
 
 // Progress is supplied by real completed I/O, never by an elapsed-time simulation.
 std::string Installer::progressText() const
 {
-   if (page==0 && pending!=None) return "Checking source…";
-   if (page==1 && pending==Next) return "Preparing installation plan…";
-   if (page==1 && pending==Confirm) return "Rechecking plan…";
+   if (page==SourcePage && pending!=None) return "Checking source…";
+   if (page==TargetPage && pending==Next) return "Preparing installation plan…";
+   if (page==TargetPage && pending==Confirm) return "Rechecking plan…";
    std::lock_guard<std::mutex> lock(mutex); return status;
 }
 
 // Only source metadata belongs in the page; checks use the footer and errors use dialogs.
 std::string Installer::message() const
 {
-   if (page==0 && pending==None && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
+   if (page==SourcePage && pending==None && !iso.entries.empty() && iso.error.empty()) return iso.name+" · "+sizeText(iso.payload,true)+" to copy";
    return "";
 }
 
 // Derive native button availability from the latest target facts and writer lifetime.
 bool Installer::canContinue() const
 {
-   if (pending!=None || confirming || choosing || page==2) return false;
-   if (page==0) return !iso.path.empty();
-   if (page==1)
+   if (page==WelcomePage) return !confirming && !choosing;
+   if (pending!=None || confirming || choosing || page==InstallationPage) return false;
+   if (page==SourcePage) return !iso.path.empty();
+   if (page==TargetPage)
    {
       if (!iso.error.empty()) return false;
       for (const auto &device:devices) if (device.id==selected) return true;
@@ -358,7 +371,7 @@ int main(int argc,char **argv)
       printf("%s · %s\n",image.name.c_str(),sizeText(image.bytes,true).c_str());
       return 0;
    }
-   app.setImagePath(argc==2?argv[1]:sourceImage(),argc!=2);
+   app.setImagePath(argc==2?argv[1]:sourceImage(),true);
    return runWindow();
 }
 #endif

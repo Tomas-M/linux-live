@@ -15,7 +15,7 @@ static GdkPixbuf *images[7];
 
 struct GtkUi
 {
-   GtkWidget *rail,*steps[4],*numbers[4],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox;
+   GtkWidget *rail,*steps[PageCount],*numbers[PageCount],*step,*heading,*intro,*stack,*path,*browse,*message,*messageBox,*sourceCheck;
    GtkWidget *devices,*deviceScroll,*empty,*erase,*target[2],*status,*percent,*progress,*result;
    GtkWidget *back,*next,*footerLabel,*footerStatus,*content;
    GdkCursor *progressCursor=nullptr;
@@ -57,12 +57,12 @@ static gboolean drawIcon(GtkWidget *widget,cairo_t *cr,gpointer)
 }
 
 // Share the bundled status symbols between the final page and native error dialogs.
-static void setStatusIcon(GtkWidget *widget,bool failed)
+static void setStatusIcon(GtkWidget *widget,bool failed,int size=32)
 {
    int icon=failed?6:5;
    if (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget),"icon-id"))==icon) return;
    g_object_set_data(G_OBJECT(widget),"icon-id",GINT_TO_POINTER(icon));
-   g_object_set_data_full(G_OBJECT(widget),"icon",gdk_pixbuf_scale_simple(images[icon],32,32,GDK_INTERP_BILINEAR),g_object_unref);
+   g_object_set_data_full(G_OBJECT(widget),"icon",gdk_pixbuf_scale_simple(images[icon],size,size,GDK_INTERP_BILINEAR),g_object_unref);
    auto context=gtk_widget_get_style_context(widget);
    gtk_style_context_remove_class(context,"installer-success"); gtk_style_context_remove_class(context,"installer-failure");
    gtk_style_context_add_class(context,failed?"installer-failure":"installer-success"); gtk_widget_queue_draw(widget);
@@ -73,11 +73,11 @@ static void updateWindow()
 {
    ui.updating=true;
    int page=app.page;
-   gtk_window_set_deletable(GTK_WINDOW(window),app.page!=2);
-   gtk_label_set_text(GTK_LABEL(ui.step),("Step "+std::to_string(page+1)+" of 4").c_str());
+   gtk_window_set_deletable(GTK_WINDOW(window),app.page!=InstallationPage);
+   gtk_label_set_text(GTK_LABEL(ui.step),("Step "+std::to_string(page+1)+" of "+std::to_string(PageCount)).c_str());
    gtk_label_set_text(GTK_LABEL(ui.heading),app.heading().c_str());
    gtk_label_set_text(GTK_LABEL(ui.intro),app.introduction().c_str());
-   for (int i=0; i<4; i++)
+   for (int i=0; i<PageCount; i++)
    {
       auto context=gtk_widget_get_style_context(ui.numbers[i]);
       gtk_style_context_remove_class(context,"current"); gtk_style_context_remove_class(context,"done");
@@ -86,12 +86,13 @@ static void updateWindow()
       gtk_widget_set_sensitive(ui.steps[i],i<=page);
    }
    gtk_stack_set_visible_child_name(GTK_STACK(ui.stack),std::to_string(page).c_str());
-   gtk_box_set_child_packing(GTK_BOX(ui.content),ui.stack,page==1,page==1,0,GTK_PACK_START);
-   gtk_widget_set_margin_bottom(ui.content,page==1?12:29);
+   gtk_box_set_child_packing(GTK_BOX(ui.content),ui.stack,page==TargetPage,page==TargetPage,0,GTK_PACK_START);
+   gtk_widget_set_margin_bottom(ui.content,page==TargetPage?12:29);
    if (app.iso.path!=gtk_entry_get_text(GTK_ENTRY(ui.path))) gtk_entry_set_text(GTK_ENTRY(ui.path),app.iso.path.c_str());
    gtk_label_set_text(GTK_LABEL(ui.message),app.message().c_str());
-   gtk_widget_set_visible(ui.messageBox,page==0);
-   gtk_label_set_text(GTK_LABEL(ui.footerStatus),(page<2 && app.pending!=None?app.progressText():"").c_str());
+   gtk_widget_set_visible(ui.sourceCheck,!app.message().empty());
+   gtk_widget_set_visible(ui.messageBox,page==SourcePage);
+   gtk_label_set_text(GTK_LABEL(ui.footerStatus),(page>=SourcePage && page<InstallationPage && app.pending!=None?app.progressText():"").c_str());
    auto currentRows=gtk_container_get_children(GTK_CONTAINER(ui.devices));
    bool changed=g_list_length(currentRows)!=app.devices.size();
    for (size_t i=0; !changed && i<app.devices.size(); i++)
@@ -172,11 +173,11 @@ static void updateWindow()
    gtk_widget_set_visible(ui.percent,!app.indeterminate());
    if (!app.indeterminate()) gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(ui.progress),app.percent/100.0);
    setStatusIcon(ui.result,!app.error.empty());
-   gtk_widget_set_visible(ui.back,page<3); gtk_widget_set_sensitive(ui.back,page==1);
-   gtk_widget_set_sensitive(ui.browse,app.pending==None);
-   gtk_widget_set_sensitive(ui.path,app.pending==None);
+   gtk_widget_set_visible(ui.back,page<FinishPage); gtk_widget_set_sensitive(ui.back,page>=SourcePage && page<=TargetPage);
+   gtk_widget_set_sensitive(ui.browse,app.pending==None || app.pending==CheckSource);
+   gtk_widget_set_sensitive(ui.path,app.pending==None || app.pending==CheckSource);
    gtk_widget_set_sensitive(ui.next,app.canContinue());
-   gtk_button_set_label(GTK_BUTTON(ui.next),app.page==3?(app.error.empty()?"Finish":"Try again"):"Next");
+   gtk_button_set_label(GTK_BUTTON(ui.next),app.page==FinishPage?(app.error.empty()?"Finish":"Try again"):"Next");
    gdk_window_set_cursor(gtk_widget_get_window(window),app.busy()?ui.progressCursor:nullptr);
    ui.updating=false;
 }
@@ -245,7 +246,7 @@ void showInstallError(const std::string &message)
    auto icon=gtk_drawing_area_new(); gtk_widget_set_size_request(icon,42,42); setStatusIcon(icon,true);
    g_signal_connect(icon,"draw",G_CALLBACK(drawIcon),nullptr);
    gtk_message_dialog_set_image(GTK_MESSAGE_DIALOG(dialog),icon); gtk_widget_show(icon);
-   gtk_window_set_title(GTK_WINDOW(dialog),app.page==0?"Cannot use this Slax source":"Slax cannot be installed here");
+   gtk_window_set_title(GTK_WINDOW(dialog),app.page==SourcePage?"Cannot use this Slax source":"Slax cannot be installed here");
    auto actions=gtk_dialog_get_action_area(GTK_DIALOG(dialog));
    gtk_button_box_set_layout(GTK_BUTTON_BOX(actions),GTK_BUTTONBOX_END);
    gtk_container_set_border_width(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),14);
@@ -296,13 +297,13 @@ int runWindow()
       gtk_box_pack_start(GTK_BOX(brand),gtk_image_new_from_pixbuf(pixbuf),false,false,0); g_object_unref(pixbuf);
    }
    gtk_box_pack_start(GTK_BOX(ui.rail),brand,false,false,0);
-   const char *steps[]={"Slax source","Target drive","Installation","Finish"};
-   for (int i=0; i<4; i++)
+
+   for (int i=0; i<PageCount; i++)
    {
       auto row=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,10); gtk_widget_set_size_request(row,-1,31); gtk_widget_set_margin_bottom(row,9); gtk_widget_set_margin_start(row,22); gtk_widget_set_margin_end(row,10);
       ui.numbers[i]=label(std::to_string(i+1).c_str(),13); gtk_label_set_xalign(GTK_LABEL(ui.numbers[i]),0.5);
       gtk_widget_set_size_request(ui.numbers[i],24,24); gtk_widget_set_valign(ui.numbers[i],GTK_ALIGN_CENTER); gtk_style_context_add_class(gtk_widget_get_style_context(ui.numbers[i]),"step-number");
-      ui.steps[i]=label(steps[i]); gtk_box_pack_start(GTK_BOX(row),ui.numbers[i],false,false,0); gtk_box_pack_start(GTK_BOX(row),ui.steps[i],true,true,0);
+      ui.steps[i]=label(wizardSteps[i]); gtk_box_pack_start(GTK_BOX(row),ui.numbers[i],false,false,0); gtk_box_pack_start(GTK_BOX(row),ui.steps[i],true,true,0);
       gtk_box_pack_start(GTK_BOX(ui.rail),row,false,false,0);
    }
    auto scroller=gtk_scrolled_window_new(nullptr,nullptr); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroller),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
@@ -316,6 +317,13 @@ int runWindow()
    gtk_box_pack_start(GTK_BOX(main),ui.intro,false,false,0); gtk_widget_set_margin_bottom(ui.intro,22);
    ui.stack=gtk_stack_new(); gtk_stack_set_hhomogeneous(GTK_STACK(ui.stack),true); gtk_stack_set_vhomogeneous(GTK_STACK(ui.stack),false);
    gtk_box_pack_start(GTK_BOX(main),ui.stack,false,false,0);
+   // Native wrapping preserves the welcome layout at the minimum window size.
+   auto welcome=gtk_box_new(GTK_ORIENTATION_VERTICAL,18);
+   for (const auto &paragraph:welcomeText)
+   {
+      auto text=label(paragraph,13); wrap(text); gtk_box_pack_start(GTK_BOX(welcome),text,false,false,0);
+   }
+   gtk_stack_add_named(GTK_STACK(ui.stack),welcome,"0");
    auto iso=gtk_box_new(GTK_ORIENTATION_VERTICAL,0),isoRow=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
    auto pathLabel=label("Source ISO image or Slax directory",13); gtk_box_pack_start(GTK_BOX(iso),pathLabel,false,false,0); gtk_widget_set_margin_bottom(pathLabel,6);
    ui.path=gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(ui.path),8);
@@ -336,7 +344,7 @@ int runWindow()
    gtk_box_pack_start(GTK_BOX(isoRow),ui.path,true,true,0); gtk_box_pack_start(GTK_BOX(isoRow),ui.browse,false,false,0);
    gtk_widget_set_size_request(ui.path,-1,35); gtk_widget_set_size_request(ui.browse,-1,35);
    gtk_box_pack_start(GTK_BOX(iso),isoRow,false,false,0);
-   gtk_stack_add_named(GTK_STACK(ui.stack),iso,"0");
+   gtk_stack_add_named(GTK_STACK(ui.stack),iso,"1");
    auto usb=gtk_box_new(GTK_ORIENTATION_VERTICAL,10);
    ui.empty=label("No suitable disks found. Connect a disk to continue.",13); wrap(ui.empty);
    gtk_box_pack_start(GTK_BOX(usb),ui.empty,false,false,0);
@@ -348,7 +356,7 @@ int runWindow()
    g_signal_connect(ui.devices,"row-activated",G_CALLBACK(+[](GtkListBox *,GtkListBoxRow *row,gpointer) { app.activate(Select,static_cast<const char *>(g_object_get_data(G_OBJECT(g_object_get_data(G_OBJECT(row),"radio")),"device-id"))); }),nullptr);
    ui.erase=gtk_check_button_new_with_label("Erase entire selected disk (including all other partitions on it)");
    wrap(gtk_bin_get_child(GTK_BIN(ui.erase))); gtk_widget_set_size_request(ui.erase,-1,34); gtk_box_pack_start(GTK_BOX(usb),ui.erase,false,false,0);
-   gtk_stack_add_named(GTK_STACK(ui.stack),usb,"1");
+   gtk_stack_add_named(GTK_STACK(ui.stack),usb,"2");
    auto writing=gtk_box_new(GTK_ORIENTATION_VERTICAL,6),result=gtk_box_new(GTK_ORIENTATION_VERTICAL,13);
    for (int i=0; i<2; i++) { ui.target[i]=label("",13); wrap(ui.target[i]); gtk_box_pack_start(GTK_BOX(i?result:writing),ui.target[i],false,false,0); }
    ui.result=gtk_drawing_area_new(); gtk_widget_set_size_request(ui.result,42,42); gtk_widget_set_halign(ui.result,GTK_ALIGN_START);
@@ -358,11 +366,16 @@ int runWindow()
    ui.status=label("",13),ui.percent=label("",13); wrap(ui.status); gtk_widget_set_valign(ui.percent,GTK_ALIGN_START);
    gtk_box_pack_start(GTK_BOX(status),ui.status,true,true,0); gtk_box_pack_end(GTK_BOX(status),ui.percent,false,false,0);
    gtk_box_pack_start(GTK_BOX(writing),status,false,false,0); ui.progress=gtk_progress_bar_new(); gtk_box_pack_start(GTK_BOX(writing),ui.progress,false,false,0);
-   gtk_stack_add_named(GTK_STACK(ui.stack),writing,"2"); gtk_stack_add_named(GTK_STACK(ui.stack),result,"3");
+   gtk_stack_add_named(GTK_STACK(ui.stack),writing,"3"); gtk_stack_add_named(GTK_STACK(ui.stack),result,"4");
    ui.message=label("",13); wrap(ui.message); gtk_label_set_yalign(GTK_LABEL(ui.message),0);
    gtk_style_context_add_class(gtk_widget_get_style_context(ui.message),"installer-message");
-   ui.messageBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,12); gtk_widget_set_margin_top(ui.messageBox,13);
+   ui.messageBox=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8); gtk_widget_set_margin_top(ui.messageBox,13);
    gtk_widget_set_size_request(ui.message,-1,42);
+   // The metadata and check share the same completed source-validation result.
+   ui.sourceCheck=gtk_drawing_area_new(); gtk_widget_set_size_request(ui.sourceCheck,16,16);
+   gtk_widget_set_valign(ui.sourceCheck,GTK_ALIGN_START); setStatusIcon(ui.sourceCheck,false,16);
+   g_signal_connect(ui.sourceCheck,"draw",G_CALLBACK(drawIcon),nullptr);
+   gtk_box_pack_start(GTK_BOX(ui.messageBox),ui.sourceCheck,false,false,0);
    gtk_box_pack_start(GTK_BOX(ui.messageBox),ui.message,true,true,0); gtk_box_pack_start(GTK_BOX(main),ui.messageBox,false,false,0);
    gtk_box_pack_start(GTK_BOX(root),gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),false,false,0);
    auto footer=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0),brandFooter=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,0),actions=gtk_box_new(GTK_ORIENTATION_HORIZONTAL,8);
@@ -391,7 +404,7 @@ int runWindow()
       ui.updating=true; window=nullptr;
       if (gtk_main_level()) gtk_main_quit();
    }),nullptr);
-   g_signal_connect(window,"key-press-event",G_CALLBACK(+[](GtkWidget *,GdkEventKey *event,gpointer)->gboolean { if (event->keyval==GDK_KEY_Escape && app.page!=2) { app.activate(Close); return true; } return false; }),nullptr);
+   g_signal_connect(window,"key-press-event",G_CALLBACK(+[](GtkWidget *,GdkEventKey *event,gpointer)->gboolean { if (event->keyval==GDK_KEY_Escape && app.page!=InstallationPage) { app.activate(Close); return true; } return false; }),nullptr);
    g_signal_connect(window,"configure-event",G_CALLBACK(+[](GtkWidget *,GdkEventConfigure *size,gpointer)->gboolean
    {
       gtk_widget_set_size_request(ui.rail,std::max(175,int(size->width*0.3)),-1);
