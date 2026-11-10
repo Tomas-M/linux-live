@@ -1,16 +1,24 @@
 #!/bin/bash
 
-LOCK=/run/lock/gtk-bookmark-update-lock
-BOOKMARKS=/root/.gtk-bookmarks
-
-# make sure it exists
+# Serialize mounting, cleanup and bookmark updates with one automatically released lock.
 mkdir -p /run/lock
+exec 9>/run/lock/slax-mount-iso.lock
+flock 9
+BOOKMARKS=/root/.gtk-bookmarks
+OTHER=/root/.config/gtk-3.0/bookmarks
+# Prefer GTK 3's current bookmarks and keep GTK 2 file choosers synchronized.
+if [ -f "$OTHER" ]; then
+   BOOKMARKS=$OTHER
+   OTHER=/root/.gtk-bookmarks
+fi
+mkdir -p /root/.config/gtk-3.0
 
-# make sure to avoid parallel execution by using mkdir as lock
-while true; do
-   mkdir $LOCK 2>/dev/null
-   if [ $? = 0 ]; then
-      break
+# Remove only empty mount points reserved for ISO images after they are unmounted.
+for DIR in /media/ISO-*; do
+   if printf '%s\n' "${DIR##*/}" | grep -Eq '^ISO-[0-9]+-[0-9]+$'; then
+      if ! mountpoint -q "$DIR"; then
+         rmdir -- "$DIR" 2>/dev/null || true
+      fi
    fi
 done
 
@@ -22,5 +30,4 @@ done
 echo "file:/// /" >> $BOOKMARKS.tmp # add root at the beginning
 
 mv -f $BOOKMARKS.tmp $BOOKMARKS
-
-rmdir $LOCK
+cp "$BOOKMARKS" "$OTHER"

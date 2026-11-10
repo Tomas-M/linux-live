@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+TARGET="/media/ISO-$(stat -Lc '%d-%i' -- "$1")"
+# Serialize repeated clicks and identify the image independently of its filename.
+exec 9>/run/lock/slax-mount-iso.lock
+flock 9
+if ! mountpoint -q "$TARGET"; then
+   if ! ERROR=$(mount --mkdir -t iso9660,udf -o loop,ro,nodev,nosuid -- "$1" "$TARGET" 2>&1); then
+      rmdir -- "$TARGET" 2>/dev/null || true
+      exec 9>&-
+      gtkdialog --title 'Cannot mount ISO image' --message "$ERROR" --yes OK
+      exit 1
+   fi
+fi
+exec 9>&-
+gtk-bookmarks-update
+exec pcmanfm -n "$TARGET"
