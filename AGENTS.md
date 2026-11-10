@@ -961,10 +961,13 @@ must follow the general Slax repair rules above.
   PCManFM keeps the icon's position across a rename and saves it under the new
   name. Its selected desktop captions have a 3 px corner radius and 4 px padding
   on both the left and right.
-- File-manager windows use icon view with 64 px icons and a 200 px sidebar.
+- File-manager windows default to 790 by 500 pixels, with icon view, 64 px icons
+  and a 180 px sidebar.
   `pcmanfm-browser.diff` orders compact symbolic navigation as Back, Forward,
   History, Up and hides the sidebar mode selector through the public title-bar
-  API. Keep Go as the location entry's native secondary icon, without a separate
+  API. Default to the editable path entry and enable `toolbar=navigation;` so
+  Back, Forward, History and Up remain to its left.
+  Keep Go as the location entry's native secondary icon, without a separate
   toolbar button. Clicking it activates the same path as Enter; preserve Ctrl+L,
   completion and the breadcrumb-mode switch. `libfm-icon-label.diff` adds 2 px
   above and below icon captions and renders their selection through GTK, using
