@@ -82,6 +82,12 @@ rm -Rf /usr/share/icons/Adwaita/512x512
 rm -Rf /usr/share/icons/Adwaita/256x256
 rm -Rf /usr/share/icons/Adwaita/64x64
 rm -Rf /usr/share/icons/Adwaita/96x96
+# Application categories use the ordinary blue folder instead of monochrome symbols.
+for DIR in /usr/share/icons /usr/local/share/icons; do
+   if [ -d "$DIR" ]; then
+      find "$DIR" -path '*/categories/applications-*-symbolic.*' -delete
+   fi
+done
 rm -Rf /usr/share/yudit/*
 
 rm -f /usr/share/applications/picom.desktop

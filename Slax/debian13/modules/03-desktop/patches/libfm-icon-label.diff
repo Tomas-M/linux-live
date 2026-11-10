@@ -1,0 +1,79 @@
+--- a/src/gtk/fm-standard-view.c
++++ b/src/gtk/fm-standard-view.c
+@@ -620,6 +620,10 @@
+                          "xalign", 0.5,
+                          "yalign", 0.0,
+                          NULL );
++            /* Give icon captions symmetric padding, including room for their rounded edges. */
++            gint xpad, ypad;
++            gtk_cell_renderer_get_padding(render, &xpad, &ypad);
++            gtk_cell_renderer_set_padding(render, 2 * xpad, ypad + 2);
+             exo_icon_view_set_column_spacing( (ExoIconView*)fv->view, 4 );
+         }
+         else
+--- a/src/gtk/fm-cell-renderer-text.c
++++ b/src/gtk/fm-cell-renderer-text.c
+@@ -333,16 +333,15 @@
+     if(flags & GTK_CELL_RENDERER_SELECTED) /* item is selected */
+     {
+ #if GTK_CHECK_VERSION(3, 0, 0)
+-        GdkRGBA clr;
+-
+         if(flags & GTK_CELL_RENDERER_INSENSITIVE) /* insensitive */
+             state = GTK_STATE_FLAG_INSENSITIVE;
+         else
+             state = GTK_STATE_FLAG_SELECTED;
+
+-        gtk_style_context_get_background_color(style, state, &clr);
+-        gdk_cairo_rectangle(cr, &rect);
+-        gdk_cairo_set_source_rgba(cr, &clr);
++        /* Let the application theme round only the caption's selection box. */
++        gtk_style_context_add_class(style, "slax-icon-label");
++        gtk_style_context_set_state(style, state);
++        gtk_render_background(style, cr, rect.x, rect.y, rect.width, rect.height);
+ #else
+         cairo_t *cr = gdk_cairo_create (window);
+         GdkColor clr;
+@@ -363,10 +362,7 @@
+         gdk_cairo_rectangle(cr, &rect);
+
+         cairo_set_source_rgb(cr, clr.red / 65535., clr.green / 65535., clr.blue / 65535.);
+-#endif
+         cairo_fill (cr);
+-
+-#if !GTK_CHECK_VERSION(3, 0, 0)
+         cairo_destroy (cr);
+ #endif
+     }
+@@ -435,11 +431,14 @@
+                                                       gint *minimum_size,
+                                                       gint *natural_size)
+ {
+-    gint wrap_width;
++    gint wrap_width, xpad;
+
+     g_object_get(G_OBJECT(cell), "wrap-width", &wrap_width, NULL);
+     if(wrap_width > 0)
+     {
++        /* Allocate both horizontal padding edges instead of clipping the right one. */
++        gtk_cell_renderer_get_padding(cell, &xpad, NULL);
++        wrap_width += 2 * xpad;
+         if(minimum_size)
+             *minimum_size = wrap_width;
+         if(natural_size)
+@@ -455,11 +454,13 @@
+                                                        gint *natural_size)
+ {
+     char *text;
+-    gint height;
++    gint height, ypad;
+
+     g_object_get(G_OBJECT(cell), "text", &text, NULL);
+-    _get_size(cell, widget, NULL, text, NULL, NULL, &height, NULL, NULL, NULL, NULL, NULL);
++    _get_size(cell, widget, NULL, text, NULL, NULL, &height, NULL, &ypad, NULL, NULL, NULL);
+     g_free(text);
++    /* Include the caption padding in the allocated row height. */
++    height += 2 * ypad;
+
+     if(natural_size)
+         *natural_size = height;
