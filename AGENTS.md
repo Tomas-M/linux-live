@@ -155,6 +155,10 @@ reporting progress.
   cursor over the client area: Windows IDC_APPSTARTING and GTK's themed progress
   cursor when available. Restore ordinary cursors on completion and while awaiting
   dialog input; leave background discovery and native resize cursors unchanged.
+  Windows mirrors the installation progress bar through optional ITaskbarList3,
+  after TaskbarButtonCreated. Allow that message through UIPI for the elevated
+  window using dynamically loaded ChangeWindowMessageFilterEx. Reconnect after
+  Explorer restarts, clear progress on finish/close, and retain XP imports.
   Erase highlights every visible row on the last clicked physical disk; turning
   it off restores only that clicked row. Unknown physical identities never group.
   Detect mounted-source files through Windows' optional native VirtDisk API or
@@ -954,6 +958,22 @@ must follow the general Slax repair rules above.
   PCManFM keeps the icon's position across a rename and saves it under the new
   name. Its selected desktop captions have a 3 px corner radius and 4 px padding
   on both the left and right.
+- PCManFM's ISO context action uses the matching `libfm-modules` package and
+  the short rootcopy shell helper `slax-mount-iso`. Mount ISO/UDF read-only with
+  nodev/nosuid under `/media/ISO-DEVICE-INODE`; serialize clicks and reuse this
+  mount point across symlinks and hard links. Refresh the existing media bookmarks
+  for the native sidebar unmount button. Keep optical images executable so their
+  native installer can run. Do not add a compiled helper or mount watcher daemon.
+  Match regular local `*.iso` files case-insensitively, including EFI ISO MIME
+  subtypes. Use `Capabilities=Local;Readable;`: libfm 1.4.0's `Schemes` condition
+  incorrectly treats file-info objects as paths and crashes.
+  The media bookmark updater reads GTK 3's current bookmarks when present and
+  mirrors the result to GTK 2, so PCManFM and both file chooser versions refresh.
+  The shared Places model refreshes bookmarks asynchronously when opened and
+  on Unix mount changes, including terminal unmounts. The updater removes only empty, unmounted
+  `/media/ISO-DEVICE-INODE` directories. Use the same flock for mounting, cleanup
+  and bookmark writes; release the mount helper's ISO lock before invoking the
+  updater. Do not retain a second mkdir lock. Failed unmounts keep their link.
 - Desktop labels default to `Sans 10`. Desktop Preferences uses an aligned form
   on its Appearance tab and a normal window layer; do not make it transient for
   the desktop window. Keep its lifetime linked to that desktop without inheriting

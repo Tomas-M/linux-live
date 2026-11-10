@@ -1,14 +1,15 @@
 --- a/src/gtk/fm-places-model.c
 +++ b/src/gtk/fm-places-model.c
-@@ -41,6 +41,7 @@
+@@ -41,6 +41,8 @@
  #include "fm-file.h"
  
  #include <glib/gi18n-lib.h>
 +#include <gio/gunixmounts.h>
++#include <unistd.h>
  
  #include "fm-config.h"
  #include "fm-monitor.h"
-@@ -95,7 +96,6 @@
+@@ -95,7 +97,6 @@
      guint places_applications_change_handler;
      guint places_network_change_handler;
      guint places_unmounted_change_handler;
@@ -16,7 +17,7 @@
  
      GSList* jobs;
  };
-@@ -711,16 +711,7 @@
+@@ -711,16 +712,7 @@
  static void update_icons(FmPlacesModel* model)
  {
      GtkTreeIter it;
@@ -33,7 +34,25 @@
  
      /* reload icon for every item */
      gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model), &it);
-@@ -951,7 +942,6 @@
+@@ -946,18 +938,36 @@
+     g_list_free(vols);
+ }
+
++/* Refresh generated media bookmarks outside GTK when any mount changes. */
++static void on_unix_mounts_changed(GUnixMountMonitor* monitor, gpointer user_data)
++{
++    if(geteuid() != 0) return;
++    char* argv[] = {"/usr/sbin/gtk-bookmarks-update", NULL};
++    GError* error = NULL;
++    if(!g_spawn_async(NULL, argv, NULL, 0, NULL, NULL, NULL, &error))
++    {
++        g_warning("Cannot refresh media bookmarks: %s", error->message);
++        g_error_free(error);
++    }
++}
++
+ static void fm_places_model_init(FmPlacesModel *self)
+ {
      GType types[] = {GDK_TYPE_PIXBUF, G_TYPE_STRING, G_TYPE_POINTER};
      GtkTreeIter it;
      GList *vols, *l;
@@ -41,7 +60,19 @@
      FmFileInfoJob* job = fm_file_info_job_new(NULL, FM_FILE_INFO_JOB_FOLLOW_SYMLINK);
      GtkListStore* model = &self->parent;
      FmPath *path;
-@@ -984,9 +974,6 @@
+     GtkTreePath* tp;
+
+     gtk_list_store_set_column_types(&self->parent, FM_PLACES_MODEL_N_COLS, types);
++
++    /* The Places model is shared by every sidebar in this process. */
++    GUnixMountMonitor* monitor = g_unix_mount_monitor_get();
++    g_signal_connect_object(monitor, "mounts-changed", G_CALLBACK(on_unix_mounts_changed), self, 0);
++    g_object_set_data_full(G_OBJECT(self), "unix-mount-monitor", monitor, g_object_unref);
++    on_unix_mounts_changed(monitor, self);
+
+     self->theme_change_handler = g_signal_connect_swapped(gtk_icon_theme_get_default(), "changed",
+                                             G_CALLBACK(update_icons), self);
+@@ -984,9 +994,6 @@
  
      self->pane_icon_size_change_handler = g_signal_connect(fm_config, "changed::pane_icon_size",
                                               G_CALLBACK(on_pane_icon_size_changed), self);
@@ -51,7 +82,7 @@
  
      if(fm_config->places_home)
      {
-@@ -1371,10 +1358,6 @@
+@@ -1371,10 +1378,6 @@
          self->trash_idle_handler = 0;
      }
  
@@ -62,7 +93,7 @@
      G_OBJECT_CLASS(fm_places_model_parent_class)->dispose(object);
  }
  
-@@ -1420,12 +1403,11 @@
+@@ -1420,12 +1423,11 @@
                                             gpointer user_data)
  {
      FmPlacesItem* item = NULL;
@@ -78,7 +109,7 @@
  }
  
  /**
-@@ -1489,6 +1471,18 @@
+@@ -1489,6 +1491,18 @@
   */
  gboolean fm_places_item_is_mounted(FmPlacesItem* item)
  {

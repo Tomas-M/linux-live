@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Action
+Name=Mount
+Icon=media-optical
+Profiles=mount;
+
+[X-Action-Profile mount]
+Name=Mount ISO image
+MimeTypes=application/*;
+Basenames=*.iso;
+Matchcase=false
+Capabilities=Local;Readable;
+SelectionCount==1
+Exec=slax-mount-iso %f
