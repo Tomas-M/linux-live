@@ -3,8 +3,6 @@ Unreleased changes
 
 Linux Live Kit
 --------------
-- Limit the shutdown splash to ten seconds, then restore the console without
-  interrupting filesystem cleanup or forcing a reboot or poweroff.
 
 Slax
 ----
