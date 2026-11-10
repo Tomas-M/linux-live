@@ -84,6 +84,9 @@ Windows `IDC_APPSTARTING` and GTK's themed `progress` cursor when available.
 Normal cursors return when work finishes or a confirmation needs user input.
 Installation progress stays on one line in both frontends, shortening long paths
 with an ellipsis while keeping the filename end visible and the progress bar fixed.
+Windows 7 and later also mirror the installation's determinate or indeterminate
+progress on the taskbar button, clearing it when installation finishes. The
+optional shell interface reconnects after Explorer restarts; XP remains supported.
 Completion and error states use the bundled green check and muted-red warning
 symbols, including native error dialogs, instead of operating-system status icons.
 
