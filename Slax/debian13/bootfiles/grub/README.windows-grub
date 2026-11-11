@@ -1,55 +1,54 @@
-Embedded GNU GRUB 2.12 Windows BIOS tools
-=======================================
+GNU GRUB 2.12 BIOS installer tools
+=================================
 
-The embedded grub-fstest.exe and i386-pc files come from the official GNU release:
+Slax stores the BIOS installation payload at slax/boot/grub/bios/tools.tar.xz.
+Both native installers read it from the selected Slax source, including an ISO,
+Slax directory or complete copy-to-RAM source. The Windows installer does not
+embed these files, and the Linux installer does not require installed GRUB tools.
+
+The archive contains matching i386-pc modules and separate Windows and Linux
+versions of grub-mkimage and grub-fstest. The image utility creates an XZ-compressed
+BIOS core for the approved disk and partition. The filesystem verifier checks
+actual access and compares copied boot files before BIOS activation. Matching
+runtime modules are then copied into the installed Slax boot directory.
+
+installer/build-grub compiles the unmodified GNU helpers during the Slax installer
+build. Linux helpers are statically linked. Windows helpers target Windows XP
+onward and use only system DLLs. Both platforms link static, threadless liblzma;
+no compiler, GRUB package, external unpacker or installation-time network is needed.
+The official Windows mkimage lacks XZ support, so it is not used.
+
+The shared i386-pc files come from the verified official GNU Windows release:
 https://ftp.gnu.org/gnu/grub/grub-2.12-for-windows.zip
 https://ftp.gnu.org/gnu/grub/grub-2.12-for-windows.zip.sig
-
+SHA256: e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd
 The detached signature was verified against the release key fingerprint:
 BE5C 2320 9ACD DACE B20D B0A2 8C81 89F1 988C 2166
-Published by the maintainer in the official release announcement:
+Published in the official release announcement:
 https://lists.gnu.org/archive/html/grub-devel/2023-12/msg00052.html
 
-SHA256 (official ZIP):
-e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd
-The official Windows mkimage does not support XZ compression. The installer
-build instead cross-compiles the unmodified GNU GRUB 2.12 image utility with
-static, threadless liblzma, retaining Windows XP support and system DLLs only.
-This permits BIOS installation in small legacy embedding areas. It does not
-change the BIOS modules or Debian's signed EFI loaders.
-
-SHA256 (GNU GRUB 2.12 source tar.xz):
-f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa
-SHA256 (XZ 5.8.1 source tar.xz):
-0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e
-XZ source (Debian mirror of the upstream archive):
-https://deb.debian.org/debian/pool/main/x/xz-utils/xz-utils_5.8.1.orig.tar.xz
-https://github.com/tukaani-project/xz/releases/tag/v5.8.1
-liblzma is distributed under the Zero-Clause BSD license (0BSD):
-https://github.com/tukaani-project/xz/blob/v5.8.1/COPYING
-
-The installer build downloads the release ZIP from GNU's kernel.org mirror:
-https://mirrors.kernel.org/gnu/grub/grub-2.12-for-windows.zip
-It verifies the pinned ZIP and source SHA256 values before compiling/embedding
-the tools. See installer/build-windows-grub for the complete build commands.
-These build inputs are not stored in the repository.
-The ISO distributes them only inside slax-install.exe, without loose Windows
-utilities. During BIOS installation, matching i386-pc runtime modules are copied
-to the new slax/boot/grub directory; these run in BIOS GRUB, not in Windows.
-Debugger helpers, EFI platforms, fonts, locales and other utilities are omitted.
-Slax supplies Debian's signed shim and GRUB EFI loaders separately.
-The Slax media bundles those loaders in slax/boot/EFI/BOOT. These BIOS tools
-are used by the native installer. Its build verifies and embeds grub-mkimage.exe,
-grub-fstest.exe and matching modules so helpers are never executed from an
-untrusted ISO. The filesystem verifier checks actual access and compares the
-copied boot files before replacing any BIOS boot record.
-The embedded utility builds a BIOS core; the native engine installs it only
-within the explicitly approved BIOS boot area.
-These tools and the native installer require only Windows system DLLs.
-The native application targets XP onward and requests administrator access.
-It does not require VBScript, WMI, PowerShell or additional runtime DLLs.
-
-License: GNU GPL version 3 or later, reproduced in COPYING.windows-grub.
-The corresponding unmodified source code is available from GNU:
+Corresponding unmodified GNU GRUB source:
 https://ftp.gnu.org/gnu/grub/grub-2.12.tar.xz
 https://ftp.gnu.org/gnu/grub/grub-2.12.tar.xz.sig
+SHA256: f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa
+GNU downloads use the kernel.org mirror and are checked against these pinned hashes.
+License: GNU GPL version 3 or later, reproduced in COPYING.windows-grub.
+
+XZ 5.8.1 source (Debian mirror of the upstream archive):
+https://deb.debian.org/debian/pool/main/x/xz-utils/xz-utils_5.8.1.orig.tar.xz
+SHA256: 0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e
+https://github.com/tukaani-project/xz/releases/tag/v5.8.1
+liblzma uses the Zero-Clause BSD license (0BSD):
+https://github.com/tukaani-project/xz/blob/v5.8.1/COPYING
+The installers also link its static decoder to unpack the trusted BIOS payload.
+
+The deterministic USTAR archive contains only regular files, compressed with XZ
+and CRC64. Its SHA256 and exact compressed/uncompressed sizes are compiled into
+both installers. Helpers are executed only after the selected source's archive
+matches that trusted build. The archive and both prebuilt installers must be
+rebuilt and distributed together. Ordinary ISO builds copy that matching set.
+Downloaded source archives and extracted upstream build inputs stay outside Git.
+
+This payload is only for legacy BIOS installation. Debian's signed shim, signed
+UEFI GRUB and signed kernel remain separate under slax/boot/EFI/BOOT and retain
+Secure Boot verification. These helper builds do not modify those signed files.

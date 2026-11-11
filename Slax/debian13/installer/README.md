@@ -92,10 +92,16 @@ symbols, including native error dialogs, instead of operating-system status icon
 
 ## Preserving files and existing systems
 
-The installer creates a new `slax` directory, verifies files with SHA-256 and
-publishes the directory only after copying succeeds. An existing `slax` file or
-directory is never replaced; it can contain saved sessions. Move or rename it
-first. BIOS and UEFI are planned independently:
+The installer verifies a complete staged copy with SHA-256 before publishing it.
+If a `slax` directory already exists, the plan warns that matching source files
+will be replaced. Unmatched files and the entire existing `slax/changes` session
+tree stay untouched. Source and destination must be different, including aliases
+or hardlinked source files. File/directory conflicts are rejected before replacement.
+The destination's existing boot-recovery records also stay separate from source
+recovery files. Original files remain in a temporary recovery directory until boot activation
+succeeds; failures before activation restore them. Existing Slax EFI copies are
+updated too, so their kernel and initramfs match the data directory. A regular file
+named `slax` still needs to be moved. BIOS and UEFI are planned independently:
 
 | Target | Available installation paths |
 | --- | --- |
@@ -205,8 +211,12 @@ possible partial Slax files or partial erasure, with recovery metadata retained.
 
 Windows uses only system DLLs, including XP's GDI+. C++ and threading runtimes
 are static. Linux uses GTK 3, GLib, libudev, libblkid, standard C/C++ libraries
-and stock GRUB tools already present in Slax. No browser, .NET, WebView,
+and no system GRUB installation. No browser, .NET, WebView,
 PowerShell, WMI, VBS, downloaded font or installation-time internet is required.
+The current Linux build requires glibc 2.38 or newer and libstdc++ providing
+GLIBCXX_3.4.29. Supporting older distributions requires a build against an older
+library baseline; removing the system GRUB dependency does not change these GUI
+and C/C++ runtime requirements.
 Administrator/root access is needed. Optional Windows APIs are loaded dynamically;
 the PE subsystem is 5.1. The ISO reader rejects unsafe names, links, alias
 collisions and invalid extents. `--list-devices [ISO]` and `--check-iso FILE`
@@ -215,21 +225,39 @@ are read-only diagnostics.
 Build both binaries on Debian:
 
 ```sh
-apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev upx-ucl
+apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev
 sh Slax/debian13/installer/build
 ```
 
-The build strips both executables, packs only the Windows executable with
-`upx --best` (without ultra-brute) and runs `upx -t` on it. Linux remains an
-unpacked ELF executable so the desktop module's SquashFS can compress it.
-The build downloads and SHA-256 verifies the official
-GNU GRUB 2.12 Windows ZIP for its filesystem verifier and matching BIOS modules.
-The official Windows mkimage lacks XZ support, so `build-windows-grub` compiles
-the unmodified GNU utility with static, threadless liblzma from separately
-pinned GNU/XZ source archives. This fits small BIOS gaps without adding a DLL.
-Downloaded inputs stay in the temporary build directory. Only their embedded
-copy is distributed in the Windows installer; provenance/licenses live under
-`bootfiles/grub`. Ordinary ISO builds copy the prebuilt installers. The ICO is
+The build strips both executables and keeps them unpacked. Windows ships as an
+ordinary PE with native product/version metadata and an explicit administrator
+manifest. Avoid executable packers and obfuscation to reduce unnecessary antivirus
+false positives. Linux's ELF is compressed by the desktop module's SquashFS.
+`build-grub` compiles unmodified GNU GRUB 2.12 `grub-mkimage` and `grub-fstest`
+for both platforms from pinned, SHA-256-verified GNU/XZ source archives. The
+Linux helpers are fully static; Windows helpers target XP and use only system
+DLLs. Both support XZ-compressed BIOS cores through static, threadless liblzma.
+Matching i386-pc modules come from the verified official GNU Windows release.
+The helpers remain separate executables; they are compiled during our build,
+never on the user's computer.
+
+The build publishes `grub-bios.tar.xz` beside both installers. Ordinary ISO builds
+copy it to `slax/boot/grub/bios/tools.tar.xz`. Each installer reads this archive
+from the selected ISO, optical device or source directory, checks its compiled-in
+SHA-256 and sizes, and decompresses it with its statically linked decoder.
+No system GRUB, external archive utility or PATH lookup is used. Missing or
+mismatched support files fail before writing the target. Rebuild and distribute
+the archive and both installers together. Source media retain the archive when
+copied to USB or RAM; it is not duplicated into the EFI partition. The existing
+signed UEFI loaders are independent of this BIOS support package.
+Windows stages its descriptively named helpers in a temporary directory on the
+system volume, applies private ACLs where supported, and uses normal native process
+creation. Helpers and workspaces are removed after use. Linux requires an executable
+root-owned temporary directory with protected ancestors, normally `/tmp` or `/var/tmp`.
+Helpers run without additional windows or terminals; their output is captured for
+installer error messages. Windows console helpers use `CREATE_NO_WINDOW`.
+Downloaded inputs stay in the temporary build directory; provenance and licenses
+live under `bootfiles/grub`. The ICO is
 from https://www.slax.org/favicon.ico. The sidebar uses its exact 32 × 32 clover
 frame: Windows loads the ICO natively and selects a larger frame at higher DPI;
 GTK uses the extracted PNG. The wordmark PNG came from the supplied mockup.
@@ -242,12 +270,13 @@ builds require no image converter, font package or additional runtime library.
 ## Verification
 
 ```sh
-apt-get install --no-install-recommends xorriso
+apt-get install --no-install-recommends xorriso liblzma-dev
 sh Slax/debian13/installer/check /path/to/slax.iso
 ```
 
 The sanitizer suite writes owned sparse files with fake firmware, exercising
-ISO parsing, hashing, GPT/MBR/FAT32, 4 KiB sectors, BIOS multiboot, preservation,
+ISO parsing, hashing, authenticated BIOS assets from ISO and directory sources,
+missing or tampered support archives, GPT/MBR/FAT32, 4 KiB sectors, BIOS multiboot, preservation,
 new boot partitions, occupied embedding areas, rollback, encryption detection,
 UEFI entry parsing and the wizard's confirmation handoff. `test-native.cpp`
 accepts only owned Linux loop devices under `/tmp/slax-installer-native.*`.
@@ -257,6 +286,11 @@ the source step for mounted ISO/CD fixtures, including symlinks, bind mounts
 and optical media without a valid Slax payload. It performs no installation writes.
 Native GUI fixtures cover resizing, DPI, text alignment, four-card defaults,
 whole-disk highlighting, restored selection and wheel-boundary repainting.
+Update checks cover staged merge and rollback, saved sessions and extra files,
+repeated native boot-menu entries, existing EFI vendor copies and BIOS selectors.
+FAT tests inject silent metadata corruption and exercise short-name collisions
+and valid DOS timestamps. Native checks also cover special-file inputs and
+substituted directory links during cleanup.
 
 Destructive Windows tests belong only in designated VMs. Never automate write
 confirmation against host drives. Boot tests must cover BIOS, UEFI Secure Boot,

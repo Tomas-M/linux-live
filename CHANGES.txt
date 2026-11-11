@@ -7,6 +7,11 @@ Linux Live Kit
 
 Slax
 ----
+- Remember the active keyboard layout and preferred alternate across desktop sessions.
+- Allow reinstalling over an existing Slax folder while preserving saved sessions, extra files and existing boot-menu choices.
+- Harden installer source checks and recovery cleanup, verify new FAT32 metadata and filenames, and flush Windows boot-menu updates before reporting success.
+- Move BIOS installation tools onto the Slax medium and remove Linux's dependency on installed GRUB packages.
+- Ship the Windows installer without executable compression to reduce unnecessary antivirus false positives.
 - Default to a 790 by 500 file-manager window with an editable path and navigation arrows.
 - Keep installer progress on one line when copying files with long paths.
 - Mount ISO images read-only from the file manager and remove their sidebar links after unmounting.

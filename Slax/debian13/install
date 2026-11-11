@@ -10,7 +10,7 @@ apt-get dist-upgrade --yes --no-install-recommends
 # PXE needs GNU cpio and BusyBox's HTTP server; both reuse the existing libc6.
 # fdisk supplies sfdisk for marking the USB EFI partition on GPT disks.
 apt-get install --yes --no-install-recommends systemd-sysv udev libwacom-common dbus login passwd tzdata locales kmod \
-mc squashfs-tools xorriso grub2-common grub-pc-bin zip unzip 7zip 7zip-rar psmisc net-tools iproute2 \
+mc squashfs-tools xorriso zip unzip 7zip 7zip-rar psmisc net-tools iproute2 \
 alsa-utils alsa-ucm-conf tmux man less xz-utils ca-certificates openssl acpid acpi-support-base powermgmt-base bzip2 gpart \
 hdparm sdparm eject mdadm smartmontools nvme-cli dosfstools fdisk lsof htop gddrescue partclone testdisk rsync netcat-openbsd ssh gpm wireless-tools \
 ntfs-3g rfkill file dnsmasq cpio busybox dvd+rw-tools usb-modeswitch pm-utils wget virt-what wpasupplicant connman \

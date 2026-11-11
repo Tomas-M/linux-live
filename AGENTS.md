@@ -48,7 +48,7 @@ reporting progress.
   GTK reads these shared X resources at startup; do not override font rendering
   separately in Partition Manager.
 - `03-desktop/fbkeyboard.c` supplies the GTK 3 keyboard tray and `fbsetkb` selection.
-  Start in US English, displayed as white `EN`; other layouts use two-letter
+  Default to US English, displayed as white `EN`; other layouts use two-letter
   uppercase identifiers. Share the existing labels and flags through
   `/usr/share/slax/keyboard-layouts.tsv`, supplementing them from installed XKB
   layouts. Keep layout selection in the tray only; do not generate a Fluxbox submenu.
@@ -63,15 +63,17 @@ reporting progress.
   whose basic text would render as missing-glyph boxes. Leave optional AltGr
   and isolated decorative/currency symbols out of this filter; retain font fallback
   across multiple families.
-  Dock EN before font analysis. Run the font/XKB check in a separate worker
+  Dock the tray before font analysis. Run the font/XKB check in a separate worker
   with nice 19 and idle I/O priority, then update entry visibility on GTK's thread
   without rebuilding the tray or changing layout indexes, selection or input.
   Align the Show all label with the main list's flags and use a separate themed arrow.
   A menu selection or thirty continuous
-  seconds on a non-English layout remembers the alternate in `~/.fluxbox/kblayout`;
+  seconds on a non-English layout remembers the alternate;
   thereafter the shortcut toggles English and that alternate. English alone never
   ends exploration. Menu selections replace the alternate. Start each login in
-  English while retaining the alternate in persistent sessions. Observe modifier
+  the last active layout and retain the alternate. Save both as two lines of XKB
+  identifiers in `~/.config/slax/keyboard` (respecting `XDG_CONFIG_HOME`) whenever
+  either changes, and restore them at startup. Observe modifier
   chords without grabbing application input; Ctrl+Shift plus another key must not
   change layouts. Keep the tray synchronized with external XKB changes.
   The tray handles either bare Super key on release to open `fbappselect`, suppressing
@@ -174,8 +176,13 @@ reporting progress.
   Windows must use only system DLLs; Linux may use libraries
   already installed in Slax. Do not require a browser or download fonts.
   Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
-  it strips both and compresses only Windows with `upx --best` (without
-  `--ultra-brute`), checking its packed integrity. Keep Linux as an unpacked ELF;
+  it strips both and keeps both unpacked. Do not use UPX or other executable
+  packers/obfuscators: avoid unnecessary antivirus false positives. Windows has
+  native product/version metadata and its ordinary administrator manifest.
+  Stage authenticated GRUB helpers under recognizable names in the system temp
+  directory and launch them through native process APIs without extra windows or
+  terminals. Capture helper output for installer errors; Windows console helpers
+  must use `CREATE_NO_WINDOW`. Keep Linux as an unpacked ELF;
   `03-desktop/copy` installs it at `/usr/bin/slax-install-linux`, compressed by
   SquashFS, with a Slax Installer entry in xlunch and no desktop shortcut.
   Use the selected generated icon with Slax's original clover behind a hard drive,
@@ -201,8 +208,14 @@ reporting progress.
   middle-dot-separated capacity, filesystem and free space. Keep drive letters
   out of hardware titles. Let drive lists fill the available
   window height; scrolling at either boundary must not invalidate or repaint.
-  Preserve existing files and Windows boot assets; an existing slax directory
-  is never overwritten. Plan BIOS and UEFI independently. Preserve BIOS boot by
+  Preserve unrelated files and Windows boot assets. An existing slax directory
+  is updated by replacing source-matching files, after a short plan warning.
+  Keep unmatched files and the complete existing slax/changes session tree.
+  Reject source/destination identity matches, including directory aliases and
+  hardlinked files. Verify a complete staged copy before replacing files, and
+  retain originals for recovery until boot activation succeeds. Refresh existing
+  Slax EFI kernel/initramfs copies as well as the data folder. Plan BIOS and UEFI
+  independently. Preserve BIOS boot by
   retaining recognized NTLDR/BOOTMGR and GRUB menus. Add an NTLDR/BCD sector-file
   entry or a standard GRUB custom.cfg entry, keeping the original default OS.
   Only a fallback selector may replace BIOS boot code, backing up and chainloading
@@ -256,15 +269,21 @@ reporting progress.
   their dependencies for early live-data discovery. Slax emits
   an actual-driver capability list so older ISOs cannot be installed to a
   filesystem their early boot environment cannot read.
-  Download the official Windows GRUB release during installer compilation and
-  verify its pinned archive SHA256 before embedding the filesystem verifier and
-  BIOS modules. Build unmodified GNU mkimage with static liblzma from separately
-  pinned source archives: the official Windows executable lacks XZ support.
+  Build unmodified GNU GRUB mkimage and fstest for Linux and Windows during
+  installer compilation, using pinned and SHA256-verified GNU/XZ sources and
+  matching i386-pc modules from the official GNU Windows release. Linux helpers
+  are fully static; Windows helpers target XP and import only system DLLs.
+  Package both sets and the common modules in `installers/grub-bios.tar.xz`,
+  copied onto the medium as `slax/boot/grub/bios/tools.tar.xz`.
+  Both installers authenticate the source archive against their compiled-in hash
+  before decoding it through static liblzma and executing its native helpers.
+  Never fall back to system GRUB or PATH. Rebuild both installers and the support
+  archive together. Retain the archive in installed Slax and copy-to-RAM sources;
+  exclude it from EFI vendor-directory copies. Signed UEFI boot stays separate.
   Verify GRUB can read the filesystem and copied boot files before BIOS activation.
   Do not store the downloaded archive or extracted build assets in the repository.
-  Only their embedded copy in slax-install.exe is distributed; keep their license
-  and provenance in `bootfiles/grub`, without external Windows executables or
-  modules. Generic Live Kit does not include these installers. The old BAT, shell and VBS
+  Keep the packaged support archive beside the prebuilt installers, and its license
+  and provenance in `bootfiles/grub`. Generic Live Kit does not include these installers. The old BAT, shell and VBS
   installers have been replaced. Keep only `vmlinuz`, `initrfs.img`, `grub.cfg`,
   `grub` and `EFI` directly under `slax/boot`; both installers belong in `/slax/installer`.
   Slax's media README belongs at `/README.txt`; its source is
@@ -393,7 +412,8 @@ must follow the general Slax repair rules above.
 - UEFI boot uses Debian's Microsoft-signed shim, Debian-signed GRUB and the
   Debian-signed kernel. Keep verification enabled; do not enroll a Slax MOK,
   patch GRUB, load private GRUB modules or disable Secure Boot enforcement.
-  BIOS uses unmodified Debian GRUB tools and modules.
+  ISO BIOS boot uses unmodified Debian GRUB tools and modules; the native installers
+  use their matched stock GNU BIOS support package from the selected source.
 - Run as root on amd64 Debian:
 
   ```sh
@@ -444,8 +464,8 @@ must follow the general Slax repair rules above.
   Preserve supported network firmware and retain these payloads if their driver is enabled,
   whether built in or modular. Do not infer unused firmware solely from modinfo:
   some drivers construct firmware names dynamically.
-- Core needs `grub2-common` and `grub-pc-bin` for Linux USB BIOS setup. Keep
-  `grub-efi-amd64-bin` only on the build host: UEFI USB setup copies
+- Keep GRUB packages on the build host, not in the runtime core: Linux USB BIOS
+  setup uses the source's packaged helpers and modules. UEFI USB setup copies
   the bundled loader, and ISO recreation builds a temporary FAT image with
   the existing `mkfs.fat` and loop-mount tools.
 - Core also needs `fdisk` for Partition Manager and ISO recreation through `sfdisk`.
@@ -1427,9 +1447,9 @@ must follow the general Slax repair rules above.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
   UEFI without running an installer, while the existing file-copy USB setup remains valid.
-- Slax's Windows boot setup must use its bundled GRUB/EFI binaries, with the
-  Windows tools embedded in `Slax/debian13/installers/slax-install.exe`. Linux may use the
-  system's GRUB tools. USB setup creates the root
+- Both native installers use the selected source's authenticated BIOS support
+  archive and bundled signed EFI binaries. Neither uses host GRUB tools.
+  USB setup creates the root
   `EFI/BOOT` directory from the bundled loaders.
 - Keep existing partition types, geometry and drive letters in preserve mode;
   never turn the data partition into an ESP. BIOS may use a GRUB-readable

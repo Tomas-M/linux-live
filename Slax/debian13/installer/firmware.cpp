@@ -2,6 +2,63 @@
 #include <cstring>
 #include <codecvt>
 #include <locale>
+#include <filesystem>
+
+// Read only regular, rooted configuration files when recognizing an earlier Slax installation.
+static std::string efiConfig(FileTree &tree,const std::string &path)
+{
+   if (!tree.exists(path)) return "";
+   std::unique_ptr<FILE,int (*)(FILE *)> file(tree.open(path,false),fclose);
+   std::string text(1024*1024,'\0'); size_t bytes=fread(text.data(),1,text.size(),file.get());
+   if (ferror(file.get()) || bytes==text.size()) throw std::runtime_error("An existing EFI configuration cannot be read safely.");
+   text.resize(bytes); return text;
+}
+
+// A leftover Slax configuration alone must never identify another vendor's fallback loader as ours.
+static bool sameEfiFile(FileTree &tree,const std::string &left,const std::string &right)
+{
+   if (!tree.exists(left) || !tree.exists(right)) return false;
+   std::unique_ptr<FILE,int (*)(FILE *)> first(tree.open(left,false),fclose),second(tree.open(right,false),fclose);
+   unsigned char a[65536],b[65536]; size_t total=0;
+   while (true)
+   {
+      size_t bytes=fread(a,1,sizeof(a),first.get()),other=fread(b,1,sizeof(b),second.get());
+      if (ferror(first.get()) || ferror(second.get())) throw std::runtime_error("An existing EFI loader cannot be read safely.");
+      total+=bytes;
+      if (bytes!=other || memcmp(a,b,bytes) || total>32*1024*1024) return false;
+      if (bytes<sizeof(a)) return total!=0;
+   }
+}
+
+// Refresh only Slax vendor directories whose copied configuration explicitly targets this filesystem.
+void readSlaxEfi(InstallPlan &plan)
+{
+   if (!plan.overwrite || !plan.efi.bytes || (plan.bootLayout && plan.bootLayout->efi.bytes)) return;
+   FileTree tree(plan.efi,false);
+   if (!tree.exists("EFI/Slax") || !tree.isDirectory("EFI") || !tree.isDirectory("EFI/Slax")) return;
+   auto root=std::filesystem::u8path(tree.rootPath());
+   for (const auto &entry:std::filesystem::directory_iterator(root/"EFI"/"Slax"))
+   {
+      auto name=entry.path().filename().u8string();
+      if (name.size()!=32) continue;
+      if (!std::all_of(name.begin(),name.end(),[](unsigned char c) { return (c>='0' && c<='9') || (c>='a' && c<='f') || (c>='A' && c<='F'); })) continue;
+      auto vendor="EFI/Slax/"+name;
+      if (!tree.isDirectory(vendor)) continue;
+      bool complete=true;
+      for (const char *file:{"BOOTX64.EFI","grubx64.efi","grub.cfg","boot/grub.cfg"})
+         if (!tree.exists(vendor+"/"+file) || tree.isDirectory(vendor+"/"+file)) complete=false;
+      if (!complete) continue;
+      auto config="\n"+efiConfig(tree,vendor+"/boot/grub.cfg");
+      config.erase(std::remove(config.begin(),config.end(),'\r'),config.end());
+      if (config.find("\nset bootuuid="+plan.device.uuid+"\n")==std::string::npos) continue;
+      std::string bootstrap="set slax_path=$cmdpath\nif [ -n \"$fw_path\" ]; then set slax_path=$fw_path; fi\nif regexp --set=1:slax_efi '^\\(([^)]+)\\)' \"$slax_path\"; then set root=$slax_efi; fi\nset prefix=($root)/"+vendor+"/boot/grub\nconfigfile /"+vendor+"/boot/grub/menu.cfg\n";
+      if (efiConfig(tree,vendor+"/grub.cfg")!=bootstrap) continue;
+      plan.efiVendors.push_back(vendor);
+      bool fallback=efiConfig(tree,"EFI/BOOT/grub.cfg")==bootstrap;
+      if (fallback && sameEfiFile(tree,"EFI/BOOT/BOOTX64.EFI",vendor+"/BOOTX64.EFI") && sameEfiFile(tree,"EFI/BOOT/grubx64.efi",vendor+"/grubx64.efi")) plan.efiFallback=vendor;
+   }
+   std::sort(plan.efiVendors.begin(),plan.efiVendors.end());
+}
 
 // Retain ordinary OS loaders on this ESP as menu choices, matching UEFI's partition identity and path.
 void readEfiLoaders(InstallPlan &plan)
@@ -17,6 +74,7 @@ void readEfiLoaders(InstallPlan &plan)
       auto entry=entries.data()+at%sector; std::copy(entry+16,entry+32,signature.begin());
    }
    else { plan.disk->read(0,header.data(),sector); std::copy(header.begin()+440,header.begin()+444,signature.begin()); }
+   bool slaxDefault=false;
    for (size_t n=0; n<plan.bootOrder.size(); n+=2)
    {
       char name[16]; snprintf(name,sizeof(name),"Boot%04X",plan.bootOrder[n]|plan.bootOrder[n+1]<<8);
@@ -47,13 +105,15 @@ void readEfiLoaders(InstallPlan &plan)
       std::string file,label;
       try { file=utf8.to_bytes(path); label=utf8.to_bytes(title); } catch (...) { continue; }
       std::replace(file.begin(),file.end(),'\\','/'); auto key=filenameKey(file);
+      bool slax=std::any_of(plan.efiVendors.begin(),plan.efiVendors.end(),[&](const std::string &vendor) { return key==filenameKey("/"+vendor+"/BOOTX64.EFI"); });
+      if (slax && !options) { if (plan.efiBootEntry.empty()) plan.efiBootEntry=name; if (!n) slaxDefault=true; continue; }
       bool vendor=key.find(filenameKey("/EFI/"))==0 && key.find(filenameKey("/EFI/Slax/"))!=0 && key.find("/../")==std::string::npos;
       bool replacedFallback=plan.fallback && key.find(filenameKey("/EFI/BOOT/"))==0;
       bool controls=std::any_of(file.begin(),file.end(),[](unsigned char c) { return c<32; });
       if (!vendor || replacedFallback || controls || !esp.exists(file.substr(1))) continue;
       bool windows=key==filenameKey(plan.windowsLoader);
       if (options && !windows) continue; // Other binary load options still need their original firmware entry.
-      if (!n) plan.efiFirst=file;
+      if (!n || (slaxDefault && plan.efiFirst.empty())) plan.efiFirst=file;
       if (windows) continue;
       bool duplicate=std::any_of(plan.efiLoaders.begin(),plan.efiLoaders.end(),[&](const auto &entry) { return filenameKey(entry.second)==key; });
       if (!duplicate) plan.efiLoaders.push_back({label.empty()?"Previous operating system":label,file});

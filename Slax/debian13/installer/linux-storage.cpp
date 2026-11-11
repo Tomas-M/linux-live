@@ -1,5 +1,6 @@
 #include "storage.h"
 #include "disk-format.h"
+#include "grub-assets.h"
 #include <libudev.h>
 #include <glib.h>
 #include <blkid/blkid.h>
@@ -16,6 +17,7 @@
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
+#include <spawn.h>
 #include <linux/fs.h>
 #include <linux/cdrom.h>
 #include <linux/btrfs.h>
@@ -26,6 +28,7 @@
 #include <set>
 #include <fstream>
 #include <sstream>
+#include <filesystem>
 
 // Preserve the native error as part of every actionable storage failure.
 static void failed(const std::string &message) { throw std::runtime_error(message+": "+strerror(errno)); }
@@ -158,7 +161,7 @@ static void protectPath(udev *context,const std::string &path,std::set<std::stri
       struct stat root;
       if (mount.number==info.st_dev || (!stat(mount.path.c_str(),&root) && root.st_dev==info.st_dev)) protect(context,mount.source,paths);
    }
-   int fd=open(path.c_str(),O_RDONLY|O_CLOEXEC); btrfs_ioctl_fs_info_args fs={};
+   int fd=open(path.c_str(),O_RDONLY|O_NONBLOCK|O_CLOEXEC); btrfs_ioctl_fs_info_args fs={};
    bool btrfs=fd>=0 && !ioctl(fd,BTRFS_IOC_FS_INFO,&fs); if (fd>=0) close(fd);
    if (!btrfs) return;
    std::string directory="/sys/fs/btrfs/"+btrfsUuid(fs)+"/devices"; DIR *devices=opendir(directory.c_str());
@@ -309,17 +312,18 @@ std::vector<Device> scanDevices(const std::string &source)
    return result;
 }
 
-// Read files or optical devices, following aliases such as /dev/cdrom but rejecting other raw block devices.
+// Inspect types without waiting on FIFOs; accept files or optical aliases but reject other raw devices.
 FILE *openImage(const std::string &path)
 {
    auto resolved=realpath(path.c_str(),nullptr); if (!resolved) return nullptr;
-   int fd=open(resolved,O_RDONLY|O_CLOEXEC|O_NOFOLLOW); free(resolved);
+   int fd=open(resolved,O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW); free(resolved);
    if (fd<0) return nullptr;
    struct stat info;
    if (fstat(fd,&info)) { close(fd); return nullptr; }
    bool optical=S_ISBLK(info.st_mode) && ioctl(fd,CDROM_GET_CAPABILITY)>=0;
    if (!S_ISREG(info.st_mode) && !optical) { close(fd); return nullptr; }
-   return fdopen(fd,"rb");
+   if (fcntl(fd,F_SETFL,0)) { close(fd); return nullptr; }
+   FILE *file=fdopen(fd,"rb"); if (!file) close(fd); return file;
 }
 
 // Reject invalid UTF-8 and Unicode case aliases before any FAT or Windows destination is written.
@@ -437,7 +441,7 @@ struct FileTree::Impl
 };
 
 // Walk directory components relative to held descriptors, never following a symlink.
-static int parent(int root,const std::string &path,std::string &leaf)
+static int parent(int root,const std::string &path,std::string &leaf,bool allowMissing=false)
 {
    int fd=dup(root); size_t start=0;
    while (true)
@@ -445,6 +449,7 @@ static int parent(int root,const std::string &path,std::string &leaf)
       auto slash=path.find('/',start);
       if (slash==std::string::npos) { leaf=path.substr(start); return fd; }
       auto name=path.substr(start,slash-start); int next=openat(fd,name.c_str(),O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC); close(fd);
+      if (next<0 && allowMissing && errno==ENOENT) return -1;
       if (next<0) failed("Cannot safely open the destination directory");
       fd=next; start=slash+1;
    }
@@ -458,9 +463,14 @@ FileTree::FileTree(const Partition &partition,bool writable):impl(new Impl)
    impl->mount=partition.mount;
    struct stat block;
    if (stat(partition.path.c_str(),&block) || !S_ISBLK(block.st_mode)) throw std::runtime_error("The destination partition is no longer available.");
-   bool mounted=false;
-   for (const auto &mount:mountedFilesystems()) if (mount.root && mount.source==block.st_rdev && mount.path==impl->mount) mounted=true;
-   if (!mounted) impl->mount.clear();
+   bool mounted=false; std::string currentRoot;
+   for (const auto &mount:mountedFilesystems()) if (mount.root && mount.source==block.st_rdev)
+   {
+      if (currentRoot.empty()) currentRoot=mount.path;
+      if (mount.path==impl->mount) { mounted=true; break; }
+   }
+   // Another retained journal may already own a private writable mount of this filesystem.
+   if (!mounted) impl->mount=currentRoot;
    if (impl->mount.empty())
    {
       char directory[]="/tmp/slax-install-mount.XXXXXX";
@@ -500,8 +510,9 @@ FileTree::FileTree(const Partition &partition,bool writable):impl(new Impl)
       if (error) { errno=error; failed("Cannot verify Windows hibernation state"); }
       if (!name.empty())
       {
-         int file=openat(impl->fd,name.c_str(),O_RDONLY|O_NOFOLLOW|O_CLOEXEC); unsigned char header[4096]={};
-         ssize_t bytes=file<0?-1:read(file,header,sizeof(header)); if (file>=0) close(file);
+         int file=openat(impl->fd,name.c_str(),O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC); unsigned char header[4096]={}; struct stat info;
+         bool regular=file>=0 && !fstat(file,&info) && S_ISREG(info.st_mode);
+         ssize_t bytes=regular?read(file,header,sizeof(header)):-1; if (file>=0) close(file);
          bool inactive=bytes==sizeof(header) && std::all_of(header,header+sizeof(header),[](unsigned char byte) { return byte==0; });
          if (!inactive) throw std::runtime_error("Windows is hibernated or its hibernation state cannot be verified. Resume Windows and shut it down fully, without hibernation or Fast Startup, before installing from Linux. No Windows files were changed.");
       }
@@ -519,6 +530,42 @@ bool FileTree::exists(const std::string &path)
    struct stat info; return !fstatat(impl->fd,path.c_str(),&info,AT_SYMLINK_NOFOLLOW);
 }
 
+// Classify only ordinary objects below pinned parents, without opening special files for I/O.
+bool FileTree::isDirectory(const std::string &path)
+{
+   std::string leaf; int directory=parent(impl->fd,path,leaf);
+   int fd=openat(directory,leaf.c_str(),O_PATH|O_NOFOLLOW|O_CLOEXEC),error=errno; close(directory); errno=error;
+   if (fd<0) failed("Cannot inspect the destination entry "+path);
+   struct stat info; int result=fstat(fd,&info); error=errno; close(fd); errno=error;
+   if (result) failed("Cannot identify the destination entry "+path);
+   if (!S_ISREG(info.st_mode) && !S_ISDIR(info.st_mode)) throw std::runtime_error("The destination contains a link or special file: "+path);
+   return S_ISDIR(info.st_mode);
+}
+
+// Compare held native identities so source symlinks, hard links and bind mounts cannot disguise self-copying.
+bool FileTree::same(const std::string &path,const std::string &external)
+{
+   std::string leaf; int directory=parent(impl->fd,path,leaf,true);
+   if (directory<0) return false;
+   int target=openat(directory,leaf.c_str(),O_PATH|O_NOFOLLOW|O_CLOEXEC),error=errno; close(directory); errno=error;
+   if (target<0) { if (errno==ENOENT) return false; failed("Cannot identify the destination entry "+path); }
+   try
+   {
+      struct stat a,b;
+      if (fstat(target,&a)) failed("Cannot identify the destination entry "+path);
+      if (!S_ISREG(a.st_mode) && !S_ISDIR(a.st_mode)) throw std::runtime_error("The destination contains a link or special file: "+path);
+      int source=::open(external.c_str(),O_PATH|O_CLOEXEC);
+      if (source<0) failed("Cannot identify the source path");
+      int result=fstat(source,&b); error=errno; close(source); errno=error;
+      if (result) failed("Cannot identify the source path");
+      // Validated optical sources are devices and cannot alias an ordinary destination entry.
+      if (S_ISBLK(b.st_mode)) { close(target); return false; }
+      if (!S_ISREG(b.st_mode) && !S_ISDIR(b.st_mode)) throw std::runtime_error("The source is not a regular file or directory.");
+      close(target); return a.st_dev==b.st_dev && a.st_ino==b.st_ino;
+   }
+   catch (...) { close(target); throw; }
+}
+
 // New directories are created exclusively below a safely held parent.
 void FileTree::mkdir(const std::string &path)
 {
@@ -530,8 +577,10 @@ void FileTree::mkdir(const std::string &path)
 FILE *FileTree::open(const std::string &path,bool write,uint32_t mode)
 {
    std::string leaf; int directory=parent(impl->fd,path,leaf);
-   int fd=openat(directory,leaf.c_str(),(write?O_RDWR|O_CREAT|O_EXCL:O_RDONLY)|O_NOFOLLOW|O_CLOEXEC,mode&0777); close(directory);
+   int fd=openat(directory,leaf.c_str(),(write?O_RDWR|O_CREAT|O_EXCL:O_RDONLY)|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC,mode&0777); close(directory);
    if (fd<0) failed("Cannot open destination file "+path);
+   struct stat info;
+   if (fstat(fd,&info) || !S_ISREG(info.st_mode)) { close(fd); throw std::runtime_error("The destination is not a regular file: "+path); }
    FILE *file=fdopen(fd,write?"w+b":"rb");
    if (!file) { close(fd); failed("Cannot open a destination stream"); }
    return file;
@@ -540,16 +589,21 @@ FILE *FileTree::open(const std::string &path,bool write,uint32_t mode)
 // Publish a verified tree atomically without replacing any pre-existing installation.
 void FileTree::move(const std::string &from,const std::string &to)
 {
-   if (syscall(SYS_renameat2,impl->fd,from.c_str(),impl->fd,to.c_str(),RENAME_NOREPLACE)) failed("Cannot publish the verified installation");
+   std::string source,destination; int a=parent(impl->fd,from,source),b;
+   try { b=parent(impl->fd,to,destination); } catch (...) { close(a); throw; }
+   int result=syscall(SYS_renameat2,a,source.c_str(),b,destination.c_str(),RENAME_NOREPLACE),error=errno; close(a); close(b); errno=error;
+   if (result) failed("Cannot publish the verified installation");
    sync();
 }
 
 // Publish an approved boot configuration atomically, preserving its owner and access mode.
 void FileTree::replace(const std::string &from,const std::string &to)
 {
-   std::string source,destination; int a=parent(impl->fd,from,source),b=parent(impl->fd,to,destination); struct stat info;
-   int file=openat(a,source.c_str(),O_RDONLY|O_NOFOLLOW|O_CLOEXEC);
-   bool valid=file>=0 && !fstatat(b,destination.c_str(),&info,AT_SYMLINK_NOFOLLOW) && S_ISREG(info.st_mode);
+   std::string source,destination; int a=parent(impl->fd,from,source),b; struct stat info;
+   try { b=parent(impl->fd,to,destination); } catch (...) { close(a); throw; }
+   int file=openat(a,source.c_str(),O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);
+   bool valid=file>=0 && !fstat(file,&info) && S_ISREG(info.st_mode);
+   if (valid) valid=!fstatat(b,destination.c_str(),&info,AT_SYMLINK_NOFOLLOW) && S_ISREG(info.st_mode);
    if (valid) valid=!fchown(file,info.st_uid,info.st_gid) && !fchmod(file,info.st_mode&07777) && !fsync(file);
    if (file>=0) close(file);
    int result=valid?renameat(a,source.c_str(),b,destination.c_str()):-1; close(a); close(b);
@@ -562,7 +616,14 @@ std::string readBcd(const Partition &) { return ""; }
 void addBcdEntry(const InstallPlan &) { throw std::runtime_error("Native Windows BCD editing is unavailable in this session."); }
 
 // Rollback removes only the explicitly recorded files and empty directories created by this run.
-void FileTree::remove(const std::string &path,bool directory) { unlinkat(impl->fd,path.c_str(),directory?AT_REMOVEDIR:0); }
+void FileTree::remove(const std::string &path,bool directory)
+{
+   try
+   {
+      std::string leaf; int fd=parent(impl->fd,path,leaf); unlinkat(fd,leaf.c_str(),directory?AT_REMOVEDIR:0); close(fd);
+   }
+   catch (...) {}
+}
 
 // Space is measured on the held filesystem, after any private mount has been established.
 uint64_t FileTree::available()
@@ -633,73 +694,99 @@ bool firmwareAvailable()
    try { return !readFirmware("BootOrder").empty(); } catch (...) { return false; }
 }
 
-// Embed only the disk/filesystem reader; matching menu modules live in the new Slax directory.
-BiosImage buildBios(const Partition &target,bool gpt)
+// Materialize the selected source's verified tools and modules in an owner-private directory.
+struct GrubWorkspace
 {
-   char name[]="/tmp/slax-install-bios.XXXXXX";
-   if (!mkdtemp(name)) failed("Cannot create the BIOS build workspace");
-   std::string folder=name; BiosImage result;
-   try
+   std::string folder;
+   explicit GrubWorkspace(const GrubAssets &assets)
    {
-      std::string prefix="(,"+std::string(gpt?"gpt":"msdos")+std::to_string(target.number)+")/slax/boot/grub";
-      std::string filesystem=biosFilesystem(target);
-      pid_t child=fork();
-      if (child<0) failed("Cannot start grub-mkimage");
-      if (!child)
+      auto temporary=std::filesystem::canonical(std::filesystem::temp_directory_path());
+      // Protect the workspace name too: a writable ancestor could replace its private directory.
+      for (auto parent=temporary;;parent=parent.parent_path())
       {
-         int log=open((folder+"/log").c_str(),O_WRONLY|O_CREAT|O_EXCL,0600); dup2(log,STDOUT_FILENO); dup2(log,STDERR_FILENO); close(log);
-         execlp("grub-mkimage","grub-mkimage","-O","i386-pc","-C","xz","-p",prefix.c_str(),"-o",(folder+"/core").c_str(),"biosdisk",gpt?"part_gpt":"part_msdos",filesystem.c_str(),static_cast<char *>(nullptr));
-         _exit(127);
+         struct stat info;
+         if (stat(parent.c_str(),&info)) failed("Cannot inspect the BIOS tools temporary directory");
+         bool writable=info.st_mode&(S_IWGRP|S_IWOTH);
+         if (info.st_uid!=geteuid() || (writable && !(info.st_mode&S_ISVTX)))
+            throw std::runtime_error("The BIOS tools need a protected temporary directory. Set TMPDIR to a root-owned directory that permits execution, such as /tmp or /var/tmp.");
+         if (parent==parent.root_path()) break;
       }
-      int status=0;
-      while (waitpid(child,&status,0)<0) if (errno!=EINTR) failed("Cannot wait for grub-mkimage");
-      if (!WIFEXITED(status) || WEXITSTATUS(status)) throw std::runtime_error("The installed grub-mkimage could not build the BIOS loader. Install grub-pc-bin and grub2-common before retrying.");
-      for (int i=0; i<2; i++)
+      auto pattern=(temporary/"slax-install-grub.XXXXXX").string();
+      std::vector<char> name(pattern.begin(),pattern.end()); name.push_back(0);
+      if (!mkdtemp(name.data())) failed("Cannot create the BIOS tools workspace");
+      folder=name.data();
+      try
       {
-         FILE *file=fopen((i?folder+"/core":"/usr/lib/grub/i386-pc/boot.img").c_str(),"rb");
-         if (!file) failed("Cannot read the BIOS loader");
-         std::string data(1024*1024,'\0'); size_t bytes=fread(data.data(),1,data.size(),file); bool valid=!ferror(file) && feof(file); fclose(file);
-         if (!valid) throw std::runtime_error("The BIOS loader is too large.");
-         data.resize(bytes); (i?result.core:result.boot)=std::move(data);
+         for (const auto &asset:assets.entries())
+         {
+            auto path=std::filesystem::path(folder)/asset.name;
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream file(path,std::ios::binary); file.write(asset.data.data(),asset.data.size()); file.close();
+            if (!file) throw std::runtime_error("Cannot write a verified BIOS tool or module.");
+            if (chmod(path.c_str(),asset.mode&0111?0700:0600)) failed("Cannot set BIOS tool permissions");
+         }
       }
-      DIR *modules=opendir("/usr/lib/grub/i386-pc");
-      if (!modules) failed("Cannot read the matching BIOS modules");
-      while (auto entry=readdir(modules))
-      {
-         std::string name=entry->d_name;
-         if (name.size()<4 || (name.substr(name.size()-4)!=".mod" && name.substr(name.size()-4)!=".lst")) continue;
-         std::ifstream file("/usr/lib/grub/i386-pc/"+name,std::ios::binary);
-         std::string data{std::istreambuf_iterator<char>(file),std::istreambuf_iterator<char>()};
-         if (!file || file.bad()) { closedir(modules); throw std::runtime_error("Cannot read a matching BIOS module."); }
-         result.modules.push_back(generated("slax/boot/grub/i386-pc/"+name,data));
-      }
-      closedir(modules);
+      catch (...) { std::error_code error; std::filesystem::remove_all(folder,error); throw; }
    }
-   catch (...) { for (const char *file:{"core","log"}) unlink((folder+"/"+file).c_str()); rmdir(folder.c_str()); throw; }
-   for (const char *file:{"core","log"}) unlink((folder+"/"+file).c_str());
-   rmdir(folder.c_str());
-   return result;
-}
+   // Cleanup must not hide an installation or verification error.
+   ~GrubWorkspace() { std::error_code error; std::filesystem::remove_all(folder,error); }
+};
 
-// Use the installed stock GRUB reader, including real filesystem feature checks and boot-file comparisons.
-void checkBiosFiles(const Device &device,bool installed)
+// Run the verified absolute helper without a shell, preserving bounded native diagnostics.
+static void runGrub(const std::string &executable,std::vector<std::string> arguments,const std::string &failure)
 {
-   FileTree target(device,false);
-   std::string path=target.rootPath()+"slax/boot";
    std::unique_ptr<FILE,int (*)(FILE *)> log(tmpfile(),fclose);
-   if (!log) failed("Cannot create the BIOS verification log");
-   pid_t child=fork(); if (child<0) failed("Cannot start the BIOS filesystem verifier");
-   if (!child)
-   {
-      dup2(fileno(log.get()),STDOUT_FILENO); dup2(fileno(log.get()),STDERR_FILENO);
-      if (installed) execlp("grub-fstest","grub-fstest",device.path.c_str(),"cmp","/slax/boot",path.c_str(),static_cast<char *>(nullptr));
-      else execlp("grub-fstest","grub-fstest",device.path.c_str(),"xnu_uuid",static_cast<char *>(nullptr));
-      _exit(127);
-   }
-   int status=0; while (waitpid(child,&status,0)<0) if (errno!=EINTR) failed("Cannot wait for the BIOS filesystem verifier");
+   if (!log) failed("Cannot create the BIOS tools log");
+   arguments.insert(arguments.begin(),executable);
+   std::vector<char *> argv; for (auto &argument:arguments) argv.push_back(argument.data()); argv.push_back(nullptr);
+   posix_spawn_file_actions_t actions;
+   int error=posix_spawn_file_actions_init(&actions);
+   if (error) { errno=error; failed("Cannot prepare the BIOS tool"); }
+   error=posix_spawn_file_actions_adddup2(&actions,fileno(log.get()),STDOUT_FILENO);
+   if (!error) error=posix_spawn_file_actions_adddup2(&actions,fileno(log.get()),STDERR_FILENO);
+   if (!error && fileno(log.get())>STDERR_FILENO) error=posix_spawn_file_actions_addclose(&actions,fileno(log.get()));
+   pid_t child=0;
+   if (!error) error=posix_spawn(&child,executable.c_str(),&actions,nullptr,argv.data(),environ);
+   posix_spawn_file_actions_destroy(&actions);
+   if (error==EACCES) throw std::runtime_error("The BIOS tools cannot execute in this temporary directory. Set TMPDIR to a directory that permits program execution.");
+   if (error) { errno=error; failed("Cannot start the source BIOS tool"); }
+   int status=0; while (waitpid(child,&status,0)<0) if (errno!=EINTR) failed("Cannot wait for the BIOS tool");
    if (!WIFEXITED(status) || WEXITSTATUS(status))
    {
       char detail[1025]={}; rewind(log.get()); size_t bytes=fread(detail,1,1024,log.get());
-      throw std::runtime_error("GRUB cannot read this filesystem or verify its boot files. Existing BIOS boot settings will be kept.\n"+std::string(detail,bytes));
+      throw std::runtime_error(failure+"\n"+std::string(detail,bytes));
    }
+}
+
+// Embed only the disk/filesystem reader; matching menu modules live in the new Slax directory.
+BiosImage buildBios(const Partition &target,bool gpt,const GrubAssets &assets)
+{
+   GrubWorkspace work(assets); BiosImage result;
+   std::string prefix="(,"+std::string(gpt?"gpt":"msdos")+std::to_string(target.number)+")/slax/boot/grub";
+   runGrub(work.folder+"/"+assets.tool("grub-mkimage").name,
+      {"-d",work.folder+"/i386-pc","-O","i386-pc","-C","xz","-p",prefix,"-o",work.folder+"/core","biosdisk",gpt?"part_gpt":"part_msdos",biosFilesystem(target)},
+      "The source GRUB tools could not build the BIOS loader.");
+   FILE *file=fopen((work.folder+"/core").c_str(),"rb");
+   if (!file) failed("Cannot read the BIOS loader");
+   result.core.resize(1024*1024); size_t bytes=fread(result.core.data(),1,result.core.size(),file); bool valid=!ferror(file) && feof(file); fclose(file);
+   if (!valid) throw std::runtime_error("The BIOS loader is too large.");
+   result.core.resize(bytes);
+   for (const auto &asset:assets.entries())
+   {
+      if (asset.name=="i386-pc/boot.img") result.boot=asset.data;
+      bool module=asset.name.size()>4 && (asset.name.substr(asset.name.size()-4)==".mod" || asset.name.substr(asset.name.size()-4)==".lst");
+      if (asset.name.find("i386-pc/")==0 && module) result.modules.push_back(generated("slax/boot/grub/"+asset.name,asset.data));
+   }
+   return result;
+}
+
+// Use the source's matching GRUB reader for filesystem features and copied boot-file comparisons.
+void checkBiosFiles(const Device &device,bool installed,const GrubAssets &assets)
+{
+   FileTree target(device,false); GrubWorkspace work(assets);
+   std::vector<std::string> arguments={device.path};
+   if (installed) arguments.insert(arguments.end(),{"cmp","/slax/boot",target.rootPath()+"slax/boot"});
+   else arguments.push_back("xnu_uuid");
+   runGrub(work.folder+"/"+assets.tool("grub-fstest").name,std::move(arguments),
+      "GRUB cannot read this filesystem or verify its boot files. Existing BIOS boot settings will be kept.");
 }

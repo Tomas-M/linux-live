@@ -2,6 +2,7 @@
 #include "hash.h"
 #include <codecvt>
 #include <cstring>
+#include <ctime>
 #include <locale>
 #include <map>
 #include <set>
@@ -304,6 +305,20 @@ BootLayout planBootLayout(Disk &disk,const BiosImage *bios,uint64_t efiBytes,boo
          {
             bool formatted=std::any_of(disk.device.partitions.begin(),disk.device.partitions.end(),[&](const Partition &part) { return part.number==i+1 && !part.filesystem.empty(); });
             if (!formatted && (replaceBios || emptyArea(disk,start,bytes))) { result.bios.start=start; result.bios.bytes=coreSize; result.bios.number=i+1; }
+            else if (!formatted)
+            {
+               uint64_t at=disk64(mbr.data()+0x5c);
+               bool bounded=at>=start/sector && at<(start+bytes)/sector && coreSize/sector<=(start+bytes)/sector-at;
+               if (bounded && result.originalMbr.compare(0,440,biosBootSector(*bios,at*sector),0,440)==0)
+               {
+                  auto expected=biosCore(*bios,at*sector); std::vector<unsigned char> existing(expected.size()); disk.read(at*sector,existing.data(),existing.size());
+                  if (existing==expected)
+                  {
+                     result.bios.start=at*sector; result.bios.bytes=coreSize; result.bios.number=i+1;
+                     result.biosBefore.assign(reinterpret_cast<const char *>(existing.data()),existing.size());
+                  }
+               }
+            }
          }
       }
       // FirstUsableLBA deliberately excludes Slax's reserved BIOS space from partition allocation.
@@ -336,6 +351,13 @@ BootLayout planBootLayout(Disk &disk,const BiosImage *bios,uint64_t efiBytes,boo
          if (!entry[4] && !count) { slots.push_back(i); continue; }
          if (!entry[4] || !count || !start || start>=total || count>total-start) throw std::runtime_error("An MBR partition has invalid boundaries. Repair the partition table first.");
          occupied.push_back({start*sector,count*sector});
+      }
+      // An existing Slax MBR proves ownership even when another partition cannot be mounted.
+      if (bios && sector==512)
+      {
+         uint64_t at=disk64(mbr.data()+0x5c);
+         if (at<total && result.originalMbr.compare(0,440,biosBootSector(*bios,at*sector),0,440)==0)
+            reuseBios(disk,result,*bios,biosBootSector(*bios,at*sector));
       }
    }
    std::sort(occupied.begin(),occupied.end(),[](const DiskRange &a,const DiskRange &b) { return a.start<b.start; });
@@ -441,6 +463,41 @@ BootLayout planBootLayout(Disk &disk,const BiosImage *bios,uint64_t efiBytes,boo
    return result;
 }
 
+// Reuse a native menu's sector file only when its complete core matches inside a bounded BIOS area.
+bool reuseBios(Disk &disk,BootLayout &layout,const BiosImage &image,const std::string &boot)
+{
+   if (disk.device.sector!=512 || boot.size()!=512 || image.core.size()<1024) return false;
+   uint64_t lba=disk64(reinterpret_cast<const unsigned char *>(boot.data())+0x5c);
+   if (lba>=disk.device.diskBytes/512 || boot!=biosBootSector(image,lba*512)) return false;
+   uint64_t start=lba*512; auto expected=biosCore(image,start);
+   if (layout.bios.bytes && layout.bios.start!=start) return false;
+   uint64_t first=512,last=disk.device.diskBytes; unsigned number=0;
+   if (layout.gpt)
+   {
+      std::vector<unsigned char> header(512); disk.read(512,header.data(),header.size());
+      first=(disk64(header.data()+72)+(uint64_t(disk32(header.data()+80))*128+511)/512)*512;
+      last=disk64(header.data()+40)*512;
+   }
+   else for (unsigned i=0; i<4; i++)
+   {
+      auto entry=reinterpret_cast<const unsigned char *>(layout.originalMbr.data())+446+i*16;
+      if (entry[4]) last=std::min(last,uint64_t(disk32(entry+8))*512);
+   }
+   bool bounded=last>first && last-first<=16*1024*1024 && start>=first && start<last && expected.size()<=last-start;
+   for (const auto &part:disk.device.partitions)
+   {
+      bool bios=part.type=="21686148-6449-6e6f-744e-656564454649" || part.type=="0xda" || part.type=="218";
+      if (bios && part.filesystem.empty() && part.bytes<=16*1024*1024 && start>=part.start && start-part.start<part.bytes && expected.size()<=part.bytes-(start-part.start))
+      { bounded=true; number=part.number; }
+   }
+   if (!bounded) return false;
+   std::vector<unsigned char> existing(expected.size()); disk.read(start,existing.data(),existing.size());
+   if (existing!=expected) return false;
+   layout.bios.start=start; layout.bios.bytes=expected.size(); layout.bios.number=number;
+   layout.biosBefore.assign(reinterpret_cast<const char *>(existing.data()),existing.size());
+   layout.ranges.push_back({start,expected.size()}); layout.ranges.push_back({0,512}); return true;
+}
+
 // Recheck both partition metadata and the exact embedding bytes before activating any new boot path.
 void verifyBootLayout(Disk &disk,const BootLayout &layout)
 {
@@ -526,17 +583,39 @@ void writeFat(Disk &disk,const Partition &partition,const std::vector<Content> &
 {
    uint32_t sector=disk.device.sector; auto geometry=fatGeometry(partition.bytes,sector);
    uint32_t sectors=geometry.sectors,cluster=geometry.cluster,fat=geometry.fat,clusters=geometry.clusters,clusterBytes=cluster*sector;
+   // Zero FAT dates are invalid and make Windows XP reject ordinary files and directories.
+   std::time_t now=std::time(nullptr); std::tm calendar{};
+#ifdef _WIN32
+   auto local=std::localtime(&now); if (local) calendar=*local; // MSVCRT keeps this buffer per thread.
+#else
+   auto local=localtime_r(&now,&calendar);
+#endif
+   if (!local) throw std::runtime_error("The system clock cannot provide a valid FAT32 timestamp.");
+   if (calendar.tm_year<80 || calendar.tm_year>207)
+   { calendar={}; calendar.tm_year=80; calendar.tm_mday=1; }
+   uint16_t date=((calendar.tm_year-80)<<9)|((calendar.tm_mon+1)<<5)|calendar.tm_mday;
+   uint16_t time=(calendar.tm_hour<<11)|(calendar.tm_min<<5)|(std::min(calendar.tm_sec,59)/2);
    struct Node { const Content *file=nullptr; std::u16string name; std::string parent,shortName; uint32_t first=0,count=0; bool directory=true; };
    std::map<std::string,Node> nodes; nodes[""]=Node{};
+   std::map<std::string,std::set<std::string>> names;
    uint64_t payload=0;
    for (const auto &file:files)
    {
       auto path=file.entry.path; auto slash=path.find_last_of('/'); std::string parent=slash==std::string::npos?"":path.substr(0,slash),name=path.substr(slash==std::string::npos?0:slash+1);
       if (nodes.count(path) || !nodes.count(parent) || !nodes[parent].directory) throw std::runtime_error("The payload has duplicate files or a missing parent directory.");
       Node node; node.file=&file; node.parent=parent; node.name=unicode(name); node.directory=file.entry.directory;
-      char alias[12]; snprintf(alias,sizeof(alias),"%c%07lX   ",node.directory?'D':'F',static_cast<unsigned long>(nodes.size())); node.shortName=alias;
+      names[parent].insert(filenameKey(name));
       if (!node.directory) { if (file.entry.bytes>UINT32_MAX) throw std::runtime_error("An individual file exceeds FAT32's 4 GiB limit."); node.count=(file.entry.bytes+clusterBytes-1)/clusterBytes; payload+=file.entry.bytes; }
       nodes[path]=node;
+   }
+   // A short alias must not shadow any sibling's long name, even one assigned later.
+   unsigned long aliasNumber=1;
+   for (auto &item:nodes) if (!item.first.empty())
+   {
+      auto &node=item.second; char alias[12];
+      do { snprintf(alias,sizeof(alias),"%c%07lX   ",node.directory?'D':'F',aliasNumber++); }
+      while (!names[node.parent].insert(filenameKey(std::string(alias,8))).second);
+      node.shortName=alias;
    }
    for (auto &item:nodes) if (item.second.directory)
    {
@@ -561,6 +640,23 @@ void writeFat(Disk &disk,const Partition &partition,const std::vector<Content> &
    for (const auto &item:nodes)
       for (uint32_t c=0; c<item.second.count; c++) put32(entries.data()+(item.second.first+c)*4,c+1==item.second.count?0x0fffffff:item.second.first+c+1);
    disk.write(partition.start+32*sector,entries.data(),entries.size()); disk.write(partition.start+(32ULL+fat)*sector,entries.data(),entries.size());
+   // File read-back alone cannot detect a broken BPB, allocation chain or stale free cluster.
+   const std::pair<uint64_t,const std::vector<unsigned char> *> records[]={
+      {0,&boot},{sector,&info},{6ULL*sector,&boot},{7ULL*sector,&info},
+      {32ULL*sector,&entries},{(32ULL+fat)*sector,&entries}
+   };
+   disk.flush(); std::vector<unsigned char> verified(buffer.size());
+   for (uint64_t at=0; at<metadata; at+=buffer.size())
+   {
+      size_t bytes=std::min<uint64_t>(buffer.size(),metadata-at); memset(buffer.data(),0,bytes);
+      for (const auto &record:records)
+      {
+         uint64_t first=std::max(at,record.first),last=std::min(at+bytes,record.first+record.second->size());
+         if (first<last) memcpy(buffer.data()+first-at,record.second->data()+first-record.first,last-first);
+      }
+      disk.read(partition.start+at,verified.data(),bytes);
+      if (memcmp(buffer.data(),verified.data(),bytes)) throw std::runtime_error("FAT32 metadata verification failed. The medium may be damaged.");
+   }
    uint64_t dataAt=partition.start+(32ULL+2ULL*fat)*sector,completed=0;
    for (const auto &item:nodes)
    {
@@ -589,6 +685,11 @@ void writeFat(Disk &disk,const Partition &partition,const std::vector<Content> &
                for (int c=0; c<13; c++) { size_t index=(n-1)*13+c; put16(entry+positions[c],index<file.name.size()?file.name[index]:(index==file.name.size()?0:0xffff)); }
             }
             auto entry=directory.data()+slot++*32; memcpy(entry,file.shortName.data(),11); entry[11]=file.directory?16:32; put16(entry+20,file.first>>16); put16(entry+26,file.first); put32(entry+28,file.directory?0:file.file->entry.bytes);
+         }
+         for (size_t n=0; n<slot; n++)
+         {
+            auto entry=directory.data()+n*32; if (entry[11]==15) continue;
+            put16(entry+14,time); put16(entry+16,date); put16(entry+18,date); put16(entry+22,time); put16(entry+24,date);
          }
          disk.write(at,directory.data(),directory.size());
          std::vector<unsigned char> verify(directory.size()); disk.read(at,verify.data(),verify.size()); if (verify!=directory) throw std::runtime_error("FAT32 directory verification failed.");

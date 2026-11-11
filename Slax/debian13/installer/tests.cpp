@@ -1,5 +1,6 @@
 #include "disk-format.h"
 #include "hash.h"
+#include "grub-assets.h"
 #include <cassert>
 #include <chrono>
 #include <cstring>
@@ -12,8 +13,13 @@
 extern std::string fixtureRoot;
 extern std::map<std::string,std::vector<unsigned char>> firmware;
 extern int firmwareFault,writeFault;
+extern int fileMoveFault,fileMoveSyncFault,fileSyncFault;
+extern int corruptWrite;
+extern size_t corruptWriteByte;
 extern unsigned writeCalls;
 extern bool xpHost;
+extern std::string bcdStore,bcdDirty;
+extern bool bcdSyncFailure;
 static std::vector<Device> hardware;
 static Action native=None;
 static bool approve=false;
@@ -132,6 +138,18 @@ int main(int argc,char **argv)
    auto real=inspectImage(argv[1]); assert(real.error.empty() && real.entries.size()>20 && real.payload>0);
    auto image=inspectImage(argv[2]); assert(image.error.empty() && image.entries.size()>6);
    assert(!inspectImage("/missing.iso").error.empty() && !inspectImage(argv[0]).error.empty());
+   // Reject short records and missing filename padding before reading their fields or extensions.
+   for (unsigned bytes:{1,16,32,35})
+   {
+      std::vector<unsigned char> malformed(20*2048); size_t descriptor=16*2048,root=18*2048;
+      memcpy(malformed.data()+descriptor,"\1CD001\1",7); malformed[descriptor+129]=8; malformed[descriptor+156]=34;
+      putLittle(malformed,descriptor+80,20,4); putLittle(malformed,descriptor+158,18,4); putLittle(malformed,descriptor+166,bytes,4);
+      malformed[root]=bytes;
+      if (bytes==35) { malformed[root+32]=2; malformed[root+33]='a'; malformed[root+34]='b'; }
+      auto path=fixtureRoot+"/malformed-directory.iso";
+      std::ofstream(path,std::ios::binary).write(reinterpret_cast<const char *>(malformed.data()),malformed.size());
+      assert(inspectImage(path).error=="The ISO contains a truncated directory record.");
+   }
    // A directory and its parent resolve to the same complete Slax source, including Unicode files.
    auto folder=inspectImage(fixtureRoot+"/tree/slax"),parentFolder=inspectImage(fixtureRoot+"/tree");
    assert(folder.error.empty() && parentFolder.error.empty() && folder.path==parentFolder.path);
@@ -145,6 +163,65 @@ int main(int argc,char **argv)
    assert(inspectImage(fixtureRoot+"/parent alias").path==folder.path);
    std::filesystem::create_symlink("modules/01-core.sb",folder.path+"/unsafe-link");
    assert(!inspectImage(folder.path).error.empty()); std::filesystem::remove(folder.path+"/unsafe-link");
+   // Stage complete updates, preserve unrelated files and sessions, and recover partial native renames.
+   Partition mergePartition; mergePartition.mount=fixtureRoot+"/merge";
+   std::filesystem::create_directories(mergePartition.mount+"/slax/changes");
+   std::ofstream(mergePartition.mount+"/slax/current")<<"original";
+   std::ofstream(mergePartition.mount+"/slax/extra")<<"user file";
+   std::ofstream(mergePartition.mount+"/slax/changes/session.dat")<<"saved session";
+   FileTree mergeTree(mergePartition,true);
+   std::vector<Content> update={generated("slax/current","updated"),generated("slax/nested/new","new file")};
+   update[0].entry.mode=0755;
+   auto unchanged=[&]
+   {
+      assert(text(mergePartition.mount+"/slax/current")=="original");
+      assert(text(mergePartition.mount+"/slax/extra")=="user file" && text(mergePartition.mount+"/slax/changes/session.dat")=="saved session");
+      assert(!mergeTree.exists("slax/nested"));
+      for (const auto &entry:std::filesystem::directory_iterator(mergePartition.mount)) assert(entry.path().filename()=="slax");
+   };
+   {
+      FileMerge merge(mergeTree,update,nullptr,[&](const auto &status,int) { if (status.find("Copying ")==0) assert(text(mergePartition.mount+"/slax/current")=="original"); });
+      assert(text(mergePartition.mount+"/slax/current")=="updated" && text(mergePartition.mount+"/slax/nested/new")=="new file");
+      assert((std::filesystem::status(mergePartition.mount+"/slax/current").permissions()&std::filesystem::perms::owner_exec)!=std::filesystem::perms::none);
+      merge.rollback(); unchanged();
+   }
+   for (int fault=0; fault<5; fault++)
+   {
+      fileMoveFault=fault<2?fault:-1; fileMoveSyncFault=fault==2?0:(fault==3?1:-1); fileSyncFault=fault==4?1:-1;
+      assert(fails([&] { FileMerge merge(mergeTree,update,nullptr,[](const auto &,int) {}); }).find("Injected")!=std::string::npos);
+      fileMoveFault=fileMoveSyncFault=fileSyncFault=-1; unchanged();
+   }
+   {
+      FileMerge merge(mergeTree,update,nullptr,[](const auto &,int) {}); fileMoveFault=0;
+      assert(fails([&] { merge.rollback(); }).find("recovery directory .slax-install-")!=std::string::npos);
+      merge.rollback(); unchanged();
+   }
+   auto unreadable=update; unreadable[1].entry.offset=0; unreadable[1].entry.source=fixtureRoot+"/missing-source-file";
+   assert(fails([&] { FileMerge merge(mergeTree,unreadable,nullptr,[](const auto &,int) {}); }).find("source")!=std::string::npos); unchanged();
+   assert(fails([&] { FileMerge merge(mergeTree,{generated("slax/current/child","conflict")},nullptr,[](const auto &,int) {}); }).find("conflict")!=std::string::npos); unchanged();
+   {
+      FileMerge merge(mergeTree,update,nullptr,[](const auto &,int) {}); merge.commit();
+      assert(text(mergePartition.mount+"/slax/current")=="updated" && text(mergePartition.mount+"/slax/changes/session.dat")=="saved session");
+      assert(text(mergePartition.mount+"/slax/extra")=="user file");
+      for (const auto &entry:std::filesystem::directory_iterator(mergePartition.mount)) assert(entry.path().filename()=="slax");
+   }
+   // ISO and directory sources authenticate identical helpers before any disk access.
+   GrubAssets isoGrub(image),folderGrub(folder);
+   assert(isoGrub.entries().size()==folderGrub.entries().size());
+   assert(isoGrub.tool("grub-mkimage").data==folderGrub.tool("grub-mkimage").data);
+   assert(isoGrub.tool("grub-fstest").data==folderGrub.tool("grub-fstest").data);
+   auto archivePath=folder.path+"/boot/grub/bios/tools.tar.xz",archive=text(archivePath);
+   std::ofstream(archivePath,std::ios::binary).write("!",1);
+   assert(fails([&] { GrubAssets damaged(inspectImage(folder.path)); }).find("does not match")!=std::string::npos);
+   std::ofstream(archivePath,std::ios::binary).write(archive.data(),archive.size());
+   auto corrupt=archive; corrupt[corrupt.size()/2]^=1;
+   std::ofstream(archivePath,std::ios::binary).write(corrupt.data(),corrupt.size());
+   unsigned writesBeforeArchive=writeCalls;
+   Device unopened; unopened.bytes=unopened.diskBytes=2ULL*1024*1024*1024; unopened.sector=512;
+   assert(fails([&] { prepareInstall(unopened,inspectImage(folder.path),true); }).find("damaged")!=std::string::npos);
+   assert(writeCalls==writesBeforeArchive);
+   std::filesystem::remove(archivePath); assert(!inspectImage(folder.path).error.empty());
+   std::ofstream(archivePath,std::ios::binary).write(archive.data(),archive.size());
    // Target filtering preserves erase metadata and distinguishes the exact decimal 1 GB boundary.
    Device parent; parent.id="parent"; parent.bytes=parent.diskBytes=10000000000;
    Partition tinyPartition,boundaryPartition,formattedPartition,unformattedPartition;
@@ -183,9 +260,13 @@ int main(int argc,char **argv)
    auto folderTarget=fixture(28); install(prepareInstall(folderTarget,folder,false),[](const auto &,int) {});
    assert(text(folderTarget.mount+"/slax/boot/vmlinuz")==text(folder.path+"/boot/vmlinuz"));
    assert(text(folderTarget.mount+"/slax/modules/module-東京-İstanbul.sb")=="Unicode payload\n");
+   assert(text(folderTarget.mount+"/slax/boot/grub/bios/tools.tar.xz")==archive);
    bool copiedKernel=false;
    for (const auto &entry:std::filesystem::recursive_directory_iterator(folderTarget.partitions[1].mount))
+   {
+      assert(entry.path().filename()!="tools.tar.xz");
       if (entry.path().filename()=="vmlinuz") { assert(text(entry.path())==text(folder.path+"/boot/vmlinuz")); copiedKernel=true; }
+   }
    assert(copiedKernel);
    auto folderErase=fixture(29,true); install(prepareInstall(folderErase,parentFolder,true),[](const auto &,int) {});
    firmware=beforeFolderFirmware;
@@ -215,6 +296,7 @@ int main(int argc,char **argv)
    for (char16_t c:loader) append(c,2);
    append(0,2); option.insert(option.end(),{0x7f,0xff,4,0});
    firmware["Boot0005"]=option; firmware["BootOrder"]={0,0,1,0,5,0};
+   auto originalLinuxOption=option;
    auto linuxEntry=prepareInstall(disk,image,false); assert(linuxEntry.efiLoaders.size()==1 && linuxEntry.efiLoaders[0].first=="Linux $test 東京");
    assert(linuxEntry.efiLoaders[0].second=="/EFI/OtherLinux/shimx64.efi");
    firmware["BootOrder"]={5,0,0,0,1,0};
@@ -240,6 +322,33 @@ int main(int argc,char **argv)
    assert(fails([&] { prepareInstall(disk,image,false); }).find("same UUID")!=std::string::npos); hardware.clear();
    auto large=fatGeometry(128ULL*1024*1024*1024,512); assert(large.cluster==64 && large.clusters>=65525);
    assert(!fails([] { fatGeometry(3ULL*1024*1024*1024*1024,512); }).empty());
+   // Silent corruption in either FAT, either boot sector or FSInfo must stop formatting.
+   auto fatTarget=fixture(72,true); auto fatPartition=newLayout(fatTarget).efi;
+   auto fatLayout=fatGeometry(fatPartition.bytes,fatTarget.sector);
+   int metadataWrites=((32ULL+2ULL*fatLayout.fat)*fatTarget.sector+1048575)/1048576;
+   {
+      Disk raw(fatTarget); raw.claim(true);
+      for (int record=0; record<6; record++)
+      {
+         corruptWrite=metadataWrites+record; corruptWriteByte=0;
+         assert(fails([&] { writeFat(raw,fatPartition,{generated("payload.bin","Verified payload")},nullptr,[](const auto &,int) {}); }).find("FAT32 metadata verification failed")!=std::string::npos);
+      }
+      // Unallocated FAT entries must be zero too, including bytes outside copied file chains.
+      corruptWrite=0; corruptWriteByte=1048575;
+      assert(fails([&] { writeFat(raw,fatPartition,{generated("payload.bin","Verified payload")},nullptr,[](const auto &,int) {}); }).find("FAT32 metadata verification failed")!=std::string::npos);
+      // Legal long names must stay distinct from synthetic DOS aliases in the same directory.
+      writeFat(raw,fatPartition,{generated("F0000002","first file"),generated("other.txt","second file")},nullptr,[](const auto &,int) {});
+      std::vector<unsigned char> directory(fatTarget.sector);
+      raw.read(fatPartition.start+(32ULL+2ULL*fatLayout.fat)*fatTarget.sector,directory.data(),directory.size());
+      std::string firstAlias(reinterpret_cast<const char *>(directory.data()+64),8),secondAlias(reinterpret_cast<const char *>(directory.data()+128),8);
+      assert(firstAlias!=secondAlias && firstAlias!="F0000002" && secondAlias!="F0000002");
+      for (size_t entry:{0u,64u,128u}) for (size_t offset:{16u,18u,24u})
+      {
+         uint16_t date=directory[entry+offset]|directory[entry+offset+1]<<8;
+         assert((date&31)>=1 && (date&31)<=31 && ((date>>5)&15)>=1 && ((date>>5)&15)<=12);
+      }
+      raw.release();
+   }
    auto cached=fixture(8,true); cached.filesystem="FAT32"; cached.layout="dos"; cached.partitions={static_cast<const Partition &>(cached)};
    assert(prepareInstall(cached,image,false).bios);
    cached.start=1024*1024; cached.bytes=cached.diskBytes-cached.start; cached.number=1; cached.partitions={static_cast<const Partition &>(cached)};
@@ -259,7 +368,7 @@ int main(int argc,char **argv)
    auto beforeReinstallFirmware=firmware;
    auto reinstall=fixture(50,true); auto reservedLayout=newLayout(reinstall);
    reinstall.partitions.erase(reinstall.partitions.begin());
-   auto reinstallCore=buildBios(reinstall,true);
+   auto reinstallCore=buildBios(reinstall,true,isoGrub);
    {
       Disk raw(reinstall); raw.claim(true); writeLayout(raw,reservedLayout); raw.release();
    }
@@ -343,6 +452,13 @@ int main(int argc,char **argv)
    assert((std::filesystem::status(legacy.mount+"/slax/installer/slax-install-linux").permissions()&std::filesystem::perms::owner_exec)!=std::filesystem::perms::none);
    std::string activeMbr(512,'\0'); legacyPlan.disk->read(0,activeMbr.data(),512);
    assert(activeMbr.substr(440)==originalMbr.substr(440));
+   // Reusing Slax's core must not drop the original Windows selector or chainload Slax recursively.
+   auto originalSelector=text(legacy.mount+"/slax/boot/grub/grub.cfg");
+   auto selectorPlan=prepareInstall(legacy,image,false);
+   assert(selectorPlan.overwrite && selectorPlan.bios && selectorPlan.biosMenu==originalSelector && selectorPlan.bootConfig.empty());
+   install(selectorPlan,[](const auto &,int) {});
+   assert(text(legacy.mount+"/slax/boot/grub/grub.cfg")==originalSelector);
+   assert(text(legacy.mount+"/slax/boot/grub/boot-backup/original-mbr.bin")==originalMbr);
 
    // NTLDR keeps the original boot code and defaults, adding only a verified sector-file entry.
    auto nt=biosFixture(40);
@@ -359,6 +475,48 @@ int main(int argc,char **argv)
    std::string unicode="\xff\xfe"; for (unsigned char c:ini) { unicode+=char(c); unicode+='\0'; }
    auto wideIni=ntldrMenu(unicode,"slax0001.bin"); assert(wideIni.substr(0,2)==unicode.substr(0,2) && wideIni.size()%2==0);
    assert(!fails([&] { ntldrMenu("[operating systems]\n", "slaxboot.bin"); }).empty());
+   // Reinstalling through NTLDR reuses its exact core and sector file without duplicating the menu.
+   std::ofstream(nt.mount+"/slax/changes/session.dat")<<"Saved native-menu session";
+   for (int update=0; update<2; update++)
+   {
+      auto repeatNt=prepareInstall(nt,image,false);
+      assert(repeatNt.overwrite && repeatNt.bios && repeatNt.bootFile=="slaxboot.bin" && repeatNt.bootFileBefore==sectorFile);
+      install(repeatNt,[](const auto &,int) {});
+      assert(text(nt.mount+"/boot.ini")==ntMenu && text(nt.mount+"/slaxboot.bin")==sectorFile);
+      assert(text(nt.mount+"/slax/changes/session.dat")=="Saved native-menu session");
+   }
+
+   // A successful BCDEdit exit is not completion until its volume flush also succeeds.
+   bcdStore="Owned existing BCD menu";
+   for (bool fail:{false,true})
+   {
+      auto bcd=biosFixture(fail?71:70);
+      std::filesystem::remove(bcd.mount+"/ntldr"); std::filesystem::create_directory(bcd.mount+"/Boot");
+      std::ofstream(bcd.mount+"/bootmgr")<<"Owned Windows loader";
+      std::ofstream(bcd.mount+"/Boot/BCD")<<bcdStore;
+      auto bcdPlan=prepareInstall(bcd,image,false); assert(bcdPlan.bootConfig=="Boot/BCD");
+      bcdSyncFailure=fail;
+      if (fail) assert(fails([&] { install(bcdPlan,[](const auto &,int) {}); }).find("BCD volume flush failure")!=std::string::npos);
+      else { install(bcdPlan,[](const auto &,int) {}); assert(bcdDirty.empty()); }
+      assert(std::filesystem::exists(bcd.mount+"/"+bcdPlan.bootFile));
+      bcdSyncFailure=false; bcdDirty.clear();
+   }
+   bcdStore.clear();
+
+   // Localized BCD labels and earlier firmware references must not create a second Slax entry.
+   auto repeatBcdDisk=biosFixture(75); std::filesystem::remove(repeatBcdDisk.mount+"/ntldr");
+   std::filesystem::create_directory(repeatBcdDisk.mount+"/Boot");
+   std::ofstream(repeatBcdDisk.mount+"/bootmgr")<<"Owned Windows loader";
+   bcdStore="Owned original BCD"; std::ofstream(repeatBcdDisk.mount+"/Boot/BCD")<<bcdStore;
+   auto initialBcd=prepareInstall(repeatBcdDisk,image,false); install(initialBcd,[](const auto &,int) {});
+   bcdStore="Firmware\r\nidentifikátor {11111111-1111-1111-1111-111111111111}\r\npořadí {9dea862c-5cdd-4e70-acc1-f32b344d4795}\r\n\r\n"
+      "Windows\r\nidentifikátor {9dea862c-5cdd-4e70-acc1-f32b344d4795}\r\npořadí {22222222-2222-2222-2222-222222222222}\r\n\r\n"
+      "Slax\r\nidentifikátor {22222222-2222-2222-2222-222222222222}\r\npopis Slax Linux\r\ncesta \\"+initialBcd.bootFile+"\r\n";
+   auto nativeBcd=bcdStore,oldSector=text(repeatBcdDisk.mount+"/"+initialBcd.bootFile);
+   auto updateBcd=prepareInstall(repeatBcdDisk,image,false);
+   assert(updateBcd.overwrite && updateBcd.bios && updateBcd.bootFileBefore==oldSector);
+   install(updateBcd,[](const auto &,int) {}); assert(bcdStore==nativeBcd && text(repeatBcdDisk.mount+"/"+initialBcd.bootFile)==oldSector);
+   bcdStore.clear();
 
    // A standard existing GRUB hook needs no MBR/core writes and preserves its original custom entries.
    auto linux=biosFixture(41); { Disk d(linux); d.claimBoot({{0,512}}); d.read(0,activeMbr.data(),512); memcpy(activeMbr.data(),"GRUB",4); d.write(0,activeMbr.data(),512); d.release(); }
@@ -370,6 +528,12 @@ int main(int argc,char **argv)
    unsigned nativeWrites=writeCalls; install(linuxPlan,[](const auto &,int) {}); assert(writeCalls==nativeWrites);
    auto customAfter=text(linux.mount+"/boot/grub/custom.cfg");
    assert(customAfter.find(custom)==0 && customAfter.find("menuentry 'Slax Linux'")!=std::string::npos);
+   for (int update=0; update<2; update++)
+   {
+      auto repeatGrub=prepareInstall(linux,image,false); assert(repeatGrub.overwrite && grubBootMenu(repeatGrub));
+      install(repeatGrub,[](const auto &,int) {});
+      assert(text(linux.mount+"/boot/grub/custom.cfg")==customAfter);
+   }
 
    // A preserve install can add EFI in empty space without moving the NTFS data partition.
    auto room=biosFixture(10,true); room.usb=true; room.system=false; auto roomPlan=prepareInstall(room,image,false);
@@ -414,6 +578,17 @@ int main(int argc,char **argv)
    assert(modal.page==TargetPage && dialogError==unsupported.blocked && modal.message().empty() && modal.error.empty() && writeCalls==modalWrites);
    dialogWizard=nullptr; hardware.clear();
 
+   // A whole-disk row can disappear during discovery without invalidating its inventory object.
+   auto hiddenWhole=fixture(73,true); static_cast<Partition &>(hiddenWhole)=Partition{};
+   hiddenWhole.path=hiddenWhole.disk; hiddenWhole.bytes=hiddenWhole.diskBytes; hiddenWhole.id+="-whole";
+   auto initiallyBare=hiddenWhole; initiallyBare.partitions.clear();
+   Installer lostSelection; lostSelection.iso=image; lostSelection.page=TargetPage; lostSelection.devices={initiallyBare};
+   lostSelection.activate(Select,initiallyBare.id); lostSelection.activate(Erase); lostSelection.activate(Next);
+   hardware={hiddenWhole}; dialogWizard=&lostSelection; dialogError.clear(); unsigned beforeHidden=writeCalls;
+   deliver(lostSelection);
+   assert(lostSelection.page==TargetPage && lostSelection.selected.empty() && dialogError.find("Select the target again")!=std::string::npos && writeCalls==beforeHidden);
+   dialogWizard=nullptr; hardware.clear();
+
    // Whole-disk selection is derived from the latest click and restores a single row when disabled.
    Installer selection; selection.page=TargetPage; selection.iso=image;
    auto sibling=legacy; sibling.id="sibling"; auto other=legacy; other.id=other.diskId="another-disk";
@@ -433,7 +608,80 @@ int main(int argc,char **argv)
    assert(text(disk.partitions[1].mount+"/EFI/Microsoft/Boot/bootmgfw.efi")==original);
    assert(firmware["Boot0000"]==windowsEntry && firmware["Boot0001"]==otherEntry);
    assert(plan.efiFirst.empty() && firmware["BootOrder"]==std::vector<unsigned char>({0,0,1,0,2,0}));
-   assert(fails([&] { prepareInstall(disk,image,false); }).find("already exists")!=std::string::npos);
+   // Refresh every existing Slax EFI vendor without duplicating firmware entries or losing sessions.
+   auto installedFirmware=firmware;
+   std::ofstream(disk.mount+"/slax/changes/session.dat")<<"Saved EFI session";
+   std::ofstream(disk.mount+"/slax/modules/user.sb")<<"User module";
+   auto originalBackup=text(disk.mount+"/slax/boot/grub/boot-backup/original-mbr.bin");
+   for (int update=0; update<2; update++)
+   {
+      auto kernel="Updated kernel "+std::to_string(update),initrd="Matching initramfs "+std::to_string(update);
+      std::ofstream(folder.path+"/boot/vmlinuz")<<kernel; std::ofstream(folder.path+"/boot/initrfs.img")<<initrd;
+      auto updated=inspectImage(folder.path); assert(updated.error.empty());
+      auto repeatEfi=prepareInstall(disk,updated,false);
+      assert(repeatEfi.overwrite && repeatEfi.bios && !repeatEfi.registerBoot && repeatEfi.efiBootEntry=="Boot0002" && repeatEfi.efiVendors.size()==1);
+      install(repeatEfi,[](const auto &,int) {});
+      assert(firmware==installedFirmware);
+      assert(text(disk.mount+"/slax/boot/vmlinuz")==kernel && text(disk.mount+"/slax/boot/initrfs.img")==initrd);
+      assert(text(disk.partitions[1].mount+"/"+repeatEfi.efiVendors[0]+"/boot/vmlinuz")==kernel);
+      assert(text(disk.partitions[1].mount+"/"+repeatEfi.efiVendors[0]+"/boot/initrfs.img")==initrd);
+      assert(text(disk.mount+"/slax/changes/session.dat")=="Saved EFI session" && text(disk.mount+"/slax/modules/user.sb")=="User module");
+      assert(text(disk.mount+"/slax/boot/grub/boot-backup/original-mbr.bin")==originalBackup);
+      assert(std::distance(std::filesystem::directory_iterator(disk.partitions[1].mount+"/EFI/Slax"),std::filesystem::directory_iterator())==1);
+   }
+   // A Slax wrapper at the front must retain the original Linux default behind it.
+   firmware["Boot0005"]=originalLinuxOption; firmware["BootOrder"]={2,0,5,0,0,0,1,0};
+   auto selectorFirmware=firmware; auto selectorUpdate=prepareInstall(disk,inspectImage(folder.path),false);
+   assert(!selectorUpdate.registerBoot && selectorUpdate.efiFirst=="/EFI/OtherLinux/shimx64.efi");
+   install(selectorUpdate,[](const auto &,int) {}); assert(firmware==selectorFirmware);
+   assert(text(disk.partitions[1].mount+"/"+selectorUpdate.efiVendors[0]+"/boot/grub/menu.cfg").find("set default=1\n")!=std::string::npos);
+   firmware=installedFirmware;
+
+   // A removable Slax fallback keeps its reachable vendor current without adding firmware entries.
+   auto removable=fixture(74,true); std::filesystem::remove_all(removable.partitions[1].mount+"/EFI/Microsoft");
+   auto removablePlan=prepareInstall(removable,image,false); assert(removablePlan.fallback && !removablePlan.registerBoot);
+   install(removablePlan,[](const auto &,int) {});
+   std::ofstream(removable.partitions[1].mount+"/EFI/BOOT/user.txt")<<"User EFI file";
+   for (int update=0; update<2; update++)
+   {
+      auto repeatUsb=prepareInstall(removable,inspectImage(folder.path),false);
+      assert(repeatUsb.overwrite && repeatUsb.fallback && !repeatUsb.registerBoot && !repeatUsb.efiFallback.empty() && !repeatUsb.fallbackDigest.empty());
+      install(repeatUsb,[](const auto &,int) {}); assert(firmware==installedFirmware);
+      auto prefix=removable.partitions[1].mount+"/"+repeatUsb.efiFallback;
+      assert(text(prefix+"/boot/vmlinuz")==text(folder.path+"/boot/vmlinuz"));
+      assert(text(prefix+"/boot/initrfs.img")==text(folder.path+"/boot/initrfs.img"));
+      assert(text(removable.partitions[1].mount+"/EFI/BOOT/grub.cfg")==text(prefix+"/grub.cfg"));
+      assert(text(removable.partitions[1].mount+"/EFI/BOOT/user.txt")=="User EFI file");
+   }
+   // Matching leftover configuration must not authorize replacement of an unrelated EFI loader.
+   auto fallbackPath=removable.partitions[1].mount+"/EFI/BOOT/BOOTX64.EFI",fallbackLoader=text(fallbackPath);
+   std::ofstream(fallbackPath)<<"A different vendor's fallback loader";
+   auto foreignFallback=prepareInstall(removable,inspectImage(folder.path),false);
+   assert(foreignFallback.efiFallback.empty() && !foreignFallback.fallback && text(fallbackPath)=="A different vendor's fallback loader");
+   std::ofstream(fallbackPath)<<fallbackLoader;
+
+   // XP cannot mount a removable disk's second ESP; its exact Slax MBR/core still remains reusable.
+   auto xpRepeat=fixture(76,true); auto xpLayout=newLayout(xpRepeat,true); auto xpMount=xpRepeat.mount;
+   xpLayout.data.mount=xpMount; xpLayout.data.filesystem="FAT32";
+   xpRepeat.partitions={xpLayout.data,xpLayout.efi}; xpRepeat.partitions[1].filesystem.clear();
+   static_cast<Partition &>(xpRepeat)=xpLayout.data; xpRepeat.path=xpRepeat.disk+"#1"; xpRepeat.free=UINT64_MAX;
+   std::filesystem::copy(std::filesystem::u8path(folder.path),std::filesystem::u8path(xpMount+"/slax"),std::filesystem::copy_options::recursive);
+   // An older or modified ordinary bootstrap is overwritten without having to match the new source.
+   assert(text(xpMount+"/slax/boot/grub/grub.cfg").find("set prefix=")!=std::string::npos);
+   std::ofstream(xpMount+"/slax/boot/grub/grub.cfg",std::ios::app)<<"# Older local boot configuration\nset old_setting=yes\n";
+   auto xpCore=buildBios(xpRepeat,false,isoGrub); std::vector<unsigned char> xpBefore(1024*1024),xpAfter(xpBefore.size());
+   {
+      Disk raw(xpRepeat); raw.claim(true); writeBios(raw,xpLayout.bios.start,xpLayout.bios.bytes,xpCore,xpLayout.mbr); writeLayout(raw,xpLayout);
+      raw.read(0,xpBefore.data(),xpBefore.size()); raw.release();
+   }
+   for (int update=0; update<2; update++)
+   {
+      auto repeat=prepareInstall(xpRepeat,image,false);
+      assert(repeat.overwrite && repeat.bios && repeat.biosMenu.empty() && repeat.bootLayout->bios.start==xpLayout.bios.start && !repeat.bootLayout->biosBefore.empty());
+      install(repeat,[](const auto &,int) {});
+      assert(text(xpMount+"/slax/boot/grub/grub.cfg")=="configfile /slax/boot/grub.cfg\n");
+      repeat.disk->read(0,xpAfter.data(),xpAfter.size()); assert(xpAfter==xpBefore);
+   }
 
    auto rollback=fixture(2); auto order=firmware["BootOrder"]; auto rollbackPlan=prepareInstall(rollback,image,false); firmwareFault=1;
    assert(fails([&] { install(rollbackPlan,[](const auto &,int) {}); }).find("firmware failure")!=std::string::npos);
