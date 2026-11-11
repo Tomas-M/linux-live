@@ -3,6 +3,7 @@ Unreleased changes
 
 Linux Live Kit
 --------------
+- Include device-mapper, Intel VMD and VMware, Hyper-V and Xen storage drivers in initramfs for early live-data discovery.
 
 Slax
 ----
