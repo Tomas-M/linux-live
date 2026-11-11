@@ -10,7 +10,7 @@ xmodmap "/root/.Xmodmap"
 # merge xresource settings
 xrdb -merge ~/.Xresources
 
-# Start the keyboard tray with English and the remembered alternate layout.
+# Restore the keyboard tray's saved layout and preferred alternate.
 fbkeyboard &
 KEYBOARDPID=$!
 
