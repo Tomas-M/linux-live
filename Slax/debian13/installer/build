@@ -27,10 +27,28 @@ PY
 sh "$THIS/build-grub" "$TEMP/grub" "$TEMP/grub-bios.tar.xz" "$TEMP/grub-assets-digest.h"
 
 g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
-   -I"$TEMP" -I"$TEMP/grub/linux/sysroot/include" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
-   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" "$THIS/grub-assets.cpp" "$TEMP/grub/linux/sysroot/lib/liblzma.a" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid) \
+   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" "$THIS/grub-assets.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid liblzma) \
    -o "$TEMP/slax-install-linux"
 strip "$TEMP/slax-install-linux"
+
+# Helpers must not require newer shared-library symbols than the installer that launches them.
+python3 - "$TEMP" <<'PY'
+from pathlib import Path
+import re,subprocess,sys
+root=Path(sys.argv[1]);installer=root/'slax-install-linux'
+info=subprocess.check_output(['readelf','-l','-d',str(installer)],text=True)
+if 'INTERP' not in info or not {'libc.so.6','liblzma.so.5'}<=set(re.findall(r'\(NEEDED\).*\[(.*?)\]',info)): sys.exit('Linux installer must use shared libc and liblzma')
+if re.search(r'\((?:RPATH|RUNPATH)\)',info): sys.exit('Linux installer has a private library path')
+baseline=subprocess.check_output(['readelf','--version-info',str(installer)],text=True)
+for tool in (root/'grub/assets/linux').iterdir():
+    info=subprocess.check_output(['readelf','--version-info',str(tool)],text=True)
+    for library in ('GLIBC','XZ'):
+        pattern=rf'\b{library}_([0-9]+(?:\.[0-9]+)+)\b'
+        required=max((tuple(map(int,version.split('.'))) for version in re.findall(pattern,info)),default=())
+        supported=max((tuple(map(int,version.split('.'))) for version in re.findall(pattern,baseline)),default=())
+        if required>supported: sys.exit(f'{tool.name} requires {library}_{".".join(map(str,required))}, newer than the installer')
+PY
 
 # Give the ordinary PE executable a clear identity in Windows file properties.
 python3 - "$THIS" "$TEMP/resource.rc" <<'PY'

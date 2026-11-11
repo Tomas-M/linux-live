@@ -31,31 +31,35 @@ for url,expected in archives:
     print('Verified '+url,flush=True)
 PY
 
-# Keep the helpers independent of GRUB packages and optional runtime libraries on the host.
+# Use Linux system libraries and keep Windows helpers independent of non-system DLLs.
 for PLATFORM in linux windows; do
    PREFIX=$ROOT/$PLATFORM/sysroot
-   mkdir -p "$ROOT/$PLATFORM/xz" "$ROOT/$PLATFORM/grub" "$ROOT/assets/$PLATFORM"
+   mkdir -p "$ROOT/$PLATFORM/grub" "$ROOT/assets/$PLATFORM"
    HOST=$(gcc -dumpmachine)
    FLAGS='-Os -fPIC -ffunction-sections -fdata-sections'
-   LINK='-static -Wl,--gc-sections'
+   INCLUDES=
+   LINK='-Wl,--gc-sections'
    SUFFIX=
    STRIP=strip
    if [ "$PLATFORM" = windows ]; then
       HOST=i686-w64-mingw32
       FLAGS='-Os -D_WIN32_WINNT=0x0501 -ffunction-sections -fdata-sections'
-      LINK='-static -Wl,--gc-sections,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1'
+      INCLUDES="-I$PREFIX/include"
+      LINK="-L$PREFIX/lib -static -Wl,--gc-sections,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1"
       SUFFIX=.exe
       STRIP=i686-w64-mingw32-strip
+
+      mkdir -p "$ROOT/$PLATFORM/xz"
+      cd "$ROOT/$PLATFORM/xz"
+      CFLAGS="$FLAGS" "$ROOT/sources/xz-5.8.1/configure" --host="$HOST" --prefix="$PREFIX" \
+         --disable-shared --enable-static --disable-nls --disable-threads --disable-xz --disable-xzdec \
+         --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc >> "$ROOT/build.log" 2>&1
+      make -j8 V=0 >> "$ROOT/build.log" 2>&1
+      make install >> "$ROOT/build.log" 2>&1
    fi
 
-   cd "$ROOT/$PLATFORM/xz"
-   CFLAGS="$FLAGS" "$ROOT/sources/xz-5.8.1/configure" --host="$HOST" --prefix="$PREFIX" \
-      --disable-shared --enable-static --disable-nls --disable-threads --disable-xz --disable-xzdec \
-      --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc >> "$ROOT/build.log" 2>&1
-   make -j8 V=0 >> "$ROOT/build.log" 2>&1
-   make install >> "$ROOT/build.log" 2>&1
    cd "$ROOT/$PLATFORM/grub"
-   CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib $LINK" CFLAGS="$FLAGS" \
+   CPPFLAGS="$INCLUDES" LDFLAGS="$LINK" CFLAGS="$FLAGS" \
       "$ROOT/sources/grub-2.12/configure" --host="$HOST" --target=i386 --with-platform=pc \
       --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount \
       --disable-device-mapper --disable-efiemu >> "$ROOT/build.log" 2>&1
@@ -67,17 +71,18 @@ for PLATFORM in linux windows; do
    done
 done
 
-# Reject helpers which would silently restore a dependency on the user's distribution.
-for TOOL in "$ROOT/assets/linux/"*; do
-   if readelf -l "$TOOL" | grep -q INTERP || readelf -d "$TOOL" | grep -q NEEDED; then
-      echo "Linux GRUB helper is not statically linked: $TOOL" >&2
-      exit 1
-   fi
-done
+# Keep Linux dependencies within Slax's runtime and preserve Windows XP compatibility.
 python3 - "$ROOT" "$ARCHIVE" "$HEADER" <<'PY'
 from pathlib import Path
 import hashlib,io,lzma,re,subprocess,sys,tarfile
 root,output,header=map(Path,sys.argv[1:])
+for tool in (root/'assets/linux').iterdir():
+    info=subprocess.check_output(['readelf','-l','-d',str(tool)],text=True)
+    needed=set(re.findall(r'\(NEEDED\).*\[(.*?)\]',info))
+    if 'INTERP' not in info or 'libc.so.6' not in needed: sys.exit('Linux GRUB helper must use shared libc: '+str(tool))
+    if tool.name=='grub-mkimage' and 'liblzma.so.5' not in needed: sys.exit('Linux grub-mkimage must use shared liblzma')
+    if not needed<={'libc.so.6','libm.so.6','liblzma.so.5','libgcc_s.so.1'}: sys.exit('Unexpected Linux GRUB helper dependencies: '+str(needed))
+    if re.search(r'\((?:RPATH|RUNPATH)\)',info): sys.exit('Linux GRUB helper has a private library path: '+str(tool))
 for tool in (root/'assets/windows').iterdir():
     info=subprocess.check_output(['i686-w64-mingw32-objdump','-p',str(tool)],text=True)
     if not re.search(r'MajorSubsystemVersion\s+5\s+MinorSubsystemVersion\s+1',info): sys.exit('Windows GRUB helper does not target XP: '+str(tool))
