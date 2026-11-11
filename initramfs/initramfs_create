@@ -139,6 +139,13 @@ copy_including_deps /$LMK/kernel/drivers/mmc
 # Include modular VirtIO transports and auxiliary drivers on supported kernels.
 copy_including_deps /$LMK/kernel/drivers/virtio
 
+# Include mapped media and additional storage controllers before data discovery.
+copy_including_deps /$LMK/kernel/drivers/md/dm-mod.*
+copy_including_deps /$LMK/kernel/drivers/pci/controller/vmd.*
+copy_including_deps /$LMK/kernel/drivers/scsi/vmw_pvscsi.*
+copy_including_deps /$LMK/kernel/drivers/scsi/hv_storvsc.*
+copy_including_deps /$LMK/kernel/drivers/block/xen-blkfront.*
+
 # network support drivers
 if [ "$NETWORK" = "true" ]; then
    # add all known ethernet drivers

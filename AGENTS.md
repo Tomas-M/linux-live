@@ -251,7 +251,9 @@ reporting progress.
   or new snapshots. Tomas permits restoring his WindowsXP `install` and
   Windows10 Tiny `Initial install` snapshots for clean-state boot tests.
   Remove temporary test VMs when finished.
-  Generic initramfs includes Btrfs and exFAT drivers when available; Slax emits
+  Generic initramfs includes Btrfs and exFAT drivers when available, plus
+  device-mapper, Intel VMD and VMware, Hyper-V and Xen storage drivers with
+  their dependencies for early live-data discovery. Slax emits
   an actual-driver capability list so older ISOs cannot be installed to a
   filesystem their early boot environment cannot read.
   Download the official Windows GRUB release during installer compilation and
