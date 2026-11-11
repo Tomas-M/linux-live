@@ -84,7 +84,7 @@ static void check_layout_fonts(void)
     FcCharSetDestroy(coverage);
 }
 
-/* Load the lightweight catalog before showing EN; font analysis must not delay docking. */
+/* Load the lightweight catalog first; font analysis must not delay docking. */
 static void load_layouts(void)
 {
     layouts=g_array_new(FALSE, FALSE, sizeof(Layout));
@@ -148,15 +148,16 @@ static void draw_label(void)
     gtk_widget_set_tooltip_text(tray, layout->name);
 }
 
-/* Persist only the alternate; English remains the initial layout on every login. */
-static void remember_layout(void)
+/* Store the active layout and optional alternate as two lines of XKB identifiers. */
+static void save_layout(void)
 {
-    if (!current || !g_array_index(layouts, Layout, current).available) return;
-    preferred=current;
+    char *contents=g_strdup_printf("%s\n%s\n", g_array_index(layouts, Layout, current).code,
+                                   preferred<0 ? "" : g_array_index(layouts, Layout, preferred).code);
     GError *error=NULL;
-    if (!g_file_set_contents(saved_path, g_array_index(layouts, Layout, preferred).code, -1, &error))
+    if (!g_file_set_contents(saved_path, contents, -1, &error))
         g_warning("%s", error->message);
     g_clear_error(&error);
+    g_free(contents);
 }
 
 /* An uninterrupted thirty seconds on a non-English layout ends exploration. */
@@ -164,7 +165,11 @@ static gboolean remember_timeout(gpointer data)
 {
     (void)data;
     remember_timer=0;
-    remember_layout();
+    if (current && g_array_index(layouts, Layout, current).available)
+    {
+        preferred=current;
+        save_layout();
+    }
     return G_SOURCE_REMOVE;
 }
 
@@ -176,6 +181,7 @@ static void show_layout(int index)
     remember_timer=0;
     if (preferred<0 && current) remember_timer=g_timeout_add_seconds(30, remember_timeout, NULL);
     draw_label();
+    save_layout();
 }
 
 /* Apply a catalog entry without shell quoting or resetting unrelated XKB options. */
@@ -195,7 +201,7 @@ static gboolean select_layout(int index, gboolean remember)
         return FALSE;
     }
     current=index;
-    if (remember) remember_layout();
+    if (remember && current) preferred=current;
     show_layout(index);
     return TRUE;
 }
@@ -415,7 +421,11 @@ static void fonts_checked(GObject *source, GAsyncResult *result, gpointer data)
             layout->available=g_strv_contains((const char *const *)codes, layout->code);
         }
         g_strfreev(codes);
-        if (preferred>=0 && !g_array_index(layouts, Layout, preferred).available) preferred=-1;
+        if (preferred>=0 && !g_array_index(layouts, Layout, preferred).available)
+        {
+            preferred=-1;
+            save_layout();
+        }
         if (popup)
         {
             update_font_buttons(popup, NULL);
@@ -710,15 +720,21 @@ int main(int argc, char **argv)
     gtk_init(&argc, &argv);
     window=XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1, 1, 0, 0, 0);
     XSetSelectionOwner(display, selection, window, CurrentTime);
-    saved_path=g_build_filename(g_get_home_dir(), ".fluxbox", "kblayout", NULL);
+    char *config_dir=g_build_filename(g_get_user_config_dir(), "slax", NULL);
+    g_mkdir_with_parents(config_dir, 0700);
+    saved_path=g_build_filename(config_dir, "keyboard", NULL);
+    g_free(config_dir);
     char *saved=NULL;
     if (g_file_get_contents(saved_path, &saved, NULL, NULL))
     {
-        preferred=find_layout(g_strstrip(saved));
+        char **codes=g_strsplit(saved, "\n", 3);
+        if (codes[0]) current=MAX(0, find_layout(codes[0]));
+        if (codes[0] && codes[1]) preferred=find_layout(codes[1]);
         if (!preferred) preferred=-1;
+        g_strfreev(codes);
         g_free(saved);
     }
-    if (!select_layout(0, FALSE)) return 1;
+    if (!select_layout(current, FALSE)) return 1;
     rules_atom=XInternAtom(display, "_XKB_RULES_NAMES", False);
     XSelectInput(display, DefaultRootWindow(display), PropertyChangeMask|StructureNotifyMask);
     char *tray_name=g_strdup_printf("_NET_SYSTEM_TRAY_S%d", DefaultScreen(display));

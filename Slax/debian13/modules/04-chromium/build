@@ -3,4 +3,4 @@ set -e
 apt-get update
 apt-get install --yes --no-install-recommends chromium chromium-sandbox
 rm -rf /usr/share/icons/gnome/256x256
-rm -f /root/.fluxbox/kblayout /root/.gtk-bookmarks
+rm -f /root/.config/slax/keyboard /root/.gtk-bookmarks
