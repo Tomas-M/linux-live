@@ -7,6 +7,7 @@ Linux Live Kit
 
 Slax
 ----
+- Remove broken kernel and initramfs links from the filesystem root.
 - Remember the active keyboard layout and preferred alternate across desktop sessions.
 - Allow reinstalling over an existing Slax folder while preserving saved sessions, extra files and existing boot-menu choices.
 - Harden installer source checks and recovery cleanup, verify new FAT32 metadata and filenames, and flush Windows boot-menu updates before reporting success.
