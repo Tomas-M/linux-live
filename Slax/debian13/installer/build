@@ -23,49 +23,59 @@ with Path(sys.argv[2]).open('w') as header:
     header.write('};\n')
 PY
 
-# Build XZ-enabled mkimage and verify the upstream filesystem verifier and matching BIOS modules.
-sh "$THIS/build-windows-grub" "$TEMP/windows-tools" "$TEMP/grub-mkimage.exe"
-python3 - "$TEMP/grub-tools.h" "$TEMP/grub-mkimage.exe" <<'PY'
-from io import BytesIO
-from pathlib import Path
-from urllib.request import urlopen
-from zipfile import ZipFile
-import hashlib,sys
-url='https://mirrors.kernel.org/gnu/grub/grub-2.12-for-windows.zip'
-print('Downloading '+url,flush=True)
-with urlopen(url,timeout=60) as response:
-    data=response.read()
-if hashlib.sha256(data).hexdigest()!='e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd':
-    sys.exit('GNU GRUB archive SHA256 mismatch')
-print('Verified GNU GRUB archive SHA256.',flush=True)
-with ZipFile(BytesIO(data)) as archive,Path(sys.argv[1]).open('w') as header:
-    folder='grub-2.12-for-windows/'
-    assets=['grub-mkimage.exe','grub-fstest.exe']+sorted(name[len(folder):] for name in archive.namelist() if name.startswith(folder+'i386-pc/') and not name.endswith(('/','/gdb_grub','/gdb_helper.py')))
-    for i,name in enumerate(assets):
-        asset=Path(sys.argv[2]).read_bytes() if name=='grub-mkimage.exe' else archive.read(folder+name)
-        header.write('static const unsigned char grub_asset_'+str(i)+'[]={'+','.join(map(str,asset))+'};\n')
-    header.write('static const struct { const char *name; const unsigned char *data; unsigned size; } grub_tools[]={\n')
-    for i,name in enumerate(assets):
-        header.write('{"'+name+'",grub_asset_'+str(i)+',sizeof(grub_asset_'+str(i)+')},\n')
-    header.write('};\n')
-PY
+# Build matching native BIOS tools as one trusted, compressed media payload.
+sh "$THIS/build-grub" "$TEMP/grub" "$TEMP/grub-bios.tar.xz" "$TEMP/grub-assets-digest.h"
 
 g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
-   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
-   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid) \
+   -I"$TEMP" -I"$TEMP/grub/linux/sysroot/include" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
+   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" "$THIS/grub-assets.cpp" "$TEMP/grub/linux/sysroot/lib/liblzma.a" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid) \
    -o "$TEMP/slax-install-linux"
 strip "$TEMP/slax-install-linux"
 
-printf '1 ICON "%s/slax.ico"\n2 ICON "%s/icons/triangle-exclamation.ico"\n1 24 "%s/installer.manifest"\n' "$THIS" "$THIS" "$THIS" > "$TEMP/resource.rc"
+# Give the ordinary PE executable a clear identity in Windows file properties.
+python3 - "$THIS" "$TEMP/resource.rc" <<'PY'
+from pathlib import Path
+import sys
+folder=Path(sys.argv[1]);version=(folder/'../rootcopy/etc/slax-version').read_text().split()[1]
+numbers=version.replace('.',',')+',0,0'
+Path(sys.argv[2]).write_text(f'''#include <windows.h>
+1 ICON "{folder}/slax.ico"
+2 ICON "{folder}/icons/triangle-exclamation.ico"
+1 24 "{folder}/installer.manifest"
+1 VERSIONINFO
+FILEVERSION {numbers}
+PRODUCTVERSION {numbers}
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0"
+    BEGIN
+      VALUE "CompanyName", "Slax"
+      VALUE "FileDescription", "Slax Installer"
+      VALUE "FileVersion", "{version}"
+      VALUE "InternalName", "slax-install"
+      VALUE "OriginalFilename", "slax-install.exe"
+      VALUE "ProductName", "Slax"
+      VALUE "ProductVersion", "{version}"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END
+''')
+PY
 i686-w64-mingw32-windres "$TEMP/resource.rc" "$TEMP/resource.o"
 i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-function-type \
-   -municode -mwindows -static -D_WIN32_WINNT=0x0501 -I"$TEMP" \
+   -municode -mwindows -static -D_WIN32_WINNT=0x0501 -I"$TEMP" -I"$TEMP/grub/windows/sysroot/include" \
    -Wl,--nxcompat,--dynamicbase,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1 \
    "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
-   "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$TEMP/resource.o" \
+   "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$THIS/grub-assets.cpp" "$TEMP/resource.o" "$TEMP/grub/windows/sysroot/lib/liblzma.a" \
    -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/slax-install.exe"
 i686-w64-mingw32-strip "$TEMP/slax-install.exe"
-# SquashFS compresses the Linux executable inside Slax; only pack the standalone Windows installer.
-upx --best --no-progress "$TEMP/slax-install.exe"
-upx -t "$TEMP/slax-install.exe"
+# Keep both executables unpacked; avoid executable packers and their antivirus heuristics.
 install -m 755 "$TEMP/slax-install-linux" "$TEMP/slax-install.exe" "$OUT/"
+install -m 644 "$TEMP/grub-bios.tar.xz" "$OUT/"

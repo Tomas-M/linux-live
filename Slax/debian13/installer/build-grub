@@ -1,0 +1,98 @@
+#!/bin/sh
+# Build matching native BIOS helpers and a verified media bundle from pinned GNU sources.
+set -eu
+ROOT=${1:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
+ARCHIVE=${2:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
+HEADER=${3:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
+mkdir -p "$ROOT/sources" "$ROOT/assets/i386-pc"
+trap 'if [ "$?" -ne 0 ] && [ -f "$ROOT/build.log" ]; then tail -40 "$ROOT/build.log"; fi' 0
+python3 - "$ROOT" <<'PY'
+from pathlib import Path
+from urllib.request import urlopen
+from zipfile import ZipFile
+import hashlib,io,sys,tarfile
+root=Path(sys.argv[1])
+archives=[
+    ('https://mirrors.kernel.org/gnu/grub/grub-2.12.tar.xz','f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa'),
+    ('https://deb.debian.org/debian/pool/main/x/xz-utils/xz-utils_5.8.1.orig.tar.xz','0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e'),
+    ('https://mirrors.kernel.org/gnu/grub/grub-2.12-for-windows.zip','e98bf808fcb6836a7e50d0f9483900116b28c46c0b9743cc956e314a7fdea9bd'),
+]
+for url,expected in archives:
+    with urlopen(url,timeout=60) as response: data=response.read()
+    if hashlib.sha256(data).hexdigest()!=expected: sys.exit('GNU GRUB build input SHA256 mismatch: '+url)
+    if url.endswith('.zip'):
+        with ZipFile(io.BytesIO(data)) as archive:
+            prefix='grub-2.12-for-windows/i386-pc/'
+            for name in archive.namelist():
+                if name.startswith(prefix) and not name.endswith(('/','/gdb_grub','/gdb_helper.py')):
+                    (root/'assets/i386-pc'/name[len(prefix):]).write_bytes(archive.read(name))
+    else:
+        with tarfile.open(fileobj=io.BytesIO(data),mode='r:xz') as archive: archive.extractall(root/'sources',filter='data')
+    print('Verified '+url,flush=True)
+PY
+
+# Keep the helpers independent of GRUB packages and optional runtime libraries on the host.
+for PLATFORM in linux windows; do
+   PREFIX=$ROOT/$PLATFORM/sysroot
+   mkdir -p "$ROOT/$PLATFORM/xz" "$ROOT/$PLATFORM/grub" "$ROOT/assets/$PLATFORM"
+   HOST=$(gcc -dumpmachine)
+   FLAGS='-Os -fPIC -ffunction-sections -fdata-sections'
+   LINK='-static -Wl,--gc-sections'
+   SUFFIX=
+   STRIP=strip
+   if [ "$PLATFORM" = windows ]; then
+      HOST=i686-w64-mingw32
+      FLAGS='-Os -D_WIN32_WINNT=0x0501 -ffunction-sections -fdata-sections'
+      LINK='-static -Wl,--gc-sections,--no-insert-timestamp,--major-subsystem-version,5,--minor-subsystem-version,1'
+      SUFFIX=.exe
+      STRIP=i686-w64-mingw32-strip
+   fi
+
+   cd "$ROOT/$PLATFORM/xz"
+   CFLAGS="$FLAGS" "$ROOT/sources/xz-5.8.1/configure" --host="$HOST" --prefix="$PREFIX" \
+      --disable-shared --enable-static --disable-nls --disable-threads --disable-xz --disable-xzdec \
+      --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc >> "$ROOT/build.log" 2>&1
+   make -j8 V=0 >> "$ROOT/build.log" 2>&1
+   make install >> "$ROOT/build.log" 2>&1
+   cd "$ROOT/$PLATFORM/grub"
+   CPPFLAGS="-I$PREFIX/include" LDFLAGS="-L$PREFIX/lib $LINK" CFLAGS="$FLAGS" \
+      "$ROOT/sources/grub-2.12/configure" --host="$HOST" --target=i386 --with-platform=pc \
+      --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount \
+      --disable-device-mapper --disable-efiemu >> "$ROOT/build.log" 2>&1
+   make -C grub-core/lib/gnulib -j8 V=0 >> "$ROOT/build.log" 2>&1
+   make -j8 V=0 "grub-mkimage$SUFFIX" "grub-fstest$SUFFIX" >> "$ROOT/build.log" 2>&1
+   for TOOL in grub-mkimage grub-fstest; do
+      "$STRIP" "$TOOL$SUFFIX"
+      cp "$TOOL$SUFFIX" "$ROOT/assets/$PLATFORM/"
+   done
+done
+
+# Reject helpers which would silently restore a dependency on the user's distribution.
+for TOOL in "$ROOT/assets/linux/"*; do
+   if readelf -l "$TOOL" | grep -q INTERP || readelf -d "$TOOL" | grep -q NEEDED; then
+      echo "Linux GRUB helper is not statically linked: $TOOL" >&2
+      exit 1
+   fi
+done
+python3 - "$ROOT" "$ARCHIVE" "$HEADER" <<'PY'
+from pathlib import Path
+import hashlib,io,lzma,re,subprocess,sys,tarfile
+root,output,header=map(Path,sys.argv[1:])
+for tool in (root/'assets/windows').iterdir():
+    info=subprocess.check_output(['i686-w64-mingw32-objdump','-p',str(tool)],text=True)
+    if not re.search(r'MajorSubsystemVersion\s+5\s+MinorSubsystemVersion\s+1',info): sys.exit('Windows GRUB helper does not target XP: '+str(tool))
+    imports={name.lower() for name in re.findall(r'DLL Name:\s+(\S+)',info)}
+    if not imports<={'kernel32.dll','msvcrt.dll','advapi32.dll','user32.dll','shell32.dll'}: sys.exit('Unexpected Windows GRUB helper DLL imports: '+str(imports))
+sink=io.BytesIO()
+with tarfile.open(fileobj=sink,mode='w',format=tarfile.USTAR_FORMAT) as archive:
+    for file in sorted((root/'assets').rglob('*')):
+        if not file.is_file(): continue
+        data=file.read_bytes();name=file.relative_to(root/'assets').as_posix()
+        entry=tarfile.TarInfo(name);entry.size=len(data);entry.mode=0o644 if name.startswith('i386-pc/') else 0o755
+        archive.addfile(entry,io.BytesIO(data))
+raw=sink.getvalue();compressed=lzma.compress(raw,preset=6,check=lzma.CHECK_CRC64)
+output.write_bytes(compressed)
+digest=hashlib.sha256(compressed).digest()
+header.write_text('#pragma once\n#include <cstddef>\ninline constexpr unsigned char grubArchiveSha256[32]={'+','.join(map(str,digest))+'};\ninline constexpr size_t grubArchiveBytes='+str(len(compressed))+';\ninline constexpr size_t grubArchiveRawBytes='+str(len(raw))+';\n')
+print('GRUB BIOS bundle: '+str(len(compressed))+' bytes, SHA256 '+digest.hex(),flush=True)
+PY

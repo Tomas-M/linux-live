@@ -3,19 +3,32 @@
 set -eu
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
 ISO=${1:?Usage: check /path/to/slax.iso}
+SUPPORT=${2:-$THIS/../installers/grub-bios.tar.xz}
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer-check.XXXXXX")
 trap 'rm -r "$TEMP"' 0
 mkdir -p "$TEMP/tree/slax/boot/EFI/BOOT" "$TEMP/tree/slax/boot/grub" "$TEMP/tree/slax/modules" "$TEMP/tree/slax/changes" "$TEMP/tree/slax/installer"
+mkdir "$TEMP/tree/slax/boot/grub/bios"
+cp "$SUPPORT" "$TEMP/tree/slax/boot/grub/bios/tools.tar.xz"
 for FILE in vmlinuz initrfs.img EFI/BOOT/BOOTX64.EFI EFI/BOOT/grubx64.efi EFI/BOOT/mmx64.efi grub/entries.cfg grub/graphics.cfg grub/theme.txt grub.cfg; do
    printf 'Owned installer test fixture: %s\n' "$FILE" > "$TEMP/tree/slax/boot/$FILE"
 done
+printf 'set bootuuid=\nprobe --set=bootuuid --fs-uuid ($root)\nexport bootuuid\n' > "$TEMP/tree/slax/boot/grub.cfg"
+printf 'insmod probe\nset prefix=($root)/slax/boot/grub\nconfigfile /slax/boot/grub.cfg\n' > "$TEMP/tree/slax/boot/grub/grub.cfg"
 printf 'Owned native installer fixture\n' > "$TEMP/tree/slax/installer/slax-install-linux"
 chmod 755 "$TEMP/tree/slax/installer/slax-install-linux"
 printf 'Owned core fixture\n' > "$TEMP/tree/slax/modules/01-core.sb"
 printf 'Unicode payload\n' > "$TEMP/tree/slax/modules/module-東京-İstanbul.sb"
 xorriso -as mkisofs -quiet -R -o "$TEMP/source.iso" "$TEMP/tree" 2>/dev/null
+
+# Bind fixture helpers to the exact same support package used by the production build.
+python3 - "$SUPPORT" "$TEMP/grub-assets-digest.h" <<'PY'
+from pathlib import Path
+import hashlib,lzma,sys
+data=Path(sys.argv[1]).read_bytes()
+Path(sys.argv[2]).write_text('#pragma once\n#include <cstddef>\ninline constexpr unsigned char grubArchiveSha256[32]={'+','.join(map(str,hashlib.sha256(data).digest()))+'};\ninline constexpr size_t grubArchiveBytes='+str(len(data))+';\ninline constexpr size_t grubArchiveRawBytes='+str(len(lzma.decompress(data)))+';\n')
+PY
 g++ -std=c++17 -O1 -Wall -Wextra -Werror -pthread -DINSTALLER_TEST \
    -fsanitize=address,undefined -g "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" \
-   "$THIS/disk-format.cpp" "$THIS/firmware.cpp" "$THIS/test-storage.cpp" "$THIS/tests.cpp" \
-   $(pkg-config --cflags --libs glib-2.0) -o "$TEMP/check"
+   "$THIS/disk-format.cpp" "$THIS/firmware.cpp" "$THIS/grub-assets.cpp" "$THIS/test-storage.cpp" "$THIS/tests.cpp" \
+   -I"$TEMP" $(pkg-config --cflags --libs glib-2.0 liblzma) -o "$TEMP/check"
 "$TEMP/check" "$ISO" "$TEMP/source.iso" "$TEMP"

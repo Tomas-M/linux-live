@@ -1,4 +1,5 @@
 #include "installer.h"
+#include "grub-assets.h"
 #include <cstring>
 #include <map>
 #include <set>
@@ -9,7 +10,7 @@
 #include <linux/fs.h>
 #endif
 
-static const char *requiredFiles[]={"slax/boot/vmlinuz","slax/boot/initrfs.img","slax/modules/01-core.sb","slax/boot/EFI/BOOT/BOOTX64.EFI","slax/boot/EFI/BOOT/grubx64.efi","slax/boot/grub/entries.cfg"};
+static const char *requiredFiles[]={"slax/boot/vmlinuz","slax/boot/initrfs.img","slax/modules/01-core.sb","slax/boot/EFI/BOOT/BOOTX64.EFI","slax/boot/EFI/BOOT/grubx64.efi","slax/boot/grub/entries.cfg",grubArchivePath};
 
 // Decode ISO9660's little-endian half without alignment assumptions.
 static uint32_t number(const unsigned char *p)
@@ -83,12 +84,13 @@ static void directory(FILE *file,Image &image,uint32_t sector,uint32_t bytes,con
    {
       auto p=data.data()+at;
       if (!p[0]) { at=(at/2048+1)*2048; continue; }
+      if (data.size()-at<34) throw std::runtime_error("The ISO contains a truncated directory record.");
       unsigned length=p[0],nameBytes=p[32];
-      if (length<34 || at+length>data.size() || 33+nameBytes>length) throw std::runtime_error("The ISO contains a truncated directory record.");
+      unsigned extension=33+nameBytes+(nameBytes%2==0);
+      if (length<34 || at+length>data.size() || extension>length) throw std::runtime_error("The ISO contains a truncated directory record.");
       at+=length;
       if (nameBytes==1 && p[33]<=1) continue;
       std::string name(reinterpret_cast<const char *>(p+33),nameBytes),rock;
-      unsigned extension=33+nameBytes+(nameBytes%2==0);
       uint32_t mode=0644; extensions(file,image.bytes,p+extension,length-extension,rock,mode);
       if (!rock.empty()) name=rock;
       else

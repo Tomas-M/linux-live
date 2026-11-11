@@ -4,6 +4,8 @@
 #include <winioctl.h>
 #include <setupapi.h>
 #include <wincrypt.h>
+#include <sddl.h>
+#include <aclapi.h>
 #include <io.h>
 #include <fcntl.h>
 #include <set>
@@ -12,7 +14,7 @@
 #include "disk-format.h"
 #include "hash.h"
 #include "windows-native.h"
-#include "grub-tools.h"
+#include "grub-assets.h"
 
 // Convert UTF-8 paths at the Windows boundary without lossy code-page conversions.
 std::wstring wide(const std::string &value)
@@ -206,14 +208,14 @@ std::vector<Device> scanDevices(const std::string &source)
    }
    HDEVINFO set=SetupDiGetClassDevsW(&diskClass,nullptr,nullptr,DIGCF_PRESENT|DIGCF_DEVICEINTERFACE);
    if (set==INVALID_HANDLE_VALUE) return result;
-   SP_DEVICE_INTERFACE_DATA interface={}; interface.cbSize=sizeof(interface);
-   for (DWORD index=0; SetupDiEnumDeviceInterfaces(set,nullptr,&diskClass,index,&interface); index++)
+   SP_DEVICE_INTERFACE_DATA deviceInterface={}; deviceInterface.cbSize=sizeof(deviceInterface);
+   for (DWORD index=0; SetupDiEnumDeviceInterfaces(set,nullptr,&diskClass,index,&deviceInterface); index++)
    {
-      DWORD needed=0,returned=0; SetupDiGetDeviceInterfaceDetailW(set,&interface,nullptr,0,&needed,nullptr);
+      DWORD needed=0,returned=0; SetupDiGetDeviceInterfaceDetailW(set,&deviceInterface,nullptr,0,&needed,nullptr);
       if (needed<sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W)) continue;
       std::vector<unsigned char> buffer(needed); auto detail=reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W *>(buffer.data()); detail->cbSize=sizeof(*detail);
       SP_DEVINFO_DATA information={}; information.cbSize=sizeof(information);
-      if (!SetupDiGetDeviceInterfaceDetailW(set,&interface,detail,needed,nullptr,&information)) continue;
+      if (!SetupDiGetDeviceInterfaceDetailW(set,&deviceInterface,detail,needed,nullptr,&information)) continue;
       HANDLE disk=CreateFileW(detail->DevicePath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
       if (disk==INVALID_HANDLE_VALUE) disk=CreateFileW(detail->DevicePath,0,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);
       if (disk==INVALID_HANDLE_VALUE) continue;
@@ -495,6 +497,51 @@ std::string FileTree::rootPath() { return utf8(impl->root); }
 // An existing object of any kind prevents accidental replacement of an installation.
 bool FileTree::exists(const std::string &path) { return GetFileAttributesW((impl->root+nativePath(path)).c_str())!=INVALID_FILE_ATTRIBUTES; }
 
+// Inspect the retained object without accepting a junction or another special destination.
+bool FileTree::isDirectory(const std::string &path)
+{
+   auto full=impl->root+nativePath(path);
+   if (GetFileAttributesW(full.c_str())==INVALID_FILE_ATTRIBUTES)
+   {
+      if (GetLastError()==ERROR_FILE_NOT_FOUND || GetLastError()==ERROR_PATH_NOT_FOUND) return false;
+      failed("Cannot inspect destination "+path);
+   }
+   Parents parents(impl->root,path);
+   HANDLE file=CreateFileW(full.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+   if (file==INVALID_HANDLE_VALUE) failed("Cannot inspect destination "+path);
+   BY_HANDLE_FILE_INFORMATION info={}; bool read=GetFileInformationByHandle(file,&info); DWORD error=GetLastError(); bool regular=GetFileType(file)==FILE_TYPE_DISK; CloseHandle(file);
+   if (!read) { SetLastError(error); failed("Cannot identify destination "+path); }
+   if (!regular || (info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)) throw std::runtime_error("A destination is a link or special file.");
+   return info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY;
+}
+
+// Compare native identities so aliases cannot make an input overwrite itself.
+bool FileTree::same(const std::string &path,const std::string &external)
+{
+   auto full=impl->root+nativePath(path);
+   if (GetFileAttributesW(full.c_str())==INVALID_FILE_ATTRIBUTES)
+   {
+      if (GetLastError()==ERROR_FILE_NOT_FOUND || GetLastError()==ERROR_PATH_NOT_FOUND) return false;
+      failed("Cannot inspect destination "+path);
+   }
+   Parents parents(impl->root,path);
+   HANDLE target=CreateFileW(full.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+   if (target==INVALID_HANDLE_VALUE) failed("Cannot identify destination "+path);
+   BY_HANDLE_FILE_INFORMATION destination={},source={};
+   bool read=GetFileInformationByHandle(target,&destination); DWORD error=GetLastError();
+   if (!read || (destination.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT))
+   {
+      CloseHandle(target);
+      if (!read) { SetLastError(error); failed("Cannot identify destination "+path); }
+      throw std::runtime_error("A destination is a link or mount point.");
+   }
+   HANDLE input=CreateFileW(wide(external).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr);
+   if (input==INVALID_HANDLE_VALUE) { error=GetLastError(); CloseHandle(target); SetLastError(error); failed("Cannot identify the Slax source"); }
+   read=GetFileInformationByHandle(input,&source); error=GetLastError(); CloseHandle(input); CloseHandle(target);
+   if (!read) { SetLastError(error); failed("Cannot identify the Slax source"); }
+   return destination.dwVolumeSerialNumber==source.dwVolumeSerialNumber && destination.nFileIndexHigh==source.nFileIndexHigh && destination.nFileIndexLow==source.nFileIndexLow;
+}
+
 // Create exclusively; never reuse a directory whose ownership is unknown.
 void FileTree::mkdir(const std::string &path)
 {
@@ -534,20 +581,51 @@ void FileTree::move(const std::string &from,const std::string &to)
 void FileTree::replace(const std::string &from,const std::string &to)
 {
    Parents source(impl->root,from),destination(impl->root,to);
-   auto path=impl->root+nativePath(to); DWORD attributes=GetFileAttributesW(path.c_str());
+   auto path=impl->root+nativePath(to),backup=path+L".slax-backup-"+wide(randomId()); DWORD attributes=GetFileAttributesW(path.c_str());
    if (attributes==INVALID_FILE_ATTRIBUTES || (attributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))) throw std::runtime_error("The boot configuration is not a regular file.");
    if (!SetFileAttributesW(path.c_str(),attributes&~FILE_ATTRIBUTE_READONLY)) failed("Cannot prepare the boot configuration");
-   bool replaced=ReplaceFileW(path.c_str(),(impl->root+nativePath(from)).c_str(),nullptr,0,nullptr,nullptr);
-   DWORD error=GetLastError(); SetFileAttributesW(path.c_str(),attributes);
-   if (!replaced) { SetLastError(error); failed("Cannot atomically update the boot configuration"); }
-   sync();
+   bool replaced=ReplaceFileW(path.c_str(),(impl->root+nativePath(from)).c_str(),backup.c_str(),0,nullptr,nullptr);
+   DWORD error=GetLastError();
+   try
+   {
+      if (!replaced) { SetLastError(error); failed("Cannot atomically update the boot configuration"); }
+      if (!SetFileAttributesW(path.c_str(),attributes)) failed("Cannot restore the boot configuration attributes");
+      sync();
+   }
+   catch (...)
+   {
+      // ReplaceFile can remove the original name even on failure; keep its bytes recoverable.
+      if (GetFileAttributesW(backup.c_str())!=INVALID_FILE_ATTRIBUTES)
+      {
+         SetFileAttributesW(path.c_str(),attributes&~FILE_ATTRIBUTE_READONLY);
+         if (!MoveFileExW(backup.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))
+            throw std::runtime_error("The boot configuration could not be restored. Its original bytes remain at "+utf8(backup)+".");
+      }
+      SetFileAttributesW(path.c_str(),attributes);
+      sync();
+      throw;
+   }
+   DeleteFileW(backup.c_str());
 }
 
 // Remove only the exact objects recorded as created by this run.
 void FileTree::remove(const std::string &path,bool directory)
 {
-   if (directory) RemoveDirectoryW((impl->root+nativePath(path)).c_str());
-   else DeleteFileW((impl->root+nativePath(path)).c_str());
+   try
+   {
+      Parents parents(impl->root,path);
+      auto full=impl->root+nativePath(path);
+      if (directory) RemoveDirectoryW(full.c_str());
+      else
+      {
+         DWORD attributes=GetFileAttributesW(full.c_str());
+         if (attributes==INVALID_FILE_ATTRIBUTES || (attributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))) return;
+         if (attributes&FILE_ATTRIBUTE_READONLY) SetFileAttributesW(full.c_str(),attributes&~FILE_ATTRIBUTE_READONLY);
+         if (!DeleteFileW(full.c_str()) && (attributes&FILE_ATTRIBUTE_READONLY)) SetFileAttributesW(full.c_str(),attributes);
+      }
+   }
+   // Cleanup must retain the original error and never follow a substituted parent.
+   catch (...) {}
 }
 
 // Query the actual destination volume instead of trusting a stale scan's free-space value.
@@ -658,7 +736,7 @@ void addBcdEntry(const InstallPlan &plan)
 {
    auto id=randomId(),entry="{"+id.substr(0,8)+"-"+id.substr(8,4)+"-"+id.substr(12,4)+"-"+id.substr(16,4)+"-"+id.substr(20)+"}";
    std::wstring guid=wide(entry); FileTree target(plan.device,true);
-   FILE *record=target.open("slax/boot/grub/boot-backup/bcd-entry.txt",true);
+   FILE *record=target.open(plan.recovery+"/bcd-entry.txt",true);
    std::string recovery="Slax installer BCD recovery record\nAdded entry: "+entry+"\nBoot store: "+plan.bootPartition.label+"\\Boot\\BCD\nSector file: "+plan.bootFile+"\nOriginal entries and default OS were retained.\nTo remove only this entry, run from the original Windows installation:\nbcdedit /delete "+entry+"\nThe original menu dump is in original-menu.txt.\n";
    try { if (fwrite(recovery.data(),1,recovery.size(),record)!=recovery.size()) throw std::runtime_error("Cannot save the BCD recovery record."); flushFile(record); }
    catch (...) { fclose(record); throw; }
@@ -738,40 +816,96 @@ static std::string toolLog(const std::wstring &path)
    char detail[1025]={}; size_t bytes=fread(detail,1,1024,file); fclose(file); return std::string(detail,bytes);
 }
 
-// Build the BIOS core with embedded, verified GNU tools rather than executing programs from the selected ISO.
-BiosImage buildBios(const Partition &target,bool gpt)
+// Stage on the native system volume, protecting the directory identity and every supported ACL.
+struct BiosWorkspace
 {
-   wchar_t temporary[32768]; DWORD size=GetTempPathW(32768,temporary);
-   if (!size || size>=32768) failed("Cannot find a temporary build directory");
-   std::wstring folder=std::wstring(temporary)+L"slax-install-"+wide(randomId());
-   if (!CreateDirectoryW(folder.c_str(),nullptr)) failed("Cannot create a private BIOS build directory");
+   std::wstring path;
+   HANDLE handle=INVALID_HANDLE_VALUE;
+   SECURITY_ATTRIBUTES security={sizeof(SECURITY_ATTRIBUTES),nullptr,FALSE};
+   BiosWorkspace(const wchar_t *prefix)
+   {
+      wchar_t windows[32768],volume[32768]; DWORD flags=0,size=GetWindowsDirectoryW(windows,32768);
+      if (!size || size>=32768 || !GetVolumePathNameW(windows,volume,32768) || !GetVolumeInformationW(volume,nullptr,0,nullptr,nullptr,&flags,nullptr,0)) failed("Cannot find the system BIOS workspace");
+      std::wstring temporary=std::wstring(windows)+L"\\Temp";
+      path=temporary+L"\\"+prefix+wide(randomId());
+      PSECURITY_DESCRIPTOR descriptor=nullptr;
+      if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(L"O:BAG:BAD:P(A;OICI;GA;;;SY)(A;OICI;GA;;;BA)",SDDL_REVISION_1,&descriptor,nullptr)) failed("Cannot protect the BIOS workspace");
+      security.lpSecurityDescriptor=descriptor;
+      if (!CreateDirectoryW(temporary.c_str(),&security) && GetLastError()!=ERROR_ALREADY_EXISTS)
+      {
+         DWORD error=GetLastError(); LocalFree(descriptor); SetLastError(error); failed("Cannot create the system temporary directory");
+      }
+      bool created=CreateDirectoryW(path.c_str(),&security); DWORD error=GetLastError();
+      if (!created) { LocalFree(descriptor); SetLastError(error); failed("Cannot create a protected BIOS workspace"); }
+      handle=CreateFileW(path.c_str(),READ_CONTROL|FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr);
+      if (handle==INVALID_HANDLE_VALUE)
+      {
+         error=GetLastError(); RemoveDirectoryW(path.c_str()); LocalFree(descriptor); SetLastError(error); failed("Cannot retain the protected BIOS workspace");
+      }
+      // FAT32-hosted Windows XP has no persistent ACLs; retain its directory identity without requiring them.
+      bool protectedOwner=true;
+      if (flags&FILE_PERSISTENT_ACLS)
+      {
+         PSID owner=nullptr,expected=nullptr; BOOL defaulted=FALSE; PSECURITY_DESCRIPTOR actual=nullptr;
+         GetSecurityDescriptorOwner(descriptor,&expected,&defaulted);
+         DWORD query=GetSecurityInfo(handle,SE_FILE_OBJECT,OWNER_SECURITY_INFORMATION,&owner,nullptr,nullptr,nullptr,&actual);
+         protectedOwner=query==ERROR_SUCCESS && EqualSid(owner,expected);
+         LocalFree(actual);
+      }
+      BY_HANDLE_FILE_INFORMATION info;
+      bool directory=GetFileInformationByHandle(handle,&info) && (info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) && !(info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT);
+      if (!protectedOwner || !directory)
+      {
+         CloseHandle(handle); RemoveDirectoryW(path.c_str()); LocalFree(descriptor);
+         throw std::runtime_error("The BIOS workspace identity is not protected.");
+      }
+   }
+   // Release the directory identity only after all child processes and staged files are gone.
+   ~BiosWorkspace()
+   {
+      CloseHandle(handle); RemoveDirectoryW((path+L"\\i386-pc").c_str()); RemoveDirectoryW(path.c_str()); LocalFree(security.lpSecurityDescriptor);
+   }
+};
+
+// Stage only authenticated assets, deleting a partial file before reporting a failed write.
+static void stageBiosAsset(const std::wstring &path,const GrubAsset &asset,SECURITY_ATTRIBUTES &security)
+{
+   HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,0,&security,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr); DWORD done=0;
+   if (file==INVALID_HANDLE_VALUE) failed("Cannot stage the verified BIOS tools");
+   bool written=WriteFile(file,asset.data.data(),asset.data.size(),&done,nullptr) && done==asset.data.size();
+   DWORD error=GetLastError(); CloseHandle(file);
+   if (!written) { DeleteFileW(path.c_str()); SetLastError(error); failed("Cannot write the verified BIOS tools completely"); }
+}
+
+// Build the BIOS core from the selected source's authenticated GNU tools and matching modules.
+BiosImage buildBios(const Partition &target,bool gpt,const GrubAssets &assets)
+{
+   BiosWorkspace workspace(L"slax-install-"); const std::wstring &folder=workspace.path;
    std::vector<std::wstring> created; BiosImage result;
    try
    {
-      if (!CreateDirectoryW((folder+L"\\i386-pc").c_str(),nullptr)) failed("Cannot create the BIOS module directory");
-      for (const auto &asset:grub_tools)
+      if (!CreateDirectoryW((folder+L"\\i386-pc").c_str(),&workspace.security)) failed("Cannot create the BIOS module directory");
+      for (const auto &asset:assets.entries())
       {
-         std::wstring path=folder+L"\\"+wide(asset.name); DWORD done=0;
-         HANDLE file=CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
-         if (file==INVALID_HANDLE_VALUE) failed("Cannot stage the bundled BIOS tools");
-         created.push_back(path); bool written=WriteFile(file,asset.data,asset.size,&done,nullptr) && done==asset.size; CloseHandle(file);
-         if (!written) failed("Cannot write the bundled BIOS tools");
-         std::string name=asset.name;
-         if (name.size()>4 && (name.substr(name.size()-4)==".mod" || name.substr(name.size()-4)==".lst")) result.modules.push_back(generated("slax/boot/grub/"+name,std::string(reinterpret_cast<const char *>(asset.data),asset.size)));
+         std::wstring path=folder+L"\\"+wide(asset.name); stageBiosAsset(path,asset,workspace.security); created.push_back(path);
+         const std::string &name=asset.name;
+         if (name.size()>4 && (name.substr(name.size()-4)==".mod" || name.substr(name.size()-4)==".lst")) result.modules.push_back(generated("slax/boot/grub/"+name,asset.data));
       }
-      SECURITY_ATTRIBUTES security={sizeof(security),nullptr,TRUE};
+      stageBiosAsset(folder+L"\\core",{},workspace.security); created.push_back(folder+L"\\core");
+      auto security=workspace.security; security.bInheritHandle=TRUE;
       HANDLE log=CreateFileW((folder+L"\\log").c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
       if (log==INVALID_HANDLE_VALUE) failed("Cannot create the BIOS build log");
-      created.push_back(folder+L"\\log"); created.push_back(folder+L"\\core");
-      std::wstring executable=folder+L"\\grub-mkimage.exe";
+      created.push_back(folder+L"\\log");
+      std::wstring executable=folder+L"\\"+wide(assets.tool("grub-mkimage").name);
       std::wstring prefix=L"(,"+std::wstring(gpt?L"gpt":L"msdos")+std::to_wstring(target.number)+L")/slax/boot/grub";
-      std::wstring command=L"\""+executable+L"\" -O i386-pc -C xz -d \""+folder+L"\\i386-pc\" -p \""+prefix+L"\" -o \""+folder+L"\\core\" biosdisk "+(gpt?std::wstring(L"part_gpt"):std::wstring(L"part_msdos"))+L" "+wide(biosFilesystem(target));
+      // Relative ASCII arguments keep GNU tools independent of the temporary path's code page.
+      std::wstring command=L"grub-mkimage.exe -O i386-pc -C xz -d i386-pc -p \""+prefix+L"\" -o core biosdisk "+(gpt?std::wstring(L"part_gpt"):std::wstring(L"part_msdos"))+L" "+wide(biosFilesystem(target));
       STARTUPINFOW startup={}; startup.cb=sizeof(startup); startup.dwFlags=STARTF_USESTDHANDLES; startup.hStdOutput=startup.hStdError=log; startup.hStdInput=GetStdHandle(STD_INPUT_HANDLE);
       PROCESS_INFORMATION process={};
       bool started=CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,folder.c_str(),&startup,&process); CloseHandle(log);
-      if (!started) failed("Cannot start the bundled BIOS image builder");
+      if (!started) failed("Cannot start the verified BIOS image builder");
       WaitForSingleObject(process.hProcess,INFINITE); DWORD code=1; GetExitCodeProcess(process.hProcess,&code); CloseHandle(process.hThread); CloseHandle(process.hProcess);
-      if (code) throw std::runtime_error("The bundled GNU GRUB image builder failed. No disk changes were made.\n"+toolLog(folder+L"\\log"));
+      if (code) throw std::runtime_error("The verified GNU GRUB image builder failed. No disk changes were made.\n"+toolLog(folder+L"\\log"));
       for (int i=0; i<2; i++)
       {
          FILE *file=_wfopen((folder+(i?L"\\core":L"\\i386-pc\\boot.img")).c_str(),L"rb");
@@ -781,34 +915,24 @@ BiosImage buildBios(const Partition &target,bool gpt)
          data.resize(bytes); (i?result.core:result.boot)=std::move(data);
       }
    }
-   catch (...) { for (const auto &path:created) DeleteFileW(path.c_str()); RemoveDirectoryW((folder+L"\\i386-pc").c_str()); RemoveDirectoryW(folder.c_str()); throw; }
+   catch (...) { for (const auto &path:created) DeleteFileW(path.c_str()); throw; }
    for (const auto &path:created) DeleteFileW(path.c_str());
-   RemoveDirectoryW((folder+L"\\i386-pc").c_str()); RemoveDirectoryW(folder.c_str());
    return result;
 }
 
 // Verify the real filesystem with GRUB's own reader before offering BIOS or replacing its MBR.
-void checkBiosFiles(const Device &device,bool installed)
+void checkBiosFiles(const Device &device,bool installed,const GrubAssets &assets)
 {
    FileTree target(device,false);
-   wchar_t temporary[32768]; DWORD length=GetTempPathW(32768,temporary);
-   if (!length || length>=32768) failed("Cannot locate the BIOS verification workspace");
-   std::wstring folder=std::wstring(temporary)+L"slax-check-"+wide(randomId());
-   if (!CreateDirectoryW(folder.c_str(),nullptr)) failed("Cannot create the BIOS verification workspace");
-   std::wstring executable=folder+L"\\grub-fstest.exe",logPath=folder+L"\\log";
+   BiosWorkspace workspace(L"slax-check-"); const std::wstring &folder=workspace.path;
+   std::wstring executable=folder+L"\\"+wide(assets.tool("grub-fstest").name),logPath=folder+L"\\log";
    try
    {
-      for (const auto &asset:grub_tools) if (!strcmp(asset.name,"grub-fstest.exe"))
-      {
-         HANDLE file=CreateFileW(executable.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr); DWORD done=0;
-         if (file==INVALID_HANDLE_VALUE) failed("Cannot stage the BIOS filesystem verifier");
-         bool written=WriteFile(file,asset.data,asset.size,&done,nullptr) && done==asset.size; CloseHandle(file);
-         if (!written) failed("Cannot write the BIOS filesystem verifier");
-      }
+      stageBiosAsset(executable,assets.tool("grub-fstest"),workspace.security);
       std::string volume=device.mount; if (!volume.empty() && volume.back()=='\\') volume.pop_back();
-      std::wstring command=L"\""+executable+L"\" \""+wide(volume)+L"\" ";
+      std::wstring command=L"grub-fstest.exe \""+wide(volume)+L"\" ";
       command+=installed?L"cmp /slax/boot \""+wide(target.rootPath())+L"slax\\boot\"":L"xnu_uuid";
-      SECURITY_ATTRIBUTES security={sizeof(security),nullptr,TRUE};
+      auto security=workspace.security; security.bInheritHandle=TRUE;
       HANDLE log=CreateFileW(logPath.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&security,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
       if (log==INVALID_HANDLE_VALUE) failed("Cannot open the BIOS verification log");
       STARTUPINFOW start={}; start.cb=sizeof(start); start.dwFlags=STARTF_USESTDHANDLES; start.hStdOutput=start.hStdError=log; start.hStdInput=GetStdHandle(STD_INPUT_HANDLE);
@@ -820,6 +944,6 @@ void checkBiosFiles(const Device &device,bool installed)
          throw std::runtime_error("GRUB cannot read this filesystem or verify its boot files. Existing BIOS boot settings will be kept.\n"+toolLog(logPath));
       }
    }
-   catch (...) { DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str()); RemoveDirectoryW(folder.c_str()); throw; }
-   DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str()); RemoveDirectoryW(folder.c_str());
+   catch (...) { DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str()); throw; }
+   DeleteFileW(logPath.c_str()); DeleteFileW(executable.c_str());
 }

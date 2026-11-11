@@ -200,6 +200,7 @@ void Installer::tick()
       else if (page==TargetPage)
       {
          error=failure;
+         if (found==devices.end()) error="The selected target changed or is no longer available. Select the target again.";
          if (error.empty() && !prepared) error="The target could not be prepared. Select the image and target again.";
          if (!error.empty())
          {
@@ -217,10 +218,12 @@ void Installer::tick()
             bool newEfi=plan && plan->bootLayout && plan->bootLayout->efi.bytes;
             bool sameEfi=plan && prepared->efi.start==plan->efi.start && prepared->efi.bytes==plan->efi.bytes && (newEfi || prepared->efi.uuid==plan->efi.uuid);
             bool sameBios=plan && prepared->bios==plan->bios && prepared->previousBios==plan->previousBios;
+            if (sameBios) sameBios=prepared->biosMenu==plan->biosMenu;
             if (sameBios && plan->bios && !plan->erase) sameBios=prepared->bootLayout->bios.start==plan->bootLayout->bios.start && prepared->biosImage->core==plan->biosImage->core && prepared->bootLayout->biosBefore==plan->bootLayout->biosBefore;
             bool sameFirmware=plan && prepared->bootOrder==plan->bootOrder && prepared->fallbackDigest==plan->fallbackDigest && prepared->efiLoaders==plan->efiLoaders && prepared->efiFirst==plan->efiFirst;
+            if (sameFirmware) sameFirmware=prepared->efiVendors==plan->efiVendors && prepared->efiFallback==plan->efiFallback && prepared->efiBootEntry==plan->efiBootEntry;
             bool sameSummary=plan && prepared->confirmation==plan->confirmation;
-            bool sameMenu=plan && prepared->bootConfig==plan->bootConfig && prepared->bootBefore==plan->bootBefore && prepared->bootPartition.uuid==plan->bootPartition.uuid && prepared->bootFile==plan->bootFile;
+            bool sameMenu=plan && prepared->bootConfig==plan->bootConfig && prepared->bootBefore==plan->bootBefore && prepared->bootPartition.uuid==plan->bootPartition.uuid && prepared->bootFile==plan->bootFile && prepared->bootFileBefore==plan->bootFileBefore;
             bool same=sameDevice && sameEfi && sameBios && sameFirmware && sameSummary && sameMenu;
             if (!same) { confirming=true; invalidate(); showInstallError("The installation plan changed after confirmation. Review and confirm the target again."); confirming=false; plan.reset(); }
             else
