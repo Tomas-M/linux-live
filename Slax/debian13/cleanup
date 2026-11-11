@@ -3,6 +3,9 @@ set -e
 [ -f /build/buildmods ] || { echo "Run Slax's build script instead of cleanup." >&2; exit 1; }
 
 
+# The kernel boots from the medium; /boot is excluded from runtime modules.
+rm -f /vmlinuz /vmlinuz.old /initrd.img /initrd.img.old
+
 rm -f /etc/fstab
 rm -f /etc/mtab
 rm -f /etc/apt/sources.list~
