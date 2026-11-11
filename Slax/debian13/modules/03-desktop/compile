@@ -26,7 +26,8 @@ cp "$CWD/patches/fluxbox-slax.diff" debian/patches/
 cp "$CWD/patches/fluxbox-preview.diff" debian/patches/
 cp "$CWD/patches/fluxbox-panel-focus.diff" debian/patches/
 cp "$CWD/patches/fluxbox-assistant-title.diff" debian/patches/
-printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\nfluxbox-assistant-title.diff\n' >> debian/patches/series
+cp "$CWD/patches/fluxbox-desktop-dialogs.diff" debian/patches/
+printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\nfluxbox-assistant-title.diff\nfluxbox-desktop-dialogs.diff\n' >> debian/patches/series
 quilt push -a
 cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config

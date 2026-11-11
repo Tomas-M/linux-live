@@ -889,6 +889,9 @@ must follow the general Slax repair rules above.
   and external tabs inside the selected monitor's work area, respecting panel
   struts. Oversized windows keep their upper-left corner accessible. Preserve
   explicit application positions and dialog placement handled before this policy.
+  `fluxbox-desktop-dialogs.diff` keeps desktop-owned dialogs in the normal
+  application layer. Stop transient stacking groups at desktop parents, preserving
+  the desktop's bottom layer and ordinary application/dialog relationships.
   Fluxbox's SIGUSR1 restarts it with exec, preserving its PID, Xorg and applications;
   SIGUSR2 reloads configuration. Do not confuse these signals.
   `fluxbox-assistant-title.diff` replaces only the exact initial title
