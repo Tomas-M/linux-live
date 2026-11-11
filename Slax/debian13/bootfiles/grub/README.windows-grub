@@ -7,16 +7,15 @@ Slax directory or complete copy-to-RAM source. The Windows installer does not
 embed these files, and the Linux installer does not require installed GRUB tools.
 
 The archive contains matching i386-pc modules and separate Windows and Linux
-versions of grub-mkimage and grub-fstest. The image utility creates an XZ-compressed
+versions of grub-mkimage and grub-fstest. The image utility creates an LZMA-compressed
 BIOS core for the approved disk and partition. The filesystem verifier checks
 actual access and compares copied boot files before BIOS activation. Matching
 runtime modules are then copied into the installed Slax boot directory.
 
 installer/build-grub compiles the unmodified GNU helpers during the Slax installer
-build. Linux helpers are statically linked. Windows helpers target Windows XP
-onward and use only system DLLs. Both platforms link static, threadless liblzma;
-no compiler, GRUB package, external unpacker or installation-time network is needed.
-The official Windows mkimage lacks XZ support, so it is not used.
+build. Linux helpers use shared system libc and liblzma5. Windows helpers target
+Windows XP onward and use only system DLLs, with static, threadless liblzma.
+No compiler, GRUB package, external unpacker or installation-time network is needed.
 
 The shared i386-pc files come from the verified official GNU Windows release:
 https://ftp.gnu.org/gnu/grub/grub-2.12-for-windows.zip
@@ -34,13 +33,15 @@ SHA256: f3c97391f7c4eaa677a78e090c7e97e6dc47b16f655f04683ebd37bef7fe0faa
 GNU downloads use the kernel.org mirror and are checked against these pinned hashes.
 License: GNU GPL version 3 or later, reproduced in COPYING.windows-grub.
 
-XZ 5.8.1 source (Debian mirror of the upstream archive):
+XZ 5.8.1 source for Windows (Debian mirror of the upstream archive):
 https://deb.debian.org/debian/pool/main/x/xz-utils/xz-utils_5.8.1.orig.tar.xz
 SHA256: 0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e
 https://github.com/tukaani-project/xz/releases/tag/v5.8.1
 liblzma uses the Zero-Clause BSD license (0BSD):
 https://github.com/tukaani-project/xz/blob/v5.8.1/COPYING
-The installers also link its static decoder to unpack the trusted BIOS payload.
+The Windows installer also links its static decoder to unpack the trusted BIOS
+payload. The Linux installer uses shared system liblzma5; Linux builds require
+liblzma-dev instead of a private XZ build.
 
 The deterministic USTAR archive contains only regular files, compressed with XZ
 and CRC64. Its SHA256 and exact compressed/uncompressed sizes are compiled into

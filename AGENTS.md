@@ -270,13 +270,16 @@ reporting progress.
   an actual-driver capability list so older ISOs cannot be installed to a
   filesystem their early boot environment cannot read.
   Build unmodified GNU GRUB mkimage and fstest for Linux and Windows during
-  installer compilation, using pinned and SHA256-verified GNU/XZ sources and
+  installer compilation, using pinned and SHA256-verified GNU sources and
   matching i386-pc modules from the official GNU Windows release. Linux helpers
-  are fully static; Windows helpers target XP and import only system DLLs.
+  and the Linux installer use shared system libc/liblzma5; build with liblzma-dev.
+  Windows helpers target XP and import only system DLLs, using static, threadless
+  liblzma from pinned and SHA256-verified XZ sources.
   Package both sets and the common modules in `installers/grub-bios.tar.xz`,
   copied onto the medium as `slax/boot/grub/bios/tools.tar.xz`.
   Both installers authenticate the source archive against their compiled-in hash
-  before decoding it through static liblzma and executing its native helpers.
+  before decoding it through liblzma and executing its native helpers; Windows
+  retains its static decoder.
   Never fall back to system GRUB or PATH. Rebuild both installers and the support
   archive together. Retain the archive in installed Slax and copy-to-RAM sources;
   exclude it from EFI vendor-directory copies. Signed UEFI boot stays separate.

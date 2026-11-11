@@ -210,8 +210,8 @@ possible partial Slax files or partial erasure, with recovery metadata retained.
 ## Runtime and build
 
 Windows uses only system DLLs, including XP's GDI+. C++ and threading runtimes
-are static. Linux uses GTK 3, GLib, libudev, libblkid, standard C/C++ libraries
-and no system GRUB installation. No browser, .NET, WebView,
+are static. Linux uses GTK 3, GLib, libudev, libblkid, shared liblzma5 and standard
+C/C++ libraries, with no system GRUB installation. No browser, .NET, WebView,
 PowerShell, WMI, VBS, downloaded font or installation-time internet is required.
 The current Linux build requires glibc 2.38 or newer and libstdc++ providing
 GLIBCXX_3.4.29. Supporting older distributions requires a build against an older
@@ -225,7 +225,7 @@ are read-only diagnostics.
 Build both binaries on Debian:
 
 ```sh
-apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev
+apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev liblzma-dev
 sh Slax/debian13/installer/build
 ```
 
@@ -234,9 +234,10 @@ ordinary PE with native product/version metadata and an explicit administrator
 manifest. Avoid executable packers and obfuscation to reduce unnecessary antivirus
 false positives. Linux's ELF is compressed by the desktop module's SquashFS.
 `build-grub` compiles unmodified GNU GRUB 2.12 `grub-mkimage` and `grub-fstest`
-for both platforms from pinned, SHA-256-verified GNU/XZ source archives. The
-Linux helpers are fully static; Windows helpers target XP and use only system
-DLLs. Both support XZ-compressed BIOS cores through static, threadless liblzma.
+for both platforms from pinned, SHA-256-verified GNU sources. Linux helpers use
+shared system libc and liblzma5. Windows helpers target XP and use only system
+DLLs, with static, threadless liblzma built from pinned, SHA-256-verified XZ sources.
+Both support LZMA-compressed BIOS cores.
 Matching i386-pc modules come from the verified official GNU Windows release.
 The helpers remain separate executables; they are compiled during our build,
 never on the user's computer.
@@ -244,7 +245,8 @@ never on the user's computer.
 The build publishes `grub-bios.tar.xz` beside both installers. Ordinary ISO builds
 copy it to `slax/boot/grub/bios/tools.tar.xz`. Each installer reads this archive
 from the selected ISO, optical device or source directory, checks its compiled-in
-SHA-256 and sizes, and decompresses it with its statically linked decoder.
+SHA-256 and sizes, and decompresses it with liblzma: the shared system library on
+Linux and the statically linked decoder on Windows.
 No system GRUB, external archive utility or PATH lookup is used. Missing or
 mismatched support files fail before writing the target. Rebuild and distribute
 the archive and both installers together. Source media retain the archive when
