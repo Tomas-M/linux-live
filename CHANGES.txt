@@ -3,22 +3,8 @@ Unreleased changes
 
 Linux Live Kit
 --------------
-- Include device-mapper, Intel VMD and VMware, Hyper-V and Xen storage drivers in initramfs for early live-data discovery and Ventoy support
-
 
 Slax
 ----
-- Remove broken kernel and initramfs links from the filesystem root.
-- Remember the active keyboard layout and preferred alternate across desktop sessions.
-- Allow reinstalling over an existing Slax folder while preserving saved sessions, extra files and existing boot-menu choices.
-- Harden installer source checks and recovery cleanup, verify new FAT32 metadata and filenames, and flush Windows boot-menu updates before reporting success.
-- Move BIOS installation tools onto the Slax medium and remove Linux's dependency on installed GRUB packages.
-- Reduce the Linux installer and BIOS helper sizes by linking to shared system libraries.
-- Ship the Windows installer without executable compression to reduce unnecessary antivirus false positives.
-- Default to a 790 by 500 file-manager window with an editable path and navigation arrows.
-- Keep installer progress on one line when copying files with long paths.
-- Mount ISO images read-only from the file manager and remove their sidebar links after unmounting.
-- Show Windows installer progress on its taskbar button when supported.
-- Refine file-manager navigation, integrate Go into the location bar and improve icon spacing and sidebar appearance.
-- Keep an ordinary drag pointer, center translucent file previews and highlight drop targets.
-- Give standard GTK message dialogs more padding and compact action buttons.
+
+- Keep desktop-owned dialogs above ordinary windows without raising the desktop.

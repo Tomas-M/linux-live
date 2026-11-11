@@ -1,0 +1,52 @@
+Description: Keep desktop-owned dialogs in the normal application layer
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Window.cc
++++ b/src/Window.cc
+@@ -108,6 +108,9 @@
+ WinClient *getRootTransientFor(WinClient *client) {
+     while (client && client->transientFor()) {
+         assert(client != client->transientFor());
++        // Desktop dialogs stack independently of the desktop itself.
++        if (client->transientFor()->getWindowType()==WindowState::TYPE_DESKTOP)
++            break;
+         client = client->transientFor();
+     }
+     return client;
+@@ -486,6 +489,9 @@
+ 
+     // if we're a transient then we should be on the same layer and workspace
+     FluxboxWindow* twin = m_client->transientFor() ? m_client->transientFor()->fbwindow() : 0;
++    // Desktop-owned dialogs belong to the normal application layer.
++    if (twin && twin->winClient().getWindowType()==WindowState::TYPE_DESKTOP)
++        twin=0;
+     if (twin && twin != this) {
+         layerItem().setLayer(twin->layerItem().getLayer());
+         m_state.layernum = twin->layerNum();
+@@ -1709,6 +1715,10 @@
+     layernum = win->layerItem().getLayerNum();
+     win->setLayerNum(layernum);
+ 
++    // Keep desktop-owned dialogs in their independent application layers.
++    if (win->winClient().getWindowType()==WindowState::TYPE_DESKTOP)
++        return;
++
+     // move all the transients, too
+     ClientList::iterator client_it = win->clientList().begin();
+     ClientList::iterator client_it_end = win->clientList().end();
+@@ -2085,10 +2095,11 @@
+     case XA_WM_TRANSIENT_FOR: {
+         bool was_transient = client.isTransient();
+         client.updateTransientInfo();
+-        // update our layer to be the same layer as our transient for
+-        if (client.isTransient() && !was_transient
+-            && client.transientFor()->fbwindow())
+-            layerItem().setLayer(client.transientFor()->fbwindow()->layerItem().getLayer());
++        // Inherit application layers, but never the desktop layer.
++        WinClient *parent=client.transientFor();
++        if (!was_transient && parent && parent->getWindowType()!=WindowState::TYPE_DESKTOP)
++            if (parent->fbwindow())
++                layerItem().setLayer(parent->fbwindow()->layerItem().getLayer());
+ 
+     } break;
+ 
