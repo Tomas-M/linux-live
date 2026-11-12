@@ -8,6 +8,11 @@ reporting progress.
 
 - Write all code, comments, documentation and product strings in English,
   even when Tomas speaks Czech. Conversation may stay in Czech.
+- Keep the repository-root `SLAX-KNOWLEDGE.txt` current whenever desktop or system
+  changes affect user-visible behavior, commands or defaults. It is the concise
+  user knowledge base for Slax Assistant: prioritize working graphical workflows
+  and Slax-specific commands, verify facts against the shipped sources, and keep
+  limitations brief. Exclude development/VM details, credentials and build internals.
 - Slax is distributed to many users on different systems. Tomas's local VM
   is a reproduction environment for a reported bug, not the target environment
   that a product fix may assume. Every Slax fix must work generally.
