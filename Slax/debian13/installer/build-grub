@@ -1,9 +1,10 @@
 #!/bin/sh
 # Build matching native BIOS helpers and a verified media bundle from pinned GNU sources.
 set -eu
-ROOT=${1:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
+ROOT=${1:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER LINUX_SYSROOT}
 ARCHIVE=${2:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
 HEADER=${3:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER}
+LINUX_ROOT=${4:?Usage: build-grub WORK_DIRECTORY ARCHIVE DIGEST_HEADER LINUX_SYSROOT}
 mkdir -p "$ROOT/sources" "$ROOT/assets/i386-pc"
 trap 'if [ "$?" -ne 0 ] && [ -f "$ROOT/build.log" ]; then tail -40 "$ROOT/build.log"; fi' 0
 python3 - "$ROOT" <<'PY'
@@ -38,10 +39,19 @@ for PLATFORM in linux windows; do
    HOST=$(gcc -dumpmachine)
    FLAGS='-Os -fPIC -ffunction-sections -fdata-sections'
    INCLUDES=
-   LINK='-Wl,--gc-sections'
+   LINK='-static-libgcc -Wl,--gc-sections'
    SUFFIX=
    STRIP=strip
-   if [ "$PLATFORM" = windows ]; then
+   if [ "$PLATFORM" = linux ]; then
+      bwrap --bind "$LINUX_ROOT" / --bind "$ROOT" /build --dev /dev --proc /proc --unshare-pid --die-with-parent \
+         --chdir /build/linux/grub --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin \
+         --setenv CC gcc-8 --setenv CXX g++-8 --setenv CFLAGS "$FLAGS" --setenv LDFLAGS "$LINK" /bin/sh -ec '
+         /build/sources/grub-2.12/configure --host=x86_64-linux-gnu --target=i386 --with-platform=pc \
+            --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount --disable-device-mapper --disable-efiemu
+         make -C grub-core/lib/gnulib -j8 V=0
+         make -j8 V=0 grub-mkimage grub-fstest
+      ' >> "$ROOT/build.log" 2>&1
+   else
       HOST=i686-w64-mingw32
       FLAGS='-Os -D_WIN32_WINNT=0x0501 -ffunction-sections -fdata-sections'
       INCLUDES="-I$PREFIX/include"
@@ -56,15 +66,16 @@ for PLATFORM in linux windows; do
          --disable-lzmadec --disable-lzmainfo --disable-scripts --disable-doc >> "$ROOT/build.log" 2>&1
       make -j8 V=0 >> "$ROOT/build.log" 2>&1
       make install >> "$ROOT/build.log" 2>&1
-   fi
 
+      cd "$ROOT/$PLATFORM/grub"
+      CPPFLAGS="$INCLUDES" LDFLAGS="$LINK" CFLAGS="$FLAGS" \
+         "$ROOT/sources/grub-2.12/configure" --host="$HOST" --target=i386 --with-platform=pc \
+         --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount \
+         --disable-device-mapper --disable-efiemu >> "$ROOT/build.log" 2>&1
+      make -C grub-core/lib/gnulib -j8 V=0 >> "$ROOT/build.log" 2>&1
+      make -j8 V=0 "grub-mkimage$SUFFIX" "grub-fstest$SUFFIX" >> "$ROOT/build.log" 2>&1
+   fi
    cd "$ROOT/$PLATFORM/grub"
-   CPPFLAGS="$INCLUDES" LDFLAGS="$LINK" CFLAGS="$FLAGS" \
-      "$ROOT/sources/grub-2.12/configure" --host="$HOST" --target=i386 --with-platform=pc \
-      --disable-nls --disable-werror --disable-grub-mkfont --disable-grub-mount \
-      --disable-device-mapper --disable-efiemu >> "$ROOT/build.log" 2>&1
-   make -C grub-core/lib/gnulib -j8 V=0 >> "$ROOT/build.log" 2>&1
-   make -j8 V=0 "grub-mkimage$SUFFIX" "grub-fstest$SUFFIX" >> "$ROOT/build.log" 2>&1
    for TOOL in grub-mkimage grub-fstest; do
       "$STRIP" "$TOOL$SUFFIX"
       cp "$TOOL$SUFFIX" "$ROOT/assets/$PLATFORM/"
@@ -81,7 +92,10 @@ for tool in (root/'assets/linux').iterdir():
     needed=set(re.findall(r'\(NEEDED\).*\[(.*?)\]',info))
     if 'INTERP' not in info or 'libc.so.6' not in needed: sys.exit('Linux GRUB helper must use shared libc: '+str(tool))
     if tool.name=='grub-mkimage' and 'liblzma.so.5' not in needed: sys.exit('Linux grub-mkimage must use shared liblzma')
-    if not needed<={'libc.so.6','libm.so.6','liblzma.so.5','libgcc_s.so.1'}: sys.exit('Unexpected Linux GRUB helper dependencies: '+str(needed))
+    if not needed<={'libc.so.6','libm.so.6','liblzma.so.5'}: sys.exit('Unexpected Linux GRUB helper dependencies: '+str(needed))
+    versions=subprocess.check_output(['readelf','--version-info',str(tool)],text=True)
+    required=max((tuple(map(int,version.split('.'))) for version in re.findall(r'\bGLIBC_([0-9]+(?:\.[0-9]+)+)\b',versions)),default=())
+    if required>(2,27): sys.exit('Linux GRUB helper requires glibc newer than 2.27: '+str(tool))
     if re.search(r'\((?:RPATH|RUNPATH)\)',info): sys.exit('Linux GRUB helper has a private library path: '+str(tool))
 for tool in (root/'assets/windows').iterdir():
     info=subprocess.check_output(['i686-w64-mingw32-objdump','-p',str(tool)],text=True)

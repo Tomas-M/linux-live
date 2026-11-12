@@ -181,13 +181,15 @@ reporting progress.
   Windows must use only system DLLs; Linux may use libraries
   already installed in Slax. Do not require a browser or download fonts.
   Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
-  it strips both and keeps both unpacked. Do not use UPX or other executable
-  packers/obfuscators: avoid unnecessary antivirus false positives. Windows has
+  it strips both and packs Linux with `upx --best --lzma`, followed by `upx -t`.
+  Check Linux ELF dependencies before packing. Keep Windows unpacked to avoid
+  unnecessary antivirus false positives. Windows has
   native product/version metadata and its ordinary administrator manifest.
   Stage authenticated GRUB helpers under recognizable names in the system temp
   directory and launch them through native process APIs without extra windows or
   terminals. Capture helper output for installer errors; Windows console helpers
-  must use `CREATE_NO_WINDOW`. Keep Linux as an unpacked ELF;
+  must use `CREATE_NO_WINDOW`. Ship the same UPX-compressed Linux ELF on the medium
+  and in the desktop module;
   `03-desktop/copy` installs it at `/usr/bin/slax-install-linux`, compressed by
   SquashFS, with a Slax Installer entry in xlunch and no desktop shortcut.
   Use the selected generated icon with Slax's original clover behind a hard drive,
@@ -277,7 +279,13 @@ reporting progress.
   Build unmodified GNU GRUB mkimage and fstest for Linux and Windows during
   installer compilation, using pinned and SHA256-verified GNU sources and
   matching i386-pc modules from the official GNU Windows release. Linux helpers
-  and the Linux installer use shared system libc/liblzma5; build with liblzma-dev.
+  and the Linux installer use shared system libc/liblzma5 with a glibc 2.27 and
+  GTK 3.22 baseline. Build them with GCC 8 in the disposable, authenticated Ubuntu
+  18.04 sysroot prepared by `installer/build-linux-root`; do not replace host
+  libraries. Use `-Os`, function/data sections and linker garbage collection.
+  Link Linux libstdc++ and libgcc statically, including GCC 8's filesystem archive.
+  Reject newer GLIBC imports and dynamic C++ runtimes during the build. Host build
+  prerequisites include bubblewrap, debootstrap and ubuntu-keyring.
   Windows helpers target XP and import only system DLLs, using static, threadless
   liblzma from pinned and SHA256-verified XZ sources.
   Package both sets and the common modules in `installers/grub-bios.tar.xz`,

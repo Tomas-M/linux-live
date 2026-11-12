@@ -1,0 +1,29 @@
+#!/bin/sh
+# Prepare an authenticated Ubuntu 18.04 sysroot for the Linux compatibility baseline.
+set -eu
+ROOT=${1:?Usage: build-linux-root DIRECTORY}
+chmod 755 "$ROOT"
+debootstrap --arch=amd64 --variant=minbase --components=main,universe \
+   --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg bionic "$ROOT" http://archive.ubuntu.com/ubuntu
+printf '%s\n' \
+   'deb http://archive.ubuntu.com/ubuntu bionic main universe' \
+   'deb http://archive.ubuntu.com/ubuntu bionic-updates main universe' \
+   'deb http://security.ubuntu.com/ubuntu bionic-security main universe' > "$ROOT/etc/apt/sources.list"
+# Prevent package scripts from starting services in the disposable build root.
+printf '#!/bin/sh\nexit 101\n' > "$ROOT/usr/sbin/policy-rc.d"
+chmod 755 "$ROOT/usr/sbin/policy-rc.d"
+
+# Give package tools a private /dev and /proc without exposing host block devices.
+in_root()
+{
+   bwrap --bind "$ROOT" / --dev /dev --proc /proc --unshare-pid --die-with-parent \
+      --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin /usr/bin/env DEBIAN_FRONTEND=noninteractive "$@"
+}
+in_root apt-get update
+in_root apt-get install --yes --no-install-recommends \
+   ca-certificates gcc-8 g++-8 make pkg-config libc6-dev libgtk-3-dev libudev-dev libblkid-dev liblzma-dev bison flex
+# Autoconf also probes an unversioned compiler for build-time generators.
+ln -s gcc-8 "$ROOT/usr/bin/gcc"
+ln -s g++-8 "$ROOT/usr/bin/g++"
+in_root apt-get clean
+rm -r "$ROOT/var/lib/apt/lists"

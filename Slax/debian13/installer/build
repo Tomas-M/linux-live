@@ -1,11 +1,13 @@
 #!/bin/sh
-# Compile both native frontends on Debian; runtime libraries already exist in Slax.
+# Compile native frontends with an older Linux ABI and system-only Windows imports.
 set -eu
 THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
 OUT=${1:-$THIS/../installers}
 TEMP=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer.XXXXXX")
-trap 'rm -r "$TEMP"' 0
+LINUX_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/slax-installer-linux.XXXXXX")
+trap 'rm -r "$TEMP" "$LINUX_ROOT"' 0
 mkdir -p "$OUT"
+unshare --mount --propagation private sh "$THIS/build-linux-root" "$LINUX_ROOT"
 
 # Embed the original PNG artwork without an image conversion or runtime data files.
 python3 - "$THIS" "$TEMP/images.h" <<'PY'
@@ -24,12 +26,18 @@ with Path(sys.argv[2]).open('w') as header:
 PY
 
 # Build matching native BIOS tools as one trusted, compressed media payload.
-sh "$THIS/build-grub" "$TEMP/grub" "$TEMP/grub-bios.tar.xz" "$TEMP/grub-assets-digest.h"
+sh "$THIS/build-grub" "$TEMP/grub" "$TEMP/grub-bios.tar.xz" "$TEMP/grub-assets-digest.h" "$LINUX_ROOT"
 
-g++ -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
-   -I"$TEMP" "$THIS/main.cpp" "$THIS/image.cpp" "$THIS/install.cpp" "$THIS/boot-menu.cpp" "$THIS/disk-format.cpp" "$THIS/firmware.cpp" \
-   "$THIS/linux-storage.cpp" "$THIS/linux.cpp" "$THIS/grub-assets.cpp" $(pkg-config --cflags --libs gtk+-3.0 libudev blkid liblzma) \
-   -o "$TEMP/slax-install-linux"
+# Keep every Linux input, including the static C++ runtime, on the same old baseline.
+bwrap --bind "$LINUX_ROOT" / --bind "$TEMP" /build --ro-bind "$THIS" /installer --dev /dev --proc /proc \
+   --unshare-pid --die-with-parent --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin /bin/sh -ec '
+   g++-8 -std=c++17 -Os -Wall -Wextra -Werror -Wno-deprecated-declarations -pthread \
+      -static-libstdc++ -static-libgcc -ffunction-sections -fdata-sections -Wl,--gc-sections \
+      -I/build $(pkg-config --cflags gtk+-3.0 libudev blkid liblzma | sed "s/-I/-isystem /g") \
+      /installer/main.cpp /installer/image.cpp /installer/install.cpp /installer/boot-menu.cpp /installer/disk-format.cpp /installer/firmware.cpp \
+      /installer/linux-storage.cpp /installer/linux.cpp /installer/grub-assets.cpp -Wl,-Bstatic -lstdc++fs -Wl,-Bdynamic \
+      $(pkg-config --libs gtk+-3.0 libudev blkid liblzma) -o /build/slax-install-linux
+'
 strip "$TEMP/slax-install-linux"
 
 # Helpers must not require newer shared-library symbols than the installer that launches them.
@@ -41,6 +49,9 @@ info=subprocess.check_output(['readelf','-l','-d',str(installer)],text=True)
 if 'INTERP' not in info or not {'libc.so.6','liblzma.so.5'}<=set(re.findall(r'\(NEEDED\).*\[(.*?)\]',info)): sys.exit('Linux installer must use shared libc and liblzma')
 if re.search(r'\((?:RPATH|RUNPATH)\)',info): sys.exit('Linux installer has a private library path')
 baseline=subprocess.check_output(['readelf','--version-info',str(installer)],text=True)
+if {'libstdc++.so.6','libgcc_s.so.1'}&set(re.findall(r'\(NEEDED\).*\[(.*?)\]',info)): sys.exit('Linux C++ runtimes must be static')
+required=max((tuple(map(int,version.split('.'))) for version in re.findall(r'\bGLIBC_([0-9]+(?:\.[0-9]+)+)\b',baseline)),default=())
+if required>(2,27): sys.exit('Linux installer requires glibc newer than 2.27')
 for tool in (root/'grub/assets/linux').iterdir():
     info=subprocess.check_output(['readelf','--version-info',str(tool)],text=True)
     for library in ('GLIBC','XZ'):
@@ -49,6 +60,10 @@ for tool in (root/'grub/assets/linux').iterdir():
         supported=max((tuple(map(int,version.split('.'))) for version in re.findall(pattern,baseline)),default=())
         if required>supported: sys.exit(f'{tool.name} requires {library}_{".".join(map(str,required))}, newer than the installer')
 PY
+
+# Pack Linux only after checking its original ELF dependencies and symbol versions.
+upx --best --lzma --no-progress "$TEMP/slax-install-linux"
+upx -t "$TEMP/slax-install-linux"
 
 # Give the ordinary PE executable a clear identity in Windows file properties.
 python3 - "$THIS" "$TEMP/resource.rc" <<'PY'
@@ -94,6 +109,5 @@ i686-w64-mingw32-g++-posix -std=c++17 -Os -Wall -Wextra -Werror -Wno-cast-functi
    "$THIS/windows-storage.cpp" "$THIS/windows.cpp" "$THIS/grub-assets.cpp" "$TEMP/resource.o" "$TEMP/grub/windows/sysroot/lib/liblzma.a" \
    -lgdiplus -lsetupapi -lcomdlg32 -lcomctl32 -lshell32 -lole32 -ladvapi32 -lgdi32 -luuid -o "$TEMP/slax-install.exe"
 i686-w64-mingw32-strip "$TEMP/slax-install.exe"
-# Keep both executables unpacked; avoid executable packers and their antivirus heuristics.
 install -m 755 "$TEMP/slax-install-linux" "$TEMP/slax-install.exe" "$OUT/"
 install -m 644 "$TEMP/grub-bios.tar.xz" "$OUT/"
