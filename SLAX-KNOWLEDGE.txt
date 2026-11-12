@@ -1,0 +1,203 @@
+SLAX USER KNOWLEDGE
+Scope: Slax 2026.11, Debian 13 (trixie), 64-bit x86; shipped defaults.
+Prefer graphical instructions for desktop users. Users can customize defaults;
+check the running system when needed. Older Slax guides may describe other versions.
+
+DESKTOP
+- Fluxbox manages windows and four workspaces. PCManFM supplies desktop icons,
+  wallpaper and File Manager. The bottom panel uses Xfce components.
+- Open the launcher: click the bottom-left Slax button, tap Super (Windows key),
+  or press Alt+F2 / Ctrl+Esc. Type to search apps or run a command; browse categories
+  with the sidebar. Esc dismisses it.
+- Click a taskbar icon to select its application; hover for window previews and
+  click a preview to activate it. Alt+Tab switches windows; Alt+Shift+Tab reverses.
+  Alt+F3 opens the window overview. The taskbar normally shows the current workspace.
+- Click the workspace pager near the clock to switch workspace.
+- Click the speaker icon in the taskbar to open the volume slider and mute toggle.
+  Scroll over the icon to adjust volume.
+- Click EN (or the current layout label) in the taskbar to select a keyboard layout.
+  Ctrl+Shift, Alt+Shift and Super+Space switch layouts when the keys are released.
+- Right-click empty desktop space for Create New and Desktop Preferences.
+  Desktop Preferences controls wallpaper, icon appearance and screen resolution.
+  After a resolution change, choose Keep changes within 10 seconds; Revert or
+  the timeout restores the previous mode.
+- Drag title bars to move windows and borders/corners to resize them. Double-click
+  a title bar to maximize/restore; right-click it for window options.
+  Maximized windows leave room for the panel after it is moved or resized.
+- Launcher > Session provides Logout, Restart and Shut down. Logout ends the
+  graphical session. Restart/Shut down act immediately: save open work first.
+
+FILES AND DRIVES
+- Open File Manager from the launcher. Double-click files/folders to open them.
+  The sidebar shows Home Folder, mounted drives and bookmarks. Ctrl+L focuses
+  the editable path bar; enter a path and press Enter or click Go.
+- Toolbar: Back, Forward, History, Up. Right-click files or empty space for actions
+  such as Create New, Rename and Properties. Ctrl+C/Ctrl+V copies, Ctrl+X/Ctrl+V
+  moves, Ctrl+H toggles hidden files, F2 renames the selection.
+- Delete permanently removes files after confirmation with the default settings.
+- Desktop, Documents, Downloads, Music, Pictures, Public, Templates and Videos
+  under /root share their contents with the corresponding /home/guest folders.
+  Browser downloads and files accessed through root's desktop use the same folders.
+- With automount enabled, attached filesystems appear in File Manager and under
+  /media, normally /media/DEVICE (e.g. /media/sdb1). Click the circular unmount button
+  beside an ordinary mounted drive before unplugging it. Boot/session disks remain
+  mounted while Slax uses them.
+- Right-click a local .iso > Mount to browse it read-only under /media/ISO-...;
+  its sidebar entry has an unmount button.
+- Print Screen (fbprintscreen) saves a screenshot in ~/Pictures and opens a viewer.
+
+NETWORK, AUDIO AND KEYBOARD
+- Open Net Manager from the launcher or network tray icon to select wired/Wi-Fi
+  connections and enter credentials. ConnMan provides networking and time sync;
+  connmanctl is its command-line interface.
+- Moving the volume slider unmutes; mute remembers the selected level.
+  Right-click the speaker icon for additional audio settings.
+- In the keyboard menu, Show all lists additional available direct-input layouts
+  alphabetically.
+- Layout shortcuts initially cycle the main flagged layouts. Picking a non-English
+  layout in the menu, or using it continuously for 30 seconds, remembers it as the
+  alternate; shortcuts then toggle English and that alternate. A new menu selection
+  replaces it. The active layout and alternate are restored on login in a persistent
+  session.
+- VirtualBox, VMware and QEMU/KVM with SPICE have clipboard/resize integration;
+  enable corresponding host integration. Host shares: VirtualBox /media/sf_*,
+  VMware /mnt/hgfs.
+
+GLOBAL SHORTCUTS
+  Alt+F1                Terminal (xterm).
+  Alt+F2 / Ctrl+Esc     Application/command launcher; a bare Super tap also opens it.
+  Alt+F3               Window overview.
+  Alt+Tab              Next window; add Shift for previous.
+  Alt+F4 / Alt+F9      Close / minimize window.
+  Alt+F10 / Alt+F11    Maximize / fullscreen window.
+  Alt+Space            Window menu.
+  Alt+left/right drag Move/resize from inside a window.
+  Ctrl+Alt+Left/Right Previous/next workspace.
+  Ctrl+F1..F4          Select workspace 1..4.
+  Super+Left/Right    Send window to previous/next workspace.
+  Ctrl+Super+Left/Right Send window and follow it.
+  Print                Screenshot.
+Ctrl+drag a title bar onto another window to group them as Fluxbox tabs;
+Super+Tab switches grouped tabs. These differ from File Manager's own tabs.
+
+APPLICATIONS AND PACKAGES
+- Included: Web Browser (Chromium), File Manager (PCManFM), Terminal (xterm),
+  Text Editor (SciTE), Calculator (galculator), X Archiver, Net Manager,
+  Partition Manager, Slax Installer and Slax Assistant.
+- Click-to-install entries: Drawing, Video Player (VLC), Remote Desktop (Remmina),
+  Task Manager (LXTask), Document Scanner (Simple Scan), CD/DVD Burner (Xfburn),
+  Mines and Sudoku. Click normally: fbinstall downloads the required packages
+  and launches the app. Subsequent launches open it directly. First use needs
+  internet; persistent sessions retain installed applications.
+- Debian APT manages software: apt-get update; apt-get install PACKAGE.
+  Search with apt-cache search TERM. The default desktop/terminal run as root,
+  so no sudo prefix is needed. apt-mark showhold lists the kernel and customized
+  desktop packages held to preserve matching Slax boot files and desktop behavior.
+- Launch Chromium through Web Browser or fbliveapp chromium; it runs as guest
+  with its browser sandbox. Video Player also runs as guest.
+- Slax Assistant (slax-ai) starts linux-assistant and opens its local interface
+  in a dedicated browser app.
+
+BOOT AND PERSISTENCE
+- Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's
+  signed UEFI chain supports Secure Boot. Esc during the five-second countdown
+  reveals the full boot menu.
+- Resume previous session automatically is the default: resume the most recently
+  used saved session across writable disks; on a writable boot medium, the first
+  session can be created automatically. Session changes are saved as you work.
+- Choose session during startup: select a saved session or Start a new session,
+  choose its writable disk and enter a name. In the session list, F4 duplicates
+  a session on the same disk; F6 renames it. Esc there continues with changes in RAM.
+- Run Slax from RAM (copy to ram) copies the complete Slax source into memory,
+  allowing removal of the original medium. This entry keeps system changes in RAM;
+  save files to a mounted drive to retain them after shutdown. This entry also
+  adds noautomount boot parameter, so disks are not automatically mounted.
+- Start Slax in text mode only (no desktop) opens a console session. Run startx
+  from a logged-in console to start the graphical desktop.
+- Sessions are under slax/changes on the selected writable disk. Linux-compatible
+  storage uses native directories; FAT/exFAT/NTFS use dynamically allocated containers.
+  Back up the complete session directory while inactive, after a normal shutdown.
+- Files saved directly to mounted drives remain independently of the Slax session.
+  savechanges exports changes as a module; ordinary persistence saves automatically.
+
+INSTALLATION AND DISKS
+- Open Slax Installer or run slax-install-linux. Media paths:
+  /slax/installer/slax-install-linux on Linux; slax-install.exe beside it on Windows.
+- Wizard: Welcome > Slax source > Target drive > Installation > Finish.
+  Browse selects an ISO or Slax directory (a parent containing slax also works).
+  The running source can be detected, including copy-to-RAM. Choose a target,
+  press Next, review the plan and approve the installation.
+- Erase unchecked preserves unrelated files and existing systems. Updating an
+  existing slax directory replaces matching source files, retaining unmatched
+  files and the complete slax/changes tree.
+- Erase entire selected disk affects ALL its partitions, including hidden ones;
+  check the disk and sibling list in the confirmation. Eligible target partitions
+  are larger than 1 GB. Boot options depend on the actual layout. After completion,
+  reboot and select the target drive in the computer's boot menu.
+- Partition Manager edits partition layouts/filesystems: Add to plan > Review
+  changes > Apply changes. Slax Installer copies Slax and prepares booting.
+- A USB made by directly writing the ISO has separate instructions on USB-SPACE.
+  On Windows, usb-space.exe (Use USB Space) makes unused capacity into USB-DATA.
+  In Slax: Partition Manager > Repair layout if offered > create FAT32 in
+  Unallocated space > review/apply. The Slax installation is retained.
+
+MODULES AND CUSTOMIZATION
+- .sb files are compressed SquashFS filesystem modules. The shipped layers are
+  01-core, 02-firmware, 03-desktop and 04-chromium. Add compatible modules under
+  the boot source's slax/modules and reboot. Higher-numbered layers override
+  lower-numbered layers; persistent changes provide the writable layer above them.
+- slax/rootcopy mirrors absolute paths: rootcopy/etc/example.conf is copied to
+  /etc/example.conf at boot. Retain required permissions and ownership.
+- Source locations: /run/initramfs/memory/data/slax, .../iso/slax or .../toram
+  (all under /run/initramfs/memory). Use a writable source or recreate an ISO
+  to distribute extra modules/rootcopy files.
+
+SLAX-SPECIFIC COMMANDS
+Filesystem/module commands run as root; quote paths containing spaces.
+  slax list
+    Show loaded modules and source files.
+  savechanges /path/99-custom.sb [changes_directory]
+    Export changed files to a module, filtering caches/logs/runtime files.
+    Choose a new file on a writable drive. Without arguments, writes
+    99-changes-N.sb into the boot data's modules folder; saves in the same boot
+    reuse that filename.
+  mkdir /tmp/edit.sb; sb2dir module.sb /tmp/edit.sb
+    Extract into an existing directory, keeping the original module.
+  dir2sb /tmp/edit.sb /path/99-custom.sb
+    Pack into a new module. Sources ending in .sb or named squashfs-root contribute
+    their contents; other source names include the directory itself.
+  sb FILE_OR_DIRECTORY [output]
+    Conversion wrapper. Without an output, sb FILE.sb replaces the module with
+    a RAM-backed editable directory; run the same command again to repack it.
+    For an input named exactly initrfs.img, sb initrfs.img unpacks the XZ initramfs
+    into a RAM-backed directory; run it again to repack the image in place.
+    Initramfs mode ignores [output]; other image names need the direct helpers below.
+    rmsbdir FILE.sb (or sb rm FILE.sb / sb rmdir FILE.sb) discards that tree.
+  genslaxiso [-e exclude_regex] [-r rootcopy_dir] target.iso [module.sb ...]
+    Recreate a BIOS/UEFI ISO from the boot source; add supplied modules and
+    optionally replace rootcopy. Saved sessions are excluded. Example:
+    genslaxiso -r /path/rootcopy /media/DRIVE/custom.iso /path/99-custom.sb
+  fbappselect / fbprintscreen / fblogout
+    Open launcher / take screenshot / open session actions.
+  fbsetkb us / fbsetkb cz
+    Select US English / Czech through the running keyboard tray.
+  fbliveapp COMMAND [ARGS...]
+    Run an app as guest from the root desktop with its own D-Bus session.
+  fbstartupnotify COMMAND [ARGS...]
+    Launch a command with desktop startup feedback.
+Advanced: pxe [INTERFACE] serves Slax over DHCP/TFTP/HTTP to BIOS/UEFI clients;
+use a network where starting DHCP is intended. initramfs_unpack initrfs.img and
+initramfs_pack initrfs.img edit/repack that image in place. slax activate FILE.sb
+and slax deactivate FILE.sb require AUFS; the current OverlayFS build loads
+added modules at the next boot instead.
+
+QUICK DIAGNOSTICS AND SETTINGS
+- System: cat /etc/slax-version; uname -r; cat /proc/cmdline.
+- Disks/space: lsblk -f; findmnt /; df -h. Boot logs: /var/log/boot.log,
+  journalctl -b. Network: ip addr; ip route; connmanctl services; rfkill list.
+  Audio devices: aplay -l. Terminal tools include htop and Midnight Commander (mc).
+- timedatectl set-timezone REGION/CITY changes timezone (default UTC).
+- Saved keyboard: ~/.config/slax/keyboard (or $XDG_CONFIG_HOME/slax/keyboard);
+  window shortcuts: ~/.fluxbox/keys; launcher appearance: /etc/xlunch/focus.ini.
+- tmux prefix is Ctrl+A: then | splits left/right, _ splits top/bottom;
+  Alt+Arrow selects panes. Mouse support is enabled.
