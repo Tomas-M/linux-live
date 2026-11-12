@@ -30,6 +30,11 @@
 #include <sstream>
 #include <filesystem>
 
+// Older build headers omit this standard ioctl; runtime use still requires diskseq.
+#ifndef BLKGETDISKSEQ
+#define BLKGETDISKSEQ _IOR(0x12,128,__u64)
+#endif
+
 // Preserve the native error as part of every actionable storage failure.
 static void failed(const std::string &message) { throw std::runtime_error(message+": "+strerror(errno)); }
 

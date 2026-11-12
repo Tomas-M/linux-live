@@ -13,7 +13,8 @@ actual access and compares copied boot files before BIOS activation. Matching
 runtime modules are then copied into the installed Slax boot directory.
 
 installer/build-grub compiles the unmodified GNU helpers during the Slax installer
-build. Linux helpers use shared system libc and liblzma5. Windows helpers target
+build. Linux helpers use shared system libc and liblzma5, built in the same
+glibc 2.27 sysroot as the Linux installer. Windows helpers target
 Windows XP onward and use only system DLLs, with static, threadless liblzma.
 No compiler, GRUB package, external unpacker or installation-time network is needed.
 

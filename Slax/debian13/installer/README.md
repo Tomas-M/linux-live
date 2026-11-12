@@ -3,7 +3,7 @@
 `../installers/slax-install-linux` runs in Slax. `slax-install.exe` is a standalone 32-bit
 Windows executable for Windows XP and later. Both perform real installations.
 The ISO places both executables in `/slax/installer`.
-The desktop module also installs the unpacked Linux executable in `/usr/bin`
+The desktop module also installs the UPX-compressed Linux executable in `/usr/bin`
 and provides a Slax Installer entry in the xlunch application menu.
 Its icon combines the original Slax clover, a hard drive, a down arrow and a USB
 drive. Bundled icon sizes stop at 64 pixels.
@@ -211,32 +211,40 @@ possible partial Slax files or partial erasure, with recovery metadata retained.
 
 Windows uses only system DLLs, including XP's GDI+. C++ and threading runtimes
 are static. Linux uses GTK 3, GLib, libudev, libblkid, shared liblzma5 and standard
-C/C++ libraries, with no system GRUB installation. No browser, .NET, WebView,
-PowerShell, WMI, VBS, downloaded font or installation-time internet is required.
-The current Linux build requires glibc 2.38 or newer and libstdc++ providing
-GLIBCXX_3.4.29. Supporting older distributions requires a build against an older
-library baseline; removing the system GRUB dependency does not change these GUI
-and C/C++ runtime requirements.
+C libraries and a statically linked C++ runtime, with no system GRUB installation.
+No browser, .NET, WebView, PowerShell, WMI, VBS, downloaded font or installation-time
+internet is required.
+The Linux compatibility baseline is glibc 2.27 and GTK 3.22. Linux builds use
+GCC 8 and libraries from an authenticated Ubuntu 18.04 sysroot; libstdc++ and
+libgcc are static. The GUI, libudev, libblkid and liblzma remain system libraries.
+The installer and its Linux GRUB helpers are rejected at build time if they
+import symbols requiring glibc newer than 2.27.
 Administrator/root access is needed. Optional Windows APIs are loaded dynamically;
 the PE subsystem is 5.1. The ISO reader rejects unsafe names, links, alias
 collisions and invalid extents. `--list-devices [ISO]` and `--check-iso FILE`
 are read-only diagnostics.
 
-Build both binaries on Debian:
+Build both binaries as root on amd64 Debian:
 
 ```sh
-apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 pkg-config libgtk-3-dev libudev-dev libblkid-dev liblzma-dev
+apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 bubblewrap debootstrap ubuntu-keyring upx-ucl
 sh Slax/debian13/installer/build
 ```
 
-The build strips both executables and keeps them unpacked. Windows ships as an
-ordinary PE with native product/version metadata and an explicit administrator
-manifest. Avoid executable packers and obfuscation to reduce unnecessary antivirus
-false positives. Linux's ELF is compressed by the desktop module's SquashFS.
+`build-linux-root` downloads signed Ubuntu packages into a disposable sysroot
+under `TMPDIR` (`/tmp` by default). Bubblewrap isolates its devices and process
+filesystem; no host libraries are replaced. Linux compilation uses `-Os`,
+function/data sections and linker garbage collection to minimize size.
+The build strips both executables, then packs Linux with `upx --best --lzma`
+and verifies it with `upx -t`. ELF dependency checks run before compression.
+The same packed Linux binary ships on the medium and in the desktop module.
+Windows remains unpacked, with native product/version metadata and an explicit
+administrator manifest, to reduce unnecessary antivirus false positives.
 `build-grub` compiles unmodified GNU GRUB 2.12 `grub-mkimage` and `grub-fstest`
 for both platforms from pinned, SHA-256-verified GNU sources. Linux helpers use
-shared system libc and liblzma5. Windows helpers target XP and use only system
-DLLs, with static, threadless liblzma built from pinned, SHA-256-verified XZ sources.
+shared system libc and liblzma5 from the same glibc 2.27 baseline. Windows helpers
+target XP and use only system DLLs, with static, threadless liblzma built from
+pinned, SHA-256-verified XZ sources.
 Both support LZMA-compressed BIOS cores.
 Matching i386-pc modules come from the verified official GNU Windows release.
 The helpers remain separate executables; they are compiled during our build,

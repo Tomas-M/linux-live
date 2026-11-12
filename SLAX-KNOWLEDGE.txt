@@ -123,6 +123,8 @@ BOOT AND PERSISTENCE
 INSTALLATION AND DISKS
 - Open Slax Installer or run slax-install-linux. Media paths:
   /slax/installer/slax-install-linux on Linux; slax-install.exe beside it on Windows.
+- Linux installer requirements: glibc 2.27 or newer, GTK 3.22 or newer, libudev,
+  libblkid and liblzma5. Its C++ runtime is included.
 - Wizard: Welcome > Slax source > Target drive > Installation > Finish.
   Browse selects an ISO or Slax directory (a parent containing slax also works).
   The running source can be detected, including copy-to-RAM. Choose a target,
