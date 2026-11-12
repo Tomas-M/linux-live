@@ -7,4 +7,5 @@ Linux Live Kit
 Slax
 ----
 
+- Respect panel position and size when maximizing windows, including on multiple monitors.
 - Keep desktop-owned dialogs above ordinary windows without raising the desktop.

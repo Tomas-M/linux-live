@@ -70,8 +70,6 @@ fi
    while [ "$(wmctrl -l | grep xfce4-panel)" = "" ]; do
       sleep 0.1
    done
-   xprop -id $(wmctrl -l | grep xfce4-panel | cut -d " " -f 1) -format _NET_WM_STRUT 32c -set _NET_WM_STRUT "0,0,0,52"
-
    picom -b --config /etc/picom.conf
    # Retain window snapshots for Alt+Tab, including minimized applications.
    # Fluxbox commands include the default screen in DISPLAY; match its IPC path.

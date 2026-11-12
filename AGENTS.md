@@ -889,6 +889,10 @@ must follow the general Slax repair rules above.
   and external tabs inside the selected monitor's work area, respecting panel
   struts. Oversized windows keep their upper-left corner accessible. Preserve
   explicit application positions and dialog placement handled before this policy.
+  `fluxbox-struts.diff` supports `_NET_WM_STRUT_PARTIAL`, preferring it over legacy
+  struts and clipping root-coordinate reservations to each monitor. Refresh struts
+  when properties or monitor geometry change, including removal. Let Xfce panel
+  manage its own struts; do not reserve a fixed bottom strip in Fluxbox startup.
   `fluxbox-desktop-dialogs.diff` keeps desktop-owned dialogs in the normal
   application layer. Stop transient stacking groups at desktop parents, preserving
   the desktop's bottom layer and ordinary application/dialog relationships.
