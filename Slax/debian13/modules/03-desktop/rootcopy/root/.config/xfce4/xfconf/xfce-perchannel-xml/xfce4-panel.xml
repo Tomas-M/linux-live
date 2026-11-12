@@ -23,7 +23,7 @@
         <value type="int" value="12"/>
         <value type="int" value="13"/>
       </property>
-      <property name="disable-struts" type="bool" value="true"/>
+      <property name="enable-struts" type="bool" value="true"/>
       <property name="enter-opacity" type="uint" value="84"/>
       <property name="leave-opacity" type="uint" value="84"/>
       <property name="length-adjust" type="bool" value="true"/>
