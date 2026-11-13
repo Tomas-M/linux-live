@@ -2,8 +2,9 @@
 
 `../installers/slax-install-linux` runs in Slax. `slax-install.exe` is a standalone 32-bit
 Windows executable for Windows XP and later. Both perform real installations.
-The ISO places both executables in `/slax/installer`.
-The desktop module also installs the UPX-compressed Linux executable in `/usr/bin`
+The ISO places both executables in `/slax/installer` and compresses only its
+Linux copy with UPX while preparing the medium.
+The desktop module installs the unpacked `slax-install-linux` ELF in `/usr/bin`
 and provides a Slax Installer entry in the xlunch application menu.
 Its icon combines the original Slax clover, a hard drive, a down arrow and a USB
 drive. Bundled icon sizes stop at 64 pixels.
@@ -227,7 +228,7 @@ are read-only diagnostics.
 Build both binaries as root on amd64 Debian:
 
 ```sh
-apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 bubblewrap debootstrap ubuntu-keyring upx-ucl
+apt-get install --no-install-recommends g++ g++-mingw-w64-i686 make bison flex gettext python3 bubblewrap debootstrap ubuntu-keyring
 sh Slax/debian13/installer/build
 ```
 
@@ -235,9 +236,10 @@ sh Slax/debian13/installer/build
 under `TMPDIR` (`/tmp` by default). Bubblewrap isolates its devices and process
 filesystem; no host libraries are replaced. Linux compilation uses `-Os`,
 function/data sections and linker garbage collection to minimize size.
-The build strips both executables, then packs Linux with `upx --best --lzma`
-and verifies it with `upx -t`. ELF dependency checks run before compression.
-The same packed Linux binary ships on the medium and in the desktop module.
+The installer build strips both executables and keeps them unpacked, checking
+the Linux ELF dependencies and symbol versions. The Slax ISO build installs
+`upx-ucl`, packs only the media copy with `upx --best --lzma` and verifies it with
+`upx -t`. The desktop module uses the unpacked ELF, compressed by SquashFS.
 Windows remains unpacked, with native product/version metadata and an explicit
 administrator manifest, to reduce unnecessary antivirus false positives.
 `build-grub` compiles unmodified GNU GRUB 2.12 `grub-mkimage` and `grub-fstest`

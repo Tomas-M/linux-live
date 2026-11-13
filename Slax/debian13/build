@@ -20,7 +20,7 @@ modprobe overlay
 grep -qw overlay /proc/filesystems
 apt-get update
 apt-get install -y --no-install-recommends debootstrap squashfs-tools xorriso dosfstools \
-   grub-pc-bin grub-efi-amd64-bin grub-common fdisk xz-utils cpio git make gcc libc6-dev sbsigntool
+   grub-pc-bin grub-efi-amd64-bin grub-common fdisk xz-utils cpio git make gcc libc6-dev sbsigntool upx-ucl
 
 BUILD=$(mktemp -d /tmp/slax-build.XXXXXX)
 trap 'rm -r "$BUILD"' 0
@@ -34,6 +34,9 @@ mkdir -p "$BOOT" "$MEDIA/slax/changes" "$MEDIA/slax/installer"
 cp -a "$KIT/bootfiles/." "$BOOT/"
 cp -a "$THIS/bootfiles/." "$BOOT/"
 install -m 755 "$THIS/installers/slax-install-linux" "$THIS/installers/slax-install.exe" "$MEDIA/slax/installer/"
+# Pack only the media copy; the prebuilt installer and desktop module keep the plain ELF.
+upx --best --lzma --no-progress "$MEDIA/slax/installer/slax-install-linux"
+upx -t "$MEDIA/slax/installer/slax-install-linux"
 mkdir -p "$BOOT/grub/bios"
 install -m 644 "$THIS/installers/grub-bios.tar.xz" "$BOOT/grub/bios/tools.tar.xz"
 cp "$THIS/README.txt" "$MEDIA/"

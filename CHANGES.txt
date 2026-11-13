@@ -14,3 +14,5 @@ Slax
 - Allow the active local guest session to restart or shut down through logind.
 - Replace shared-folder bind mounts with ACLs and XDG directories, keeping root
   and guest downloads separate, including their sandboxed application profiles.
+- Keep the Linux installer UPX-compressed on installation media and unpacked in
+  the running desktop.
