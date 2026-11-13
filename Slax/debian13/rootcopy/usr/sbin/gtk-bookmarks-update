@@ -1,33 +1,40 @@
 #!/bin/bash
 
-# Serialize mounting, cleanup and bookmark updates with one automatically released lock.
-mkdir -p /run/lock
-exec 9>/run/lock/slax-mount-iso.lock
+# Root serializes ISO mounting and cleanup; other desktops lock only their own bookmarks.
+if [ "$(id -u)" = 0 ]; then
+   mkdir -p /run/lock
+   exec 9>/run/lock/slax-mount-iso.lock
+else
+   mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+   exec 9>"${XDG_CACHE_HOME:-$HOME/.cache}/slax-bookmarks.lock"
+fi
 flock 9
-BOOKMARKS=/root/.gtk-bookmarks
-OTHER=/root/.config/gtk-3.0/bookmarks
+BOOKMARKS=$HOME/.gtk-bookmarks
+OTHER=${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks
 # Prefer GTK 3's current bookmarks and keep GTK 2 file choosers synchronized.
 if [ -f "$OTHER" ]; then
    BOOKMARKS=$OTHER
-   OTHER=/root/.gtk-bookmarks
+   OTHER=$HOME/.gtk-bookmarks
 fi
-mkdir -p /root/.config/gtk-3.0
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0"
 
 # Remove only empty mount points reserved for ISO images after they are unmounted.
-for DIR in /media/ISO-*; do
-   if printf '%s\n' "${DIR##*/}" | grep -Eq '^ISO-[0-9]+-[0-9]+$'; then
-      if ! mountpoint -q "$DIR"; then
-         rmdir -- "$DIR" 2>/dev/null || true
+if [ "$(id -u)" = 0 ]; then
+   for DIR in /media/ISO-*; do
+      if printf '%s\n' "${DIR##*/}" | grep -Eq '^ISO-[0-9]+-[0-9]+$'; then
+         if ! mountpoint -q "$DIR"; then
+            rmdir -- "$DIR" 2>/dev/null || true
+         fi
       fi
-   fi
-done
+   done
+fi
 
-cat $BOOKMARKS | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' > $BOOKMARKS.tmp 2>/dev/null
+cat "$BOOKMARKS" 2>/dev/null | fgrep -v ///media/ | fgrep -v "file:/// /" | egrep -v '^$' > "$BOOKMARKS.tmp" 2>/dev/null
 ls -1 /media | sort | while read LINE; do
-   echo "file:///media/$LINE $LINE" >> $BOOKMARKS.tmp
+   echo "file:///media/$LINE $LINE" >> "$BOOKMARKS.tmp"
 done
 
-echo "file:/// /" >> $BOOKMARKS.tmp # add root at the beginning
+echo "file:/// /" >> "$BOOKMARKS.tmp" # add root at the beginning
 
-mv -f $BOOKMARKS.tmp $BOOKMARKS
+mv -f "$BOOKMARKS.tmp" "$BOOKMARKS"
 cp "$BOOKMARKS" "$OTHER"

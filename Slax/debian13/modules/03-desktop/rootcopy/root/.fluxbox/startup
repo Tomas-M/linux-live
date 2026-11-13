@@ -4,26 +4,34 @@
 #
 # Lines starting with a '#' are ignored.
 
-# Change your keymap:
-xmodmap "/root/.Xmodmap"
+# Logout ends this window manager and lets xinit stop its own X server.
+SLAX_DESKTOP_PID=$$
+export SLAX_DESKTOP_PID
+
+# Apply an optional user keymap.
+if [ -f "$HOME/.Xmodmap" ]; then
+   xmodmap "$HOME/.Xmodmap"
+fi
 
 # merge xresource settings
-xrdb -merge ~/.Xresources
+xrdb -merge "$HOME/.Xresources"
 
 # Restore the keyboard tray's saved layout and preferred alternate.
 fbkeyboard &
 KEYBOARDPID=$!
 
 # setup bookmarks for file manager
-gtk-bookmarks-update
+/usr/sbin/gtk-bookmarks-update
 
 # Share common directories with guest user. This is necessary
 # because some apps like chromium must be running under guest
-for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
-   if ! mountpoint /root/$dir; then
-      mount --bind /home/guest/$dir /root/$dir
-   fi
-done
+if [ "$(id -u)" = 0 ]; then
+   for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
+      if ! mountpoint -q "/root/$dir"; then
+         mount --bind "/home/guest/$dir" "/root/$dir"
+      fi
+   done
+fi
 
 # Set the background and use the cursor theme and size selected by Xresources.
 fbsetroot -solid '#010101'
@@ -37,6 +45,21 @@ xset -dpms
 # preload picom and fluxbox to cache
 (picom --help; fluxbox --help; xfce4-panel --help) >/dev/null 2>&1
 
+# Keep Skippy's shared styling while giving each user private IPC endpoints.
+SKIPPY_RUNTIME=${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}
+SLAX_SKIPPY_CONFIG=$SKIPPY_RUNTIME/slax-skippy.rc
+export SKIPPY_RUNTIME SLAX_SKIPPY_CONFIG
+mkdir -p "$SKIPPY_RUNTIME"
+awk '
+   /^\[/ { in_system=($0 == "[system]") }
+   in_system && /^[[:space:]]*(daemonPath|clientPath)[[:space:]]*=/ { next }
+   { print }
+   /^\[system\]$/ {
+      print "daemonPath = " ENVIRON["SKIPPY_RUNTIME"] "/slax-skippy-daemon"
+      print "clientPath = " ENVIRON["SKIPPY_RUNTIME"] "/slax-skippy-client"
+   }
+' /etc/xdg/skippy-xd.rc > "$SLAX_SKIPPY_CONFIG"
+
 # Debian-local change:
 #   - fbautostart has been added with a quick hack to check to see if it
 #     exists. If it does, we'll start it up by default.
@@ -49,7 +72,7 @@ fi
 slax-guest-desktop &
 
 # Apply the startup modes directly; SPICE follows the host's preferred mode.
-if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ] && [ "$(virt-what | grep -Ei 'virtualbox|vmware|qemu|kvm')" != "" ]; then
+if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ] && [ "$(systemd-detect-virt --vm | grep -Ex 'oracle|vmware|qemu|kvm')" != "" ]; then
    SCREEN_OUTPUT=$(xrandr --query | awk '$2 == "connected" { print $1; exit }')
    for MODE in 1440x900 1280x800; do
       xrandr --output "$SCREEN_OUTPUT" --mode "$MODE"
@@ -77,7 +100,7 @@ fi
    if ! printf '%s\n' "${DISPLAY##*:}" | grep -q '\.'; then
       SKIPPYDISPLAY=$DISPLAY.0
    fi
-   DISPLAY=$SKIPPYDISPLAY skippy-xd --start-daemon &
+   DISPLAY=$SKIPPYDISPLAY skippy-xd --config "$SLAX_SKIPPY_CONFIG" --start-daemon &
    volumeicon &
    VOLUMEPID=$!
    connman-gtk --tray &

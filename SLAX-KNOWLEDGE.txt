@@ -114,6 +114,11 @@ BOOT AND PERSISTENCE
   adds noautomount boot parameter, so disks are not automatically mounted.
 - Start Slax in text mode only (no desktop) opens a console session. Run startx
   from a logged-in console to start the graphical desktop.
+  The guest account (password: guest) starts the same Slax desktop, with its own
+  settings and files. Restart and Shut down work for the active local guest
+  session. Other administrative tasks still require root.
+  Text mode retains nomodeset for emergency graphics; when only a firmware
+  framebuffer is available, startx uses it and the resolution may be fixed.
 - Sessions are under slax/changes on the selected writable disk. Linux-compatible
   storage uses native directories; FAT/exFAT/NTFS use dynamically allocated containers.
   Back up the complete session directory while inactive, after a normal shutdown.

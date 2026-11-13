@@ -12,7 +12,7 @@
 /* Read the current position before X waits for its first physical mouse event. */
 int main(void)
 {
-    int fd=open("/dev/vboxguest", O_RDWR);
+    int fd=open("/dev/vboxuser", O_RDWR);
     if (fd < 0) return 0;
     struct {
         struct vbg_ioctl_hdr header;

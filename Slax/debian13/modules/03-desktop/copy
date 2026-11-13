@@ -42,6 +42,7 @@ for FILE in rootcopy/usr/bin/*; do
    chmod 755 "/usr/bin/$(basename "$FILE")"
 done
 chmod 755 /root/.xinitrc /root/.fluxbox/startup
+chmod 755 /etc/X11/xinit/xserverrc
 chmod 755 /usr/libexec/slax-fbcon-palette /usr/libexec/fbmenu-driver
 chmod 644 /usr/lib/systemd/system/xorg.service /etc/systemd/system/getty@tty1.service.d/xorg.conf /etc/systemd/system/getty@.service.d/framebuffer.conf
 chmod 644 /usr/lib/systemd/system/slax-shutdown-splash.service
@@ -54,6 +55,13 @@ cp /artifacts/03-desktop/libslax-app-style.so /usr/lib/x86_64-linux-gnu/gtk-3.0/
 printf '\ngtk-dialogs-use-header=true\ngtk-modules=slax-app-style\n' >> /etc/gtk-3.0/settings.ini
 # Apply the shared GTK file chooser defaults after restoring schema overrides.
 glib-compile-schemas /usr/share/glib-2.0/schemas
+
+# Root is the single source of desktop defaults for guest and newly created accounts.
+for USERHOME in /home/guest /etc/skel; do
+   for CONFIG in .xinitrc .Xresources .gtkrc-2.0 .fluxbox .config; do
+      cp -a "/root/$CONFIG" "$USERHOME/"
+   done
+done
 
 # Set ownership after restoring the guest's desktop defaults.
 for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do

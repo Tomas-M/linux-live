@@ -49,7 +49,7 @@ session.screen0.strftimeFormat:	%H:%M
 session.screen0.workspaces:	4
 session.screen0.allowRemoteActions:	false
 session.screen0.focusModel:	ClickFocus
-session.screen0.windowMenu:	/root/.fluxbox/windowmenu
+session.screen0.windowMenu:	~/.fluxbox/windowmenu
 session.screen0.workspaceNames:	Workspace 1             Ctrl+F1,Workspace 2             Ctrl+F2,Workspace 3             Ctrl+F3,Workspace 4             Ctrl+F4,
 session.screen0.edgeSnapThreshold:	10
 session.screen0.showwindowposition:	false
@@ -65,12 +65,12 @@ session.colorsPerChannel:	4
 session.forcePseudoTransparency:	true
 session.ignoreBorder:	false
 session.doubleClickInterval:	250
-session.appsFile:	/root/.fluxbox/apps
+session.appsFile:	~/.fluxbox/apps
 session.tabPadding:	0
 session.cacheLife:	5
 session.cacheMax:	200
-session.styleOverlay:	/root/.fluxbox/overlay
+session.styleOverlay:	~/.fluxbox/overlay
 session.autoRaiseDelay:	250
-session.slitlistFile:	/root/.fluxbox/slitlist
+session.slitlistFile:	~/.fluxbox/slitlist
 session.tabsAttachArea:	Window
 session.configVersion:	13

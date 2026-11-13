@@ -1,0 +1,2 @@
+# The kernel restricts vboxuser to unprivileged desktop requests.
+SUBSYSTEM=="misc", KERNEL=="vboxuser", MODE="0666"

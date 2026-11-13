@@ -1301,6 +1301,19 @@ must follow the general Slax repair rules above.
   After copying guest defaults, restore `/home/guest` ownership to `guest:users`
   before repacking, matching `03-desktop/copy`; root-owned configuration
   directories prevent sandboxed Chromium from creating application profiles.
+- Keep desktop defaults canonical in `03-desktop/rootcopy/root`. Its copy phase
+  merges `.xinitrc`, `.Xresources`, `.gtkrc-2.0`, `.fluxbox` and `.config` into
+  `/home/guest` and `/etc/skel`, retaining guest-only application settings and
+  restoring guest ownership. Use home-relative configuration paths. Root alone
+  binds its common folders to guest's; other desktops update their own bookmarks.
+  All accounts start through Debian's Xsession. Logout ends the session's own
+  Fluxbox PID; guest power actions use logind and stock polkit authorization for
+  the active local session. Ship polkitd in the desktop module.
+  Generate Skippy's per-user runtime config from the shared system style, overriding
+  its daemon/client FIFO paths; pass it to the daemon and all Fluxbox shortcuts.
+  Detect the desktop hypervisor with unprivileged `systemd-detect-virt`. Keep
+  `/dev/vboxguest` restricted and expose only the kernel's standard `/dev/vboxuser`
+  interface to desktop users, including `fbvboxpointer`.
 - Slax's module command is `sb`, with `sb2dir` and `dir2sb` underneath it.
   Install these existing tools on the host when useful. A directory ending
   in `.sb` is packed without adding its directory name inside the module.
@@ -1502,6 +1515,12 @@ must follow the general Slax repair rules above.
   Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
   non-quiet boots preserve the kernel's console log level. On BIOS set `gfxpayload=text`;
   on UEFI preserve the firmware framebuffer so the console stays visible.
+  Keep nomodeset as the emergency graphics choice. Xinit's shared xserverrc uses
+  the generic fbdev configuration only with nomodeset, an available framebuffer
+  and no DRM card; retain native autodetection and explicit Xorg configurations
+  elsewhere. Do not force a GPU driver, mode or software cursor. The Fluxbox
+  head-menu patch clears its submenu pointer after the owning menu deletes it,
+  so a monitor-information change cannot reuse a freed Xinerama submenu.
   Use `loglevel=5 systemd.show_status=auto` for the text entry: keep warnings and
   errors visible without routine kernel/systemd messages. Keep full kernel and
   journal records; `debug` still enables verbose console output. Omit obsolete
