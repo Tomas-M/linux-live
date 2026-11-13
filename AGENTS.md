@@ -1194,6 +1194,8 @@ must follow the general Slax repair rules above.
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` gives groups four background
   levels: transparent at rest, 12 percent on hover, 25 percent when selected and
   40 percent when selected and hovered. Hover alone stays weaker than selection.
+  Give the Start launcher the same 12 percent hover through GTK CSS, without
+  changing its geometry or patching the panel.
   Import it for root, guest and new users alongside scrollbar styles.
 - Start the panel and Picom on a near-black (`#010101`) root pixmap, then
   wait for visible keyboard, volume and network tray windows before the panel's
