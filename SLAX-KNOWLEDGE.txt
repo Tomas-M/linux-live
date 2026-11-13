@@ -35,9 +35,11 @@ FILES AND DRIVES
   such as Create New, Rename and Properties. Ctrl+C/Ctrl+V copies, Ctrl+X/Ctrl+V
   moves, Ctrl+H toggles hidden files, F2 renames the selection.
 - Delete permanently removes files after confirmation with the default settings.
-- Desktop, Documents, Downloads, Music, Pictures, Public, Templates and Videos
-  under /root share their contents with the corresponding /home/guest folders.
-  Browser downloads and files accessed through root's desktop use the same folders.
+- Each desktop uses its own Desktop, Documents, Downloads, Music, Pictures,
+  Public, Templates and Videos folders: /root for root, /home/guest for guest.
+  Chromium launched from root runs as guest with a separate browser profile and
+  saves downloads to /root/Downloads by default. Chromium in the guest desktop
+  uses /home/guest/Downloads. Other standard document folders follow the same rule.
 - With automount enabled, attached filesystems appear in File Manager and under
   /media, normally /media/DEVICE (e.g. /media/sdb1). Click the circular unmount button
   beside an ordinary mounted drive before unplugging it. Boot/session disks remain

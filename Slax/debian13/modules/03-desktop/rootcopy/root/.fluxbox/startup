@@ -23,16 +23,6 @@ KEYBOARDPID=$!
 # setup bookmarks for file manager
 /usr/sbin/gtk-bookmarks-update
 
-# Share common directories with guest user. This is necessary
-# because some apps like chromium must be running under guest
-if [ "$(id -u)" = 0 ]; then
-   for dir in Desktop Documents Downloads Music Pictures Public Templates Videos; do
-      if ! mountpoint -q "/root/$dir"; then
-         mount --bind "/home/guest/$dir" "/root/$dir"
-      fi
-   done
-fi
-
 # Set the background and use the cursor theme and size selected by Xresources.
 fbsetroot -solid '#010101'
 fbvboxpointer

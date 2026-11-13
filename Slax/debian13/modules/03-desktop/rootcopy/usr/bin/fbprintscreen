@@ -1,8 +1,8 @@
 #!/bin/bash
 
-PICTURES=~/Pictures
-mkdir -p $PICTURES
-cd $PICTURES
+PICTURES=$(xdg-user-dir PICTURES)
+mkdir -p "$PICTURES"
+cd "$PICTURES"
 
 # make screenshot
 SCREENSHOT=$(scrot -e 'echo $f')

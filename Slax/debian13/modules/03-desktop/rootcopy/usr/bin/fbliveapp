@@ -4,7 +4,10 @@
 if [ "$(id -u)" = 0 ]; then
    xhost +SI:localuser:guest >/dev/null
    unset XAUTHORITY DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR
-   exec runuser -u guest -- dbus-run-session -- "$@"
+   # Separate root-launched app profiles and user directories from the guest desktop.
+   exec runuser -u guest -- env XDG_CONFIG_HOME=/home/guest/.config/slax-root \
+      XDG_CACHE_HOME=/home/guest/.cache/slax-root XDG_DATA_HOME=/home/guest/.local/share/slax-root \
+      dbus-run-session -- "$@"
 fi
 
 exec "$@"

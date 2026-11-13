@@ -12,3 +12,5 @@ Slax
 - Support the firmware framebuffer when starting the desktop after a nomodeset
   boot, and fix a Fluxbox crash when monitor information becomes unavailable.
 - Allow the active local guest session to restart or shut down through logind.
+- Replace shared-folder bind mounts with ACLs and XDG directories, keeping root
+  and guest downloads separate, including their sandboxed application profiles.

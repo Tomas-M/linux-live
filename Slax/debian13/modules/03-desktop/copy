@@ -63,9 +63,18 @@ for USERHOME in /home/guest /etc/skel; do
    done
 done
 
+# Root-launched sandboxed apps use their own XDG profile and root's document folders.
+mkdir -p /home/guest/.config/slax-root
+cp -a /root/.config/. /home/guest/.config/slax-root/
+cp -a /home/guest/.config/vlc /home/guest/.config/slax-root/
+sed 's|"$HOME/|"/root/|' /root/.config/user-dirs.dirs > /home/guest/.config/slax-root/user-dirs.dirs
+
+# Apply the same ACL rules during the build and at boot, after SquashFS is mounted.
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/slax-user-dirs.conf
+
 # Set ownership after restoring the guest's desktop defaults.
 for DIR in Desktop Documents Downloads Music Pictures Public Templates Videos; do
-   mkdir -p "/home/guest/$DIR" "/root/$DIR"
+   mkdir -p "/home/guest/$DIR"
 done
 chown -R guest:users /home/guest
 
