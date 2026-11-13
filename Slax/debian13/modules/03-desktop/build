@@ -10,7 +10,7 @@ apt-get install --no-install-recommends --yes \
    libdrm-intel1 libgl1-mesa-dri libglu1-mesa fluxbox feh volumeicon-alsa \
    murrine-themes libnotify4 libgtk2.0-0 librsvg2-common libglib2.0-bin \
    desktop-file-utils xfce4-panel scrot spice-vdagent galculator pcmanfm libfm-modules \
-   connman-gtk at-spi2-core scite xarchiver xdg-utils fonts-wqy-microhei
+   connman-gtk at-spi2-core scite xarchiver xdg-utils fonts-wqy-microhei polkitd
 
 # Allow the guest account to start Xorg.
 chmod u+s /usr/lib/xorg/Xorg

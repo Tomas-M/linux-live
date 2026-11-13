@@ -1,8 +1,10 @@
 #!/bin/bash
 
-killall xlunch
+COMMAND=$1
 
-COMMAND=$(
+if [ -z "$COMMAND" ]; then
+   pkill -u "$(id -u)" -x xlunch 2>/dev/null
+   COMMAND=$(
      xlunch --input /etc/xlunch/logout.dsv --noprompt --border auto --sideborder auto --columns 3 --rows 1 \
             --backgroundcolor 00000066 \
             --background /usr/share/wallpapers/slax_wallpaper.jpg --font DejaVuSans/11 \
@@ -11,6 +13,7 @@ COMMAND=$(
             --highlight /usr/share/icons/hicolor/128x128/apps/xlunch_highlight.png \
             --outputonly
 )
+fi
 
 SND=/usr/share/sounds/shutdown.wav
 
@@ -22,13 +25,13 @@ if [ "$COMMAND" != "" -a -r $SND ]; then
 fi
 
 if [ "$COMMAND" = "logout" ]; then
-   killall Xorg
+   kill "$SLAX_DESKTOP_PID"
 fi
 
 if [ "$COMMAND" = "restart" ]; then
-   reboot
+   systemctl reboot
 fi
 
 if [ "$COMMAND" = "shutdown" ]; then
-   poweroff
+   systemctl poweroff
 fi

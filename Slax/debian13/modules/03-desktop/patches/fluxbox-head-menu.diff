@@ -1,0 +1,14 @@
+Description: Clear the deleted toolbar head menu before rebuilding it
+Author: Slax <build@slax.org>
+Forwarded: no
+--- a/src/Toolbar.cc
++++ b/src/Toolbar.cc
+@@ -765,6 +765,8 @@
+                                    reconfig_toolbar_and_save_resource));
+     menu().insertSubmenu(_FB_XTEXT(Menu, Layer, "Layer...", "Title of Layer menu"), &layerMenu());
+ #ifdef XINERAMA
++    // Rebuilding the parent menu deletes the previous head submenu.
++    m_xineramaheadmenu = 0;
+     if (screen().hasXinerama()) {
+ 
+         m_xineramaheadmenu = new XineramaHeadMenu<Toolbar>(screen().menuTheme(),

@@ -1,0 +1,18 @@
+#!/bin/sh
+# nomodeset keeps the firmware framebuffer; native DRM devices retain autodetection.
+USE_FRAMEBUFFER=
+if grep -Eq '(^|[[:space:]])nomodeset([[:space:]]|$)' /proc/cmdline && [ -c /dev/fb0 ]; then
+   USE_FRAMEBUFFER=1
+fi
+for DEVICE in /dev/dri/card*; do
+   if [ -c "$DEVICE" ]; then USE_FRAMEBUFFER=; fi
+done
+# Explicit Xorg configurations take precedence over the emergency default.
+for ARG in "$@"; do
+   if [ "$ARG" = -config ] || [ "$ARG" = -configdir ]; then USE_FRAMEBUFFER=; fi
+done
+if [ -f /etc/X11/xorg.conf ]; then USE_FRAMEBUFFER=; fi
+if [ -n "$USE_FRAMEBUFFER" ]; then
+   set -- -config slax-framebuffer.conf "$@"
+fi
+exec /usr/bin/X -nolisten tcp "$@"
