@@ -181,16 +181,18 @@ reporting progress.
   Windows must use only system DLLs; Linux may use libraries
   already installed in Slax. Do not require a browser or download fonts.
   Rebuild both prebuilt executables with `sh Slax/debian13/installer/build`;
-  it strips both and packs Linux with `upx --best --lzma`, followed by `upx -t`.
-  Check Linux ELF dependencies before packing. Keep Windows unpacked to avoid
+  it strips both and keeps them unpacked. Maintain only the plain Linux ELF
+  as `installers/slax-install-linux`, with its checked library dependencies.
+  The Slax ISO build installs upx-ucl and packs only the media copy with
+  `upx --best --lzma`, followed by `upx -t`. Keep Windows unpacked to avoid
   unnecessary antivirus false positives. Windows has
   native product/version metadata and its ordinary administrator manifest.
   Stage authenticated GRUB helpers under recognizable names in the system temp
   directory and launch them through native process APIs without extra windows or
   terminals. Capture helper output for installer errors; Windows console helpers
-  must use `CREATE_NO_WINDOW`. Ship the same UPX-compressed Linux ELF on the medium
-  and in the desktop module;
-  `03-desktop/copy` installs it at `/usr/bin/slax-install-linux`, compressed by
+  must use `CREATE_NO_WINDOW`. Ship the UPX copy on the medium as
+  `/slax/installer/slax-install-linux`. `03-desktop/copy` installs the unpacked
+  ELF at `/usr/bin/slax-install-linux`, compressed by
   SquashFS, with a Slax Installer entry in xlunch and no desktop shortcut.
   Use the selected generated icon with Slax's original clover behind a hard drive,
   a downward arrow and a large blue USB drive, matching the other application icons.
@@ -200,7 +202,8 @@ reporting progress.
   Copy-to-RAM contains the complete source and must work without the original CD.
   When incrementally changing application entries or icons, also refresh the final
   icon and xlunch caches in `04-chromium`, which override the desktop module's caches.
-  Ordinary ISO builds only copy the prebuilt executables onto the media.
+  Ordinary ISO builds copy the prebuilt executables and UPX-pack only the Linux
+  media copy; they do not recompile the installers.
   Installation now performs real writes after a concrete native confirmation.
   Offer partitions strictly larger than 1 GB (1,000,000,000 bytes). Hide whole
   disks when any partition exceeds this limit, and hide unformatted partitions

@@ -61,10 +61,6 @@ for tool in (root/'grub/assets/linux').iterdir():
         if required>supported: sys.exit(f'{tool.name} requires {library}_{".".join(map(str,required))}, newer than the installer')
 PY
 
-# Pack Linux only after checking its original ELF dependencies and symbol versions.
-upx --best --lzma --no-progress "$TEMP/slax-install-linux"
-upx -t "$TEMP/slax-install-linux"
-
 # Give the ordinary PE executable a clear identity in Windows file properties.
 python3 - "$THIS" "$TEMP/resource.rc" <<'PY'
 from pathlib import Path
