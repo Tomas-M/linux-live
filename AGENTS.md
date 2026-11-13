@@ -1304,8 +1304,14 @@ must follow the general Slax repair rules above.
 - Keep desktop defaults canonical in `03-desktop/rootcopy/root`. Its copy phase
   merges `.xinitrc`, `.Xresources`, `.gtkrc-2.0`, `.fluxbox` and `.config` into
   `/home/guest` and `/etc/skel`, retaining guest-only application settings and
-  restoring guest ownership. Use home-relative configuration paths. Root alone
-  binds its common folders to guest's; other desktops update their own bookmarks.
+  restoring guest ownership. Use home-relative configuration paths. Each desktop
+  keeps its own document folders. Root-launched `fbliveapp` processes still run as
+  guest, with separate XDG config/cache/data under guest's `slax-root` directories;
+  seed that config from root's defaults and set its XDG user directories to /root.
+  Keep guest's ordinary XDG user directories home-relative. Do not bind-mount
+  document folders. `slax-user-dirs.conf` grants guest traversal through /root and
+  access/default ACLs on its document folders through systemd-tmpfiles at every
+  boot, because SquashFS drops POSIX ACLs. Print Screen follows XDG Pictures.
   All accounts start through Debian's Xsession. Logout ends the session's own
   Fluxbox PID; guest power actions use logind and stock polkit authorization for
   the active local session. Ship polkitd in the desktop module.
