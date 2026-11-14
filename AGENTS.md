@@ -1257,6 +1257,12 @@ must follow the general Slax repair rules above.
   `03-desktop/copy` so GTK does not enlarge the 16 px artwork.
   Keep the selected File Manager artwork for `slax-file-manager` and
   `system-file-manager`; do not alias it to the generic `folder` icon.
+- Slax's light MIME artwork lives in `03-desktop/rootcopy/usr/share/icons/Adwaita`:
+  `application-x-ms-shortcut`, `application-x-executable`, `application-x-sharedlib`
+  and `image-x-generic`. Keep application/library tiles upright and image colors
+  pale, without red. Run `03-desktop/render-file-icons` to export the editable SVGs
+  at 16, 22, 24, 32, 48 and 64 px. `copy` registers the 64 px MIME directory;
+  refresh Adwaita's final cache in `04-chromium` after incremental replacements.
 - Normalize copied systemd service files to mode 644 in their recipes. Set
   filesystem branch roots to mode 755 before packing: rootcopy may carry
   group-writable directory modes, which cause AUFS permission warnings.

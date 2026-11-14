@@ -34,6 +34,8 @@ DESKTOP
   graphical session. Restart/Shut down act immediately: save open work first.
 
 FILES AND DRIVES
+- Windows .lnk shortcuts have a light document icon with a blue arrow. Image files
+  use a light landscape icon until their thumbnail is ready.
 - Open File Manager from the launcher. Double-click files/folders to open them.
   The sidebar shows Home Folder, mounted drives and bookmarks. Ctrl+L focuses
   the editable path bar; enter a path and press Enter or click Go.
