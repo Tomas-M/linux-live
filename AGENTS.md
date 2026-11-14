@@ -1414,6 +1414,9 @@ must follow the general Slax repair rules above.
 
 ## Boot and profile UI
 
+- `tools/build-initramfs-tools` rebuilds the pinned util-linux blkid/eject as
+  stripped static i686 musl binaries. Keep their provenance and the published
+  Mini Commander binary's source commit in `initramfs/static/README`.
 - User-facing persistence terminology is Slax profile (Profiles in lists) and
   restore point. A profile owns its applications, settings, files and restore
   history; a restore point is a saved state inside that profile. Use Current state
