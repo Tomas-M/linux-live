@@ -380,6 +380,9 @@ must follow the general Slax repair rules above.
   Slax itself uses Fluxbox; these are separate environments.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
+- Slax boot test uses `VM/virtualbox/slax-profile-restore.vdi`, a dynamic 4 GiB
+  GPT disk with a 256 MiB FAT32 ESP (`SLAXEFI`) and the remaining FAT32 data
+  partition (`SLAXDATA`).
 - This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
   freeze its filesystem, save its state, then use `zerofree` from a temporary
   RAM-only maintenance VM with host I/O caching enabled and the work filesystem
@@ -1758,13 +1761,27 @@ must follow the general Slax repair rules above.
   New profile waits for the refreshed drive list. Ordinary polling never forces discovery.
   Profiles own their restore-point tree; profile rename/delete sit beside the
   large profile heading, outside the sidebar. Draw square branch connectors and highlight the corresponding
-  node when its row is hovered, focused or selected. Current state is a separate
-  synthetic row, not an assertion that data still equals currentParent.
+  node when its row is hovered, focused or selected. Only the active profile uses
+  Current state and You are here. Inactive profiles use Last saved state; omit
+  that redundant endpoint for a never-started profile with only Initial state.
+  Endpoints are synthetic rows, not assertions that data still equals currentParent.
   Tray toggles must leave the manager open. Keep save switches alive and use
   GTK's asynchronous state-set signal; apply confirmed backend policy without
   generating another mutation. Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
   Keep the single capacity estimate directly in the UI without a Details dialog.
+  Use GtkListBox placeholders for empty, loading and error messages. Only actual
+  restore-point rows are selectable and carry point IDs.
+  With no profiles, show an introduction and Create profile instead of empty
+  management controls. Inactive profiles prioritize Use at next start. Show
+  removed controls deleted rows while full ancestry still determines tree lanes.
+  persistence initialize records the unformatted point through exact guard.ID
+  ownership and creates a visible manual Initial state point after formatting
+  and xfs_growfs. Publish new GUI profiles only after this succeeds. Derive the
+  initial point from the owned unformatted root and its named direct child;
+  keep it protected in the manager. Never infer ownership from old point names
+  or order. Retain matching tombstone ownership records. Derive hasStarted
+  from the existing run.txt record; do not persist another status.
   `slax-statusd` is the root storage broker; authenticate Unix-socket callers as
   root or the Slax guest account and accept opaque identities, never arbitrary
   client paths or shell commands. Native profiles always save, RAM never saves;

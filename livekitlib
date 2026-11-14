@@ -1475,16 +1475,21 @@ persistent_changes()
       echo "- creating filesystem"
       if ! mkfs.xfs.custom "$DYNMNT/virtual.dat"; then umount "$DYNMNT"; return 1; fi
       # The new store's first automatic point predates formatting and cannot boot a profile.
-      if ! T1=$(cat "$DYNMNT/snapshot") || ! printf 'delete %s\n' "$T1" > "$DYNMNT/snapshot"; then
-         umount "$DYNMNT"
-         return 1
-      fi
+      if ! T1=$(cat "$DYNMNT/snapshot"); then umount "$DYNMNT"; return 1; fi
    fi
 
    echo "- mounting persistent changes"
    if mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then
       # Check XFS too, including a previous boot interrupted after container growth.
       if xfs_growfs "$TARGET" >/dev/null; then
+         if [ ! "$EXISTS" ]; then
+            # DynFileFS freezes the mounted XFS before saving its fully sized initial state.
+            if ! persistence initialize "$CHANGES/$PERCHDIR" "$DYNMNT" || ! printf 'delete %s\n' "$T1" > "$DYNMNT/snapshot"; then
+               umount "$TARGET"
+               umount "$DYNMNT"
+               return 1
+            fi
+         fi
          if START_ID=$(persistence start "$CHANGES/$PERCHDIR" "$DYNMNT"); then
             printf 'container\n' > "$MEMORY/profile/kind"
             printf '%s\n' "/run/initramfs$CHANGES/$PERCHDIR" > "$MEMORY/profile/profile"

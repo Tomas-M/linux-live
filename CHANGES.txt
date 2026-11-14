@@ -20,10 +20,16 @@ Linux Live Kit
 - Preserve the starting state before persistent writes and apply save/discard
   policy at the next activation; protect scheduled restore points during recovery.
   Recover interrupted creation of the starting state without losing unrelated points.
+- Give new container profiles a permanent Initial state restore point after
+  formatting and filesystem growth; hide the unusable pre-formatting point.
 
 Slax
 ----
 
+- Fix Slax Status crashes when clicking informational rows in empty or loading history views.
+- Explain profiles and restore points before the first profile is created; show
+  a clear starting history for new profiles and hide removed points unless requested.
+  Reserve Current state for the running profile; new profiles show only Initial state.
 - Keep the profile manager open when toggling its tray bubble, remove storage Details,
   and fix asynchronous save switches, footer movement and bubble positioning.
 - Exclude EFI System Partitions from automatic mounting and profile-drive discovery;

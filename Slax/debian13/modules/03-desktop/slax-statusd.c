@@ -43,6 +43,7 @@ static void recover_mounts(void);
 static gboolean clear_next(GError **error);
 static gboolean restore_selection(gboolean release, GError **error);
 static gboolean initialize_storage(int directory, Drive *drive, GError **error);
+static gboolean detach_image(const char *image, GError **error);
 
 /* Use structured errors throughout IPC; command stderr remains ordinary text. */
 static gboolean fail(GError **error, int code, const char *message)
@@ -663,20 +664,29 @@ static JsonObject *history(Profile *profile, GError **error)
    JsonObject *catalog=report(profile,TRUE,error);
    if (!catalog) return NULL;
    char *run=profile_file(profile,"run.txt"),*queued=profile_file(profile,"restore.txt");
+   json_object_set_boolean_member(catalog,"hasStarted",run!=NULL);
    if (run) { char *line=strchr(run,'\n'); if (line) *line=0; }
-   JsonArray *array=json_object_get_array_member(catalog,"snapshots");
+   JsonArray *array=json_object_get_array_member(catalog,"snapshots"); const char *unformatted=NULL;
    for (guint i=0;i<json_array_get_length(array);i++)
    {
       JsonObject *item=json_array_get_object_element(array,i); const char *id=string(item,"id"),*name=string(item,"name"); gboolean open=FALSE;
       for (guint j=0;j<views->len;j++) { View *view=g_ptr_array_index(views,j); if (!strcmp(view->profile,profile->id) && !g_strcmp0(view->point,id)) open=TRUE; }
       char *marker=identity(id) ? g_strconcat("guard.",id,NULL) : NULL,*owner=marker ? profile_file(profile,marker) : NULL;
       gboolean guard=owner && !g_strcmp0(owner,name); g_free(owner); g_free(marker);
+      if (guard && !string(item,"parent")) unformatted=id;
       json_object_set_boolean_member(item,"filesOpen",open);
       json_object_set_boolean_member(item,"hidden",guard);
       gboolean queued_point=!g_strcmp0(queued,id);
       gboolean other_pin=boolean(item,"protected") && !queued_point;
       if (queued_point && selection && !g_strcmp0(string(selection,"profileId"),profile->id) && !g_strcmp0(string(selection,"pointId"),id)) other_pin=boolean(selection,"wasProtected");
       json_object_set_boolean_member(item,"protected",other_pin || guard || open || !g_strcmp0(run,id));
+   }
+   /* The initial point directly follows our recorded unformatted root, not an arbitrary name. */
+   for (guint i=0;unformatted && i<json_array_get_length(array);i++)
+   {
+      JsonObject *item=json_array_get_object_element(array,i);
+      gboolean initial=!g_strcmp0(string(item,"parent"),unformatted) && !g_strcmp0(string(item,"name"),"Initial state");
+      if (initial) { json_object_set_boolean_member(item,"initial",TRUE); json_object_set_boolean_member(item,"protected",TRUE); }
    }
    g_free(run); g_free(queued); return catalog;
 }
@@ -843,16 +853,39 @@ static gboolean initialize_storage(int directory, Drive *drive, GError **error)
    char *size=g_strdup_printf("%"G_GUINT64_FORMAT,mib);
    const char *create[]={DYN,"-f","/proc/self/fd/198/changes.dat","-s",size,"-p","4000","-m",mount,NULL};
    char *out=command_at(create,directory,error); gboolean ok=out!=NULL,mounted_store=ok; g_free(out); g_free(size);
-   char *image=g_build_filename(mount,"virtual.dat",NULL);
+   char *image=g_build_filename(mount,"virtual.dat",NULL),*inner=g_strconcat(mount,".fs",NULL); gboolean mounted_inner=FALSE;
    if (ok)
    {
       const char *format[]={"/run/initramfs/bin/mkfs.xfs.custom",image,NULL}; out=command(format,error); ok=out!=NULL; g_free(out);
+   }
+   /* The initial restore point must include the fully grown, clean XFS filesystem. */
+   if (ok && g_mkdir_with_parents(inner,0700)) ok=fail(error,errno,g_strerror(errno));
+   if (ok)
+   {
+      const char *attach[]={"/bin/mount","-t","xfs","-o","loop,nouuid,nosuid,nodev",image,inner,NULL};
+      out=command(attach,error); ok=mounted_inner=out!=NULL; g_free(out);
+   }
+   if (ok)
+   {
+      const char *grow[]={"/run/initramfs/bin/xfs_growfs",inner,NULL}; out=command(grow,error); ok=out!=NULL; g_free(out);
+   }
+   if (mounted_inner)
+   {
+      const char *detach[]={"/bin/umount",inner,NULL}; out=command(detach,ok ? error : NULL);
+      if (!out) ok=FALSE;
+      g_free(out);
+      if (ok) ok=detach_image(image,error);
    }
    if (ok)
    {
       char *path=g_build_filename(mount,"snapshot",NULL),*blank=read_file(path,error); g_free(path);
       if (blank)
-      { g_strchomp(blank); Profile temporary={.store=mount}; ok=snapshot_command(&temporary,"delete",blank,error); g_free(blank); }
+      {
+         g_strchomp(blank);
+         const char *record[]={"/run/initramfs/persistence","initialize","/proc/self/fd/198",mount,NULL};
+         out=command_at(record,directory,error); ok=out!=NULL; g_free(out);
+         Profile temporary={.store=mount}; if (ok) ok=snapshot_command(&temporary,"delete",blank,error); g_free(blank);
+      }
       else ok=FALSE;
    }
    if (mounted_store)
@@ -861,7 +894,7 @@ static gboolean initialize_storage(int directory, Drive *drive, GError **error)
       if (!out) ok=FALSE;
       g_free(out);
    }
-   rmdir(mount); g_free(image); g_free(mount); return ok;
+   rmdir(inner); rmdir(mount); g_free(inner); g_free(image); g_free(mount); return ok;
 }
 
 /* New profile creation is an atomic empty-directory publication, never a current-state clone. */

@@ -160,10 +160,18 @@ BOOT AND PERSISTENCE
   An invalid request stops for recovery; correct or remove restore.txt and exit
   the recovery shell to retry. Native directory profiles have no restore points.
 - In Slax Status, Profiles & restore points shows each profile's history as a tree.
-  The green path leads to Current state; selecting a row highlights its own node.
-  Use the plus beside Profiles to create a clean profile on a writable drive.
+  Current state and You are here identify the running profile. Inactive profiles
+  use Last saved state; a new, unused profile shows only Initial state.
+  Selecting a row highlights its own node in the history tree.
+  With no profiles, the window explains profiles and restore points and offers
+  Create profile. Otherwise use the plus beside Profiles to create one on a writable drive.
   Rename and Delete beside the selected profile affect that whole profile;
   the running profile cannot be deleted. New profiles start empty, without copying data.
+  Choose Use at next start to begin using a new profile after restarting.
+  Initial state returns a container profile to its clean starting setup, after
+  formatting and filesystem growth. Slax keeps this point; it cannot be deleted
+  in the manager. The unusable pre-formatting point is hidden.
+  Show removed includes deleted restore points in the history tree.
 - Create restore point saves a named state in the selected container profile.
   Use at next start schedules a profile or restore point without replacing the
   running desktop. When restoring, Keep current state preserves a named point

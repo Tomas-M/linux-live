@@ -108,6 +108,18 @@ policy_cleanup()
    sync
 }
 
+# Hide the unformatted disk and retain a named, formatted starting state for the user.
+policy_initialize()
+{
+   local POINTS CREATED ID NAME AUTOMATIC
+   POINTS=$(perch_restore_points "$1" "${2:-}") || return 1
+   if ! printf '%s\n' "$POINTS" | while IFS="$(printf '\t')" read -r CREATED ID NAME AUTOMATIC; do
+      if [ "$ID" = "" ]; then continue; fi
+      policy_write "$1/guard.$ID" "$NAME" || exit 1
+   done; then return 1; fi
+   printf 'create Initial state\n' > "$2/snapshot"
+}
+
 # A manual point survives automatic retention; the record proves ownership on recovery.
 policy_guard()
 {
@@ -164,7 +176,8 @@ policy_start()
    printf '%s\n' "$ID"
 }
 
-if [ "$1" = target ]; then policy_target "$2"
+if [ "$1" = initialize ]; then policy_initialize "$2" "${3:-}"
+elif [ "$1" = target ]; then policy_target "$2"
 elif [ "$1" = start ]; then policy_start "$2" "$3"
 elif [ "$1" = prepare ]; then policy_prepare "$2" "$3"
 elif [ "$1" = save ]; then
