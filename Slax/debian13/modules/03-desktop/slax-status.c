@@ -21,11 +21,11 @@ static gboolean discovery_pending, new_profile_pending;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body, *sidebar, *profile_list, *profile_scroll, *profile_combo;
 static GtkWidget *profile_actions, *profile_rename, *profile_delete, *profile_new, *profile_heading;
-static GtkWidget *selected_profile_row;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
 static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
+static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
 static GPtrArray *rows;
@@ -124,15 +124,11 @@ static void clear_box(GtkWidget *widget)
 static GtkWidget *box(GtkOrientation orientation, int spacing) { return gtk_box_new(orientation,spacing); }
 static void pack(GtkWidget *parent, GtkWidget *child, gboolean expand) { gtk_box_pack_start(GTK_BOX(parent),child,expand,expand,0); }
 
-/* Release only the explicitly opened status popup's input grab. Notifications never grab. */
+/* Hide the explicit popup; no tray bubble takes a device grab. */
 static void hide_popup(void)
 {
-    if (popup.window && gtk_widget_get_visible(popup.window))
-    {
-        gdk_seat_ungrab(gdk_display_get_default_seat(gtk_widget_get_display(popup.window)));
-        if (gtk_widget_has_grab(popup.window)) gtk_grab_remove(popup.window);
-        gtk_widget_hide(popup.window);
-    }
+    if (popup.window) gtk_widget_hide(popup.window);
+    if (tray) gtk_widget_set_has_tooltip(tray,TRUE);
 }
 
 /* Dialogs appear only after explicit actions and use the ordinary native window frame. */
@@ -261,7 +257,8 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
                 if (process) g_object_unref(process);
                 else {message("Cannot open the file manager",error->message);g_clear_error(&error);}
             }
-            manager_dirty=TRUE;
+            if (!strcmp(request->op,"run.save")) json_object_set_boolean_member(run(),"save",flag(request->request,"save"));
+            else manager_dirty=TRUE;
         }
     }
     if (reply) json_object_unref(reply);
@@ -357,14 +354,16 @@ static GtkWidget *location_row(const char *heading, GtkWidget **value)
     *value=label("Loading…",NULL);pack(row,*value,TRUE);return row;
 }
 
-/* The Save switch is derived from backend policy and never changes optimistically. */
-static void save_changed(GObject *widget, GParamSpec *spec, gpointer data)
+/* Let GTK's requested position wait for the asynchronous, durable policy update. */
+static gboolean save_changed(GtkSwitch *widget, gboolean save, gpointer data)
 {
-    (void)spec;(void)data;
-    if (updating || !flag(run(),"canSetSave")) return;
+    (void)widget;(void)data;
+    if (updating) return FALSE;
+    if (mutating || !flag(run(),"canSetSave")) return TRUE;
     JsonObject *request=command("run.save",FALSE);
-    json_object_set_boolean_member(request,"save",gtk_switch_get_active(GTK_SWITCH(widget)));
+    json_object_set_boolean_member(request,"save",save);
     send_request(request,TRUE);
+    return TRUE;
 }
 static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **choice, GtkWidget **help)
 {
@@ -372,14 +371,17 @@ static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **choice, GtkWidget
     GtkWidget *heading=label("Save this run",NULL);gtk_label_set_ellipsize(GTK_LABEL(heading),PANGO_ELLIPSIZE_NONE);
     pack(row,heading,TRUE);*choice=label("Save","muted");pack(row,*choice,FALSE);
     *toggle=gtk_switch_new();gtk_widget_set_valign(*toggle,GTK_ALIGN_CENTER);pack(row,*toggle,FALSE);
-    g_signal_connect(*toggle,"notify::active",G_CALLBACK(save_changed),NULL);
+    g_signal_connect(*toggle,"state-set",G_CALLBACK(save_changed),NULL);
     pack(outer,row,FALSE);*help=label("Keep changes after restart.","muted");pack(outer,*help,FALSE);
     return outer;
 }
 static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
 {
     gboolean save=flag(run(),"save");
-    updating=TRUE;gtk_switch_set_active(GTK_SWITCH(toggle),save);updating=FALSE;
+    if (!mutating)
+    {
+        updating=TRUE;gtk_switch_set_active(GTK_SWITCH(toggle),save);gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
+    }
     gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating && !new_profile_pending);
     set_label(choice,save ? "Save" : "Don’t save");
     const char *text=save ? "Keep changes after restart." : "Return to the start of this run after restart.";
@@ -396,47 +398,65 @@ static gboolean bubble_draw(GtkWidget *widget, cairo_t *cr, gpointer data)
     int width=gtk_widget_get_allocated_width(widget),height=gtk_widget_get_allocated_height(widget);
     int top=bubble->bottom ? 0 : 12,edge=bubble->bottom ? height-12 : 12,tip=bubble->bottom ? height-1 : 1;
     cairo_save(cr);cairo_set_operator(cr,CAIRO_OPERATOR_SOURCE);cairo_set_source_rgba(cr,0,0,0,0);cairo_paint(cr);
+    if (width<24 || height<12) {cairo_restore(cr);return FALSE;}
+    int arrow=CLAMP(bubble->arrow,12,width-12);
     cairo_set_operator(cr,CAIRO_OPERATOR_OVER);
     gtk_render_background(bubble_style,cr,0,top,width,height-12);
-    gtk_render_frame_gap(bubble_style,cr,0,top,width,height-12,bubble->bottom ? GTK_POS_BOTTOM : GTK_POS_TOP,bubble->arrow-10,bubble->arrow+10);
+    gtk_render_frame_gap(bubble_style,cr,0,top,width,height-12,bubble->bottom ? GTK_POS_BOTTOM : GTK_POS_TOP,arrow-10,arrow+10);
     GdkRGBA background,border;
     gtk_style_context_get_background_color(bubble_style,GTK_STATE_FLAG_NORMAL,&background);
     gtk_style_context_get_border_color(bubble_style,GTK_STATE_FLAG_NORMAL,&border);
-    cairo_move_to(cr,bubble->arrow-10,edge);cairo_line_to(cr,bubble->arrow,tip);cairo_line_to(cr,bubble->arrow+10,edge);cairo_close_path(cr);
+    cairo_move_to(cr,arrow-10,edge);cairo_line_to(cr,arrow,tip);cairo_line_to(cr,arrow+10,edge);cairo_close_path(cr);
     gdk_cairo_set_source_rgba(cr,&background);cairo_fill(cr);
-    cairo_move_to(cr,bubble->arrow-10,edge);cairo_line_to(cr,bubble->arrow,tip);cairo_line_to(cr,bubble->arrow+10,edge);
+    cairo_move_to(cr,arrow-10,edge);cairo_line_to(cr,arrow,tip);cairo_line_to(cr,arrow+10,edge);
     gdk_cairo_set_source_rgba(cr,&border);cairo_set_line_width(cr,1);cairo_stroke(cr);cairo_restore(cr);return FALSE;
 }
 
-/* Anchor against the actual tray allocation and its current monitor, including a top panel. */
-static void position_bubble(Bubble *bubble)
+/* Re-anchor the actual window size after GTK and the window manager finish placing it. */
+static void anchor_bubble(Bubble *bubble, int width, int height)
 {
     if (!tray || !gtk_widget_get_realized(tray)) return;
     int x,y;GtkAllocation anchor;gtk_widget_get_allocation(tray,&anchor);
     gdk_window_get_origin(gtk_widget_get_window(tray),&x,&y);
     GdkMonitor *monitor=gdk_display_get_monitor_at_window(gtk_widget_get_display(tray),gtk_widget_get_window(tray));
     GdkRectangle area;gdk_monitor_get_geometry(monitor,&area);
-    int width=MIN(bubble==&popup ? 500 : 480,area.width-20);
-    gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
-    GtkRequisition size;gtk_widget_get_preferred_size(bubble->body,NULL,&size);
-    int height=size.height+36;
-    bubble->bottom=y-area.y>=height;
-    gtk_widget_set_margin_top(bubble->body,bubble->bottom ? 16 : 28);
-    gtk_widget_set_margin_bottom(bubble->body,bubble->bottom ? 28 : 16);
     int left=CLAMP(x+anchor.width/2-width+32,area.x+10,MAX(area.x+10,area.x+area.width-width-10));
     int top=bubble->bottom ? y-height : y+anchor.height;
     bubble->arrow=CLAMP(x+anchor.width/2-left,20,width-20);
-    gtk_window_resize(GTK_WINDOW(bubble->window),width,height);
-    gtk_window_move(GTK_WINDOW(bubble->window),left,CLAMP(top,area.y,MAX(area.y,area.y+area.height-height)));
+    int current_x,current_y;gtk_window_get_position(GTK_WINDOW(bubble->window),&current_x,&current_y);
+    top=CLAMP(top,area.y,MAX(area.y,area.y+area.height-height));
+    if (current_x!=left || current_y!=top) gtk_window_move(GTK_WINDOW(bubble->window),left,top);
     gtk_widget_queue_draw(bubble->window);
 }
-static gboolean popup_press(GtkWidget *widget, GdkEventButton *event, gpointer data)
+/* Window-manager remapping must not retain an earlier size or position. */
+static gboolean bubble_configure(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 {
-    (void)data;int x,y;gdk_window_get_origin(gtk_widget_get_window(widget),&x,&y);
-    gboolean outside_x=event->x_root<x || event->x_root>=x+gtk_widget_get_allocated_width(widget);
-    gboolean outside_y=event->y_root<y || event->y_root>=y+gtk_widget_get_allocated_height(widget);
-    if (!outside_x && !outside_y) return FALSE;
-    hide_popup();return TRUE;
+    if (gtk_widget_get_visible(widget)) anchor_bubble(data,event->width,event->height);
+    return FALSE;
+}
+
+/* Measure the body without its tail, then choose the side of the tray with enough room. */
+static void position_bubble(Bubble *bubble)
+{
+    if (!tray || !gtk_widget_get_realized(tray)) return;
+    GdkWindow *window=gtk_widget_get_window(tray);int x,y;gdk_window_get_origin(window,&x,&y);
+    GdkMonitor *monitor=gdk_display_get_monitor_at_window(gtk_widget_get_display(tray),window);
+    GdkRectangle area;gdk_monitor_get_geometry(monitor,&area);
+    int width=MIN(bubble==&popup ? 500 : 480,area.width-20);
+    gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
+    gtk_widget_set_margin_top(bubble->body,16);gtk_widget_set_margin_bottom(bubble->body,16);
+    GtkRequisition size;gtk_widget_get_preferred_size(bubble->body,NULL,&size);
+    int height=size.height+12;
+    bubble->bottom=y-area.y>=height;
+    gtk_widget_set_margin_top(bubble->body,bubble->bottom ? 16 : 28);
+    gtk_widget_set_margin_bottom(bubble->body,bubble->bottom ? 28 : 16);
+    gtk_window_resize(GTK_WINDOW(bubble->window),width,height);
+    anchor_bubble(bubble,width,height);
+}
+/* Ordinary window focus dismisses the interactive bubble without intercepting outside input. */
+static gboolean popup_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data)
+{
+    (void)event;(void)data;gtk_widget_hide(widget);return FALSE;
 }
 static gboolean popup_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
 {
@@ -446,17 +466,21 @@ static gboolean popup_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
 /* Keep passive notifications separate: never activate, focus or grab the user's applications. */
 static void make_bubble(Bubble *bubble, const char *role)
 {
-    bubble->window=gtk_window_new(GTK_WINDOW_POPUP);
+    bubble->window=gtk_window_new(bubble==&notice ? GTK_WINDOW_POPUP : GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(bubble->window),"Slax Status");gtk_window_set_role(GTK_WINDOW(bubble->window),role);
-    gtk_window_set_accept_focus(GTK_WINDOW(bubble->window),FALSE);gtk_window_set_focus_on_map(GTK_WINDOW(bubble->window),FALSE);
-    gtk_window_set_type_hint(GTK_WINDOW(bubble->window),bubble==&notice ? GDK_WINDOW_TYPE_HINT_NOTIFICATION : GDK_WINDOW_TYPE_HINT_POPUP_MENU);
+    gtk_window_set_accept_focus(GTK_WINDOW(bubble->window),bubble==&popup);gtk_window_set_focus_on_map(GTK_WINDOW(bubble->window),bubble==&popup);
+    gtk_window_set_decorated(GTK_WINDOW(bubble->window),FALSE);
+    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(bubble->window),TRUE);gtk_window_set_skip_pager_hint(GTK_WINDOW(bubble->window),TRUE);
+    gtk_window_set_keep_above(GTK_WINDOW(bubble->window),TRUE);
+    gtk_window_set_type_hint(GTK_WINDOW(bubble->window),bubble==&notice ? GDK_WINDOW_TYPE_HINT_NOTIFICATION : GDK_WINDOW_TYPE_HINT_UTILITY);
     gtk_widget_set_app_paintable(bubble->window,TRUE);gtk_widget_set_name(bubble->window,"slax-status-bubble");
     GdkVisual *visual=gdk_screen_get_rgba_visual(gtk_widget_get_screen(bubble->window));
     if (visual) gtk_widget_set_visual(bubble->window,visual);
-    bubble->body=box(GTK_ORIENTATION_VERTICAL,14);
+    bubble->body=box(GTK_ORIENTATION_VERTICAL,12);
     gtk_widget_set_margin_start(bubble->body,20);gtk_widget_set_margin_end(bubble->body,20);
     gtk_container_add(GTK_CONTAINER(bubble->window),bubble->body);
     g_signal_connect(bubble->window,"draw",G_CALLBACK(bubble_draw),bubble);
+    g_signal_connect(bubble->window,"configure-event",G_CALLBACK(bubble_configure),bubble);
 }
 
 /* The fixed status layout shares its fields with the manager instead of duplicating backend policy. */
@@ -470,11 +494,12 @@ static void make_popups(void)
     pack(header,gtk_image_new_from_icon_name("slax-status",GTK_ICON_SIZE_LARGE_TOOLBAR),FALSE);
     popup_title=label("Slax Status","title");pack(titles,popup_title,FALSE);pack(titles,label("Slax Status","muted"),FALSE);
     pack(header,titles,TRUE);pack(header,button("Close popup","window-close-symbolic","close-popup"),FALSE);pack(popup.body,header,FALSE);
-    pack(popup.body,location_row("Running from",&popup_source),FALSE);pack(popup.body,location_row("Changes on",&popup_storage),FALSE);
+    GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
+    pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
     GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);popup_space=label("Loading…","metric");pack(capacity,popup_space,FALSE);
     GtkWidget *available_label=label("available",NULL);gtk_widget_set_valign(available_label,GTK_ALIGN_END);gtk_widget_set_margin_bottom(available_label,4);pack(capacity,available_label,TRUE);
-    pack(capacity,link_button("Details","space-run"),FALSE);pack(popup.body,capacity,FALSE);
-    popup_meter=gtk_progress_bar_new();pack(popup.body,popup_meter,FALSE);
+    GtkWidget *storage=box(GTK_ORIENTATION_VERTICAL,8);pack(storage,capacity,FALSE);
+    popup_meter=gtk_progress_bar_new();gtk_widget_set_tooltip_text(popup_meter,"Space used");pack(storage,popup_meter,FALSE);pack(popup.body,storage,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     pack(popup.body,save_control(&popup_save,&popup_choice,&popup_help),FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
@@ -483,7 +508,7 @@ static void make_popups(void)
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
     pack(footer,button("Profiles & restore points",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
-    g_signal_connect(popup.window,"button-press-event",G_CALLBACK(popup_press),NULL);
+    g_signal_connect(popup.window,"focus-out-event",G_CALLBACK(popup_focus_out),NULL);
     g_signal_connect(popup.window,"key-press-event",G_CALLBACK(popup_key),NULL);
     gtk_widget_add_events(popup.window,GDK_BUTTON_PRESS_MASK|GDK_KEY_PRESS_MASK);
     make_bubble(&notice,"slax-status-notification");
@@ -715,15 +740,6 @@ static void combo_changed(GtkComboBox *combo, gpointer data)
     (void)data;if (!updating) select_profile(gtk_combo_box_get_active_id(combo));
 }
 
-/* Move the same profile controls beside the selected sidebar row or the narrow selector. */
-static void position_profile_actions(void)
-{
-    GtkWidget *target=compact || !selected_profile_row ? sidebar : selected_profile_row;
-    GtkWidget *parent=gtk_widget_get_parent(profile_actions);if (parent==target) return;
-    g_object_ref(profile_actions);if (parent) gtk_container_remove(GTK_CONTAINER(parent),profile_actions);
-    pack(target,profile_actions,FALSE);g_object_unref(profile_actions);
-}
-
 /* Changing capacity counters must not replace the profile widgets or interrupt their focus. */
 static char *profile_signature(void)
 {
@@ -744,21 +760,21 @@ static char *profile_signature(void)
 /* Keep rows and the combo model alive while GTK finishes dispatching selection events. */
 static void sync_profile_selection(void)
 {
-    updating=TRUE;selected_profile_row=NULL;
+    updating=TRUE;
     GList *children=gtk_container_get_children(GTK_CONTAINER(profile_list));
     for (GList *item=children;item;item=item->next)
         if (!g_strcmp0(selected,g_object_get_data(G_OBJECT(item->data),"profile-id")))
         {
             gtk_list_box_select_row(GTK_LIST_BOX(profile_list),GTK_LIST_BOX_ROW(item->data));
-            selected_profile_row=gtk_bin_get_child(GTK_BIN(item->data));break;
+            break;
         }
-    g_list_free(children);position_profile_actions();gtk_combo_box_set_active_id(GTK_COMBO_BOX(profile_combo),selected);updating=FALSE;
+    g_list_free(children);gtk_combo_box_set_active_id(GTK_COMBO_BOX(profile_combo),selected);updating=FALSE;
 }
 
 /* Rebuild profile widgets only when their names, device or status markings change. */
 static void render_profiles(void)
 {
-    updating=TRUE;selected_profile_row=NULL;position_profile_actions();clear_box(profile_list);gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(profile_combo));
+    updating=TRUE;clear_box(profile_list);gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(profile_combo));
     JsonArray *profiles=array(state,"profiles");
     for (guint i=0;i<count(profiles);i++)
     {
@@ -782,6 +798,7 @@ static void render_profiles(void)
 /* A fixed inspector exposes actions without expanding or moving history rows. */
 static void render_inspector(void)
 {
+    inspector_save=inspector_choice=inspector_help=NULL;
     clear_box(inspector);JsonObject *item=profile(),*saved=point();if (!item) return;
     gboolean writable=flag(item,"writable") && !mutating;
     const char *eyebrow=saved ? flag(saved,"deleted") ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT" : flag(item,"active") ? "YOU ARE HERE" : "LATEST STATE";
@@ -810,7 +827,7 @@ static void render_inspector(void)
     {
         if (flag(item,"active"))
         {
-            GtkWidget *toggle,*choice,*help,*control=save_control(&toggle,&choice,&help);pack(inspector,control,FALSE);update_save(toggle,choice,help);
+            pack(inspector,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);update_save(inspector_save,inspector_choice,inspector_help);
         }
         else if (number(item,"lastUsed")) {char *date=date_text(number(item,"lastUsed"));char *text=g_strconcat("Last used ",date,NULL);pack(inspector,label(text,"muted"),FALSE);g_free(date);g_free(text);}
         if (!strcmp(str(item,"kind"),"container")) {GtkWidget *create=primary_button("Create restore point","create-point");gtk_widget_set_sensitive(create,writable);pack(inspector,create,FALSE);}
@@ -831,7 +848,6 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
         if (compact) gtk_style_context_add_class(style,"compact");else gtk_style_context_remove_class(style,"compact");
         gtk_widget_set_size_request(sidebar,compact ? -1 : 250,-1);gtk_widget_set_visible(profile_scroll,!compact);gtk_widget_set_visible(profile_combo,compact);
         gtk_orientable_set_orientation(GTK_ORIENTABLE(context_box),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
-        position_profile_actions();
     }
     if (vertical!=stacked)
     {
@@ -881,9 +897,10 @@ static void make_manager(void)
     g_signal_connect(profile_list,"row-selected",G_CALLBACK(profile_selected),NULL);
     profile_actions=box(GTK_ORIENTATION_HORIZONTAL,6);
     profile_rename=button("Rename profile","document-edit-symbolic","rename-profile");profile_delete=button("Delete profile","user-trash-symbolic","delete-profile");
-    pack(profile_actions,profile_rename,FALSE);pack(profile_actions,profile_delete,FALSE);pack(sidebar,profile_actions,FALSE);
+    pack(profile_actions,profile_rename,FALSE);pack(profile_actions,profile_delete,FALSE);
     GtkWidget *detail=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(detail),"session-detail");pack(main_layout,detail,TRUE);
-    profile_heading=label("Profiles","heading");pack(detail,profile_heading,FALSE);
+    GtkWidget *title=box(GTK_ORIENTATION_HORIZONTAL,12);profile_heading=label("Profiles","heading");
+    pack(title,profile_heading,FALSE);pack(title,profile_actions,FALSE);pack(detail,title,FALSE);
     history_layout=box(GTK_ORIENTATION_HORIZONTAL,18);pack(detail,history_layout,TRUE);
     history_box=box(GTK_ORIENTATION_VERTICAL,10);pack(history_layout,history_box,TRUE);
     GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,12);pack(heading,label("Restore points","strong"),TRUE);
@@ -901,9 +918,10 @@ static void make_manager(void)
     pack(manager_body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_container_set_border_width(GTK_CONTAINER(footer),14);pack(footer,label("Next start:","muted"),FALSE);
     manager_next=label("Loading…",NULL);pack(footer,manager_next,TRUE);manager_cancel=link_button("Cancel","next-clear");pack(footer,manager_cancel,FALSE);
-    manager_space=link_button("","space-profile");gtk_label_set_ellipsize(GTK_LABEL(gtk_bin_get_child(GTK_BIN(manager_space))),PANGO_ELLIPSIZE_END);
-    pack(footer,manager_space,FALSE);pack(manager_body,footer,FALSE);
-    manager_status=label("","muted");gtk_widget_set_margin_start(manager_status,14);gtk_widget_set_margin_end(manager_status,14);pack(manager_body,manager_status,FALSE);
+    /* Capacity and operation feedback share one fixed footer slot, without moving the history. */
+    manager_feedback=gtk_stack_new();manager_space=label("","muted");manager_status=label("","muted");
+    gtk_stack_add_named(GTK_STACK(manager_feedback),manager_space,"capacity");gtk_stack_add_named(GTK_STACK(manager_feedback),manager_status,"status");
+    pack(footer,manager_feedback,FALSE);pack(manager_body,footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
     gtk_widget_show_all(manager_body);gtk_widget_hide(profile_combo);
 }
@@ -940,8 +958,9 @@ static void update_ui(void)
     gint64 available=number(run(),"freeBytes")+number(run(),"reusableBytes");
     char *size=size_text(available);
     set_label(popup_space,state ? size : "Loading…");
-    double total=number(run(),"totalBytes");gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(popup_meter),total>0 ? CLAMP(available/total,0,1) : 0);
+    double total=number(run(),"totalBytes");gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(popup_meter),total>0 ? CLAMP(1-available/total,0,1) : 0);
     update_save(popup_save,popup_choice,popup_help);
+    if (inspector_save) update_save(inspector_save,inspector_choice,inspector_help);
     char *next=next_text();set_label(popup_next,next);set_label(manager_next,next);g_free(next);
     gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);gtk_widget_set_visible(manager_cancel,queued);
     gtk_widget_set_sensitive(popup_cancel,!mutating);gtk_widget_set_sensitive(manager_cancel,!mutating);
@@ -955,17 +974,19 @@ static void update_ui(void)
         char *free=size_text(number(item,"freeBytes")+number(item,"reusableBytes"));
         JsonObject *drive=find(array(state,"drives"),"id",str(item,"driveId"));
         char *device=drive_name(drive),*text=g_strdup_printf("%s available · %s",free,device);
-        gtk_button_set_label(GTK_BUTTON(manager_space),text);gtk_widget_set_tooltip_text(manager_space,text);g_free(free);g_free(device);g_free(text);
+        set_label(manager_space,text);g_free(free);g_free(device);g_free(text);
     }
-    else gtk_button_set_label(GTK_BUTTON(manager_space),"");
+    else set_label(manager_space,"");
     const char *warning=warning_kind();
     GtkStyleContext *meter_style=gtk_widget_get_style_context(popup_meter);
     gtk_style_context_remove_class(meter_style,"capacity-warning");gtk_style_context_remove_class(meter_style,"capacity-temporary");
     if (*warning) gtk_style_context_add_class(meter_style,"capacity-warning");
     else if (!flag(run(),"save")) gtk_style_context_add_class(meter_style,"capacity-temporary");
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
-    set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : mutating ? "Working…" : "");gtk_widget_set_visible(manager_status,connection_error || mutating);
-    char *tooltip=g_strdup_printf("Slax Status · %s · %s available",name,size);if (tray) gtk_widget_set_tooltip_text(tray,tooltip);
+    set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : mutating ? "Working…" : "");
+    gtk_stack_set_visible_child(GTK_STACK(manager_feedback),connection_error || mutating ? manager_status : manager_space);
+    char *tooltip=g_strdup_printf("Slax Status · %s · %s available",name,size);
+    if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
     g_free(tooltip);g_free(name);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
     if (state)
     {
@@ -1074,26 +1095,12 @@ static void name_dialog(const char *op)
     gtk_widget_destroy(dialog);
 }
 
-/* Capacity explains the single estimate without promising byte-for-byte filesystem growth. */
-static void space_dialog(gboolean current)
+/* Focus only a user-requested bubble; normal window input leaves global shortcuts available. */
+static void show_popup(void)
 {
-    hide_popup();JsonObject *item=current ? run() : profile();if (!item) return;
-    char *free=size_text(number(item,"freeBytes")),*reusable=size_text(number(item,"reusableBytes")),*available=size_text(number(item,"freeBytes")+number(item,"reusableBytes"));
-    gboolean ram=current && !strcmp(str(item,"kind"),"ram");
-    GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_INFO,GTK_BUTTONS_CLOSE,"%s",ram ? "Available memory" : "Space for changes");
-    if (ram) gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s available in system memory.",available);
-    else gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"Free on drive: %s\nReusable in this profile: %s\nAvailable for changes: %s\n\nAvailable space is an estimate.",free,reusable,available);
-    gtk_dialog_run(GTK_DIALOG(dialog));gtk_widget_destroy(dialog);g_free(free);g_free(reusable);g_free(available);
-}
-
-/* Open the click-invoked bubble without activating a managed window; the keyboard grab enables Escape. */
-static void show_popup(GdkEvent *event)
-{
-    new_profile_pending=FALSE;gtk_widget_hide(manager);gtk_widget_hide(notice.window);update_ui();gtk_widget_show(popup.window);position_bubble(&popup);
-    GdkSeat *seat=gdk_display_get_default_seat(gtk_widget_get_display(popup.window));
-    if (gdk_seat_grab(seat,gtk_widget_get_window(popup.window),GDK_SEAT_CAPABILITY_ALL,TRUE,NULL,event,NULL,NULL)==GDK_GRAB_SUCCESS)
-    {gtk_grab_add(popup.window);gtk_widget_child_focus(popup.body,GTK_DIR_TAB_FORWARD);}
-    else gtk_widget_hide(popup.window);
+    new_profile_pending=FALSE;gtk_widget_hide(notice.window);update_ui();gtk_widget_show(popup.window);position_bubble(&popup);
+    gtk_widget_set_has_tooltip(tray,FALSE);
+    gtk_window_present(GTK_WINDOW(popup.window));gtk_widget_child_focus(popup.body,GTK_DIR_TAB_FORWARD);
     refresh();
 }
 
@@ -1105,8 +1112,7 @@ static void action(GtkButton *button_widget, gpointer data)
     if (!strcmp(op,"manager")) {show_manager();return;}
     if (!strcmp(op,"dismiss")) {gtk_widget_hide(notice.window);return;}
     if (!strcmp(op,"snooze")) {snooze_until=g_get_monotonic_time()+15*60*G_USEC_PER_SEC;g_clear_pointer(&last_warning,g_free);gtk_widget_hide(notice.window);update_ui();return;}
-    if (!strcmp(op,"review")) {show_popup(NULL);return;}
-    if (!strcmp(op,"space-run") || !strcmp(op,"space-profile")) {space_dialog(!strcmp(op,"space-run"));return;}
+    if (!strcmp(op,"review")) {show_popup();return;}
     if (!strcmp(op,"current"))
     {
         g_clear_pointer(&selected_point,g_free);reveal_current=TRUE;render_history();render_inspector();return;
@@ -1179,8 +1185,8 @@ static gboolean draw_tray(GtkWidget *widget, cairo_t *cr, gpointer data)
 }
 static gboolean tray_press(GtkWidget *widget, GdkEventButton *event, gpointer data)
 {
-    (void)widget;(void)data;if (event->button!=1 && event->button!=3) return FALSE;
-    if (gtk_widget_get_visible(popup.window)) hide_popup();else show_popup((GdkEvent *)event);return TRUE;
+    (void)widget;(void)data;if (event->type!=GDK_BUTTON_PRESS || (event->button!=1 && event->button!=3)) return FALSE;
+    if (gtk_widget_get_visible(popup.window)) hide_popup();else show_popup();return TRUE;
 }
 static void tray_destroyed(GtkWidget *widget, gpointer data)
 {
