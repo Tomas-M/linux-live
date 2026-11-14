@@ -210,6 +210,10 @@ reporting progress.
   when a formatted partition above the limit exists on the same disk. Retain
   every sibling in native discovery and erase warnings, including hidden ones.
   Bare disks and disks with only small partitions remain whole-disk targets.
+  Never offer a genuine GPT/MBR EFI System Partition as a Slax data target;
+  reject it in shared installation validation too. Keep ESPs in sibling metadata
+  for boot-file placement and whole-disk erase warnings. An ordinary FAT data
+  partition may still carry EFI boot files when a separate ESP is unavailable.
   Hide the whole-disk erase checkbox when no eligible targets are available.
   Sort Windows drive letters alphabetically before the remaining targets;
   sort Linux targets by full device path. Use Partition Manager's hard-drive,
@@ -1414,6 +1418,9 @@ must follow the general Slax repair rules above.
 
 ## Boot and profile UI
 
+- Skip genuine GPT/MBR EFI System Partitions in live-data/profile mounts, boot
+  device choices, generated fstab, Slax automount and Slax Status discovery.
+  Detect partition types, not FAT filesystems, labels or EFI directory names.
 - `tools/build-initramfs-tools` rebuilds the pinned util-linux blkid/eject as
   stripped static i686 musl binaries. Keep their provenance and the published
   Mini Commander binary's source commit in `initramfs/static/README`.

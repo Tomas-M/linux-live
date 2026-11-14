@@ -20,7 +20,7 @@ static bool fat(const Partition &part)
 }
 
 // Identify only genuine ESP partition types; never silently retype an existing data partition.
-static bool efi(const Partition &part)
+bool efiPartition(const Partition &part)
 {
    auto type=lower(part.type); return type=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b" || type=="0xef" || type=="239";
 }
@@ -97,6 +97,7 @@ std::string basicEligibility(const Device &device,const Image &image,bool erase)
       return "";
    }
    if (!device.number && !device.partitions.empty()) return "Installing to this whole disk requires Erase entire disk, which replaces its complete partition layout.";
+   if (efiPartition(device)) return "An EFI system partition is reserved for boot files. Select a data partition for the slax folder.";
    if (device.bytes<1000000000) return "The selected filesystem must have at least 1 GB of total capacity.";
    if (device.readonly) return "The selected filesystem is read-only. Mount it read-write, choose another target, or erase the whole disk.";
    auto fs=lower(device.filesystem);
@@ -211,7 +212,7 @@ InstallPlan prepareInstall(Device device,const Image &source,bool erase)
       std::string efiFailure;
       for (const auto &part:device.partitions)
       {
-         if (!efi(part) || !fat(part) || part.readonly) continue;
+         if (!efiPartition(part) || !fat(part) || part.readonly) continue;
          try
          {
             FileTree boot(part,false);
@@ -269,7 +270,7 @@ InstallPlan prepareInstall(Device device,const Image &source,bool erase)
          }
       }
       // Keep unknown fallback files intact; a matching Microsoft copy can be backed up atomically.
-      plan.fallback=plan.efi.bytes && (device.usb || !efi(plan.efi) || plan.bootLayout->efi.bytes);
+      plan.fallback=plan.efi.bytes && (device.usb || !efiPartition(plan.efi) || plan.bootLayout->efi.bytes);
       if (plan.fallback && !plan.bootLayout->efi.bytes)
       {
          FileTree esp(plan.efi,false);
@@ -348,7 +349,7 @@ InstallPlan prepareInstall(Device device,const Image &source,bool erase)
       bool newBios=plan.bootLayout->bios.number && std::none_of(device.partitions.begin(),device.partitions.end(),[&](const Partition &part) { return part.start==plan.bootLayout->bios.start; });
       if (newBios) plan.confirmation+="Create a small BIOS boot partition in unused space, keeping the sizes of your existing partitions. ";
       if (plan.bootLayout->efi.bytes) plan.confirmation+="Create a small EFI partition in currently unused space; no existing partition will be resized. ";
-      else if (plan.efi.bytes) plan.confirmation+=efi(plan.efi)?"Put signed UEFI boot files in the existing EFI partition, separate from your data. ":"Put signed UEFI boot files on the same FAT filesystem; no separate EFI partition can be created safely. ";
+      else if (plan.efi.bytes) plan.confirmation+=efiPartition(plan.efi)?"Put signed UEFI boot files in the existing EFI partition, separate from your data. ":"Put signed UEFI boot files on the same FAT filesystem; no separate EFI partition can be created safely. ";
       if (!plan.windowsLoader.empty() && plan.bootConfig.empty()) plan.confirmation+="Keep Windows Boot Manager and show it first in a text system-selection menu. ";
       if (!plan.efiLoaders.empty() && plan.bootConfig.empty()) plan.confirmation+="Retain the other system loaders as choices in this outer menu. ";
       if (plan.registerBoot) plan.confirmation+=plan.efiFirst.empty()?"Add Slax Linux as another UEFI choice, keeping the current firmware default. ":"Start this selector through UEFI, retaining all previous firmware choices. ";
@@ -692,7 +693,7 @@ void install(const InstallPlan &approved,const Progress &progress)
          if (plan.efi.bytes && !plan.bootLayout->efi.bytes)
          {
             mergedEfi=std::make_unique<FileTree>(plan.efi,true); auto &esp=*mergedEfi;
-            if (plan.fallback && !efi(plan.efi) && plan.fallbackDigest.empty() && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation. It will not be overwritten.");
+            if (plan.fallback && !efiPartition(plan.efi) && plan.fallbackDigest.empty() && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation. It will not be overwritten.");
             if (!plan.fallbackDigest.empty() && bootDigest(esp,"EFI/BOOT/BOOTX64.EFI")!=plan.fallbackDigest) throw std::runtime_error("The existing EFI fallback changed after confirmation; it will not be replaced.");
             if (plan.fallback && plan.fallbackDigest.empty() && esp.exists("EFI/BOOT")) throw std::runtime_error("An EFI fallback loader appeared after confirmation; it will not be replaced.");
             if (esp.available()<plan.bootBytes) throw std::runtime_error("The EFI filesystem no longer has enough free space. The copied Slax files remain, and the original boot loader has not been replaced.");

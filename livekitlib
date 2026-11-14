@@ -380,6 +380,16 @@ device_tag()
 }
 
 
+# Identify boot-only EFI partitions by their GPT or MBR type, not their filesystem.
+device_is_efi()
+{
+   local TYPE
+   TYPE=$(blkid -p -s PART_ENTRY_TYPE -o value "$1" 2>/dev/null | tr 'A-Z' 'a-z')
+   if [ "$TYPE" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b -o "$TYPE" = 0xef ]; then return 0; fi
+   return 1
+}
+
+
 # Make sure to mount FAT12/16/32 using vfat
 # in order to support long filenames
 # $1 = device
@@ -459,6 +469,11 @@ ntfs_hibernation_inactive()
 mount_device()
 {
    local NUMBER EXISTING
+
+   if device_is_efi "$1"; then
+      echo "EFI system partition skipped" >"${4:-/dev/null}"
+      return 1
+   fi
 
    # Reuse an already checked NTFS mount; a second RO mount of an RW superblock is refused.
    if [ "$3" = ntfs -o "$3" = ntfs3 ]; then
@@ -784,6 +799,7 @@ find_data()
          while true; do
             blkid -o full -s TYPE -s LABEL | grep -E -v '/loop|/ram|/zram|TYPE="swap"' | while read LINE; do
                DISK="$(echo "$LINE" | cut -d : -f 1)"
+               if device_is_efi "$DISK"; then continue; fi
                SIZE="$(fdisk -l "$DISK" 2>/dev/null | grep $DISK | grep : | sed -r "s/.*: |,.*//g")"
                echo -n "$DISK: $SIZE, "
                echo "$LINE" | sed -r 's/[^"]*"([^"]*)"/\1, /g' | sed -r 's/, $//'
@@ -1656,6 +1672,7 @@ fstab_create()
    echo >> $FSTAB
 
    blkid | grep -v "^/dev/loop" | grep -v "^/dev/zram" | cut -d: -f 1 | while read DEVICE; do
+      if device_is_efi "$DEVICE"; then continue; fi
       LABEL="$(basename $DEVICE)"
       # A hybrid image also exposes its partition's filesystem on the whole disk.
       if ls "/sys/class/block/$LABEL"/*/partition >/dev/null 2>&1; then

@@ -75,6 +75,10 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
    fi
 
    # Reconcile the current state, not the filesystem data captured by an old event.
+   PART_TYPE=$(blkid -p -s PART_ENTRY_TYPE -o value "$DEVNAME" | tr 'A-Z' 'a-z')
+   if [ "$PART_TYPE" = c12a7328-f81f-11d2-ba4b-00a0c93ec93b -o "$PART_TYPE" = 0xef ]; then
+      exit
+   fi
    if mountpoint -q "$MNT"; then
       gtk-bookmarks-update
       exit

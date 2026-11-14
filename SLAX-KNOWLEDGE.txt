@@ -50,6 +50,8 @@ FILES AND DRIVES
   /media, normally /media/DEVICE (e.g. /media/sdb1). Click the circular unmount button
   beside an ordinary mounted drive before unplugging it. Boot/profile disks remain
   mounted while Slax uses them.
+  EFI System Partitions are skipped by automatic mounting and by boot/profile discovery.
+  The installer reserves them for EFI boot files; choose a separate data partition for Slax.
 - Right-click a local .iso > Mount to browse it read-only under /media/ISO-...;
   its sidebar entry has an unmount button.
 - Print Screen (fbprintscreen) saves a screenshot in ~/Pictures and opens a viewer.
