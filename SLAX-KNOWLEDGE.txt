@@ -212,6 +212,11 @@ and slax deactivate FILE.sb require AUFS; the current OverlayFS build loads
 added modules at the next boot instead.
 
 QUICK DIAGNOSTICS AND SETTINGS
+- If boot stops with "Could not locate slax data", photograph the diagnostic
+  screen. It shows the preferred filesystem, device search results and storage
+  errors. The preferred UUID is a hint; other filesystems are also searched.
+  In the recovery shell, more /var/log/live-data.log opens the complete report;
+  this report is in RAM and disappears after reboot.
 - System: cat /etc/slax-version; uname -r; cat /proc/cmdline.
 - Disks/space: lsblk -f; findmnt /; df -h. Boot logs: /var/log/boot.log,
   journalctl -b. Network: ip addr; ip route; connmanctl services; rfkill list.
