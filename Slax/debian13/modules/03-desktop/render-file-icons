@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")"
+
+# Export native file-manager sizes from Slax's editable MIME artwork.
+for ICON in application-x-ms-shortcut application-x-executable application-x-sharedlib image-x-generic; do
+   for SIZE in 16 22 24 32 48 64; do
+      DIR=rootcopy/usr/share/icons/Adwaita/${SIZE}x${SIZE}/mimetypes
+      mkdir -p "$DIR"
+      rsvg-convert -w "$SIZE" -h "$SIZE" "rootcopy/usr/share/icons/Adwaita/scalable/mimetypes/$ICON.svg" -o "$DIR/$ICON.png"
+   done
+done
