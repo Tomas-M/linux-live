@@ -95,7 +95,7 @@ symbols, including native error dialogs, instead of operating-system status icon
 
 The installer verifies a complete staged copy with SHA-256 before publishing it.
 If a `slax` directory already exists, the plan warns that matching source files
-will be replaced. Unmatched files and the entire existing `slax/changes` session
+will be replaced. Unmatched files and the entire existing `slax/changes` profile
 tree stay untouched. Source and destination must be different, including aliases
 or hardlinked source files. File/directory conflicts are rejected before replacement.
 The destination's existing boot-recovery records also stay separate from source
@@ -298,7 +298,7 @@ the source step for mounted ISO/CD fixtures, including symlinks, bind mounts
 and optical media without a valid Slax payload. It performs no installation writes.
 Native GUI fixtures cover resizing, DPI, text alignment, four-card defaults,
 whole-disk highlighting, restored selection and wheel-boundary repainting.
-Update checks cover staged merge and rollback, saved sessions and extra files,
+Update checks cover staged merge and rollback, saved profiles and extra files,
 repeated native boot-menu entries, existing EFI vendor copies and BIOS selectors.
 FAT tests inject silent metadata corruption and exercise short-name collisions
 and valid DOS timestamps. Native checks also cover special-file inputs and

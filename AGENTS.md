@@ -220,7 +220,7 @@ reporting progress.
   window height; scrolling at either boundary must not invalidate or repaint.
   Preserve unrelated files and Windows boot assets. An existing slax directory
   is updated by replacing source-matching files, after a short plan warning.
-  Keep unmatched files and the complete existing slax/changes session tree.
+  Keep unmatched files and the complete existing slax/changes profile tree.
   Reject source/destination identity matches, including directory aliases and
   hardlinked files. Verify a complete staged copy before replacing files, and
   retain originals for recovery until boot activation succeeds. Refresh existing
@@ -857,13 +857,13 @@ must follow the general Slax repair rules above.
   second PCManFM instance with a different IPC socket.
   Ignore queued removals when the device node is present, and open PCManFM only
   for a new successful mount. Keep the mount unit if unmounting fails.
-- Initramfs exposes already mounted boot and session filesystems through
+- Initramfs exposes already mounted boot and profile filesystems through
   `/media/DEVICE` symlinks into `/run/initramfs`, without duplicate fstab or
   systemd mounts. Automount only refreshes their file-manager bookmarks.
   Keep their real mounts for initramfs shutdown, after the live root is released.
   Mount `/media` as a fresh tmpfs before creating these paths, even without
   automount. Device directories and symlinks must not enter persistent changes
-  or reappear when a session is used on another computer.
+  or reappear when a profile is used on another computer.
   Generate ordinary automount units only under `/run/systemd/system`; udev
   starts them without persistent enablement. Boot cleanup cancels queued starts
   of saved generated units before removing them and reloading systemd.
@@ -1007,7 +1007,7 @@ must follow the general Slax repair rules above.
   preserving Debian's version and holding the package.
   The same build also packages and holds `libfm-gtk3-4t64`, applying
   `libfm-places.diff`. Places bookmarks for exact non-system mount points show
-  a circular, themed unmount button; ordinary directories and symlinks to boot/session storage do
+  a circular, themed unmount button; ordinary directories and symlinks to boot/profile storage do
   not. Watch the Unix mount table to refresh buttons after external changes.
   Unmount asynchronously without a shell, force or lazy flags, and show errors
   while retaining the button if the mount remains present.
@@ -1367,7 +1367,7 @@ must follow the general Slax repair rules above.
   preserve Slax's original mark and the menu icons' clean outlines and gradients.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
-  Slax. Use `Choose session during startup` to select or create sessions on
+  Slax. Use `Choose profile or restore point` to select or create profiles on
   the attached fixtures while booting from CD.
 - The scratch VM boots the current distribution ISO at SATA port 0, with its
   two disposable persistence fixtures at ports 1 and 2. The launcher must not
@@ -1412,7 +1412,14 @@ must follow the general Slax repair rules above.
   recorder and save the disabled setting. The scratch launcher explicitly
   disables recording before startup.
 
-## Boot and session UI
+## Boot and profile UI
+
+- User-facing persistence terminology is Slax profile (Profiles in lists) and
+  restore point. A profile owns its applications, settings, files and restore
+  history; a restore point is a saved state inside that profile. Use Current state
+  for the writable tip. Keep unrelated X11, login, D-Bus and browser terminology.
+  Existing numeric directories, session.txt, last_session.txt and DynFileFS API
+  fields remain the storage contract, not visible labels.
 
 - GRUB checks the BIOS El Torito boot alias `(cd)` or its firmware-reported
   boot device before searching other disks; an existing root alone must not
@@ -1480,7 +1487,7 @@ must follow the general Slax repair rules above.
   formatting, mounting and verifying file writes/reads on USB-DATA, then remove
   only USB-SPACE. Keep USB-SPACE if data preparation or verification fails.
   Before removing USB-SPACE, create the live-data changes directory, an initial
-  numeric session with session.txt and last_session.txt, and a short readme.txt
+  numeric profile with session.txt and last_session.txt, and a short readme.txt
   beside changes. Preserve existing files and resume markers. Derive the live-data
   directory from makeiso.sh's ISO volume ID, retaining generic Live Kit names.
   Let the first persistent boot create changes.dat through DynFileFS; an empty
@@ -1529,8 +1536,8 @@ must follow the general Slax repair rules above.
   leaves the nested countdown menu for the full menu. The full menu uses
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
-  The first three entries are `Resume previous session automatically`,
-  `Choose session during startup` and `Run Slax from RAM (copy to ram)`.
+  The first three entries are `Resume previous profile automatically`,
+  `Choose profile or restore point` and `Run Slax from RAM (copy to ram)`.
   The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
   without splash, quiet, hidden cursor, persistence, automount or copy-to-RAM flags.
   Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
@@ -1546,7 +1553,7 @@ must follow the general Slax repair rules above.
   errors visible without routine kernel/systemd messages. Keep full kernel and
   journal records; `debug` still enables verbose console output. Omit obsolete
   `load_ramdisk` and `prompt_ramdisk` flags from Slax entries.
-  Keep new-session creation in the session picker, not in the boot menu.
+  Keep new-profile creation in the profile picker, not in the boot menu.
   Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
   the nested countdown configuration and again after returning to the full menu.
   Initializing only the parent configuration can leave the countdown in text
@@ -1557,7 +1564,7 @@ must follow the general Slax repair rules above.
   instructions. Avoid adding external graphics programs to the initramfs.
   Shutdown uses `fbmenu --shutdown` from the retained initramfs after Xorg, getty
   and the display manager stop. Its shutdown-only systemd unit survives final
-  process termination without holding files on the live root or session disks.
+  process termination without holding files on the live root or profile disks.
   Reuse the logo and dots timing. Esc restores the console's existing shutdown
   output and kernel verbosity while shutdown continues. Quiet text/debug boots
   keep their console, and unavailable framebuffer graphics must not block shutdown.
@@ -1599,107 +1606,99 @@ must follow the general Slax repair rules above.
   desktop pixels observed with vmwgfx without patching or recompiling the kernel.
   Apply this palette globally, without restricting the driver or pixel format.
   Restore the visible login cursor there too; the boot configuration hides it.
-- Session selection retains the Slax logo and shows each session's name,
+- Profile selection retains the Slax logo and shows each profile's name,
   date and size on one row. Highlight the entire selected row. No frame,
   arrow-only selection or `1/20` counters. Footer:
-  `Up/Down: select     Enter: confirm     F4: duplicate     F6: rename     Esc: cancel`.
+  `Up/Down: select   Enter: confirm   F8: restore   Esc: cancel`.
+  Split navigation and actions into two footer lines when needed, reserving the
+  extra height so menu rows cannot overlap them.
 - Embed DejaVu Sans Mono at 12 px in fbmenu. Use 28 px row spacing, 16 px
   horizontal row padding and a 28 px gap below the logo. Center the menu within
   the available display; keep its width between 480 and 720 px where it fits.
-  Leave an extra 16 px blank line between headings and menu/input content.
+  Leave an extra 16 px blank line between headings and menu content.
   Anchor the metadata column to the right. The shell formats human-readable
-  session sizes with `%9s`, keeping their right edge aligned and dates fixed.
+  profile sizes with `%9s`, keeping their right edge aligned and dates fixed.
   Always use one decimal place, a space and a unit, with KB as the smallest
   unit (including `0.0 KB`); scale larger values to MB, GB and at most TB.
   Menu column positions and pixel rendering belong to `draw_menu()` in fbmenu.
-- Numeric session directories remain their identifiers. Store the display name
-  in each native session directory's `boot/session.txt`; container sessions use
+- Numeric profile directories remain their identifiers. Store the display name
+  in each native profile directory's `boot/session.txt`; container profiles use
   `session.txt` alongside `changes.dat`, without creating a metadata-only `boot`
   directory. Share native-storage detection between metadata creation and
   persistence activation; an existing `changes.dat` keeps its container layout
-  even on a Linux filesystem. Read and duplicate names from the matching path.
+  even on a Linux filesystem. Read names from the matching path.
   Show the name without a numeric prefix.
-  Unnamed sessions use `Session #ID`. Empty and duplicate names are allowed.
-  Automatic resume creates its first session as `Initial session` without
-  prompting. Explicit new and duplicated sessions ask for a name using
-  `fbmenu --input` under the logo. Suggest `Initial session` for the first
-  session and the source name for a duplicate. Use `New session name` for new sessions and
-  `Name the duplicated session` for copies. Esc in the name input returns to
-  the session picker without creating a session or updating `last_session.txt`. Only Esc
-  in the session picker cancels persistence. Left/Right move the input caret
-  across UTF-8 characters; Backspace at the beginning does nothing. Prefilled
-  text starts with the caret at its end, without an initial selection or a
-  different input mode. Strip metadata line endings without adding a space or
-  trimming intentional spaces. Compose input changes off screen and update only
-  the field; do not clear/redraw the logo and entire display for each key.
+  Unnamed profiles use `Profile #ID`. Empty and duplicate names are allowed.
+  Automatic resume creates its first profile as `Initial profile` without
+  prompting. `Start a new profile` remains available, selecting a writable disk
+  and creating a clean profile without name input. Later profiles have an empty
+  stored name and display `Profile #ID` until named in the desktop application.
+  Keep copying, renaming, name editing and their progress UI out of initramfs.
+  Strip metadata line endings without adding a space or trimming intentional spaces.
 - The tty decoder waits 100 ms after a single Esc. Double Esc cancels immediately;
   Alt combinations and unsupported escape sequences are consumed and ignored.
   Preserve recognized navigation/function keys and complete UTF-8 characters.
-- Slax's session chooser boot entry includes `automount`, like the other
-  persistent boot entries, so session disks remain accessible under `/media`.
-- `perchdir=ask` lists sessions from `/$LIVEKITNAME/changes` on all detected
+- Slax's profile chooser boot entry includes `automount`, like the other
+  persistent boot entries, so profile disks remain accessible under `/media`.
+- `perchdir=ask` lists profiles from `/$LIVEKITNAME/changes` on all detected
   writable filesystems, preserving a custom boot-data directory on the boot
-  filesystem. Show the device beside each session to disambiguate names.
-  New sessions, including `perchdir=new`, first ask for a writable partition,
-  showing its device, label, filesystem and free/total space even without sessions.
+  filesystem. Show the device beside each profile to disambiguate names.
+  New profiles, including `perchdir=new`, first ask for a writable partition,
+  showing its device, label, filesystem and free/total space even without profiles.
   Format both sizes in the same unit, for example `54.3/64.0 GB free`.
-  Disk and name cancellation return to the session picker; only cancelling
-  that picker disables persistence. Create directories only after the name is
-  confirmed. Keep this flow in `livekitlib`; `fbmenu` remains a generic menu.
+  Disk cancellation returns to the profile picker; only cancelling that picker
+  disables persistence. Create directories only after the disk is selected.
+  F5 Refresh is offered only in the disk picker: release the previous scan mounts,
+  rescan devices and stay in that picker. Refresh does not select a profile or
+  change remembered choices or pending restore requests. Keep this flow in
+  `livekitlib`; `fbmenu --refresh` returns `refresh` on F5.
   Release unselected scan mounts and retain the chosen disk at
-  `/memory/persistence`. Duplication stays on the source disk. Automatic
+  `/memory/persistence`. Automatic
   `perchdir=resume` compares valid `last_session.txt` markers across writable
-  disks and resumes the session from the marker with the newest modification
+  disks and resumes the profile from the marker with the newest modification
   time. Do not use directory dates or change unselected markers. With no previous
-  session, retain first-session creation on the boot medium. Explicit device paths
+  profile, retain first-profile creation on the boot medium. Explicit device paths
   stay scoped to their selected directory. Never format or repartition a discovery target.
-- `fbmenu --menu ... --duplicate` returns `duplicate:ID` on F4. F4 on the new
-  session row returns `new`. Copy an existing session only after its new name
-  is confirmed, stage it in a hidden directory and activate it after the copy
-  succeeds. Preserve source contents, links and permissions; leave the original
-  unchanged. During the copy, show `Duplicating session...` below the logo with
-  the existing animated dots, using `fbmenu --status`. On success, show the final
-  copied MB as boot continues; clear the message on failure. Keep Esc able to
-  reveal the log. Use `cp -a` without verbose filename output; keep copy errors
-  on stderr without corrupting the returned session ID. Check both native
-  storage and FAT-backed session files.
-- `fbmenu --menu ... --rename` returns `rename:ID` on F6 and ignores F6 on
-  the new-session row. Both session pickers prompt with the current name and
-  return to the selected row after confirmation or cancellation. Replace only
-  the matching native/container metadata file atomically, retaining Unicode,
-  literal backslashes and empty names. Renaming never activates the session or
-  changes `last_session.txt`; refresh the displayed name without reinterpreting it.
-- During duplication, record `df -Pk` used space on the target filesystem before
-  copying and subtract that baseline from subsequent measurements. Show
-  `Duplicating session... N.N MB` through `fbmenu --status` every five seconds; write
-  progress to stderr only every ten seconds. This includes allocated space for
-  small files and metadata, plus any concurrent writes on the same filesystem.
-  Wait for the monitor's last request, then always measure and print the final
-  total after a successful copy, even if it took less than ten seconds. Leave
-  that total visible in the graphical status as boot continues. Clear the
-  activity on failure. Keep `cp -a`, its exit status and the session ID intact.
+- `fbmenu --menu ... --restore` returns `restore:ID` on F8 and ignores the new
+  profile row. The selected profile's restore list starts with Current state,
+  then live restore points newest first, with readable automatic labels and UTC
+  dates. Esc returns without changing its pending request. Selecting a point
+  atomically writes its stable ID to restore.txt and starts that profile.
+  Explicit Enter on a profile, or Current state in its restore list, clears a
+  pending restore; automatic resume and explicit perchdir IDs honor the request.
+  Native profiles and profiles without history offer Current state only.
 - Dynfilefs's `virtual.dat` is created with XFS. Mount it explicitly with
   `-t xfs`, including when growing it, to avoid probing it with NTFS and logging
   misleading signature errors. Native persistent directories still use their
   own filesystem.
+  After formatting a new container, remove its initial automatic image of the
+  unformatted disk so it cannot be offered as a usable restore point. Retain its
+  ancestry record; do not guess that the first point in an existing store is blank.
 - Update `initramfs/static/mount.dynfilefs` from the published precompiled
   `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
   then synchronize the work VM and repack Slax's initramfs. Keep the static
   32-bit x86 build. The current binary is DynFileFS 6.02, storage format 600;
   it automatically converts format 500 on first mount. Converted containers
-  cannot be opened with DynFileFS 5. Keep graphical checkpoint controls in Slax.
-- A container session can request one checkpoint for its next activation through
+  cannot be opened with DynFileFS 5. Keep graphical restore point controls in Slax.
+  The current binary includes the locally authorized DynFileFS source fix for
+  `pivot_root`: backing files and the FUSE parent use retained directory handles,
+  preserving writes, restore points, automatic freezing and clean unmount across
+  root changes. Build it with DynFileFS's pinned `static/build.sh` in the work VM's
+  tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
+  and full persistent Slax boots before replacing it; do not overwrite it with an
+  older published binary that lacks this fix. The storage format is unchanged.
+- A container profile can request one restore point for its next activation through
   `restore.txt`, beside `session.txt` and `changes.dat`, containing its stable
   16-digit lowercase hexadecimal ID. Never source metadata as shell code or
   restore by a saved display name: deleted names may be reused. Resolve the live
   ID through DynFileFS's offline catalog and pass its name to `--restore`.
   Consume and sync the request only after XFS mounts and grows successfully.
-  Invalid or unavailable checkpoints retain the request and open the boot recovery
-  shell; exiting retries activation of the same selected session. Native sessions
-  cannot restore checkpoints. Duplication removes only the copy's pending request.
-  `last_session.txt` remains the remembered session choice, not a one-shot flag.
-  Slax's status/session interface is still a mockup in `VM/mockups/slax-status`.
-  A future Don't save control must establish a durable starting checkpoint before
+  Invalid or unavailable restore points retain the request and open the boot recovery
+  shell; exiting retries activation of the same selected profile. Native profiles
+  do not support restore points.
+  `last_session.txt` remains the remembered profile choice, not a one-shot flag.
+  Slax's status/profile interface is still a mockup in `VM/mockups/slax-status`.
+  A future Don't save control must establish a durable starting restore point before
   writers begin; an open automatic image alone cannot protect it through shutdown.
 - Container capacity follows the backing filesystem's total size, rounded up
   to whole GiB, with a 16000 MiB minimum for `mkfs.xfs.custom`'s initial XFS.
@@ -1711,13 +1710,13 @@ must follow the general Slax repair rules above.
   `persistent_changes`, FUSE mounts at `$2.dfs` and XFS at `$2`. For the
   usual live root these are `/memory/changes.dfs` and `/memory/changes`.
   This prevents shutdown from remounting XFS with the hidden FUSE mount's
-  `user_id` and `group_id` options. The storage format and session files stay
+  `user_id` and `group_id` options. The storage format and profile files stay
   unchanged; filesystem creation and growth use the separate `virtual.dat`.
 - Keep HTTP FUSE storage at `$DATAMNT.httpfs` and its loop-mounted data at
   `$DATAMNT`. Local `from=ISO` uses the separate `/memory/iso` mount; failed
   searches must unmount the ISO before its source filesystem. Stop after a
   device mount fails, so retries cannot inspect or stack stale filesystems.
-  Explicit session devices mount at `/memory/persistence`, with a single
+  Explicit profile devices mount at `/memory/persistence`, with a single
   bind mount of the selected directory at the existing changes path. RAM
   copying releases its loop device before unmounting the backing filesystem.
 - Shutdown keeps optical media attached in virtual machines, detected from
@@ -1725,7 +1724,7 @@ must follow the general Slax repair rules above.
   information. Keep this check in the initramfs shutdown script without runtime
   package dependencies. Physical CD/DVD boots retain eject and tray closing;
   filesystem unmounting must run in both cases.
-- Esc in the session picker cancels persistence: no session is created and
+- Esc in the profile picker cancels persistence: no profile is created and
   `last_session.txt` is not updated. Elsewhere during boot, Esc dismisses the
   splash and reveals the log. Keep a text menu when framebuffer is unavailable
   and verify the graphical layout at 800x600 as well as larger resolutions.

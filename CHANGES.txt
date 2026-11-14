@@ -9,8 +9,12 @@ Linux Live Kit
 - Automatically size persistence containers from their backing filesystem and grow
   existing containers without shrinking them; remove the perchsize boot parameter.
 - Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.
-- Restore a requested checkpoint at session startup using its stable ID; keep the
+- Keep DynFileFS backing files and automatic filesystem freezing accessible after
+  switching from the initramfs to the live root, fixing persistent boot I/O errors.
+- Restore a saved state at profile startup using its stable ID; keep the
   request on failure and stop for recovery instead of silently continuing in RAM.
+- Simplify boot profile menus to selection and clean-profile creation; remove
+  copying, renaming and name entry. Refresh the disk list with F5 after connecting a drive.
 
 Slax
 ----
@@ -19,9 +23,9 @@ Slax
   packages from appearing as same-version updates while retaining ordinary updates.
 - Increased default storage size for persistent changes. Previously, the default
   virtual size was 16 GB; it now follows the actual capacity of the filesystem
-  storing the session without unnecessary overhead.
-- Persistence containers can return to saved checkpoints at the next start while
-  retaining other history branches. A graphical session manager is being designed.
+  storing the profile without unnecessary overhead.
+- Call persistent environments Slax profiles and saved states restore points.
+  Choose a profile or restore point during startup; keep ordinary resume automatic.
 - Include whiptail for debconf's text dialogs during package installation,
   avoiding frontend initialization warnings.
 - Highlight the Start button on hover using the shared GTK panel style.
