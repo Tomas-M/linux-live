@@ -85,6 +85,13 @@ in_root()
       'cd "$1"; shift; exec sh "$@"' sh "$@"
 }
 
+# Prefer installed variants of held Slax packages, including same-version rebuilds.
+pin_held_packages()
+{
+   printf 'Package: %s\nPin: release a=now\nPin-Priority: 999\n' \
+      "$(chroot "$UNION" apt-mark showhold | tr '\n' ' ')" > "$UNION/etc/apt/preferences.d/slax-held.pref"
+}
+
 open_root
 debootstrap --variant=minbase --arch=amd64 --components=main,contrib,non-free,non-free-firmware \
    "$SUITE" "$UNION" https://deb.debian.org/debian
@@ -105,6 +112,7 @@ chroot "$UNION" apt-mark hold xfsprogs cifs-utils
 in_root /build cleanup
 in_root /build copy
 cp "$RUN/sources.list" "$UNION/etc/apt/sources.list"
+pin_held_packages
 chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/01-core.packages"
 
 for RECIPE in "$THIS"/modules/*; do
@@ -130,6 +138,7 @@ for RECIPE in "$THIS"/modules/*; do
    elif [ -d "$RECIPE/rootcopy" ]; then
       chroot "$UNION" cp -a "/build/modules/$NAME/rootcopy/." /
    fi
+   pin_held_packages
    chroot "$UNION" dpkg-query -W -f='${binary:Package}\t${Version}\n' > "$WORK/manifests/$NAME.packages"
 done
 
