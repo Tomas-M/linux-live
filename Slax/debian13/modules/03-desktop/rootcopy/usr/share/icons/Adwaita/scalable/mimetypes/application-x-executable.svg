@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs><linearGradient id="paper" x2="0" y2="1"><stop stop-color="#fff"/><stop offset="1" stop-color="#edf2f7"/></linearGradient><linearGradient id="blue" x2="0" y2="1"><stop stop-color="#79b2e5"/><stop offset="1" stop-color="#4a89c3"/></linearGradient></defs>
+  <rect x="6" y="10" width="52" height="46" rx="6" fill="#a5b3bf" opacity=".18"/>
+  <rect x="6.5" y="7.5" width="51" height="46" rx="5" fill="url(#paper)" stroke="#b7c5d0"/>
+  <path d="M12 8h40a5 5 0 0 1 5 5v8H7v-8a5 5 0 0 1 5-5Z" fill="url(#blue)"/>
+  <path d="M46 14h5M12 14h2m4 0h2" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".9"/>
+  <g fill="#6899bd">
+    <circle cx="32" cy="37" r="9"/>
+    <path id="tooth" d="M29.5 25h5l1 6h-7Z"/>
+    <use href="#tooth" transform="rotate(45 32 37)"/><use href="#tooth" transform="rotate(90 32 37)"/><use href="#tooth" transform="rotate(135 32 37)"/>
+    <use href="#tooth" transform="rotate(180 32 37)"/><use href="#tooth" transform="rotate(225 32 37)"/><use href="#tooth" transform="rotate(270 32 37)"/><use href="#tooth" transform="rotate(315 32 37)"/>
+  </g>
+  <circle cx="32" cy="37" r="4.5" fill="#f5f8fb"/>
+</svg>
