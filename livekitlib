@@ -964,7 +964,11 @@ perch_restore_points()
 {
    local CATALOG
 
-   if ! CATALOG=$(@mount.dynfilefs -f "$1/changes.dat" --snapshots --json); then return 1; fi
+   if [ "${2:-}" != "" ]; then
+      CATALOG=$(cat "$2/snapshots.json") || return 1
+   else
+      CATALOG=$(@mount.dynfilefs -f "$1/changes.dat" --snapshots --json) || return 1
+   fi
    # DynFileFS names cannot contain double quotes, backslashes or controls.
    printf '%s\n' "$CATALOG" | awk '
       BEGIN { RS="\"id\":"; FS="\"" }
@@ -990,7 +994,7 @@ perch_restore_name()
    fi
    if ! POINTS=$(perch_restore_points "$1"); then return 1; fi
    if ! NAME=$(printf '%s\n' "$POINTS" | awk -F '\t' -v id="$ID" '
-      $2==id {print $3; found=1}
+      "x" $2=="x" id {print $3; found=1}
       END { if (!found) exit 1 }
    '); then
       echo '* The requested restore point is unavailable; restore.txt was kept.' >&2
@@ -1009,6 +1013,7 @@ perch_set_restore()
    FILE="${FILE%/*}/restore.txt"
    if [ "$2" = current ]; then
       if ! rm -f "$FILE"; then return 1; fi
+      persistence save "$1" || return 1
       sync
       return 0
    fi
@@ -1025,7 +1030,7 @@ perch_set_restore()
 # Inspect history without mounting it; Esc leaves any previously queued request unchanged.
 perch_choose_restore()
 {
-   local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC
+   local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD
 
    ROWS=$(mktemp /tmp/restore-points.XXXXXX) || return 1
    printf 'current\tCurrent state\tLatest changes\n' > "$ROWS"
@@ -1036,6 +1041,9 @@ perch_choose_restore()
          if [ "$POINTS" != "" ]; then TITLE='Start profile from'; fi
          printf '%s\n' "$POINTS" | sort -rn | while IFS="$(printf '\t')" read -r CREATED ID NAME AUTOMATIC; do
             if [ "$ID" = "" ]; then continue; fi
+            # An interrupted reservation is not ownership if another point claimed its ID.
+            GUARD="$1/guard.$ID"
+            if [ -f "$GUARD" ] && [ ! -L "$GUARD" ] && [ "$(cat "$GUARD" 2>/dev/null)" = "$NAME" ]; then continue; fi
             if [ "$AUTOMATIC" = 1 ]; then NAME='Automatic restore point'; fi
             printf '%s\t%s\t%s\n' "$ID" "$NAME" "$(date -u -d "@$CREATED" '+%Y-%m-%d %H:%M:%S UTC')"
          done >> "$ROWS"
@@ -1046,7 +1054,7 @@ perch_choose_restore()
    CHOICE=$(fbmenu --menu "$TITLE" "$ROWS" --cancel) || CHOICE=""
    rm -f "$ROWS"
    if [ "$CHOICE" = "" ]; then return 2; fi
-   if [ "$CHOICE" != current ] && ! printf '%s\n' "$POINTS" | awk -F '\t' -v id="$CHOICE" '$2==id {found=1} END {exit !found}'; then return 1; fi
+   if [ "$CHOICE" != current ] && ! printf '%s\n' "$POINTS" | awk -F '\t' -v id="$CHOICE" '"x" $2=="x" id {found=1} END {exit !found}'; then return 1; fi
    perch_set_restore "$1" "$CHOICE"
 }
 
@@ -1304,12 +1312,16 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 EXISTS PERCHDIR PERCHSIZE PERCHFILE DYNMNT REQUEST RESTORE TARGET
+   local CHANGES T1 EXISTS PERCHDIR PERCHSIZE PERCHFILE DYNMNT REQUEST RESTORE TARGET RESTORE_ID START_ID AUTOMATIC
 
    CHANGES="$1/$(basename "$2")"
 
    # Setup the directory anyway, it will be used in all cases
    mkdir -p "$2"
+   mkdir -p "$MEMORY/profile"
+   chmod 700 "$MEMORY/profile"
+   printf 'ram\n' > "$MEMORY/profile/kind"
+   for T1 in profile changes dynfilefs start; do printf '\n' > "$MEMORY/profile/$T1"; done
 
    # If persistent changes are not requested, end here
    # so memory will be used to save chanves temporarily
@@ -1367,8 +1379,9 @@ persistent_changes()
    REQUEST=$(perch_session_file "$CHANGES/$PERCHDIR")
    REQUEST="${REQUEST%/*}/restore.txt"
    RESTORE=""
-   if [ -e "$REQUEST" -o -L "$REQUEST" ]; then
-      if [ ! -f "$REQUEST" ]; then
+   RESTORE_ID=$(persistence target "${REQUEST%/*}") || return 1
+   if [ "$RESTORE_ID" != "" ]; then
+      if [ -L "$REQUEST" ]; then
          echo '* The restore point request restore.txt must be a regular file.' >&2
          return 1
       fi
@@ -1376,7 +1389,9 @@ persistent_changes()
          echo '* Restore points require a container-backed profile.' >&2
          return 1
       fi
-      RESTORE=$(perch_restore_name "$CHANGES/$PERCHDIR") || return 1
+      T1=$(perch_restore_points "$CHANGES/$PERCHDIR") || return 1
+      RESTORE=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $3; found=1} END {exit !found}') || return 1
+      AUTOMATIC=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $4}')
    fi
 
    # try to use native fs if posix-compatible
@@ -1384,8 +1399,11 @@ persistent_changes()
    echo "Testing persistent changes for posix compatibility"
    if perch_native_fs "$CHANGES/$PERCHDIR"; then
       echo "* Activating native persistent changes for profile #$PERCHDIR"
-      mount --bind "$CHANGES/$PERCHDIR" "$2"
-      return
+      mount --bind "$CHANGES/$PERCHDIR" "$2" || return 1
+      printf 'native\n' > "$MEMORY/profile/kind"
+      printf '%s\n' "/run/initramfs$CHANGES/$PERCHDIR" > "$MEMORY/profile/profile"
+      printf '%s\n' "/run/initramfs$2" > "$MEMORY/profile/changes"
+      return 0
    fi
 
 
@@ -1421,10 +1439,20 @@ persistent_changes()
       return 1
    fi
    TARGET="$2"
+   # Preserve recovered current data before restore; protection precedes DynFileFS's startup pruning.
+   if [ "$RESTORE_ID" != "" ] && { [ -e "$CHANGES/$PERCHDIR/keep-current.$RESTORE_ID" ] || [ -L "$CHANGES/$PERCHDIR/keep-current.$RESTORE_ID" ]; }; then
+      @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -m "$DYNMNT" --protect "$RESTORE_ID" || return 1
+      # Replay an interrupted XFS journal, then capture a clean filesystem without live writers.
+      if ! mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then umount "$DYNMNT"; return 1; fi
+      if ! umount "$TARGET"; then return 1; fi
+      if ! persistence prepare "$CHANGES/$PERCHDIR" "$DYNMNT"; then umount "$DYNMNT"; return 1; fi
+      umount "$DYNMNT" || return 1
+   fi
    set -- -f "$CHANGES/$PERCHFILE" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000
    if [ "$RESTORE" != "" ]; then
       echo "* Restoring profile from: $RESTORE"
       set -- "$@" --restore "$RESTORE"
+      if [ "$AUTOMATIC" = 1 ]; then set -- "$@" --protect "$RESTORE_ID"; fi
    fi
    if ! @mount.dynfilefs "$@"; then return 1; fi
    if [ ! "$EXISTS" ]; then
@@ -1441,8 +1469,14 @@ persistent_changes()
    if mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then
       # Check XFS too, including a previous boot interrupted after container growth.
       if xfs_growfs "$TARGET" >/dev/null; then
-         if [ "$RESTORE" = "" ]; then return 0; fi
-         if rm -f "$REQUEST"; then sync; return 0; fi
+         if START_ID=$(persistence start "$CHANGES/$PERCHDIR" "$DYNMNT"); then
+            printf 'container\n' > "$MEMORY/profile/kind"
+            printf '%s\n' "/run/initramfs$CHANGES/$PERCHDIR" > "$MEMORY/profile/profile"
+            printf '%s\n' "/run/initramfs$TARGET" > "$MEMORY/profile/changes"
+            printf '%s\n' "/run/initramfs$DYNMNT" > "$MEMORY/profile/dynfilefs"
+            printf '%s\n' "$START_ID" > "$MEMORY/profile/start"
+            return 0
+         fi
       fi
       if ! umount "$TARGET"; then return 1; fi
    fi

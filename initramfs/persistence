@@ -1,0 +1,174 @@
+#!/bin/sh
+# Durable profile policy; arguments and data files are never evaluated as shell code.
+
+BASE=$(dirname "$(readlink -f "$0")")
+PATH="$BASE/bin:$BASE/usr/bin:$BASE/sbin:$PATH"
+. "$BASE/lib/livekitlib"
+if [ "$(id -u)" != 0 ]; then exit 1; fi
+
+# Validate identities without converting their full 64-bit value to floating point.
+policy_id()
+{
+   test "${#1}" = 16 && printf '%s\n' "$1" | grep -qE '^[0-9a-f]+$'
+}
+
+# Reject links and special files before reading policy from writable media.
+policy_read()
+{
+   if [ ! -f "$1" ] || [ -L "$1" ]; then echo '* Invalid profile policy file.' >&2; return 1; fi
+   cat "$1"
+}
+
+# Publish complete metadata before acknowledging a change to the desktop or boot.
+policy_write()
+{
+   local FILE TEMP
+   FILE="$1"
+   shift
+   TEMP=$(mktemp "${FILE%/*}/.policy.XXXXXX") || return 1
+   if ! printf '%s\n' "$@" > "$TEMP" || ! chmod 644 "$TEMP" || ! mv -f "$TEMP" "$FILE"; then
+      rm -f "$TEMP"
+      return 1
+   fi
+   sync
+}
+
+# A run owns one durable starting point and one independent save/discard choice.
+policy_run()
+{
+   local TEXT ID MODE
+   if [ ! -e "$1/run.txt" ] && [ ! -L "$1/run.txt" ]; then return 0; fi
+   TEXT=$(policy_read "$1/run.txt") || return 1
+   ID=$(printf '%s\n' "$TEXT" | sed -n 1p)
+   MODE=$(printf '%s\n' "$TEXT" | sed -n 2p)
+   if ! policy_id "$ID" || [ "$(printf '%s\n' "$TEXT" | wc -l)" != 2 ]; then return 1; fi
+   if [ "$MODE" != save -a "$MODE" != discard ]; then return 1; fi
+   printf '%s %s\n' "$ID" "$MODE"
+}
+
+# Explicit restore selection takes precedence over the previous run's discard policy.
+policy_target()
+{
+   local ID RUN
+   if [ -e "$1/restore.txt" ] || [ -L "$1/restore.txt" ]; then
+      ID=$(policy_read "$1/restore.txt") || return 1
+      policy_id "$ID" || return 1
+      printf '%s\n' "$ID"
+   else
+      RUN=$(policy_run "$1") || return 1
+      if [ "${RUN#* }" = discard ]; then printf '%s\n' "${RUN% *}"; fi
+   fi
+}
+
+# Resolve a live node by identity; names are only the command argument after validation.
+policy_name()
+{
+   perch_restore_points "$1" "$3" | awk -F '\t' -v id="$2" '"x" $2=="x" id {print $3; found=1} END {exit !found}'
+}
+
+# Reserve the next exact ID before creating an owned point, closing the crash-recording gap.
+policy_next_id()
+{
+   cat "$1/snapshots.json" | awk 'BEGIN {RS="\"id\":"; FS="\""} /^"/ {print $2}' | sort | tail -n 1 | awk '
+      BEGIN {digits="0123456789abcdef"; carry=1}
+      {for (i=16;i>0;i--) {n=index(digits,substr($0,i,1))-1+carry; carry=(n==16); value=substr(digits,n%16+1,1) value}
+       if (carry || length(value)!=16) exit 1; print value}
+   '
+}
+
+# Only exact ID/name pairs recorded by this lifecycle may be removed automatically.
+policy_cleanup()
+{
+   local PROFILE MOUNT RUN TARGET FILE ID NAME LIVE SAVED CATALOG
+   PROFILE="$1"; MOUNT="$2"
+   RUN=$(policy_run "$PROFILE") || return 1
+   TARGET=$(policy_target "$PROFILE") || return 1
+   CATALOG=$(cat "$MOUNT/snapshots.json") || return 1
+   for FILE in "$PROFILE"/guard.*; do
+      if [ ! -e "$FILE" ] && [ ! -L "$FILE" ]; then continue; fi
+      ID=${FILE##*.}
+      policy_id "$ID" || return 1
+      NAME=$(policy_read "$FILE") || return 1
+      if [ "$ID" = "${RUN% *}" -o "$ID" = "$TARGET" ]; then continue; fi
+      LIVE=$(policy_name "$PROFILE" "$ID" "$MOUNT") || LIVE=""
+      SAVED=$(printf '%s\n' "$CATALOG" | awk -v id="$ID" '
+         BEGIN {RS="\"id\":"; FS="\""}
+         "x" $2=="x" id {name=$0; sub(/.*,"name":"/,"",name); sub(/".*/,"",name); print name}
+      ')
+      # A crash before creation can leave this reserved ID to a different immutable point.
+      if [ "$SAVED" = "" -o "$SAVED" != "$NAME" ]; then
+         rm -f "$FILE" || return 1
+         continue
+      fi
+      if [ "$LIVE" != "" ]; then
+         if ! printf 'delete %s\n' "$NAME" > "$MOUNT/snapshot"; then return 1; fi
+      fi
+      # Tombstones keep ancestry; retain matching ownership records so the UI can hide them.
+   done
+   sync
+}
+
+# A manual point survives automatic retention; the record proves ownership on recovery.
+policy_guard()
+{
+   local PROFILE MOUNT NAME ID LIVE
+   PROFILE="$1"; MOUNT="$2"
+   NAME="live-start-$(cat /proc/sys/kernel/random/uuid)"
+   ID=$(policy_next_id "$MOUNT") || return 1
+   policy_id "$ID" || return 1
+   policy_write "$PROFILE/guard.$ID" "$NAME" || return 1
+   if ! printf 'create %s\n' "$NAME" > "$MOUNT/snapshot"; then return 1; fi
+   LIVE=$(policy_name "$PROFILE" "$ID" "$MOUNT") || return 1
+   if [ "$LIVE" != "$NAME" ]; then return 1; fi
+   printf '%s\n' "$ID"
+}
+
+# Preserve recovered current data before restoration; the caller holds --protect ID.
+policy_prepare()
+{
+   local PROFILE MOUNT ID INTENT LABEL SAVED LIVE
+   PROFILE="$1"; MOUNT="$2"
+   if [ ! -e "$PROFILE/restore.txt" ] && [ ! -L "$PROFILE/restore.txt" ]; then return 0; fi
+   ID=$(policy_read "$PROFILE/restore.txt") || return 1
+   policy_id "$ID" || return 1
+   policy_name "$PROFILE" "$ID" "$MOUNT" >/dev/null || return 1
+   INTENT="$PROFILE/keep-current.$ID"
+   if [ -e "$INTENT" ] || [ -L "$INTENT" ]; then
+      LABEL=$(policy_read "$INTENT") || return 1
+      SAVED=$(printf '%s\n' "$LABEL" | sed -n 2p)
+      LABEL=$(printf '%s\n' "$LABEL" | sed -n 1p)
+      LIVE=""
+      if policy_id "$SAVED"; then LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || LIVE=""; fi
+      if [ "$LIVE" != "$LABEL" -o "$LABEL" = "" ]; then
+         SAVED=$(policy_next_id "$MOUNT") || return 1
+         policy_write "$INTENT" "$LABEL" "$SAVED" || return 1
+         if ! printf 'create %s\n' "$LABEL" > "$MOUNT/snapshot"; then return 1; fi
+         LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || return 1
+         if [ "$LIVE" != "$LABEL" ]; then return 1; fi
+      fi
+   fi
+}
+
+# Start policy is published before consuming the request or releasing previous guards.
+policy_start()
+{
+   local ID FILE
+   ID=$(policy_guard "$1" "$2") || return 1
+   policy_write "$1/run.txt" "$ID" save || return 1
+   rm -f "$1/restore.txt" || return 1
+   for FILE in "$1"/keep-current.*; do
+      if [ -e "$FILE" ] || [ -L "$FILE" ]; then rm -f "$FILE" || return 1; fi
+   done
+   sync
+   policy_cleanup "$1" "$2" || return 1
+   printf '%s\n' "$ID"
+}
+
+if [ "$1" = target ]; then policy_target "$2"
+elif [ "$1" = start ]; then policy_start "$2" "$3"
+elif [ "$1" = prepare ]; then policy_prepare "$2" "$3"
+elif [ "$1" = save ]; then
+   RUN=$(policy_run "$2") || exit 1
+   if [ "$RUN" != "" ]; then policy_write "$2/run.txt" "${RUN% *}" save; fi
+else exit 1
+fi

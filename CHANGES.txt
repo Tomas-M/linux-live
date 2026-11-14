@@ -15,6 +15,9 @@ Linux Live Kit
   request on failure and stop for recovery instead of silently continuing in RAM.
 - Simplify boot profile menus to selection and clean-profile creation; remove
   copying, renaming and name entry. Refresh the disk list with F5 after connecting a drive.
+- Preserve the starting state before persistent writes and apply save/discard
+  policy at the next activation; protect scheduled restore points during recovery.
+  Recover interrupted creation of the starting state without losing unrelated points.
 
 Slax
 ----
@@ -26,6 +29,9 @@ Slax
   storing the profile without unnecessary overhead.
 - Call persistent environments Slax profiles and saved states restore points.
   Choose a profile or restore point during startup; keep ordinary resume automatic.
+- Add Slax Status to the desktop tray, with anchored storage warnings, estimated
+  available space, Save this run and native profile/restore-point management.
+  Browse saved files read-only and choose the next profile or restore point.
 - Include whiptail for debconf's text dialogs during package installation,
   avoiding frontend initialization warnings.
 - Highlight the Start button on hover using the shared GTK panel style.

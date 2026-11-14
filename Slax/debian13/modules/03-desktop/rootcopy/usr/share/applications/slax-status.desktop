@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Slax Status
+Exec=slax-status --manage
+Icon=slax-status
+Terminal=false
+NoDisplay=true
+StartupWMClass=slax-status

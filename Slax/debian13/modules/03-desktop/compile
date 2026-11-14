@@ -92,6 +92,8 @@ cc -Os -s -o "$PACKAGE/usr/bin/fbinstall" "$CWD/fbinstall.c" $(pkg-config --cfla
 cc -Os -s -o "$PACKAGE/usr/bin/fbstartupnotify" "$CWD/fbstartupnotify.c" $(pkg-config --cflags --libs gtk+-2.0 gio-unix-2.0 libstartup-notification-1.0 xcursor x11 xfixes)
 cc -Os -s -o "$PACKAGE/usr/bin/fbvboxpointer" "$CWD/fbvboxpointer.c" -lX11
 cc -Os -s -o "$PACKAGE/usr/bin/fbkeyboard" "$CWD/fbkeyboard.c" $(pkg-config --cflags --libs gtk+-3.0 x11 xi fontconfig xkbcommon)
+cc -Os -s -o "$PACKAGE/usr/bin/slax-status" "$CWD/slax-status.c" $(pkg-config --cflags --libs gtk+-3.0 gio-unix-2.0 json-glib-1.0 x11) -lm
+cc -Os -s -o "$PACKAGE/usr/bin/slax-statusd" "$CWD/slax-statusd.c" $(pkg-config --cflags --libs gio-unix-2.0 json-glib-1.0)
 # Compile the current upstream Partition Manager in the disposable branch's tmpfs.
 PARTITION_MANAGER_BUILD=$(mktemp -d /tmp/partition-manager-build.XXXXXX)
 PARTITION_MANAGER_COMMIT=$(git ls-remote https://github.com/Tomas-M/partition-manager.git HEAD | cut -f1)
@@ -156,7 +158,7 @@ Architecture: any
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
 DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
-   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard" "$PACKAGE/usr/bin/partition-manager")
+   "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard" "$PACKAGE/usr/bin/slax-status" "$PACKAGE/usr/bin/slax-statusd" "$PACKAGE/usr/bin/partition-manager")
 cat > "$PACKAGE/DEBIAN/control" <<EOF
 Package: slax-desktop-tools
 Version: 1

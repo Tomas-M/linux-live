@@ -47,6 +47,8 @@ chmod 755 /usr/libexec/slax-fbcon-palette /usr/libexec/fbmenu-driver
 chmod 644 /usr/lib/systemd/system/xorg.service /etc/systemd/system/getty@tty1.service.d/xorg.conf /etc/systemd/system/getty@.service.d/framebuffer.conf
 chmod 644 /usr/lib/systemd/system/slax-shutdown-splash.service
 systemctl enable slax-shutdown-splash.service
+chmod 644 /usr/lib/systemd/system/slax-status.service
+systemctl enable slax-status.service
 
 # Install application-specific styling only after cleanup.
 mkdir -p /usr/lib/x86_64-linux-gnu/gtk-3.0/modules
