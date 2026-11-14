@@ -72,6 +72,7 @@ std::string filenameKey(const std::string &name);
 std::string sizeText(uint64_t value,bool binary=false);
 void printDevices(const std::vector<Device> &devices);
 std::vector<Device> visibleTargets(std::vector<Device> devices);
+bool efiPartition(const Partition &partition);
 int deviceIcon(const Device &device);
 std::string deviceLocation(const Device &device);
 

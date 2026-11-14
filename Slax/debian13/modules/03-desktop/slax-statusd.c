@@ -491,6 +491,9 @@ static void scan_devices(JsonArray *array, gboolean mount_missing)
       if (children) { scan_devices(children,mount_missing); continue; }
       const char *device=string(item,"name"),*type=string(item,"type"),*fs=string(item,"fstype");
       if (!device || !type || !fs || (strcmp(type,"part") && strcmp(type,"disk")) || !strcmp(fs,"swap") || !strcmp(fs,"iso9660") || !strcmp(fs,"squashfs")) continue;
+      /* EFI boot files may share an ordinary data FAT volume; only genuine ESPs are excluded. */
+      const char *partition=string(item,"parttype");
+      if (partition && (!g_ascii_strcasecmp(partition,"c12a7328-f81f-11d2-ba4b-00a0c93ec93b") || !g_ascii_strcasecmp(partition,"0xef"))) continue;
       struct stat node;
       if (stat(device,&node) || !S_ISBLK(node.st_mode)) continue;
       Drive *drive=NULL;
@@ -531,7 +534,7 @@ static gboolean discover(gboolean force, GError **error)
 {
    boot_state();
    if (!force && scanned && g_get_monotonic_time()-scanned<15*G_USEC_PER_SEC) return TRUE;
-   const char *argv[]={"/bin/lsblk","--json","--bytes","--paths","--output","NAME,TYPE,FSTYPE,LABEL,UUID",NULL};
+   const char *argv[]={"/bin/lsblk","--json","--bytes","--paths","--output","NAME,TYPE,FSTYPE,LABEL,UUID,PARTTYPE",NULL};
    char *output=command(argv,error);
    if (!output) return FALSE;
    JsonObject *data=parse(output,error); g_free(output);

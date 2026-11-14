@@ -48,6 +48,7 @@ std::vector<Device> visibleTargets(std::vector<Device> devices)
 {
    devices.erase(std::remove_if(devices.begin(),devices.end(),[](const Device &device)
    {
+      if (efiPartition(device)) return true;
       bool whole=device.number==0 && device.diskBytes!=0;
       bool largePartition=std::any_of(device.partitions.begin(),device.partitions.end(),[](const Partition &part) { return part.bytes>1000000000; });
       if (whole) return largePartition;

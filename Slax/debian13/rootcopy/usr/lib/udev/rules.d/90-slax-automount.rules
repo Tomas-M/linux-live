@@ -1,3 +1,6 @@
 # we don't care about loop* and ram* devices
+# Keep EFI boot partitions out of desktop volume automount as well.
+SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b", ENV{UDISKS_AUTO}="0"
+SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="0xef", ENV{UDISKS_AUTO}="0"
 # Mounting must run outside udev; mount units wait for the current device event to finish.
 KERNEL=="[!lr]*", SUBSYSTEM=="block", RUN+="/usr/bin/systemd-run --quiet --no-block --collect /usr/sbin/slax-automount %E{ACTION} %E{DEVNAME} %E{ID_FS_TYPE}"

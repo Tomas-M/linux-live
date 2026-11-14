@@ -255,6 +255,15 @@ int main(int argc,char **argv)
    auto windowsEntry=firmware["Boot0000"],otherEntry=firmware["Boot0001"];
 
    auto disk=fixture(1); assert(basicEligibility(disk,image,false).empty());
+   // Even a large ESP is boot-only; keep it in sibling metadata for EFI and erase planning.
+   for (const char *type:{"c12a7328-f81f-11d2-ba4b-00a0c93ec93b","C12A7328-F81F-11D2-BA4B-00A0C93EC93B","0xef","239"})
+   {
+      auto esp=disk; esp.type=type; esp.filesystem="FAT32";
+      assert(visibleTargets({esp}).empty());
+      assert(basicEligibility(esp,image,false).find("EFI system partition")!=std::string::npos);
+      assert(basicEligibility(esp,image,true).empty());
+      assert(fails([&] { prepareInstall(esp,image,false); }).find("EFI system partition")!=std::string::npos);
+   }
    // Exercise both directory-copy and raw FAT writers, retaining original paths for renamed EFI payloads.
    auto beforeFolderFirmware=firmware;
    auto folderTarget=fixture(28); install(prepareInstall(folderTarget,folder,false),[](const auto &,int) {});
