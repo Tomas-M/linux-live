@@ -1,0 +1,20 @@
+[Unit]
+Description=Slax profiles and restore points
+After=local-fs.target
+ConditionPathIsDirectory=/run/initramfs/memory
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/slax-statusd
+Restart=on-failure
+# DynFileFS exits when its owned mount is released, including views held across a broker restart.
+KillMode=process
+RuntimeDirectory=slax-status
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+UMask=0077
+# Mounts are shared with the caller's desktop and the retained initramfs.
+PrivateMounts=no
+
+[Install]
+WantedBy=multi-user.target

@@ -95,13 +95,15 @@ fi
    VOLUMEPID=$!
    connman-gtk --tray &
    NETWORKPID=$!
+   slax-status &
+   STATUSPID=$!
 
    # Wait up to ten monotonic seconds for visible icons, skipping failed applets.
    read UPTIME IDLE < /proc/uptime
    DEADLINE=$(( ${UPTIME%%.*} + 10 ))
    while true; do
       MISSING=
-      for TRAY in "fbkeyboard:$KEYBOARDPID" "volumeicon:$VOLUMEPID" "connman-gtk:$NETWORKPID"; do
+      for TRAY in "fbkeyboard:$KEYBOARDPID" "volumeicon:$VOLUMEPID" "connman-gtk:$NETWORKPID" "slax-status:$STATUSPID"; do
          if kill -0 "${TRAY#*:}" 2>/dev/null && ! xdotool search --onlyvisible --classname "^${TRAY%:*}$" >/dev/null 2>&1; then
             MISSING=1
          fi

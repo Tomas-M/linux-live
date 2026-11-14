@@ -1676,11 +1676,11 @@ must follow the general Slax repair rules above.
   ancestry record; do not guess that the first point in an existing store is blank.
 - Update `initramfs/static/mount.dynfilefs` from the published precompiled
   `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
-  then synchronize the work VM and repack Slax's initramfs. Keep the static
+  then synchronize the work VM and repack Slax's initramfs when the binary changes. Keep the static
   32-bit x86 build. The current binary is DynFileFS 6.02, storage format 600;
   it automatically converts format 500 on first mount. Converted containers
   cannot be opened with DynFileFS 5. Keep graphical restore point controls in Slax.
-  The current binary includes the locally authorized DynFileFS source fix for
+  The published binary at commit `72389fb` includes the DynFileFS source fix for
   `pivot_root`: backing files and the FUSE parent use retained directory handles,
   preserving writes, restore points, automatic freezing and clean unmount across
   root changes. Build it with DynFileFS's pinned `static/build.sh` in the work VM's
@@ -1697,9 +1697,54 @@ must follow the general Slax repair rules above.
   shell; exiting retries activation of the same selected profile. Native profiles
   do not support restore points.
   `last_session.txt` remains the remembered profile choice, not a one-shot flag.
-  Slax's status/profile interface is still a mockup in `VM/mockups/slax-status`.
-  A future Don't save control must establish a durable starting restore point before
-  writers begin; an open automatic image alone cannot protect it through shutdown.
+  `initramfs/persistence` establishes a manual starting guard after XFS recovery/grow
+  and before union writers. `run.txt` holds its exact ID and save/discard policy;
+  an explicit restore.txt takes precedence. `guard.ID` records prove ownership only
+  when both ID and immutable name match, including deleted ancestors. A crash can
+  let another point claim an unfulfilled reservation; remove only that marker.
+  Never remove a user point merely by its name prefix.
+  Deferred keep-current intent is tied to the target ID and processed only at the
+  next activation, after recovering and cleanly unmounting the old XFS, before
+  actually restoring. There is no profile-specific shutdown hook.
+  DynFileFS's `protect ID` / `unprotect ID` controls keep queued points safe through
+  final automatic pruning, independent of the desktop service's lifetime. Protect
+  the new selection before publishing its durable request, then release the old
+  protection. `--protect ID` protects the recorded target before startup pruning;
+  supply it again from the durable request on later mounts, including crash recovery.
+  The storage format is unchanged. This API is included in published commit
+  `72389fb`; retain it together with the pivot-root fix when replacing the binary.
+- Slax Status is native GTK 3 in `03-desktop/slax-status.c`, following the approved
+  `VM/mockups/slax-status` layout. Start one tray per user/X display from Fluxbox;
+  do not add an xlunch/application-menu launcher. Keep a `NoDisplay=true` desktop
+  entry for Docklike's application icon and WM_CLASS matching. Its separate GTK status and warning
+  windows have tray-pointing tails and Picom roles `slax-status-popup` and
+  `slax-status-notification`. Warnings never take focus or grab input.
+  Keep warning text to three ellipsized lines, with its full text in a tooltip.
+  Draw the stacked-drive tray glyph with integral, pixel-aligned bars at GTK's
+  device scale; retain antialiasing for the round state dot, not fractional glyph strokes.
+  Use one approximate capacity indicator: backing-drive available bytes plus only
+  the active container's reusableBytes, or MemAvailable in RAM. Keep storage work
+  off GTK's thread and labels ellipsized. Scroll history independently; long profile
+  lists and the inspector in a narrow window may scroll without expanding the window.
+  Display device paths first, with optional labels in parentheses, and omit
+  approximation symbols before available-space numbers. Keep panel padding inside
+  styled surfaces so backgrounds and separators reach their section edges.
+  Background startup and polling inspect mounted drives without mounting others.
+  Only explicit manager opening or New profile requests `state` with `refresh:true`
+  to discover and mount other drives. Queue that request across an in-flight poll;
+  New profile waits for the refreshed drive list. Ordinary polling never forces discovery.
+  Profiles own their restore-point tree; profile rename/delete stay beside the
+  selected profile. Draw square branch connectors and highlight the corresponding
+  node when its row is hovered, focused or selected. Current state is a separate
+  synthetic row, not an assertion that data still equals currentParent.
+  `slax-statusd` is the root storage broker; authenticate Unix-socket callers as
+  root or the Slax guest account and accept opaque identities, never arbitrary
+  client paths or shell commands. Native profiles always save, RAM never saves;
+  enable the container's switch only with a verified durable starting guard.
+  Keep immutable file views read-only with XFS norecovery/nouuid or ext4 noload.
+  Open saved home directories in the caller's PCManFM, retaining view ownership
+  until Close files succeeds. Do not replay journals into saved views or force
+  busy unmounts. The approved mockup is a specification, not a runtime dependency.
 - Container capacity follows the backing filesystem's total size, rounded up
   to whole GiB, with a 16000 MiB minimum for `mkfs.xfs.custom`'s initial XFS.
   Do not read a `perchsize` boot parameter. Inspect existing containers with

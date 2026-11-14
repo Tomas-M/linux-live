@@ -54,6 +54,7 @@ splash_start
                                                                                                                                                       debug_shell
 # copy to RAM if needed
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"
+printf '%s\n' "/run/initramfs$DATA" > "$MEMORY/profile/source"
 
 # mount bundles
 mount_bundles "$DATA" "$BUNDLES"

@@ -17,6 +17,12 @@ DESKTOP
   Scroll over the icon to adjust volume.
 - Click EN (or the current layout label) in the taskbar to select a keyboard layout.
   Ctrl+Shift, Alt+Shift and Super+Space switch layouts when the keys are released.
+- Slax Status starts with the desktop. Click its stacked-drive tray icon to see
+  where Slax runs, where changes are stored and the estimated space available.
+  Drives are identified by /dev/device, followed by their label in parentheses.
+  Details separates free drive space from blocks reusable inside the current profile.
+  Low-space and storage warnings appear beside the icon without taking focus;
+  Remind in 15 min postpones them. Open Profiles & restore points from this bubble.
 - Right-click empty desktop space for Create New and Desktop Preferences.
   Desktop Preferences controls wallpaper, icon appearance and screen resolution.
   After a resolution change, choose Keep changes within 10 seconds; Revert or
@@ -123,13 +129,14 @@ BOOT AND PERSISTENCE
   Esc in the disk list returns to profiles.
 - Run Slax from RAM (copy to ram) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
-  save files to a mounted drive to retain them after shutdown. This entry also
-  adds noautomount boot parameter, so disks are not automatically mounted.
+  save files to a mounted drive to retain them after shutdown. This entry leaves
+  automatic disk mounting disabled. Opening Profiles & restore points explicitly
+  discovers and mounts available profile drives.
 - Start Slax in text mode only (no desktop) opens a console session. Run startx
   from a logged-in console to start the graphical desktop.
   The guest account (password: guest) starts the same Slax desktop, with its own
   settings and files. Restart and Shut down work for the active local guest
-  session. Other administrative tasks still require root.
+  session. Slax Status also works as guest; other administrative tasks require root.
   Text mode retains nomodeset for emergency graphics; when only a firmware
   framebuffer is available, startx uses it and the resolution may be fixed.
 - Profiles are under slax/changes on the selected writable disk. Linux-compatible
@@ -144,7 +151,23 @@ BOOT AND PERSISTENCE
   A successful restore consumes restore.txt and retains other history branches.
   An invalid request stops for recovery; correct or remove restore.txt and exit
   the recovery shell to retry. Native directory profiles have no restore points.
-  The graphical profile manager and Save this run switch are not shipped yet.
+- In Slax Status, Profiles & restore points shows each profile's history as a tree.
+  The green path leads to Current state; selecting a row highlights its own node.
+  Use the plus beside Profiles to create a clean profile on a writable drive.
+  Rename and Delete beside the selected profile affect that whole profile;
+  the running profile cannot be deleted. New profiles start empty, without copying data.
+- Create restore point saves a named state in the selected container profile.
+  Use at next start schedules a profile or restore point without replacing the
+  running desktop. When restoring, Keep current state preserves a named point
+  before switching. Cancel removes the scheduled selection.
+  Open files opens a restore point read-only in File Manager; copy files out to
+  recover them. Close files releases that view; close files in other applications
+  first if it is busy. A point needing filesystem recovery can be used at next start.
+- Save this run controls the active container profile. Don't save returns to this
+  run's starting state on the next activation; an explicit restore selection takes
+  precedence. Named restore points remain available. This is not secure deletion:
+  automatic history may retain recent states. RAM runs are fixed to Don't save;
+  native directory profiles always save and have no restore points.
 - Files saved directly to mounted drives remain independently of the Slax profile.
   savechanges exports changes as a module; ordinary persistence saves automatically.
 
