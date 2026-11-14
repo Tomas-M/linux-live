@@ -1,0 +1,24 @@
+#!/bin/sh
+# Build blkid and eject as static i686 ELF with musl-tools:i386 and Linux headers.
+set -eu
+THIS=$(CDPATH= cd "$(dirname "$0")" && pwd)
+OUT=$(realpath -m "${1:-$THIS/../initramfs/static}")
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/livekit-blkid.XXXXXX")
+trap 'rm -r "$WORK"' 0
+
+curl --fail --location --retry 3 https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.4.tar.xz -o "$WORK/source.tar.xz"
+echo "fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  $WORK/source.tar.xz" | sha256sum -c -
+tar -xJf "$WORK/source.tar.xz" -C "$WORK"
+cd "$WORK/util-linux-2.42.4"
+CC='musl-gcc -m32' CFLAGS='-Os -idirafter /usr/i686-linux-gnu/include -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables' \
+   LDFLAGS='-static -no-pie -Wl,--gc-sections,--build-id=none' ./configure --host=i686-linux-musl \
+   --disable-all-programs --enable-blkid --enable-eject --enable-libblkid --enable-libmount --enable-libuuid \
+   --disable-shared --enable-static --disable-nls --without-systemd --without-udev --without-selinux
+make -j "$(getconf _NPROCESSORS_ONLN)" LDFLAGS='-all-static -no-pie -Wl,--gc-sections,--build-id=none' blkid eject
+for TOOL in blkid eject; do
+   strip "$TOOL"
+   readelf -h "$TOOL" | grep -q 'Class:.*ELF32'
+   if readelf -l -d "$TOOL" | grep -Eq 'INTERP|NEEDED'; then exit 1; fi
+   "./$TOOL" --version
+   install -m 755 "$TOOL" "$OUT/"
+done
