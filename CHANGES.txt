@@ -4,9 +4,25 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Automatically size persistence containers from their backing filesystem and grow
+  existing containers without shrinking them; remove the perchsize boot parameter.
+- Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.
+- Restore a requested checkpoint at session startup using its stable ID; keep the
+  request on failure and stop for recovery instead of silently continuing in RAM.
+
 Slax
 ----
 
+- Prefer the installed variants of Slax's held packages in APT, preventing rebuilt
+  packages from appearing as same-version updates while retaining ordinary updates.
+- Increased default storage size for persistent changes. Previously, the default
+  virtual size was 16 GB; it now follows the actual capacity of the filesystem
+  storing the session without unnecessary overhead.
+- Persistence containers can return to saved checkpoints at the next start while
+  retaining other history branches. A graphical session manager is being designed.
+- Include whiptail for debconf's text dialogs during package installation,
+  avoiding frontend initialization warnings.
+- Highlight the Start button on hover using the shared GTK panel style.
 - Use the same desktop defaults for root, guest and new accounts, including the
   panel, shortcuts, appearance and user-specific startup after a text-mode login.
 - Support the firmware framebuffer when starting the desktop after a nomodeset

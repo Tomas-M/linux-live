@@ -811,7 +811,7 @@ check_data_found()
 # Format KiB as a size or free/total pair, sharing the total's unit up to TB.
 perch_size()
 {
-   LC_ALL=C awk 'BEGIN {
+   awk 'BEGIN {
       split("KB MB GB TB",units)
       free=ARGV[1]; value=ARGV[ARGC-1]; unit=1
       while (value>=1024 && unit<4) { free/=1024; value/=1024; unit++ }
@@ -852,6 +852,32 @@ perch_session_file()
 perch_session_name()
 {
    head -n 1 "$(perch_session_file "$1")" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' '
+}
+
+
+# Resolve a one-shot restore request by identity, never by a possibly reused name.
+perch_restore_name()
+{
+   local ID CATALOG NAME
+
+   ID=$(cat "$1/restore.txt") || return 1
+   if [ "${#ID}" -ne 16 ] || ! printf '%s\n' "$ID" | grep -qE '^[0-9a-f]+$'; then
+      echo '* Invalid checkpoint identity in restore.txt.' >&2
+      return 1
+   fi
+   if ! CATALOG=$(@mount.dynfilefs -f "$1/changes.dat" --snapshots --json); then return 1; fi
+   # Snapshot names cannot contain quotes, backslashes or controls; preserve UTF-8 and spaces.
+   if ! NAME=$(printf '%s\n' "$CATALOG" | awk -v id="$ID" '
+      BEGIN { RS="\"id\":"; FS="\"name\":\"" }
+      substr($0,1,18)=="\"" id "\"" && /,"deleted":false/ {
+         sub(/".*/,"",$2); print $2; found=1
+      }
+      END { if (!found) exit 1 }
+   '); then
+      echo '* The requested checkpoint is unavailable; restore.txt was kept.' >&2
+      return 1
+   fi
+   printf '%s\n' "$NAME"
 }
 
 
@@ -1156,6 +1182,9 @@ restore_perch_session()
          # Keep container metadata alongside changes.dat and native metadata under boot.
          NAMEFILE=boot/session.txt
          if ! perch_native_fs "$TEMP"; then NAMEFILE=session.txt; fi
+         # A copied session starts from its current data, not the source's queued restore.
+         FILE=$(perch_session_file "$TEMP")
+         if ! rm -f "${FILE%/*}/restore.txt"; then rm -rf "$TEMP"; return 1; fi
          if ! mkdir -p "$(dirname "$TEMP/$NAMEFILE")" || ! printf '%s\n' "$NAME" > "$TEMP/$NAMEFILE" || ! mv "$TEMP" "$CHANDIR/$NEW"; then
             rm -rf "$TEMP"
             return 1
@@ -1180,7 +1209,7 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 EXISTS PERCHDIR PERCHSIZE PERCHFILE GROWDIR DYNMNT
+   local CHANGES T1 EXISTS PERCHDIR PERCHSIZE PERCHFILE DYNMNT REQUEST RESTORE TARGET
 
    CHANGES="$1/$(basename "$2")"
 
@@ -1189,30 +1218,37 @@ persistent_changes()
 
    # If persistent changes are not requested, end here
    # so memory will be used to save chanves temporarily
-   if grep -vq perch /proc/cmdline; then
+   if ! grep -qE '(^|[[:space:]])perch([[:space:]]|dir=|$)' /proc/cmdline; then
       return
    fi
 
-   PERCHDIR=$(cmdline_value perchdir)
-   if [ "$PERCHDIR" = resume ]; then
-      T1=$(select_perch_session "$CHANGES" resume) || T1=""
-      if [ "$T1" != "" ]; then
-         CHANGES=${T1%/*}
-         PERCHDIR=${T1##*/}
+   # Keep the selected backing mount when an activation retry follows the recovery shell.
+   if [ "${PERSISTENT_SESSION:-}" != "" ]; then
+      CHANGES=${PERSISTENT_SESSION%/*}
+      PERCHDIR=${PERSISTENT_SESSION##*/}
+   else
+      PERCHDIR=$(cmdline_value perchdir)
+      if [ "$PERCHDIR" = resume ]; then
+         T1=$(select_perch_session "$CHANGES" resume) || T1=""
+         if [ "$T1" != "" ]; then
+            CHANGES=${T1%/*}
+            PERCHDIR=${T1##*/}
+         else
+            PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
+         fi
+      elif [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
+         CHANGES=$(select_perch_session "$CHANGES" "$PERCHDIR") || CHANGES=""
+         PERCHDIR=${CHANGES##*/}
+         CHANGES=${CHANGES%/*}
       else
          PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
       fi
-   elif [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
-      CHANGES=$(select_perch_session "$CHANGES" "$PERCHDIR") || CHANGES=""
-      PERCHDIR=${CHANGES##*/}
-      CHANGES=${CHANGES%/*}
-   else
-      PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
    fi
    if [ "$PERCHDIR" = "" ]; then
       echo "* Persistent changes disabled; using RAM for changes"
       return 0
    fi
+   PERSISTENT_SESSION="$CHANGES/$PERCHDIR"
 
    T1="$CHANGES/.empty"
 
@@ -1222,7 +1258,22 @@ persistent_changes()
    # if not, simply return back
    if [ $? -ne 0 ]; then
       echo "* Persistent changes not writable or not used"
-      return
+      return 1
+   fi
+
+   REQUEST=$(perch_session_file "$CHANGES/$PERCHDIR")
+   REQUEST="${REQUEST%/*}/restore.txt"
+   RESTORE=""
+   if [ -e "$REQUEST" -o -L "$REQUEST" ]; then
+      if [ ! -f "$REQUEST" ]; then
+         echo '* The checkpoint request restore.txt must be a regular file.' >&2
+         return 1
+      fi
+      if [ ! -f "$CHANGES/$PERCHDIR/changes.dat" ]; then
+         echo '* Checkpoint restore requires an existing DynFileFS session.' >&2
+         return 1
+      fi
+      RESTORE=$(perch_restore_name "$CHANGES/$PERCHDIR") || return 1
    fi
 
    # try to use native fs if posix-compatible
@@ -1235,18 +1286,12 @@ persistent_changes()
    fi
 
 
-   # If we are here, native fs was not supported or user requested perchsize anyway
-
-   PERCHSIZE=$(cmdline_value perchsize | sed -r "s/TB?/000000/i" | sed -r "s/GB?/000/i" | sed -r "s/[^0-9]//g")
-
-   if [ "$PERCHSIZE" = "" ]; then
-      PERCHSIZE=16000
-   fi
-
-   # minimum size is 16GB
-   if [ "$PERCHSIZE" -lt 16000 ]; then
-      PERCHSIZE=16000
-   fi
+   # Round total backing capacity up to GiB; the initial XFS image needs 16000 MiB.
+   PERCHSIZE=$(df -Pk "$CHANGES" | awk 'END {
+      size=int(($2 + 1048575) / 1048576) * 1024
+      if (size < 16000) size=16000
+      printf "%.0f\n",size
+   }')
 
    PERCHFILE="$PERCHDIR/changes.dat"
 
@@ -1254,35 +1299,47 @@ persistent_changes()
    if [ -e "$CHANGES/$PERCHFILE" ]; then
       echo "* Resuming persistent changes for session #$PERCHDIR"
       EXISTS="true"
+      if ! T1=$(@mount.dynfilefs -i -f "$CHANGES/$PERCHFILE"); then return 1; fi
+      T1=$(printf '%s\n' "$T1" | sed -n 's/^sizeMiB://p')
+      if [ "$RESTORE" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
    else
       echo "* Creating new persistent changes for session #$PERCHDIR"
       EXISTS=""
    fi
 
-   # mount it, splitsize of 4000MB is hardcoded, it must be the same all the time anyway
+   # Use FAT32-sized parts for new storage; existing storage retains its split size.
    echo "- mounting dynamically enlarged storage"
 
    # Keep FUSE visible so shutdown uses its own filesystem options.
    DYNMNT="$2.dfs"
    mkdir -p "$DYNMNT"
-   @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -s $PERCHSIZE -m "$DYNMNT" -p 4000
+   if mountpoint -q "$2" || mountpoint -q "$DYNMNT"; then
+      echo '* Persistent storage is still mounted; unmount it before retrying.' >&2
+      return 1
+   fi
+   TARGET="$2"
+   set -- -f "$CHANGES/$PERCHFILE" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000
+   if [ "$RESTORE" != "" ]; then
+      echo "* Restoring checkpoint: $RESTORE"
+      set -- "$@" --restore "$RESTORE"
+   fi
+   if ! @mount.dynfilefs "$@"; then return 1; fi
    if [ ! "$EXISTS" ]; then
       echo "- creating filesystem"
-      mkfs.xfs.custom "$DYNMNT/virtual.dat"
-   fi
-
-   if [ "$PERCHSIZE" -gt 16000 ]; then
-      GROWDIR=/tmp/changes.grow
-      echo "- grow if needed"
-      mkdir -p "$GROWDIR"
-      mount -t xfs -o loop "$DYNMNT/virtual.dat" "$GROWDIR"
-      xfs_growfs "$GROWDIR" >/dev/null
-      umount "$GROWDIR"
-      rmdir "$GROWDIR"
+      if ! mkfs.xfs.custom "$DYNMNT/virtual.dat"; then umount "$DYNMNT"; return 1; fi
    fi
 
    echo "- mounting persistent changes"
-   mount -t xfs -o loop "$DYNMNT/virtual.dat" "$2"
+   if mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then
+      # Check XFS too, including a previous boot interrupted after container growth.
+      if xfs_growfs "$TARGET" >/dev/null; then
+         if [ "$RESTORE" = "" ]; then return 0; fi
+         if rm -f "$REQUEST"; then sync; return 0; fi
+      fi
+      if ! umount "$TARGET"; then return 1; fi
+   fi
+   umount "$DYNMNT"
+   return 1
 }
 
 

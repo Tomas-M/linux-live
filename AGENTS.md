@@ -985,6 +985,13 @@ must follow the general Slax repair rules above.
   `03-desktop/copy`, hold the patched GTK runtime, Fluxbox, Picom, Xfce panel and
   Docklike packages with `apt-mark hold` to prevent ordinary upgrades replacing
   the patches. Update and rebuild these packages deliberately for security fixes.
+  After each runtime copy phase, `buildmods` derives `slax-held.pref` from the
+  current holds. Pin these named packages to `release a=now` at priority 999 so
+  APT prefers their installed metadata over repository rebuilds, including those
+  with identical version strings. Keep ordinary update candidates unchanged and
+  do not enable forced downgrades. An exact-version pin cannot distinguish these
+  same-version variants. Deliberately replacing a protected package requires
+  removing its preference entry as well as lifting its hold.
   GTK development dependencies then match without downgrading its patched runtime.
 - Rebuild PCManFM with `03-desktop/build-pcmanfm` and `pcmanfm-desktop.diff`,
   retaining Debian's package name/version and holding it in `copy`. Desktop
@@ -1670,10 +1677,31 @@ must follow the general Slax repair rules above.
   `-t xfs`, including when growing it, to avoid probing it with NTFS and logging
   misleading signature errors. Native persistent directories still use their
   own filesystem.
-- Update `initramfs/static/mount.dynfilefs` from the sibling project's
-  `../dynfilefs/static/dynfilefs`, then synchronize the work VM and repack
-  Slax's initramfs. The current static 32-bit x86 binary is DynFileFS 5.01,
-  using storage format 500. It cannot open the old format 400 sessions.
+- Update `initramfs/static/mount.dynfilefs` from the published precompiled
+  `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
+  then synchronize the work VM and repack Slax's initramfs. Keep the static
+  32-bit x86 build. The current binary is DynFileFS 6.02, storage format 600;
+  it automatically converts format 500 on first mount. Converted containers
+  cannot be opened with DynFileFS 5. Keep graphical checkpoint controls in Slax.
+- A container session can request one checkpoint for its next activation through
+  `restore.txt`, beside `session.txt` and `changes.dat`, containing its stable
+  16-digit lowercase hexadecimal ID. Never source metadata as shell code or
+  restore by a saved display name: deleted names may be reused. Resolve the live
+  ID through DynFileFS's offline catalog and pass its name to `--restore`.
+  Consume and sync the request only after XFS mounts and grows successfully.
+  Invalid or unavailable checkpoints retain the request and open the boot recovery
+  shell; exiting retries activation of the same selected session. Native sessions
+  cannot restore checkpoints. Duplication removes only the copy's pending request.
+  `last_session.txt` remains the remembered session choice, not a one-shot flag.
+  Slax's status/session interface is still a mockup in `VM/mockups/slax-status`.
+  A future Don't save control must establish a durable starting checkpoint before
+  writers begin; an open automatic image alone cannot protect it through shutdown.
+- Container capacity follows the backing filesystem's total size, rounded up
+  to whole GiB, with a 16000 MiB minimum for `mkfs.xfs.custom`'s initial XFS.
+  Do not read a `perchsize` boot parameter. Inspect existing containers with
+  `-i`, retain a larger saved virtual size, and grow smaller containers at mount.
+  Mount XFS once at the final changes directory and run `xfs_growfs` there:
+  it also completes growth interrupted after the virtual disk was enlarged.
 - Keep dynfilefs's FUSE mount separate from the loopback XFS mount. In
   `persistent_changes`, FUSE mounts at `$2.dfs` and XFS at `$2`. For the
   usual live root these are `/memory/changes.dfs` and `/memory/changes`.

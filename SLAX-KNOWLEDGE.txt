@@ -8,7 +8,7 @@ DESKTOP
   wallpaper and File Manager. The bottom panel uses Xfce components.
 - Open the launcher: click the bottom-left Slax button, tap Super (Windows key),
   or press Alt+F2 / Ctrl+Esc. Type to search apps or run a command; browse categories
-  with the sidebar. Esc dismisses it.
+  with the sidebar. Esc dismisses it. The Slax button highlights when hovered.
 - Click a taskbar icon to select its application; hover for window previews and
   click a preview to activate it. Alt+Tab switches windows; Alt+Shift+Tab reverses.
   Alt+F3 opens the window overview. The taskbar normally shows the current workspace.
@@ -95,6 +95,8 @@ APPLICATIONS AND PACKAGES
   Search with apt-cache search TERM. The default desktop/terminal run as root,
   so no sudo prefix is needed. apt-mark showhold lists the kernel and customized
   desktop packages held to preserve matching Slax boot files and desktop behavior.
+- Terminal package installation can show text configuration dialogs. Use Tab,
+  arrow keys and Enter to choose and confirm answers.
 - Launch Chromium through Web Browser or fbliveapp chromium; it runs as guest
   with its browser sandbox. Video Player also runs as guest.
 - Slax Assistant (slax-ai) starts linux-assistant and opens its local interface
@@ -122,8 +124,17 @@ BOOT AND PERSISTENCE
   Text mode retains nomodeset for emergency graphics; when only a firmware
   framebuffer is available, startx uses it and the resolution may be fixed.
 - Sessions are under slax/changes on the selected writable disk. Linux-compatible
-  storage uses native directories; FAT/exFAT/NTFS use dynamically allocated containers.
+  storage normally uses native directories; FAT/exFAT/NTFS use dynamically allocated containers.
   Back up the complete session directory while inactive, after a normal shutdown.
+- Container sessions support checkpoints. To request one for the next activation,
+  write its exact 16-digit lowercase ID to restore.txt beside changes.dat, then
+  choose that session at startup. Inspect an inactive container with
+  /run/initramfs/bin/@mount.dynfilefs -f /path/to/changes.dat --snapshots --json.
+  Mounted containers expose snapshots.json beside virtual.dat. Use a live checkpoint ID, not its name.
+  A successful restore consumes restore.txt and retains other history branches.
+  An invalid request stops for recovery; correct or remove restore.txt and exit
+  the recovery shell to retry. Native directory sessions have no checkpoints.
+  The graphical session manager and Save this run switch are not shipped yet.
 - Files saved directly to mounted drives remain independently of the Slax session.
   savechanges exports changes as a module; ordinary persistence saves automatically.
 

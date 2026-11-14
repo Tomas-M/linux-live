@@ -47,7 +47,9 @@ check_data_found "$DATA"
 splash_start
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
-persistent_changes "$DATA" "$CHANGES"
+while ! persistent_changes "$DATA" "$CHANGES"; do
+   fatal 'Could not activate persistent changes'
+done
 splash_start
                                                                                                                                                       debug_shell
 # copy to RAM if needed
