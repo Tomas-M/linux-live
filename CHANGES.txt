@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Show device search results, mount errors and storage messages when live data
+  cannot be found, with a complete diagnostic report retained in RAM.
 - Automatically size persistence containers from their backing filesystem and grow
   existing containers without shrinking them; remove the perchsize boot parameter.
 - Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.

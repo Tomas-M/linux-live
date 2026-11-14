@@ -129,9 +129,14 @@ debug_shell()
 fatal()
 {
    splash_stop
+   if [ "${2:-}" != "" ]; then printf '\033[2J\033[H'; fi
    echolog
-   header "Fatal error occured - $1"
-   echolog "Something went wrong and we can't continue. This should never happen."
+   header "Fatal error occurred - $1"
+   if [ "${2:-}" != "" ]; then
+      cat "$2"
+   else
+      echolog "Something went wrong and we can't continue. This should never happen."
+   fi
    echolog "Please reboot your computer with Ctrl+Alt+Delete ..."
    echolog
    setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
@@ -450,6 +455,7 @@ ntfs_hibernation_inactive()
 
 # Mount normally, allowing NTFS writes only after a read-only hibernation check.
 # $1 = device, $2 = mount directory, $3 = filesystem
+# $4 = optional file for initial mount errors
 mount_device()
 {
    local NUMBER EXISTING
@@ -459,12 +465,12 @@ mount_device()
       NUMBER=$(cat "/sys/class/block/$(basename "$(readlink -f "$1")")/dev") || return 1
       EXISTING=$(awk -v device="$NUMBER" '$3==device && $4=="/" {print $5; exit}' /proc/self/mountinfo)
       if [ "$EXISTING" != "" ]; then
-         $(mount_command "$3") --bind "$(printf '%b' "$EXISTING")" "$2" 2>/dev/null
+         $(mount_command "$3") --bind "$(printf '%b' "$EXISTING")" "$2" 2>"${4:-/dev/null}"
          return
       fi
    fi
 
-   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") 2>/dev/null; then return 1; fi
+   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") 2>"${4:-/dev/null}"; then return 1; fi
    if [ "$3" != ntfs -a "$3" != ntfs3 ]; then return 0; fi
 
    if ! ntfs_hibernation_inactive "$2" 2>/dev/null; then
@@ -661,10 +667,11 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM ISOMNT DEVICES BOOTDEVICE
+   local DEVICE FS FROM ISOMNT DEVICES BOOTDEVICE RESULT
 
    mkdir -p "$1"
-   DEVICES=$(blkid | sort | cut -d: -f 1)
+   blkid >/var/log/live-data/blkid
+   DEVICES=$(sort /var/log/live-data/blkid | cut -d: -f 1)
    if [ "${3:-}" != "" ]; then
       # Wait for the boot filesystem rather than selecting another installation too early.
       BOOTDEVICE=$(blkid -U "$3") || return 0
@@ -687,13 +694,21 @@ find_data_try()
       fi
 
       FS="$(device_bestfs "$DEVICE")"
-      if ! mount_device "$DEVICE" "$1" "$FS"; then continue; fi
+      # Keep each device's latest outcome across retries and command substitutions.
+      RESULT=/var/log/live-data/$(echo "$DEVICE" | tr / _)
+      printf '%s\t%s\t' "$DEVICE" "$FS" >"$RESULT.result"
+      : >"$RESULT.error"
+      if ! mount_device "$DEVICE" "$1" "$FS" "$RESULT.error"; then
+         echo "Mount failed" >>"$RESULT.result"
+         continue
+      fi
 
       # if the FROM parameter is actual file, mount it again as loop (eg. iso)
       if [ -f "$1/$FROM" ]; then
          ISOMNT="$1/../iso"
          mkdir -p "$ISOMNT"
-         if ! mount -o loop,ro "$1/$FROM" "$ISOMNT" 2>/dev/null; then
+         if ! mount -o loop,ro "$1/$FROM" "$ISOMNT" 2>"$RESULT.error"; then
+            echo "ISO mount failed" >>"$RESULT.result"
             umount "$1" 2>/dev/null
             continue
          fi
@@ -701,19 +716,27 @@ find_data_try()
       fi
 
       # search for bundles in the mounted directory
-      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ]; then
          # we found at least one bundle/module here
+         echo "System modules found" >>"$RESULT.result"
          echo "$FROM" > /var/log/from.log
          echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
          return
       fi
 
       # search for bundles in modules directory
-      if [ "$(find "$1/$FROM/modules" -maxdepth 1 -name "*.$BEXT" 2>/dev/null)" != "" ]; then
+      if [ "$(find "$1/$FROM/modules" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ]; then
          # we found at least one bundle/module here
+         echo "System modules found" >>"$RESULT.result"
          echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
          echo "$FROM" > /var/log/from.log
          return
+      fi
+
+      if [ ! -d "$1/$FROM" ]; then
+         echo "Data directory missing or unreadable" >>"$RESULT.result"
+      else
+         printf 'No *.%s system modules\n' "$BEXT" >>"$RESULT.result"
       fi
 
       # Release the ISO before its source filesystem, including failed searches.
@@ -734,7 +757,11 @@ find_data()
 
    local DATA FROM TIMEOUT ASKPID BOOTUUID
 
+   mkdir -p /var/log/live-data
+   rm -f /var/log/live-data/*.result /var/log/live-data/*.error
+   : >/var/log/live-data/blkid
    FROM="$(cmdline_value from)"
+   printf '%s\n' "${FROM:-$LIVEKITNAME}" >/var/log/live-data/from
    # An explicit from= keeps its existing behavior and overrides the bootloader hint.
    BOOTUUID=""
    if [ "$FROM" = "" ]; then BOOTUUID=$(cmdline_value bootuuid); fi
@@ -774,6 +801,7 @@ find_data()
 
    # default to livekitname autodetected on all disks
    if [ "$FROM" = "" ]; then FROM="$LIVEKITNAME"; fi
+   printf '%s\n' "$FROM" >/var/log/live-data/from
 
    echo_green_star >&2
    echo -n "Looking for $LIVEKITNAME data in /$FROM .." | tr -s "/" >&2
@@ -797,13 +825,89 @@ find_data()
 }
 
 
+# Collect a full RAM-only report and a bounded console summary without mounting again.
+data_diagnostics()
+{
+   local DEVICE FS RESULT UUID PREFERRED ERROR
+   UUID=$(cmdline_value bootuuid)
+   PREFERRED=""
+   if [ "$UUID" != "" ]; then PREFERRED=$(blkid -U "$UUID") || PREFERRED=""; fi
+
+   for RESULT in /var/log/live-data/*.result; do
+      if [ -f "$RESULT" ]; then cat "$RESULT"; fi
+   done >/var/log/live-data/devices
+   awk 'NR>2 && $4 !~ /^(loop|ram|zram)/ {print "/dev/"$4}' /proc/partitions | while read DEVICE; do
+      RESULT=/var/log/live-data/$(echo "$DEVICE" | tr / _).result
+      if [ ! -f "$RESULT" ]; then
+         FS=$(awk -v device="$DEVICE:" '$1==device {for (i=2; i<=NF; i++) if ($i ~ /^TYPE="/) {gsub(/^TYPE="|"$/, "", $i); print $i}}' /var/log/live-data/blkid)
+         printf '%s\t%s\tNot searched\n' "$DEVICE" "${FS:--}"
+      fi
+   done >>/var/log/live-data/devices
+
+   {
+      printf 'Kernel: %s\nCommand line: ' "$(uname -r)"
+      cat /proc/cmdline
+      printf 'Live scripts checksum: '; cksum /lib/livekitlib
+      printf 'Search: %s\nPreferred UUID: %s\n' "$(cat /var/log/live-data/from)" "${UUID:-none}"
+      printf '\nDevices and latest search results:\n'
+      cat /var/log/live-data/devices
+      for RESULT in /var/log/live-data/*.result; do
+         if [ ! -f "$RESULT" ]; then continue; fi
+         cat "$RESULT"
+         cat "${RESULT%.result}.error"
+      done
+      printf '\nPartitions:\n'; cat /proc/partitions
+      printf '\nFilesystem identities:\n'; cat /var/log/live-data/blkid
+      printf '\nAvailable filesystems:\n'; cat /proc/filesystems
+      printf '\nLoaded drivers:\n'; cat /proc/modules
+      printf '\nKernel messages:\n'; dmesg
+   } >/var/log/live-data.log 2>&1
+
+   {
+      printf 'Kernel: %s\nSearch: %s\n' "$(uname -r)" "$(cat /var/log/live-data/from)"
+      printf 'Preferred UUID: %s\n' "${UUID:-none}"
+      if [ "$(cmdline_value from)" != "" ]; then
+         echo "Explicit from= overrides the UUID preference."
+      elif [ "$(cmdline_value ip)" != "" ]; then
+         echo "Network boot requested; local disks were not searched."
+      elif [ "$UUID" != "" ]; then
+         printf 'Preferred device: %s; other devices also tried.\n' "${PREFERRED:-not detected}"
+      fi
+      printf '\nDEVICE            FS/DRIVER LAST RESULT\n'
+      awk -F '\t' -v preferred="$PREFERRED" '
+         {line=sprintf("%-17s %-9s %s", $1, $2, $3)}
+         $1==preferred {print line; next}
+         {rows[++count]=line}
+         END {for (i=1; i<=count; i++) print rows[i]}
+      ' /var/log/live-data/devices | head -n 6
+      if [ ! -s /var/log/live-data/devices ]; then echo "No physical block devices detected."; fi
+      if [ "$(wc -l </var/log/live-data/devices)" -gt 6 ]; then echo "More devices in the full report."; fi
+      ERROR=/var/log/live-data/$(echo "$PREFERRED" | tr / _).error
+      if [ ! -s "$ERROR" ]; then
+         for RESULT in /var/log/live-data/*.result; do
+            if [ ! -f "$RESULT" ]; then continue; fi
+            if grep -qi 'mount failed' "$RESULT" && [ -s "${RESULT%.result}.error" ]; then ERROR=${RESULT%.result}.error; break; fi
+         done
+      fi
+      if [ -s "$ERROR" ]; then printf 'Error detail:\n'; head -n 1 "$ERROR"; fi
+      printf 'Recent storage messages:\n'
+      dmesg | grep -Ei 'nvme|vmd|ahci|ata[0-9]|scsi|sd[a-z]|mmc|ntfs|exfat|btrfs|I/O error|unknown filesystem|timeout|timed out|fail' | tail -n 3
+      printf 'Full report: more /var/log/live-data.log\n'
+   } | tr '\000-\010\013-\037\177' '?' | awk '
+      length($0)>78 {while (length($0)>75 && sub(/ *[^ ]+$/, "")) {}; $0=$0"..."}
+      {print}
+   ' >/var/log/live-data/summary
+}
+
+
 # Check if data is found and exists
 # $1 = data directory
 #
 check_data_found()
 {
    if [ "$1" = "" -o ! -d "$1" ]; then
-      fatal "Could not locate $LIVEKITNAME data";
+      data_diagnostics
+      fatal "Could not locate $LIVEKITNAME data" /var/log/live-data/summary
    fi
 }
 

@@ -1423,6 +1423,11 @@ must follow the general Slax repair rules above.
   an explicit `from=` overrides this preference. If the preferred filesystem
   is unavailable or lacks data, retain discovery on other devices. Keep PXE
   and HTTP boot behavior unchanged.
+- On live-data discovery failure, show a compact console diagnostic report before
+  the recovery shell, labeling bootuuid as preferred rather than required. Retain
+  each device's latest search outcome and original mount errors during discovery;
+  never mount again just to diagnose. Keep the complete report in RAM at
+  `/var/log/live-data.log`, including unidentified devices and kernel storage details.
 - Use GRUB 2 for BIOS and UEFI CD/USB boot, plus GRUB PXE boot. Preserve the
   `/slax` layout and the generic `mylinux` layout; do not hardcode Slax into
   shared loader generation.
