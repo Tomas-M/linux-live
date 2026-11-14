@@ -42,7 +42,7 @@ FILES AND DRIVES
   uses /home/guest/Downloads. Other standard document folders follow the same rule.
 - With automount enabled, attached filesystems appear in File Manager and under
   /media, normally /media/DEVICE (e.g. /media/sdb1). Click the circular unmount button
-  beside an ordinary mounted drive before unplugging it. Boot/session disks remain
+  beside an ordinary mounted drive before unplugging it. Boot/profile disks remain
   mounted while Slax uses them.
 - Right-click a local .iso > Mount to browse it read-only under /media/ISO-...;
   its sidebar entry has an unmount button.
@@ -60,7 +60,7 @@ NETWORK, AUDIO AND KEYBOARD
   layout in the menu, or using it continuously for 30 seconds, remembers it as the
   alternate; shortcuts then toggle English and that alternate. A new menu selection
   replaces it. The active layout and alternate are restored on login in a persistent
-  session.
+  profile.
 - VirtualBox, VMware and QEMU/KVM with SPICE have clipboard/resize integration;
   enable corresponding host integration. Host shares: VirtualBox /media/sf_*,
   VMware /mnt/hgfs.
@@ -90,7 +90,7 @@ APPLICATIONS AND PACKAGES
   Task Manager (LXTask), Document Scanner (Simple Scan), CD/DVD Burner (Xfburn),
   Mines and Sudoku. Click normally: fbinstall downloads the required packages
   and launches the app. Subsequent launches open it directly. First use needs
-  internet; persistent sessions retain installed applications.
+  internet; persistent profiles retain installed applications.
 - Debian APT manages software: apt-get update; apt-get install PACKAGE.
   Search with apt-cache search TERM. The default desktop/terminal run as root,
   so no sudo prefix is needed. apt-mark showhold lists the kernel and customized
@@ -106,12 +106,21 @@ BOOT AND PERSISTENCE
 - Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's
   signed UEFI chain supports Secure Boot. Esc during the five-second countdown
   reveals the full boot menu.
-- Resume previous session automatically is the default: resume the most recently
-  used saved session across writable disks; on a writable boot medium, the first
-  session can be created automatically. Session changes are saved as you work.
-- Choose session during startup: select a saved session or Start a new session,
-  choose its writable disk and enter a name. In the session list, F4 duplicates
-  a session on the same disk; F6 renames it. Esc there continues with changes in RAM.
+- A Slax profile keeps its own applications, settings, files and restore history.
+  A restore point is a saved state within one profile, not another profile.
+- Resume previous profile automatically is the default: resume the most recently
+  used saved profile across writable disks; on a writable boot medium, the first
+  profile can be created automatically. Profile changes are saved as you work.
+- Choose profile or restore point: select a profile and press Enter to continue
+  its current state, or F8 Restore to choose an older restore point in that profile.
+  The restore list includes Current state; Esc returns to the profile list.
+  Explicitly choosing Current state cancels a queued restore; automatic resume
+  honors one queued for the next start. Other restore points remain available.
+  Start a new profile asks for a writable disk and starts a clean profile without
+  asking for a name. In the disk list, F5 Refresh detects newly connected disks.
+  The first profile is named Initial profile; later unnamed profiles show Profile #ID.
+  Boot menus do not copy or rename profiles. Esc in the profile list uses RAM;
+  Esc in the disk list returns to profiles.
 - Run Slax from RAM (copy to ram) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
   save files to a mounted drive to retain them after shutdown. This entry also
@@ -123,19 +132,20 @@ BOOT AND PERSISTENCE
   session. Other administrative tasks still require root.
   Text mode retains nomodeset for emergency graphics; when only a firmware
   framebuffer is available, startx uses it and the resolution may be fixed.
-- Sessions are under slax/changes on the selected writable disk. Linux-compatible
+- Profiles are under slax/changes on the selected writable disk. Linux-compatible
   storage normally uses native directories; FAT/exFAT/NTFS use dynamically allocated containers.
-  Back up the complete session directory while inactive, after a normal shutdown.
-- Container sessions support checkpoints. To request one for the next activation,
-  write its exact 16-digit lowercase ID to restore.txt beside changes.dat, then
-  choose that session at startup. Inspect an inactive container with
+  Back up the complete profile directory while inactive, after a normal shutdown.
+- Container profiles support restore points. For the profile resumed automatically,
+  request one for the next activation by writing its exact 16-digit lowercase ID
+  to restore.txt beside changes.dat, then use Resume previous profile automatically.
+  Use the F8 restore list to choose a point in another profile. Inspect an inactive container with
   /run/initramfs/bin/@mount.dynfilefs -f /path/to/changes.dat --snapshots --json.
-  Mounted containers expose snapshots.json beside virtual.dat. Use a live checkpoint ID, not its name.
+  Mounted containers expose snapshots.json beside virtual.dat. Use a live restore point ID, not its name.
   A successful restore consumes restore.txt and retains other history branches.
   An invalid request stops for recovery; correct or remove restore.txt and exit
-  the recovery shell to retry. Native directory sessions have no checkpoints.
-  The graphical session manager and Save this run switch are not shipped yet.
-- Files saved directly to mounted drives remain independently of the Slax session.
+  the recovery shell to retry. Native directory profiles have no restore points.
+  The graphical profile manager and Save this run switch are not shipped yet.
+- Files saved directly to mounted drives remain independently of the Slax profile.
   savechanges exports changes as a module; ordinary persistence saves automatically.
 
 INSTALLATION AND DISKS
@@ -195,7 +205,7 @@ Filesystem/module commands run as root; quote paths containing spaces.
     rmsbdir FILE.sb (or sb rm FILE.sb / sb rmdir FILE.sb) discards that tree.
   genslaxiso [-e exclude_regex] [-r rootcopy_dir] target.iso [module.sb ...]
     Recreate a BIOS/UEFI ISO from the boot source; add supplied modules and
-    optionally replace rootcopy. Saved sessions are excluded. Example:
+    optionally replace rootcopy. Saved profiles are excluded. Example:
     genslaxiso -r /path/rootcopy /media/DRIVE/custom.iso /path/99-custom.sb
   fbappselect / fbprintscreen / fblogout
     Open launcher / take screenshot / open session actions.

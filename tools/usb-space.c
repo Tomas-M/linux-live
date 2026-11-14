@@ -557,7 +557,7 @@ static BOOL create_changes_file(const WCHAR *path,const char *text)
    if (file==INVALID_HANDLE_VALUE)
    {
       if (GetLastError()==ERROR_FILE_EXISTS) return TRUE;
-      return windows_error(L"Could not prepare persistent sessions on USB-DATA. USB-SPACE has been kept.");
+      return windows_error(L"Could not prepare persistent profiles on USB-DATA. USB-SPACE has been kept.");
    }
    DWORD length=strlen(text),count;
    char read[512];
@@ -569,12 +569,12 @@ static BOOL create_changes_file(const WCHAR *path,const char *text)
    if (!ok)
    {
       DeleteFileW(path);
-      return fail(L"Persistent session files could not be written and verified. USB-SPACE has been kept.");
+      return fail(L"Persistent profile files could not be written and verified. USB-SPACE has been kept.");
    }
    return TRUE;
 }
 
-// Seed a resumable session; Slax creates its valid DynFileFS container on first boot.
+// Seed a resumable profile; Slax creates its valid DynFileFS container on first boot.
 static BOOL prepare_changes(const Job *job)
 {
    WCHAR path[512];
@@ -586,15 +586,15 @@ static BOOL prepare_changes(const Job *job)
          return windows_error(L"Could not create the changes directory on USB-DATA. USB-SPACE has been kept.");
    }
    swprintf(path,512,L"%ls%ls\\readme.txt",job->drive,job->plan->livekit);
-   if (!create_changes_file(path,"Changes made while running this live system with persistence enabled are\r\nautomatically saved in the changes directory and restored when that session\r\nis resumed. Keep this directory to retain your saved changes.\r\n")) return FALSE;
+   if (!create_changes_file(path,"Changes made while running this live system with persistence enabled are\r\nautomatically saved in the changes directory and restored when that profile\r\nis resumed. Keep this directory to retain your saved changes.\r\n")) return FALSE;
    swprintf(path,512,L"%ls%ls\\changes\\last_session.txt",job->drive,job->plan->livekit);
    if (GetFileAttributesW(path)!=INVALID_FILE_ATTRIBUTES) return TRUE;
    swprintf(path,512,L"%ls%ls\\changes\\1",job->drive,job->plan->livekit);
    if (!CreateDirectoryW(path,NULL) && GetLastError()!=ERROR_ALREADY_EXISTS)
-      return windows_error(L"Could not create the initial session on USB-DATA. USB-SPACE has been kept.");
+      return windows_error(L"Could not create the initial profile on USB-DATA. USB-SPACE has been kept.");
    swprintf(path,512,L"%ls%ls\\changes\\1\\session.txt",job->drive,job->plan->livekit);
-   if (!create_changes_file(path,"Initial session\r\n")) return FALSE;
-   // Publish the resume marker only after the session directory and README are ready.
+   if (!create_changes_file(path,"Initial profile\r\n")) return FALSE;
+   // Publish the resume marker only after the profile directory and README are ready.
    swprintf(path,512,L"%ls%ls\\changes\\last_session.txt",job->drive,job->plan->livekit);
    return create_changes_file(path,"1\n");
 }
