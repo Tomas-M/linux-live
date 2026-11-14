@@ -319,11 +319,9 @@ static gboolean x_events(GIOChannel *channel, GIOCondition condition, gpointer d
     return G_SOURCE_CONTINUE;
 }
 
-/* Release the popup grab before returning input to applications. */
+/* Ordinary window input keeps desktop shortcuts available while the bubble is open. */
 static void close_popup(void)
 {
-    gdk_seat_ungrab(gdk_display_get_default_seat(gtk_widget_get_display(popup)));
-    if (gtk_widget_has_grab(popup)) gtk_grab_remove(popup);
     gtk_widget_hide(popup);
 }
 
@@ -494,17 +492,12 @@ static gboolean bubble_draw(GtkWidget *widget, cairo_t *cr, gpointer data)
     return FALSE;
 }
 
-/* A pointer grab delivers outside clicks to the popup for dismissal. */
-static gboolean popup_press(GtkWidget *widget, GdkEventButton *event, gpointer data)
+/* A click into another window dismisses the bubble without consuming that click. */
+static gboolean popup_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data)
 {
-    (void)data;
-    int x, y;
-    gdk_window_get_origin(gtk_widget_get_window(widget), &x, &y);
-    gboolean outside_x=event->x_root<x || event->x_root>=x+gtk_widget_get_allocated_width(widget);
-    gboolean outside_y=event->y_root<y || event->y_root>=y+gtk_widget_get_allocated_height(widget);
-    if (!outside_x && !outside_y) return FALSE;
-    close_popup();
-    return TRUE;
+    (void)event; (void)data;
+    gtk_widget_hide(widget);
+    return FALSE;
 }
 
 /* Escape dismisses the bubble without changing the selected keyboard. */
@@ -520,19 +513,13 @@ static gboolean popup_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
 static gboolean popup_menu(GtkWidget *widget, GdkEventButton *event, gpointer data)
 {
     (void)widget; (void)data;
-    if (event->button!=1 && event->button!=3) return FALSE;
+    if (event->type!=GDK_BUTTON_PRESS || (event->button!=1 && event->button!=3)) return FALSE;
+    if (gtk_widget_get_visible(popup)) {close_popup();return TRUE;}
     gtk_stack_set_visible_child_name(GTK_STACK(pages), "main");
     gtk_widget_show(popup);
     /* GTK restores a reused popup's old position on show; anchor it afterward. */
     position_popup();
-    GdkSeat *seat=gdk_display_get_default_seat(gtk_widget_get_display(popup));
-    if (gdk_seat_grab(seat, gtk_widget_get_window(popup), GDK_SEAT_CAPABILITY_ALL, TRUE,
-                      NULL, (GdkEvent *)event, NULL, NULL)!=GDK_GRAB_SUCCESS)
-    {
-        gtk_widget_hide(popup);
-        return TRUE;
-    }
-    gtk_grab_add(popup);
+    gtk_window_present(GTK_WINDOW(popup));
     gtk_widget_child_focus(pages, GTK_DIR_TAB_FORWARD);
     return TRUE;
 }
@@ -600,10 +587,14 @@ static void dock_tray(void)
         g_signal_connect(tray, "draw", G_CALLBACK(tray_draw), NULL);
         g_signal_connect(tray, "destroy", G_CALLBACK(tray_destroyed), NULL);
         g_signal_connect(anchor, "button-press-event", G_CALLBACK(popup_menu), NULL);
-        popup=gtk_window_new(GTK_WINDOW_POPUP);
+        popup=gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_title(GTK_WINDOW(popup), "Keyboard layouts");
         gtk_window_set_role(GTK_WINDOW(popup), "slax-keyboard-popup");
-        gtk_window_set_type_hint(GTK_WINDOW(popup), GDK_WINDOW_TYPE_HINT_POPUP_MENU);
+        gtk_window_set_decorated(GTK_WINDOW(popup), FALSE);
+        gtk_window_set_skip_taskbar_hint(GTK_WINDOW(popup), TRUE);
+        gtk_window_set_skip_pager_hint(GTK_WINDOW(popup), TRUE);
+        gtk_window_set_keep_above(GTK_WINDOW(popup), TRUE);
+        gtk_window_set_type_hint(GTK_WINDOW(popup), GDK_WINDOW_TYPE_HINT_UTILITY);
         gtk_widget_set_name(popup, "slax-keyboard-popup");
         gtk_widget_set_app_paintable(popup, TRUE);
         GdkVisual *rgba=gdk_screen_get_rgba_visual(screen);
@@ -619,7 +610,7 @@ static void dock_tray(void)
         gtk_style_context_add_class(bubble_style, GTK_STYLE_CLASS_BACKGROUND);
         gtk_widget_path_unref(path);
         g_signal_connect(popup, "draw", G_CALLBACK(bubble_draw), NULL);
-        g_signal_connect(popup, "button-press-event", G_CALLBACK(popup_press), NULL);
+        g_signal_connect(popup, "focus-out-event", G_CALLBACK(popup_focus_out), NULL);
         g_signal_connect(popup, "key-press-event", G_CALLBACK(popup_key), NULL);
         gtk_widget_add_events(popup, GDK_BUTTON_PRESS_MASK|GDK_KEY_PRESS_MASK);
         body=gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);

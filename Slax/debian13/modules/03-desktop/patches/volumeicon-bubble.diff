@@ -39,7 +39,7 @@
  }
  
  static void menu_quit_on_activate(GtkMenuItem *menuitem, gpointer user_data)
-@@ -755,46 +756,48 @@
+@@ -755,46 +756,41 @@
  	volume_icon_launch_helper();
  }
  
@@ -58,11 +58,9 @@
 -	gtk_window_get_position(GTK_WINDOW(m_scale_window), &window.x, &window.y);
 -	gtk_window_get_size(GTK_WINDOW(m_scale_window), &window.width,
 -	                    &window.height);
-+/* Release both grabs before hiding, so applications immediately regain input. */
++/* Hide the focused bubble without taking any device grabs. */
 +static void scale_close(void)
 +{
-+	gdk_seat_ungrab(gdk_display_get_default_seat(gtk_widget_get_display(m_scale_window)));
-+	if(gtk_widget_has_grab(m_scale_window)) gtk_grab_remove(m_scale_window);
 +	gtk_widget_hide(m_scale_window);
 +	gtk_status_icon_set_has_tooltip(m_status_icon, TRUE);
 +}
@@ -117,17 +115,12 @@
 +	gtk_window_move(GTK_WINDOW(m_scale_window), x, CLAMP(y, area.y, area.y + area.height - height));
 +	gtk_widget_show(m_scale_window);
 +	gtk_widget_queue_draw(m_scale_window);
-+	if(gdk_seat_grab(gdk_display_get_default_seat(display), gtk_widget_get_window(m_scale_window),
-+	                GDK_SEAT_CAPABILITY_ALL, TRUE, NULL, (GdkEvent *)event, NULL, NULL) != GDK_GRAB_SUCCESS) {
-+		scale_close();
-+		return;
-+	}
-+	gtk_grab_add(m_scale_window);
++	gtk_window_present(GTK_WINDOW(m_scale_window));
 +	gtk_widget_grab_focus(m_scale);
  }
  
  // StatusIcon handlers
-@@ -802,41 +805,10 @@
+@@ -802,41 +798,10 @@
                                              GdkEventButton *event,
                                              gpointer user_data)
  {
@@ -172,7 +165,7 @@
  	}
  	else if((event->button == 1 && !config_get_left_mouse_slider()) ||
  	        (event->button == 2 && config_get_middle_mouse_mute())) {
-@@ -844,6 +816,7 @@
+@@ -844,6 +809,7 @@
  		backend_set_volume(m_volume);
  		backend_set_mute(m_mute);
  		status_icon_update(m_mute, FALSE);
@@ -180,7 +173,7 @@
  		notification_show();
  	}
  	else if(event->button == 2) {
-@@ -1068,12 +1041,40 @@
+@@ -1068,12 +1034,40 @@
  	icons_loaded = TRUE;
  }
  
@@ -222,7 +215,7 @@
  }
  
  static void scale_value_changed(GtkRange *range, gpointer user_data)
-@@ -1124,136 +1125,146 @@
+@@ -1124,136 +1118,138 @@
  	}
  }
  
@@ -292,19 +285,15 @@
 +	return FALSE;
 +}
 +
-+/* Outside clicks, including a second tray click, dismiss without changing volume. */
-+static gboolean scale_press(GtkWidget *widget, GdkEventButton *event, gpointer data)
++/* Leave outside clicks to their destination and dismiss on ordinary focus loss. */
++static gboolean scale_focus_out(GtkWidget *widget, GdkEventFocus *event, gpointer data)
 +{
-+	int x, y;
-+	gdk_window_get_origin(gtk_widget_get_window(widget), &x, &y);
-+	gboolean inside_x = event->x_root >= x && event->x_root < x + gtk_widget_get_allocated_width(widget);
-+	gboolean inside_y = event->y_root >= y && event->y_root < y + gtk_widget_get_allocated_height(widget);
-+	if(inside_x && inside_y) return FALSE;
++	(void)widget; (void)event; (void)data;
 +	scale_close();
-+	return TRUE;
++	return FALSE;
 +}
 +
-+/* Keep Escape and configured media shortcuts working while the popup owns input. */
++/* Keep Escape and configured media shortcuts working inside the focused bubble. */
 +static gboolean scale_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
 +{
 +	if(event->keyval == GDK_KEY_Escape) { scale_close(); return TRUE; }
@@ -341,13 +330,9 @@
 -{
 -	render_widget(cairo_context, gtk_widget_get_allocated_width(widget),
 -	              gtk_widget_get_allocated_height(widget));
-+/* Release grabs when GTK destroys or another popup replaces this window. */
-+static gboolean scale_grab_broken(GtkWidget *widget, GdkEventGrabBroken *event, gpointer data)
-+{
-+	if(!event->implicit) scale_close();
- 	return FALSE;
- }
- 
+-	return FALSE;
+-}
+-
 -static void on_composited_changed(GtkWidget *window, gpointer user_data)
 -{
 -	gtk_widget_destroy(m_scale);
@@ -372,7 +357,7 @@
 -	gtk_scale_set_draw_value(GTK_SCALE(m_scale),
 -	                         config_get_show_sound_level());
 -
- 	m_scale_window = gtk_window_new(GTK_WINDOW_POPUP);
+-	m_scale_window = gtk_window_new(GTK_WINDOW_POPUP);
 -
 -	screen = gtk_widget_get_screen(GTK_WIDGET(m_scale_window));
 -	if(gdk_screen_is_composited(screen) &&
@@ -399,10 +384,18 @@
 -		}
 -	}
 -
++	m_scale_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
++	gtk_window_set_title(GTK_WINDOW(m_scale_window), _("Volume"));
++	gtk_window_set_role(GTK_WINDOW(m_scale_window), "slax-volume-popup");
++	gtk_window_set_type_hint(GTK_WINDOW(m_scale_window), GDK_WINDOW_TYPE_HINT_UTILITY);
 -	gtk_window_set_decorated(GTK_WINDOW(m_scale_window), FALSE);
++	gtk_window_set_decorated(GTK_WINDOW(m_scale_window), FALSE);
++	gtk_window_set_skip_taskbar_hint(GTK_WINDOW(m_scale_window), TRUE);
 -	gtk_window_set_skip_pager_hint(GTK_WINDOW(m_scale_window), TRUE);
++	gtk_window_set_skip_pager_hint(GTK_WINDOW(m_scale_window), TRUE);
 -	gtk_window_set_skip_taskbar_hint(GTK_WINDOW(m_scale_window), TRUE);
 -	gtk_window_set_keep_above(GTK_WINDOW(m_scale_window), TRUE);
++	gtk_window_set_keep_above(GTK_WINDOW(m_scale_window), TRUE);
 -	gtk_container_add(GTK_CONTAINER(m_scale_window), m_scale);
 -
 -	if(config_get_use_horizontal_slider()) {
@@ -415,9 +408,6 @@
 -	}
 -
 -	gtk_widget_show(m_scale);
-+	gtk_window_set_title(GTK_WINDOW(m_scale_window), _("Volume"));
-+	gtk_window_set_role(GTK_WINDOW(m_scale_window), "slax-volume-popup");
-+	gtk_window_set_type_hint(GTK_WINDOW(m_scale_window), GDK_WINDOW_TYPE_HINT_POPUP_MENU);
 +	gtk_widget_set_name(m_scale_window, "slax-volume-popup");
 +	gtk_widget_set_app_paintable(m_scale_window, TRUE);
 +	GdkScreen *screen = gtk_widget_get_screen(m_scale_window);
@@ -481,13 +471,12 @@
 +	g_signal_connect(m_scale, "value-changed", G_CALLBACK(scale_value_changed), NULL);
 +	g_signal_connect(m_scale_mute, "toggled", G_CALLBACK(scale_mute_toggled), NULL);
 +	g_signal_connect(m_scale_window, "draw", G_CALLBACK(scale_draw), NULL);
-+	g_signal_connect(m_scale_window, "button-press-event", G_CALLBACK(scale_press), NULL);
++	g_signal_connect(m_scale_window, "focus-out-event", G_CALLBACK(scale_focus_out), NULL);
 +	g_signal_connect(m_scale_window, "key-press-event", G_CALLBACK(scale_key), NULL);
-+	g_signal_connect(m_scale_window, "grab-broken-event", G_CALLBACK(scale_grab_broken), NULL);
  }
  
  static void hotkey_handle(const char *key, void *user_data)
-@@ -1288,6 +1299,7 @@
+@@ -1288,6 +1284,7 @@
  		m_volume = clamp_volume(backend_get_volume());
  		m_mute = backend_get_mute();
  		status_icon_update(m_mute, FALSE);

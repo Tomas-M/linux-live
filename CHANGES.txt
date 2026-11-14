@@ -24,8 +24,12 @@ Linux Live Kit
 Slax
 ----
 
+- Keep the profile manager open when toggling its tray bubble, remove storage Details,
+  and fix asynchronous save switches, footer movement and bubble positioning.
 - Exclude EFI System Partitions from automatic mounting and profile-drive discovery;
   prevent both installers from using them for Slax data while retaining EFI-on-data fallback.
+- Keep desktop shortcuts available in tray bubbles and refine Slax Status spacing
+  and profile actions. Show used space in the bar while keeping available space in text.
 - Use light file icons for Windows shortcuts, applications, libraries and images.
 - Prefer the installed variants of Slax's held packages in APT, preventing rebuilt
   packages from appearing as same-version updates while retaining ordinary updates.

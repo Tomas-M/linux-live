@@ -91,6 +91,9 @@ reporting progress.
   Leave the themed body outline open at the tail junction. The popup's
   `slax-keyboard-popup` role enables Picom's ordinary window fades without
   enabling fades for unrelated menus or animating opacity in the applet.
+  Interactive status, keyboard and volume bubbles use undecorated GTK top-level
+  utility windows, hidden from taskbar and pager. Use ordinary focus and focus-out
+  dismissal, without GTK/GDK input grabs, so Fluxbox's global shortcuts work.
 - Rebuild `volumeicon-alsa` with `03-desktop/build-volumeicon` and
   `patches/volumeicon-bubble.diff`, preserving Debian's binary version and holding
   the package. Left-click opens a GTK 3 bubble anchored to the tray, with a
@@ -1735,11 +1738,15 @@ must follow the general Slax repair rules above.
   entry for Docklike's application icon and WM_CLASS matching. Its separate GTK status and warning
   windows have tray-pointing tails and Picom roles `slax-status-popup` and
   `slax-status-notification`. Warnings never take focus or grab input.
+  Keep automatic warnings as GTK popup notifications with accept-focus and
+  focus-on-map disabled. Measure bubble height with 16 px content margins plus
+  the 12 px tail exactly once; repeated openings must not increase its height.
   Keep warning text to three ellipsized lines, with its full text in a tooltip.
   Draw the stacked-drive tray glyph with integral, pixel-aligned bars at GTK's
   device scale; retain antialiasing for the round state dot, not fractional glyph strokes.
   Use one approximate capacity indicator: backing-drive available bytes plus only
-  the active container's reusableBytes, or MemAvailable in RAM. Keep storage work
+  the active container's reusableBytes, or MemAvailable in RAM. The number shows
+  available space; the bar shows the used fraction, clamped to 0–100%. Keep storage work
   off GTK's thread and labels ellipsized. Scroll history independently; long profile
   lists and the inspector in a narrow window may scroll without expanding the window.
   Display device paths first, with optional labels in parentheses, and omit
@@ -1749,10 +1756,15 @@ must follow the general Slax repair rules above.
   Only explicit manager opening or New profile requests `state` with `refresh:true`
   to discover and mount other drives. Queue that request across an in-flight poll;
   New profile waits for the refreshed drive list. Ordinary polling never forces discovery.
-  Profiles own their restore-point tree; profile rename/delete stay beside the
-  selected profile. Draw square branch connectors and highlight the corresponding
+  Profiles own their restore-point tree; profile rename/delete sit beside the
+  large profile heading, outside the sidebar. Draw square branch connectors and highlight the corresponding
   node when its row is hovered, focused or selected. Current state is a separate
   synthetic row, not an assertion that data still equals currentParent.
+  Tray toggles must leave the manager open. Keep save switches alive and use
+  GTK's asynchronous state-set signal; apply confirmed backend policy without
+  generating another mutation. Capacity and operation feedback share one footer
+  slot. Re-anchor bubbles after window-manager placement using their actual size.
+  Keep the single capacity estimate directly in the UI without a Details dialog.
   `slax-statusd` is the root storage broker; authenticate Unix-socket callers as
   root or the Slax guest account and accept opaque identities, never arbitrary
   client paths or shell commands. Native profiles always save, RAM never saves;

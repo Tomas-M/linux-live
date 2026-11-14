@@ -17,10 +17,14 @@ DESKTOP
   Scroll over the icon to adjust volume.
 - Click EN (or the current layout label) in the taskbar to select a keyboard layout.
   Ctrl+Shift, Alt+Shift and Super+Space switch layouts when the keys are released.
+- Close a tray bubble with Esc or by clicking another window. Print Screen and
+  Alt+F2 remain available while a bubble is open.
 - Slax Status starts with the desktop. Click its stacked-drive tray icon to see
   where Slax runs, where changes are stored and the estimated space available.
+  The number shows available space; the bar shows how much is used.
   Drives are identified by /dev/device, followed by their label in parentheses.
-  Details separates free drive space from blocks reusable inside the current profile.
+  Available space includes reusable blocks already allocated inside the active profile.
+  Clicking the tray icon toggles the bubble without closing Profiles & restore points.
   Low-space and storage warnings appear beside the icon without taking focus;
   Remind in 15 min postpones them. Open Profiles & restore points from this bubble.
 - Right-click empty desktop space for Create New and Desktop Preferences.
