@@ -30,6 +30,7 @@ Slax
 - Explain profiles and restore points before the first profile is created; show
   a clear starting history for new profiles and hide removed points unless requested.
   Reserve Current state for the running profile; new profiles show only Initial state.
+- Increase the gap between Partition Manager's operation percentage and progress bar.
 - Keep the profile manager open when toggling its tray bubble, remove storage Details,
   and fix asynchronous save switches, footer movement and bubble positioning.
 - Exclude EFI System Partitions from automatic mounting and profile-drive discovery;
