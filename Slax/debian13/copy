@@ -25,6 +25,10 @@ done
 ln -sf /usr/share/zoneinfo/Etc/UTC /etc/localtime
 ln -sf /usr/lib/systemd/system/slax-rmmounts.service /etc/systemd/system/sysinit.target.wants/slax-rmmounts.service
 
+# Keep SSH opt-in, including systemd's automatic Unix/VSOCK socket listeners.
+mkdir -p /etc/systemd/system-generators
+ln -sf /dev/null /etc/systemd/system-generators/systemd-ssh-generator
+
 # Disable bundled timers, including static units and timers activated by other services.
 systemctl --root=/ mask apt-daily.timer apt-daily-upgrade.timer dpkg-db-backup.timer \
    fstrim.timer man-db.timer systemd-tmpfiles-clean.timer mdcheck_start.timer \

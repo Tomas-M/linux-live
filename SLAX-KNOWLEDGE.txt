@@ -66,6 +66,8 @@ NETWORK, AUDIO AND KEYBOARD
 - Open Net Manager from the launcher or network tray icon to select wired/Wi-Fi
   connections and enter credentials. ConnMan provides networking and time sync;
   connmanctl is its command-line interface.
+- By default, the SSH server does not start automatically. To enable it for this run, use
+  systemctl start ssh as root; missing host keys are generated on first start.
 - Moving the volume slider unmutes; mute remembers the selected level.
   Right-click the speaker icon for additional audio settings.
 - In the keyboard menu, Show all lists additional available direct-input layouts
