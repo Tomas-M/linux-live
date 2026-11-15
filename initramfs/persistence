@@ -1,5 +1,5 @@
 #!/bin/sh
-# Durable profile policy; arguments and data files are never evaluated as shell code.
+# Durable storage policy; arguments and data files are never evaluated as shell code.
 
 BASE=$(dirname "$(readlink -f "$0")")
 PATH="$BASE/bin:$BASE/usr/bin:$BASE/sbin:$PATH"
@@ -15,7 +15,7 @@ policy_id()
 # Reject links and special files before reading policy from writable media.
 policy_read()
 {
-   if [ ! -f "$1" ] || [ -L "$1" ]; then echo '* Invalid profile policy file.' >&2; return 1; fi
+   if [ ! -f "$1" ] || [ -L "$1" ]; then echo '* Invalid storage policy file.' >&2; return 1; fi
    cat "$1"
 }
 
@@ -30,6 +30,23 @@ policy_write()
       rm -f "$TEMP"
       return 1
    fi
+   sync
+}
+
+# The empty marker remembers the selected drive; its time orders choices across devices.
+policy_mark()
+{
+   local FILE TEMP NOW PREVIOUS
+   FILE="$1/resume.txt"
+   NOW=${2:-$(date +%s)}
+   if ! printf '%s\n' "$NOW" | grep -qE '^[0-9]+$'; then return 1; fi
+   if [ -e "$FILE" ] || [ -L "$FILE" ]; then
+      policy_read "$FILE" >/dev/null || return 1
+      PREVIOUS=$(date -r "$FILE" +%s) || return 1
+      if [ "$PREVIOUS" -gt "$NOW" ]; then NOW=$PREVIOUS; fi
+   fi
+   TEMP=$(mktemp "$1/.resume.XXXXXX") || return 1
+   if ! chmod 644 "$TEMP" || ! touch -d "@$NOW" "$TEMP" || ! mv -f "$TEMP" "$FILE"; then rm -f "$TEMP"; return 1; fi
    sync
 }
 
@@ -120,6 +137,113 @@ policy_initialize()
    printf 'create Initial state\n' > "$2/snapshot"
 }
 
+# Identify the formatted initial state through its owned unformatted parent.
+policy_initial()
+{
+   local CATALOG ROOT ID NAME OWNER
+   if [ "${2:-}" != "" ]; then CATALOG=$(cat "$2/snapshots.json") || return 1
+   else CATALOG=$(@mount.dynfilefs -f "$1/changes.dat" --snapshots --json) || return 1; fi
+   ROOT=$(printf '%s\n' "$CATALOG" | awk 'BEGIN {RS="\"id\":"; FS="\""} /^"/ && /,"parent":null/ {
+      name=$0; sub(/.*,"name":"/,"",name); sub(/".*/,"",name); printf "%s\t%s\n",$2,name
+   }')
+   ID=$(printf '%s\n' "$ROOT" | cut -f 1)
+   NAME=$(printf '%s\n' "$ROOT" | cut -f 2-)
+   policy_id "$ID" || return 1
+   OWNER=$(policy_read "$1/guard.$ID") || return 1
+   if [ "$OWNER" != "$NAME" ]; then return 1; fi
+   printf '%s\n' "$CATALOG" | awk -v parent="$ID" 'BEGIN {RS="\"id\":"; FS="\""}
+      /^"/ && index($0,",\"parent\":\"" parent "\"") && /,"name":"Initial state",/ && /,"deleted":false/ {print $2; found=1}
+      END {exit !found}'
+}
+
+# FUSE unmount returns before the daemon finishes its final metadata checkpoint.
+policy_closed()
+{
+   local RETRY
+   for RETRY in $(seq 1 300); do
+      if [ ! -e "$1/changes.dat.lock" ]; then return 0; fi
+      sleep 0.1
+   done
+   echo '* Storage did not finish closing.' >&2
+   return 1
+}
+
+# Loop teardown can outlive umount; wait before snapshotting or closing its FUSE provider.
+policy_detach()
+{
+   local DEVICE FILE BACKING RETRY
+   DEVICE=$(mounted_device "$1") || return 1
+   FILE="/sys/class/block/${DEVICE##*/}/loop/backing_file"
+   BACKING=$(cat "$FILE") || return 1
+   umount -d "$1" || return 1
+   for RETRY in $(seq 1 300); do
+      if [ "$(cat "$FILE" 2>/dev/null)" != "$BACKING" ]; then return 0; fi
+      sleep 0.1
+   done
+   echo '* The saved-changes loop device is still in use.' >&2
+   return 1
+}
+
+# Publish only a complete formatted store; old directories and incomplete root files are untouched.
+policy_create()
+{
+   local STORAGE SIZE STAGE MOUNT INNER FILE NAME INITIAL OK
+   STORAGE="$1"; SIZE="$2"
+   for FILE in "$STORAGE"/changes.dat* "$STORAGE"/guard.* "$STORAGE"/run.txt "$STORAGE"/restore.txt "$STORAGE"/keep-current.*; do
+      if [ -e "$FILE" ] || [ -L "$FILE" ]; then echo '* Storage already exists or is incomplete; it will not be overwritten.' >&2; return 1; fi
+   done
+   STAGE=$(mktemp -d "$STORAGE/.initialize.XXXXXX") || return 1
+   MOUNT=$(mktemp -d /tmp/initialize.XXXXXX) || return 1
+   INNER="$MOUNT.fs"
+   mkdir "$INNER" || return 1
+   OK=0
+   if @mount.dynfilefs -f "$STAGE/changes.dat" -s "$SIZE" -p 4000 -m "$MOUNT"; then
+      if mkfs.xfs.custom "$MOUNT/virtual.dat" && mount -t xfs -o loop,nouuid "$MOUNT/virtual.dat" "$INNER"; then
+         if xfs_growfs "$INNER" >/dev/null; then OK=1; fi
+         if ! policy_detach "$INNER"; then return 1; fi
+         if [ "$OK" = 1 ] && policy_initialize "$STAGE" "$MOUNT"; then
+            INITIAL=$(policy_initial "$STAGE" "$MOUNT") || INITIAL=""
+            if ! policy_id "$INITIAL" || ! printf 'protect %s\n' "$INITIAL" > "$MOUNT/snapshot" || ! policy_cleanup "$STAGE" "$MOUNT"; then OK=0; fi
+         else
+            OK=0
+         fi
+      fi
+      if ! umount "$MOUNT"; then return 1; fi
+      policy_closed "$STAGE" || return 1
+   fi
+   rmdir "$INNER" "$MOUNT"
+   if [ "$OK" != 1 ]; then return 1; fi
+
+   # Metadata is the commit record; interrupted publication never looks like a new empty disk.
+   for FILE in "$STAGE"/changes.dat.* "$STAGE"/guard.*; do
+      if [ ! -e "$FILE" ]; then continue; fi
+      NAME=${FILE##*/}
+      if ! mv -n "$FILE" "$STORAGE/$NAME" || [ -e "$FILE" ]; then return 1; fi
+   done
+   sync
+   if ! mv -n "$STAGE/changes.dat" "$STORAGE/changes.dat" || [ -e "$STAGE/changes.dat" ]; then return 1; fi
+   sync
+   rmdir "$STAGE"
+}
+
+# A user-selected point changes the next start without overriding the run's save policy.
+policy_select()
+{
+   local STORAGE ID FILE
+   STORAGE="$1"; ID="$2"
+   if [ "$ID" = current ]; then
+      rm -f "$STORAGE/restore.txt" || return 1
+   else
+      policy_id "$ID" || return 1
+      policy_name "$STORAGE" "$ID" "" >/dev/null || return 1
+      policy_write "$STORAGE/restore.txt" "$ID" || return 1
+   fi
+   for FILE in "$STORAGE"/keep-current.*; do
+      if [ "${FILE##*.}" != "$ID" ] && { [ -e "$FILE" ] || [ -L "$FILE" ]; }; then rm -f "$FILE" || return 1; fi
+   done
+   sync
+}
+
 # A manual point survives automatic retention; the record proves ownership on recovery.
 policy_guard()
 {
@@ -138,13 +262,25 @@ policy_guard()
 # Preserve recovered current data before restoration; the caller holds --protect ID.
 policy_prepare()
 {
-   local PROFILE MOUNT ID INTENT LABEL SAVED LIVE
+   local PROFILE MOUNT ID INTENT LABEL SAVED LIVE RUN COUNT POINTS
    PROFILE="$1"; MOUNT="$2"
+   RUN=$(policy_run "$PROFILE") || return 1
+   if [ "$RUN" = "" -o "${RUN#* }" = discard ]; then return 0; fi
    if [ ! -e "$PROFILE/restore.txt" ] && [ ! -L "$PROFILE/restore.txt" ]; then return 0; fi
    ID=$(policy_read "$PROFILE/restore.txt") || return 1
    policy_id "$ID" || return 1
    policy_name "$PROFILE" "$ID" "$MOUNT" >/dev/null || return 1
    INTENT="$PROFILE/keep-current.$ID"
+   if [ ! -e "$INTENT" ] && [ ! -L "$INTENT" ]; then
+      LABEL="Before restore $(date -u '+%Y-%m-%d %H-%M-%S')"
+      POINTS=$(cat "$MOUNT/snapshot") || return 1
+      COUNT=1
+      while printf '%s\n' "$POINTS" | grep -qFx "$LABEL"; do
+         COUNT=$((COUNT + 1))
+         LABEL="Before restore $(date -u '+%Y-%m-%d %H-%M-%S') ($COUNT)"
+      done
+      policy_write "$INTENT" "$LABEL" || return 1
+   fi
    if [ -e "$INTENT" ] || [ -L "$INTENT" ]; then
       LABEL=$(policy_read "$INTENT") || return 1
       SAVED=$(printf '%s\n' "$LABEL" | sed -n 2p)
@@ -164,7 +300,9 @@ policy_prepare()
 # Start policy is published before consuming the request or releasing previous guards.
 policy_start()
 {
-   local ID FILE
+   local ID FILE PREVIOUS INITIAL
+   PREVIOUS=$(policy_target "$1") || return 1
+   INITIAL=$(policy_initial "$1" "$2") || return 1
    ID=$(policy_guard "$1" "$2") || return 1
    policy_write "$1/run.txt" "$ID" save || return 1
    rm -f "$1/restore.txt" || return 1
@@ -172,12 +310,22 @@ policy_start()
       if [ -e "$FILE" ] || [ -L "$FILE" ]; then rm -f "$FILE" || return 1; fi
    done
    sync
+   if [ "$PREVIOUS" != "" -a "$PREVIOUS" != "$INITIAL" ]; then
+      printf 'unprotect %s\n' "$PREVIOUS" > "$2/snapshot" || return 1
+   fi
    policy_cleanup "$1" "$2" || return 1
    printf '%s\n' "$ID"
 }
 
-if [ "$1" = initialize ]; then policy_initialize "$2" "${3:-}"
+if [ "$1" = create ]; then policy_create "$2" "$3"
+elif [ "$1" = initial ]; then policy_initial "$2" "${3:-}"
+elif [ "$1" = closed ]; then policy_closed "$2"
+elif [ "$1" = detach ]; then policy_detach "$2"
+elif [ "$1" = select ]; then policy_select "$2" "$3"
+elif [ "$1" = mark ]; then policy_mark "$2" "${3:-}"
+elif [ "$1" = initialize ]; then policy_initialize "$2" "${3:-}"
 elif [ "$1" = target ]; then policy_target "$2"
+elif [ "$1" = run ]; then policy_run "$2"
 elif [ "$1" = start ]; then policy_start "$2" "$3"
 elif [ "$1" = prepare ]; then policy_prepare "$2" "$3"
 elif [ "$1" = save ]; then

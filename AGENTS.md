@@ -229,7 +229,7 @@ reporting progress.
   window height; scrolling at either boundary must not invalidate or repaint.
   Preserve unrelated files and Windows boot assets. An existing slax directory
   is updated by replacing source-matching files, after a short plan warning.
-  Keep unmatched files and the complete existing slax/changes profile tree.
+  Keep unmatched files and the complete existing slax/changes directory and history.
   Reject source/destination identity matches, including directory aliases and
   hardlinked files. Verify a complete staged copy before replacing files, and
   retain originals for recovery until boot activation succeeds. Refresh existing
@@ -874,13 +874,13 @@ must follow the general Slax repair rules above.
   second PCManFM instance with a different IPC socket.
   Ignore queued removals when the device node is present, and open PCManFM only
   for a new successful mount. Keep the mount unit if unmounting fails.
-- Initramfs exposes already mounted boot and profile filesystems through
+- Initramfs exposes already mounted boot and saved-changes filesystems through
   `/media/DEVICE` symlinks into `/run/initramfs`, without duplicate fstab or
   systemd mounts. Automount only refreshes their file-manager bookmarks.
   Keep their real mounts for initramfs shutdown, after the live root is released.
   Mount `/media` as a fresh tmpfs before creating these paths, even without
   automount. Device directories and symlinks must not enter persistent changes
-  or reappear when a profile is used on another computer.
+  or reappear when saved changes are used on another computer.
   Generate ordinary automount units only under `/run/systemd/system`; udev
   starts them without persistent enablement. Boot cleanup cancels queued starts
   of saved generated units before removing them and reloading systemd.
@@ -1025,7 +1025,7 @@ must follow the general Slax repair rules above.
   preserving Debian's version and holding the package.
   The same build also packages and holds `libfm-gtk3-4t64`, applying
   `libfm-places.diff`. Places bookmarks for exact non-system mount points show
-  a circular, themed unmount button; ordinary directories and symlinks to boot/profile storage do
+  a circular, themed unmount button; ordinary directories and symlinks to boot/changes storage do
   not. Watch the Unix mount table to refresh buttons after external changes.
   Unmount asynchronously without a shell, force or lazy flags, and show errors
   while retaining the button if the mount remains present.
@@ -1391,7 +1391,7 @@ must follow the general Slax repair rules above.
   preserve Slax's original mark and the menu icons' clean outlines and gradients.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
-  Slax. Use `Choose profile or restore point` to select or create profiles on
+  Slax. Use `Choose a restore point` to select saved changes on
   the attached fixtures while booting from CD.
 - The scratch VM boots the current distribution ISO at SATA port 0, with its
   two disposable persistence fixtures at ports 1 and 2. The launcher must not
@@ -1439,20 +1439,21 @@ must follow the general Slax repair rules above.
   recorder and save the disabled setting. The scratch launcher explicitly
   disables recording before startup.
 
-## Boot and profile UI
+## Boot and saved-changes UI
 
-- Skip genuine GPT/MBR EFI System Partitions in live-data/profile mounts, boot
+- Skip genuine GPT/MBR EFI System Partitions in live-data/storage mounts, boot
   device choices, generated fstab, Slax automount and Slax Status discovery.
   Detect partition types, not FAT filesystems, labels or EFI directory names.
 - `tools/build-initramfs-tools` rebuilds the pinned util-linux blkid/eject as
   stripped static i686 musl binaries. Keep their provenance and the published
   Mini Commander binary's source commit in `initramfs/static/README`.
-- User-facing persistence terminology is Slax profile (Profiles in lists) and
-  restore point. A profile owns its applications, settings, files and restore
-  history; a restore point is a saved state inside that profile. Use Current state
-  for the writable tip. Keep unrelated X11, login, D-Bus and browser terminology.
-  Existing numeric directories, session.txt, last_session.txt and DynFileFS API
-  fields remain the storage contract, not visible labels.
+- Slax has one saved-changes store per selected drive, directly at
+  /slax/changes/changes.dat. Use DynFileFS with XFS on every backing filesystem,
+  including native Linux filesystems, so restore points are always available.
+  There is no profile/session layer in boot, the broker or the desktop UI.
+  Ignore old numbered directories, session.txt and last_session.txt; leave them
+  untouched. Do not migrate, reuse or remove their data. Preserve unrelated X11,
+  login, D-Bus and browser uses of session/profile terminology.
 
 - GRUB checks the BIOS El Torito boot alias `(cd)` or its firmware-reported
   boot device before searching other disks; an existing root alone must not
@@ -1519,12 +1520,12 @@ must follow the general Slax repair rules above.
   partition changes if it is in use or cannot be locked. Retain that lock while
   formatting, mounting and verifying file writes/reads on USB-DATA, then remove
   only USB-SPACE. Keep USB-SPACE if data preparation or verification fails.
-  Before removing USB-SPACE, create the live-data changes directory, an initial
-  numeric profile with session.txt and last_session.txt, and a short readme.txt
-  beside changes. Preserve existing files and resume markers. Derive the live-data
-  directory from makeiso.sh's ISO volume ID, retaining generic Live Kit names.
-  Let the first persistent boot create changes.dat through DynFileFS; an empty
-  placeholder is not a valid container. Verify newly written files before success.
+  Before removing USB-SPACE, create the live-data changes directory, an empty
+  resume.txt marker inside it, and a short readme.txt beside changes. Preserve
+  existing files and markers. Derive the live-data directory from makeiso.sh's
+  ISO volume ID, retaining generic Live Kit names. First persistent boot creates
+  changes.dat through DynFileFS; never create an empty backing-file placeholder.
+  Verify newly written files before success.
   After confirmation, relaunch a plain EXE copy in a separate local temporary
   folder. Transfer the original open disk handle, volume identity, mutex and
   complete approved GPT snapshot through inherited handles; revalidate them
@@ -1569,8 +1570,8 @@ must follow the general Slax repair rules above.
   leaves the nested countdown menu for the full menu. The full menu uses
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
-  The first three entries are `Resume previous profile automatically`,
-  `Choose profile or restore point` and `Run Slax from RAM (copy to ram)`.
+  The first three entries are `Continue saved changes`,
+  `Choose a restore point` and `Run Slax from RAM (copy to ram)`.
   The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
   without splash, quiet, hidden cursor, persistence, automount or copy-to-RAM flags.
   Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
@@ -1586,7 +1587,7 @@ must follow the general Slax repair rules above.
   errors visible without routine kernel/systemd messages. Keep full kernel and
   journal records; `debug` still enables verbose console output. Omit obsolete
   `load_ramdisk` and `prompt_ramdisk` flags from Slax entries.
-  Keep new-profile creation in the profile picker, not in the boot menu.
+  Fresh start belongs in the selected drive's restore-point menu.
   Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
   the nested countdown configuration and again after returning to the full menu.
   Initializing only the parent configuration can leave the countdown in text
@@ -1597,7 +1598,7 @@ must follow the general Slax repair rules above.
   instructions. Avoid adding external graphics programs to the initramfs.
   Shutdown uses `fbmenu --shutdown` from the retained initramfs after Xorg, getty
   and the display manager stop. Its shutdown-only systemd unit survives final
-  process termination without holding files on the live root or profile disks.
+  process termination without holding files on the live root or saved-changes disks.
   Reuse the logo and dots timing. Esc restores the console's existing shutdown
   output and kernel verbosity while shutdown continues. Quiet text/debug boots
   keep their console, and unavailable framebuffer graphics must not block shutdown.
@@ -1639,74 +1640,36 @@ must follow the general Slax repair rules above.
   desktop pixels observed with vmwgfx without patching or recompiling the kernel.
   Apply this palette globally, without restricting the driver or pixel format.
   Restore the visible login cursor there too; the boot configuration hides it.
-- Profile selection retains the Slax logo and shows each profile's name,
-  date and size on one row. Highlight the entire selected row. No frame,
-  arrow-only selection or `1/20` counters. Footer:
-  `Up/Down: select   Enter: confirm   F8: restore   Esc: cancel`.
-  Split navigation and actions into two footer lines when needed, reserving the
-  extra height so menu rows cannot overlap them.
-- Embed DejaVu Sans Mono at 12 px in fbmenu. Use 28 px row spacing, 16 px
-  horizontal row padding and a 28 px gap below the logo. Center the menu within
-  the available display; keep its width between 480 and 720 px where it fits.
-  Leave an extra 16 px blank line between headings and menu content.
-  Anchor the metadata column to the right. The shell formats human-readable
-  profile sizes with `%9s`, keeping their right edge aligned and dates fixed.
-  Always use one decimal place, a space and a unit, with KB as the smallest
-  unit (including `0.0 KB`); scale larger values to MB, GB and at most TB.
-  Menu column positions and pixel rendering belong to `draw_menu()` in fbmenu.
-- Numeric profile directories remain their identifiers. Store the display name
-  in each native profile directory's `boot/session.txt`; container profiles use
-  `session.txt` alongside `changes.dat`, without creating a metadata-only `boot`
-  directory. Share native-storage detection between metadata creation and
-  persistence activation; an existing `changes.dat` keeps its container layout
-  even on a Linux filesystem. Read names from the matching path.
-  Show the name without a numeric prefix.
-  Unnamed profiles use `Profile #ID`. Empty and duplicate names are allowed.
-  Automatic resume creates its first profile as `Initial profile` without
-  prompting. `Start a new profile` remains available, selecting a writable disk
-  and creating a clean profile without name input. Later profiles have an empty
-  stored name and display `Profile #ID` until named in the desktop application.
-  Keep copying, renaming, name editing and their progress UI out of initramfs.
-  Strip metadata line endings without adding a space or trimming intentional spaces.
-- The tty decoder waits 100 ms after a single Esc. Double Esc cancels immediately;
-  Alt combinations and unsupported escape sequences are consumed and ignored.
-  Preserve recognized navigation/function keys and complete UTF-8 characters.
-- Slax's profile chooser boot entry includes `automount`, like the other
-  persistent boot entries, so profile disks remain accessible under `/media`.
-- `perchdir=ask` lists profiles from `/$LIVEKITNAME/changes` on all detected
-  writable filesystems, preserving a custom boot-data directory on the boot
-  filesystem. Show the device beside each profile to disambiguate names.
-  New profiles, including `perchdir=new`, first ask for a writable partition,
-  showing its device, label, filesystem and free/total space even without profiles.
-  Format both sizes in the same unit, for example `54.3/64.0 GB free`.
-  Disk cancellation returns to the profile picker; only cancelling that picker
-  disables persistence. Create directories only after the disk is selected.
-  F5 Refresh is offered only in the disk picker: release the previous scan mounts,
-  rescan devices and stay in that picker. Refresh does not select a profile or
-  change remembered choices or pending restore requests. Keep this flow in
-  `livekitlib`; `fbmenu --refresh` returns `refresh` on F5.
-  Release unselected scan mounts and retain the chosen disk at
-  `/memory/persistence`. Automatic
-  `perchdir=resume` compares valid `last_session.txt` markers across writable
-  disks and resumes the profile from the marker with the newest modification
-  time. Do not use directory dates or change unselected markers. With no previous
-  profile, retain first-profile creation on the boot medium. Explicit device paths
-  stay scoped to their selected directory. Never format or repartition a discovery target.
-- `fbmenu --menu ... --restore` returns `restore:ID` on F8 and ignores the new
-  profile row. The selected profile's restore list starts with Current state,
-  then live restore points newest first, with readable automatic labels and UTC
-  dates. Esc returns without changing its pending request. Selecting a point
-  atomically writes its stable ID to restore.txt and starts that profile.
-  Explicit Enter on a profile, or Current state in its restore list, clears a
-  pending restore; automatic resume and explicit perchdir IDs honor the request.
-  Native profiles and profiles without history offer Current state only.
-- Dynfilefs's `virtual.dat` is created with XFS. Mount it explicitly with
-  `-t xfs`, including when growing it, to avoid probing it with NTFS and logging
-  misleading signature errors. Native persistent directories still use their
-  own filesystem.
-  After formatting a new container, remove its initial automatic image of the
-  unformatted disk so it cannot be offered as a usable restore point. Retain its
-  ancestry record; do not guess that the first point in an existing store is blank.
+- Storage selection retains the Slax logo and existing framebuffer/text menu
+  layout. Show device paths before labels, plus filesystem and free/total space
+  in the same unit. Keep Enter to choose and Esc to return; F5 Refresh belongs
+  only in the drive list. The restore list needs no F8 submenu or profile row.
+  Preserve UTF-8 names, scroll indicators, fixed date columns and small-screen
+  support. The tty decoder waits 100 ms after a single Esc; double Esc cancels
+  immediately. Consume unsupported escape sequences without treating them as input.
+- perchdir=ask lists writable non-ESP devices first, then the chosen drive's
+  Last saved state, Fresh start and live restore points. On an empty drive,
+  Fresh start prepares saved changes. Esc from history returns to drives;
+  Esc from drives cancels persistence without changing durable choices.
+  F5 releases scan mounts and rescans without choosing or modifying storage.
+  Keep selected storage at /memory/persistence and release unselected mounts.
+  Retain explicit /dev/device/custom-directory syntax for generic Live Kit.
+  Remove numeric profile selection and perchdir=new; there is no compatibility path.
+- resume.txt is an empty selection marker directly in the changes directory.
+  Automatic resume selects the newest valid marker across writable drives,
+  falling back to creating storage on a writable boot medium. Never read or
+  update legacy last_session.txt. Explicit disk/point selections and successful
+  setup update the marker atomically. Do not format or repartition a backing drive.
+- Fresh start restores the protected, formatted Initial state. It never erases
+  a store or its history. Before restoring a point, retain the previous current
+  state as a manual point only if run.txt does not request discard. An explicit
+  Create restore point is allowed even with Save this run off. Last saved state
+  clears a queued explicit restore but must not override the discard policy.
+- Initialize through the shared persistence helper: stage a fully formatted and
+  grown XFS with Initial state, then publish changes.dat last. Preserve existing
+  directories and refuse incomplete/corrupt stores instead of reformatting them.
+  Hide only exactly owned pre-formatting/guard points, preserving their ancestry.
+  Mount virtual.dat explicitly as XFS; keep FUSE and loop mounts separate.
 - Update `initramfs/static/mount.dynfilefs` from the published precompiled
   `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
   then synchronize the work VM and repack Slax's initramfs when the binary changes. Keep the static
@@ -1720,16 +1683,14 @@ must follow the general Slax repair rules above.
   tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
   and full persistent Slax boots before replacing it; do not overwrite it with an
   older published binary that lacks this fix. The storage format is unchanged.
-- A container profile can request one restore point for its next activation through
-  `restore.txt`, beside `session.txt` and `changes.dat`, containing its stable
+- A saved-changes store can request one restore point for its next activation through
+  `restore.txt`, beside `changes.dat`, containing its stable
   16-digit lowercase hexadecimal ID. Never source metadata as shell code or
   restore by a saved display name: deleted names may be reused. Resolve the live
   ID through DynFileFS's offline catalog and pass its name to `--restore`.
   Consume and sync the request only after XFS mounts and grows successfully.
   Invalid or unavailable restore points retain the request and open the boot recovery
-  shell; exiting retries activation of the same selected profile. Native profiles
-  do not support restore points.
-  `last_session.txt` remains the remembered profile choice, not a one-shot flag.
+  shell; exiting retries activation of the same selected store.
   `initramfs/persistence` establishes a manual starting guard after XFS recovery/grow
   and before union writers. `run.txt` holds its exact ID and save/discard policy;
   an explicit restore.txt takes precedence. `guard.ID` records prove ownership only
@@ -1738,7 +1699,7 @@ must follow the general Slax repair rules above.
   Never remove a user point merely by its name prefix.
   Deferred keep-current intent is tied to the target ID and processed only at the
   next activation, after recovering and cleanly unmounting the old XFS, before
-  actually restoring. There is no profile-specific shutdown hook.
+  actually restoring. There is no storage-specific shutdown hook.
   DynFileFS's `protect ID` / `unprotect ID` controls keep queued points safe through
   final automatic pruning, independent of the desktop service's lifetime. Protect
   the new selection before publishing its durable request, then release the old
@@ -1761,44 +1722,61 @@ must follow the general Slax repair rules above.
   Use one approximate capacity indicator: backing-drive available bytes plus only
   the active container's reusableBytes, or MemAvailable in RAM. The number shows
   available space; the bar shows the used fraction, clamped to 0–100%. Keep storage work
-  off GTK's thread and labels ellipsized. Scroll history independently; long profile
-  lists and the inspector in a narrow window may scroll without expanding the window.
+  off GTK's thread and labels ellipsized. Scroll history independently; the inspector
+  in a narrow window may scroll without expanding the window.
   Display device paths first, with optional labels in parentheses, and omit
   approximation symbols before available-space numbers. Keep panel padding inside
   styled surfaces so backgrounds and separators reach their section edges.
   Background startup and polling inspect mounted drives without mounting others.
-  Only explicit manager opening or New profile requests `state` with `refresh:true`
-  to discover and mount other drives. Queue that request across an in-flight poll;
-  New profile waits for the refreshed drive list. Ordinary polling never forces discovery.
-  Profiles own their restore-point tree; profile rename/delete sit beside the
-  large profile heading, outside the sidebar. Draw square branch connectors and highlight the corresponding
-  node when its row is hovered, focused or selected. Only the active profile uses
-  Current state and You are here. Inactive profiles use Last saved state; omit
-  that redundant endpoint for a never-started profile with only Initial state.
-  Endpoints are synthetic rows, not assertions that data still equals currentParent.
+  Discover only the active store published by initramfs; never mount other drives
+  for the application. Storage selection and preparation belong only in boot.
+  Show the current drive's restore-point tree and inspector without a drive
+  selector, profile sidebar or profile creation/rename/delete controls. Draw
+  square branch connectors and highlight the corresponding node when its row
+  is hovered, focused or selected. Only the active store uses Current state
+  and You are here. Endpoints are synthetic rows, not assertions that data still
+  equals currentParent.
+  Do not repeat row names in tree tooltips. Point sizes use DynFileFS's live
+  reclaimableBytes: exclusive allocator slots reusable after deleting that point,
+  excluding other points and current/checkpoint/read pins. They do not promise
+  physical data-file shrinking and are not additive across points. Update numeric
+  labels in place; size changes alone must not rebuild rows or inspector controls.
+  Rename points by stable ID through DynFileFS, preserving contents, ancestry and
+  pending restores. Open immutable images through snapshots/<ID>.dat so renaming
+  also preserves active file views. Renamed automatic points become manually retained names.
+  Keep Initial state and hidden lifecycle guards unrenameable. Wrap full inspector
+  titles, omit the redundant Previous section and do not repeat Delete in a tooltip.
+  Status confirmations remove the native message parent's horizontal margins so
+  text keeps a single compact inset while shared dialog button spacing remains.
   Tray toggles must leave the manager open. Keep save switches alive and use
   GTK's asynchronous state-set signal; apply confirmed backend policy without
-  generating another mutation. Capacity and operation feedback share one footer
+  generating another mutation. Set their active property only when it differs:
+  GTK 3 cancels animation even for an unchanged value, leaving the thumb midway.
+  Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
   Keep the single capacity estimate directly in the UI without a Details dialog.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
   restore-point rows are selectable and carry point IDs.
-  With no profiles, show an introduction and Create profile instead of empty
-  management controls. Inactive profiles prioritize Use at next start. Show
-  removed controls deleted rows while full ancestry still determines tree lanes.
-  persistence initialize records the unformatted point through exact guard.ID
-  ownership and creates a visible manual Initial state point after formatting
-  and xfs_growfs. Publish new GUI profiles only after this succeeds. Derive the
-  initial point from the owned unformatted root and its named direct child;
-  keep it protected in the manager. Never infer ownership from old point names
-  or order. Retain matching tombstone ownership records. Derive hasStarted
-  from the existing run.txt record; do not persist another status.
+  In RAM, explain why to save changes on a drive and show the static restore-point
+  example. Direct the user to Choose a restore point, a drive and Fresh start at
+  the next boot. This RAM run is not copied. Do not offer storage setup in the app.
+  Ignore numeric legacy directories.
+  Show removed controls deleted rows while full ancestry determines tree lanes.
+  Derive Initial state from its exact owned unformatted ancestor and protect it.
+  Never infer ownership from old names or order. Retain matching tombstone
+  ownership records. Derive hasStarted from run.txt, not another persisted status.
   `slax-statusd` is the root storage broker; authenticate Unix-socket callers as
   root or the Slax guest account and accept opaque identities, never arbitrary
-  client paths or shell commands. Native profiles always save, RAM never saves;
+  client paths or shell commands. RAM never saves;
   enable the container's switch only with a verified durable starting guard.
+  Don't save also disables DynFileFS automatic snapshots for that run. Disable
+  the engine before publishing discard; publish save durably before enabling it.
+  Reconcile the runtime automaticSnapshots setting from run.txt after broker
+  restart. Boot restores the selected point or discard guard before DynFileFS
+  can create a startup point. Explicit manual points remain intentional saves.
+  Keep this independent of shutdown hooks; an interrupted run must also discard.
   Keep immutable file views read-only with XFS norecovery/nouuid or ext4 noload.
-  Open saved home directories in the caller's PCManFM, retaining view ownership
+  Open saved filesystem roots in the caller's PCManFM, retaining view ownership
   until Close files succeeds. Do not replay journals into saved views or force
   busy unmounts. The approved mockup is a specification, not a runtime dependency.
 - Container capacity follows the backing filesystem's total size, rounded up
@@ -1811,24 +1789,22 @@ must follow the general Slax repair rules above.
   `persistent_changes`, FUSE mounts at `$2.dfs` and XFS at `$2`. For the
   usual live root these are `/memory/changes.dfs` and `/memory/changes`.
   This prevents shutdown from remounting XFS with the hidden FUSE mount's
-  `user_id` and `group_id` options. The storage format and profile files stay
+  `user_id` and `group_id` options. The DynFileFS storage format stays
   unchanged; filesystem creation and growth use the separate `virtual.dat`.
 - Keep HTTP FUSE storage at `$DATAMNT.httpfs` and its loop-mounted data at
   `$DATAMNT`. Local `from=ISO` uses the separate `/memory/iso` mount; failed
   searches must unmount the ISO before its source filesystem. Stop after a
   device mount fails, so retries cannot inspect or stack stale filesystems.
-  Explicit profile devices mount at `/memory/persistence`, with a single
-  bind mount of the selected directory at the existing changes path. RAM
+  Explicit storage devices mount at `/memory/persistence`. RAM
   copying releases its loop device before unmounting the backing filesystem.
 - Shutdown keeps optical media attached in virtual machines, detected from
   the CPU hypervisor flag, virtual-machine DMI identifiers or sysfs hypervisor
   information. Keep this check in the initramfs shutdown script without runtime
   package dependencies. Physical CD/DVD boots retain eject and tray closing;
   filesystem unmounting must run in both cases.
-- Esc in the profile picker cancels persistence: no profile is created and
-  `last_session.txt` is not updated. Elsewhere during boot, Esc dismisses the
-  splash and reveals the log. Keep a text menu when framebuffer is unavailable
-  and verify the graphical layout at 800x600 as well as larger resolutions.
+- Esc from the storage drive list cancels persistence without changing resume.txt.
+  Elsewhere during boot, Esc dismisses the splash and reveals the log. Keep a
+  text menu without a framebuffer; verify 800x600 as well as larger resolutions.
 - Running dots cycle through `.`, `..`, `...`, ` ..`, `  .`, then a blank
   frame before restarting. Preserve small-screen support. Advance only on a
   dedicated monotonic one-shot timer, holding each frame for 250 ms; keyboard

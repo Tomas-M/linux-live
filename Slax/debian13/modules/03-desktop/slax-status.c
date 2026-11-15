@@ -1,4 +1,4 @@
-/* Slax's native status tray and profile manager. Storage operations belong to slax-statusd. */
+/* Slax's native status tray and restore-point manager. Storage operations belong to slax-statusd. */
 #include <gtk/gtk.h>
 #include <gtk/gtkx.h>
 #include <gdk/gdkx.h>
@@ -11,22 +11,20 @@
 #include <string.h>
 
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
-typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget; } HistoryRow;
-typedef struct { JsonObject *request; char *op, *profile; gboolean mutation; } Request;
+typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *size; } HistoryRow;
+typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
 static JsonObject *state, *history, *pending_request;
-static char *selected, *selected_point, *history_profile, *profiles_signature, *history_signature;
+static char *selected, *selected_point, *history_store, *history_signature;
 static char *connection_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
-static gboolean discovery_pending, new_profile_pending;
 static gint64 snooze_until;
-static GtkWidget *tray, *tray_icon, *manager, *manager_body, *sidebar, *profile_list, *profile_scroll, *profile_combo;
-static GtkWidget *profile_actions, *profile_rename, *profile_delete, *profile_new, *profile_heading;
+static GtkWidget *tray, *tray_icon, *manager, *manager_body;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
 static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
-static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
-static GtkWidget *manager_content, *intro_create, *history_legend, *history_path, *history_latest;
+static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *inspector_reclaim, *manager_feedback;
+static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_legend, *history_path, *history_latest;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
 static GPtrArray *rows;
@@ -42,10 +40,11 @@ static void update_ui(void);
 static void show_manager(void);
 static void render_history(void);
 static void render_inspector(void);
+static void update_history_sizes(void);
 static void dock_tray(void);
 static void send_request(JsonObject *request, gboolean mutation);
 static void action(GtkButton *button, gpointer data);
-static void name_dialog(const char *op);
+static void name_dialog(gboolean rename);
 
 /* Optional JSON values stay absent instead of acquiring guessed UI state. */
 static const char *str(JsonObject *object, const char *key)
@@ -67,7 +66,7 @@ static JsonArray *array(JsonObject *parent, const char *key)
 }
 static guint count(JsonArray *items) { return items ? json_array_get_length(items) : 0; }
 
-/* Look up exact opaque identities; numeric profile directory names are not globally unique. */
+/* Storage and restore-point actions use exact opaque identities. */
 static JsonObject *find(JsonArray *items, const char *key, const char *value)
 {
     for (guint i=0; value && i<count(items); i++)
@@ -77,22 +76,23 @@ static JsonObject *find(JsonArray *items, const char *key, const char *value)
     }
     return NULL;
 }
-static JsonObject *profile(void) { return find(array(state,"profiles"),"id",selected); }
+static JsonObject *store(void) { return find(array(state,"stores"),"id",selected); }
 static JsonObject *point(void) { return find(array(history,"snapshots"),"id",selected_point); }
 static JsonObject *run(void) { return object(state,"run"); }
 
-/* UI labels use the established numeric fallback, while all actions keep the opaque ID. */
-static char *profile_name(JsonObject *item)
-{
-    return *str(item,"name") ? g_strdup(str(item,"name")) : g_strdup_printf("Profile #%s",str(item,"numericId"));
-}
-/* Linux device identities remain visible before optional, potentially long filesystem labels. */
-static char *drive_name(JsonObject *drive)
-{
-    return *str(drive,"label") ? g_strdup_printf("%s (%s)",str(drive,"device"),str(drive,"label")) : g_strdup(str(drive,"device"));
-}
 static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatic restore point" : str(item,"name"); }
 static char *size_text(gint64 bytes) { return g_format_size_full(MAX((gint64)0,bytes),G_FORMAT_SIZE_DEFAULT); }
+/* Only deletable points can promise reusable capacity; unknown amounts stay blank. */
+static char *reclaimable_text(JsonObject *item)
+{
+    if (!item) return NULL;
+    if (flag(item,"deleted") || flag(item,"protected") || flag(item,"filesOpen")) return NULL;
+    JsonNode *value=json_object_get_member(item,"reclaimableBytes");
+    if (!value || JSON_NODE_HOLDS_NULL(value)) return NULL;
+    gint64 bytes=json_node_get_int(value);
+    if (!bytes) return g_strdup("0 MB");
+    return bytes<1000000 ? g_strdup("<1 MB") : size_text(bytes);
+}
 static char *date_text(gint64 seconds)
 {
     GDateTime *date=g_date_time_new_from_unix_local(seconds);
@@ -101,7 +101,7 @@ static char *date_text(gint64 seconds)
     return text;
 }
 
-/* Use plain GTK text, never treat profile names or backend errors as markup. */
+/* Use plain GTK text, never treat restore-point names or backend errors as markup. */
 static GtkWidget *label(const char *text, const char *css)
 {
     GtkWidget *widget=gtk_label_new(text);
@@ -157,17 +157,17 @@ static void message(const char *title, const char *text)
 }
 
 /* Send one complete JSON command; no shell or UI-supplied filesystem paths cross the boundary. */
-static JsonObject *command(const char *op, gboolean with_profile)
+static JsonObject *command(const char *op, gboolean with_store)
 {
     JsonObject *request=json_object_new();
     json_object_set_string_member(request,"op",op);
-    if (with_profile && selected) json_object_set_string_member(request,"profileId",selected);
+    if (with_store && selected) json_object_set_string_member(request,"storeId",selected);
     return request;
 }
 static void request_free(gpointer data)
 {
     Request *request=data;
-    json_object_unref(request->request);g_free(request->op);g_free(request->profile);g_free(request);
+    json_object_unref(request->request);g_free(request->op);g_free(request->store);g_free(request);
 }
 
 /* Blocking socket work runs exclusively in GTask's worker, including JSON decoding. */
@@ -206,8 +206,29 @@ static void request_worker(GTask *task, gpointer source, gpointer task_data, GCa
     g_object_unref(parser);
 }
 
-/* Keep JSON signatures only to avoid replacing rows during unchanged background refreshes. */
-static char *signature(JsonNode *node) { return node ? json_to_string(node,FALSE) : g_strdup(""); }
+/* Copy structural fields without the live capacity counter. */
+static void copy_history_field(JsonObject *source, const char *name, JsonNode *value, gpointer data)
+{
+    (void)source;
+    if (strcmp(name,"reclaimableBytes")) json_object_set_member(data,name,json_node_copy(value));
+}
+
+/* Capacity changes update labels in place without replacing hovered or selected rows. */
+static char *signature(JsonNode *node)
+{
+    if (!node) return g_strdup("");
+    JsonObject *source=json_node_get_object(node),*copy=json_object_new();
+    json_object_foreach_member(source,copy_history_field,copy);
+    JsonArray *catalog=array(source,"snapshots"),*points=json_array_new();
+    for (guint i=0;i<count(catalog);i++)
+    {
+        JsonObject *point=json_object_new();json_object_foreach_member(json_array_get_object_element(catalog,i),copy_history_field,point);
+        json_array_add_object_element(points,point);
+    }
+    json_object_set_array_member(copy,"snapshots",points);
+    JsonNode *root=json_node_new(JSON_NODE_OBJECT);json_node_take_object(root,copy);
+    char *text=json_to_string(root,FALSE);json_node_free(root);return text;
+}
 
 /* Apply confirmed results on GTK's thread and reload authoritative state after every mutation. */
 static void request_done(GObject *source, GAsyncResult *result, gpointer data)
@@ -217,18 +238,12 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     GError *error=NULL;
     JsonObject *reply=g_task_propagate_pointer(G_TASK(result),&error);
     requesting=FALSE;mutating=pending_request!=NULL;
-    gboolean discovered=!strcmp(request->op,"state") && flag(request->request,"refresh");
-    gboolean succeeded=!error && flag(reply,"ok");
     if (error || !flag(reply,"ok"))
     {
         const char *detail=error ? error->message : str(object(reply,"error"),"message");
         if (request->mutation) message("The action could not be completed",detail);
-        else if (discovered && new_profile_pending)
-        {
-            new_profile_pending=FALSE;message("Cannot find profile drives",detail);
-        }
         else if (!strcmp(request->op,"state")) {g_free(connection_error);connection_error=g_strdup(detail);}
-        else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->profile))
+        else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
         {
             hover_row=NULL;g_clear_pointer(&rows,g_ptr_array_unref);
             clear_box(history_list);history_placeholder(detail);
@@ -242,27 +257,26 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
         {
             if (state) json_object_unref(state);
             state=json_object_ref(value);g_clear_pointer(&connection_error,g_free);
-            if (!find(array(state,"profiles"),"id",selected))
+            if (g_strcmp0(selected,str(run(),"storeId")))
             {
-                g_free(selected);selected=g_strdup(str(run(),"profileId"));
-                if (!*selected && count(array(state,"profiles"))) {g_free(selected);selected=g_strdup(str(json_array_get_object_element(array(state,"profiles"),0),"id"));}
+                g_free(selected);selected=g_strdup(str(run(),"storeId"));
                 g_clear_pointer(&selected_point,g_free);manager_dirty=TRUE;reveal_current=TRUE;
                 render_history();render_inspector();
             }
         }
-        else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->profile))
+        else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
         {
             char *current=signature(json_object_get_member(reply,"result"));
-            gboolean changed=g_strcmp0(current,history_signature) || g_strcmp0(history_profile,selected);
+            gboolean changed=g_strcmp0(current,history_signature) || g_strcmp0(history_store,selected);
             if (history) json_object_unref(history);
             history=json_object_ref(value);
-            g_free(history_profile);history_profile=g_strdup(selected);
+            g_free(history_store);history_store=g_strdup(selected);
             g_free(history_signature);history_signature=current;
             if (changed || manager_dirty) {render_history();render_inspector();manager_dirty=FALSE;}
+            else update_history_sizes();
         }
         else if (request->mutation)
         {
-            if (!strcmp(request->op,"profile.create")) {g_free(selected);selected=g_strdup(str(value,"profileId"));g_clear_pointer(&selected_point,g_free);}
             if (!strcmp(request->op,"point.create")) {g_free(selected_point);selected_point=g_strdup(str(value,"pointId"));}
             if (!strcmp(request->op,"point.delete")) g_clear_pointer(&selected_point,g_free);
             if (!strcmp(request->op,"files.open") && *str(value,"path"))
@@ -278,16 +292,11 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     }
     if (reply) json_object_unref(reply);
     update_ui();
-    if (discovered && succeeded && !discovery_pending && new_profile_pending)
-    {
-        new_profile_pending=FALSE;update_ui();name_dialog("profile.create");
-    }
     if (pending_request) {JsonObject *queued=pending_request;pending_request=NULL;send_request(queued,TRUE);}
-    else if (discovery_pending) refresh();
     else if (request->mutation) refresh();
-    else if (!strcmp(request->op,"state") && gtk_widget_get_visible(manager) && profile())
+    else if (!strcmp(request->op,"state") && gtk_widget_get_visible(manager) && store())
         send_request(command("history",TRUE),FALSE);
-    else if (!strcmp(request->op,"history") && g_strcmp0(request->profile,selected) && gtk_widget_get_visible(manager) && profile())
+    else if (!strcmp(request->op,"history") && g_strcmp0(request->store,selected) && gtk_widget_get_visible(manager) && store())
         send_request(command("history",TRUE),FALSE);
 }
 
@@ -301,18 +310,16 @@ static void send_request(JsonObject *value, gboolean mutation)
         return;
     }
     Request *request=g_new0(Request,1);
-    request->request=value;request->op=g_strdup(str(value,"op"));request->profile=g_strdup(str(value,"profileId"));request->mutation=mutation;
+    request->request=value;request->op=g_strdup(str(value,"op"));request->store=g_strdup(str(value,"storeId"));request->mutation=mutation;
     requesting=TRUE;mutating=mutation;update_ui();
     GTask *task=g_task_new(NULL,NULL,request_done,NULL);
     g_task_set_task_data(task,request,request_free);g_task_run_in_thread(task,request_worker);g_object_unref(task);
 }
-/* Only an explicit manager/new-profile action authorizes discovering unmounted drives. */
+/* The application inspects the running storage only; drive selection belongs to boot. */
 static void refresh(void)
 {
     if (requesting) return;
-    JsonObject *request=command("state",FALSE);
-    if (discovery_pending) {json_object_set_boolean_member(request,"refresh",TRUE);discovery_pending=FALSE;}
-    send_request(request,FALSE);
+    send_request(command("state",FALSE),FALSE);
 }
 
 /* Main-loop polling reads counters only; catalogue work is requested while the manager is visible. */
@@ -339,23 +346,15 @@ static GtkWidget *primary_button(const char *text, const char *op)
     return widget;
 }
 
-/* Restore choices can refer to any profile; the main context always describes the running system. */
+/* The next-start summary describes the chosen state on the current drive. */
 static char *next_text(void)
 {
     JsonObject *next=object(state,"next");
-    if (next)
+    if (next && *str(next,"pointId"))
     {
-        JsonObject *target=find(array(state,"profiles"),"id",str(next,"profileId"));
-        char *name=g_strdup(str(next,"label"));
-        if (!*name) {g_free(name);name=target ? profile_name(target) : g_strdup("Selected profile");}
-        char *text=NULL;
-        if (*str(next,"pointId"))
-        {
-            char *date=date_text(number(next,"created"));
-            text=g_strdup_printf("%s · %s · %s",name,*str(next,"pointName") ? str(next,"pointName") : "selected restore point",date);g_free(date);
-        }
-        else text=g_strdup(name);
-        g_free(name);return text;
+        char *date=date_text(number(next,"created"));
+        char *text=g_strdup_printf("%s · %s",*str(next,"pointName") ? str(next,"pointName") : "Selected restore point",date);
+        g_free(date);return text;
     }
     if (!strcmp(str(run(),"kind"),"ram")) return g_strdup("Fresh temporary run");
     return g_strdup(flag(run(),"save") ? "Continue current state" : "Return to the start of this run");
@@ -395,13 +394,15 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
     gboolean save=flag(run(),"save");
     if (!mutating)
     {
-        updating=TRUE;gtk_switch_set_active(GTK_SWITCH(toggle),save);gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
+        /* Setting an unchanged active value cancels GTK's animation and can strand its slider. */
+        updating=TRUE;
+        if (gtk_switch_get_active(GTK_SWITCH(toggle))!=save) gtk_switch_set_active(GTK_SWITCH(toggle),save);
+        gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
-    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating && !new_profile_pending);
+    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating);
     set_label(choice,save ? "Save" : "Don’t save");
     const char *text=save ? "Keep changes after restart." : "Return to the start of this run after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
-    else if (!strcmp(str(run(),"kind"),"native")) text="This profile always saves changes.";
     else if (!flag(run(),"canSetSave")) text="This run cannot change its save setting.";
     set_label(help,text);
 }
@@ -507,7 +508,7 @@ static void make_popups(void)
     make_bubble(&popup,"slax-status-popup");
     GtkWidget *header=box(GTK_ORIENTATION_HORIZONTAL,12),*titles=box(GTK_ORIENTATION_VERTICAL,2);
     pack(header,gtk_image_new_from_icon_name("slax-status",GTK_ICON_SIZE_LARGE_TOOLBAR),FALSE);
-    popup_title=label("Slax Status","title");pack(titles,popup_title,FALSE);pack(titles,label("Slax Status","muted"),FALSE);
+    popup_title=label("Slax Status","title");pack(titles,popup_title,FALSE);
     pack(header,titles,TRUE);pack(header,button("Close popup","window-close-symbolic","close-popup"),FALSE);pack(popup.body,header,FALSE);
     GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
     pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
@@ -522,7 +523,7 @@ static void make_popups(void)
     popup_cancel=link_button("Cancel","next-clear");pack(next,popup_cancel,FALSE);pack(popup.body,next,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
-    pack(footer,button("Profiles & restore points",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
+    pack(footer,button("Restore points",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
     g_signal_connect(popup.window,"focus-out-event",G_CALLBACK(popup_focus_out),NULL);
     g_signal_connect(popup.window,"key-press-event",G_CALLBACK(popup_key),NULL);
     gtk_widget_add_events(popup.window,GDK_BUTTON_PRESS_MASK|GDK_KEY_PRESS_MASK);
@@ -559,25 +560,6 @@ static const char *graph_parent(JsonObject *point)
     }
     return parent;
 }
-
-/* A never-started profile with only its initial point has no separate run to display. */
-static JsonObject *unused_initial(void)
-{
-    if (flag(profile(),"active") || flag(history,"hasStarted")) return NULL;
-    JsonObject *initial=NULL;JsonArray *catalog=array(history,"snapshots");
-    for (guint i=0;i<count(catalog);i++)
-    {
-        JsonObject *item=json_array_get_object_element(catalog,i);
-        if (flag(item,"hidden") || flag(item,"deleted")) continue;
-        if (initial) return NULL;
-        initial=item;
-    }
-    if (!initial || !flag(initial,"initial") || strcmp(str(initial,"id"),str(history,"currentParent"))) return NULL;
-    return initial;
-}
-
-/* Only the active profile represents the current desktop; inactive data is a saved state. */
-static const char *state_name(void) { return flag(profile(),"active") ? "Current state" : "Last saved state"; }
 
 /* Lane assignment uses the full catalog; filtering later cannot invent or flatten a fork. */
 static void append_history(GPtrArray *points, GHashTable *path, const char *parent, int depth)
@@ -643,7 +625,7 @@ static gboolean draw_history(GtkWidget *widget, cairo_t *cr, gpointer data)
         gboolean current=!strcmp(str(row->point,"id"),"current");
         gboolean chosen=current ? !selected_point : !g_strcmp0(selected_point,str(row->point,"id"));
         gboolean highlighted=chosen || hover_row==row || gtk_widget_has_focus(row->widget) || (gtk_widget_get_state_flags(row->widget)&GTK_STATE_FLAG_PRELIGHT);
-        gboolean queued=next && !g_strcmp0(selected,str(next,"profileId")) && !strcmp(str(row->point,"id"),str(next,"pointId"));
+        gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(row->point,"id"),str(next,"pointId"));
         GtkAllocation a;gtk_widget_get_allocation(row->widget,&a);double x=18+row->depth*22,y=a.y+a.height/2.;
         double red=queued ? .16 : .34,green=queued ? .47 : .56,blue=queued ? .72 : .27;
         if (!row->path && !queued && !highlighted) {red=.53;green=.60;blue=.49;}
@@ -691,6 +673,22 @@ static void removed_changed(GtkToggleButton *toggle, gpointer data)
     (void)data;removed_visible=gtk_toggle_button_get_active(toggle);render_history();render_inspector();
 }
 
+/* Reusable slots increase the capacity for future changes, without shrinking data files. */
+static void update_history_sizes(void)
+{
+    for (guint i=0;rows && i<rows->len;i++)
+    {
+        HistoryRow *row=g_ptr_array_index(rows,i);if (!row->size) continue;
+        char *text=reclaimable_text(find(array(history,"snapshots"),"id",str(row->point,"id")));
+        gtk_label_set_text(GTK_LABEL(row->size),text ? text : "");g_free(text);
+    }
+    if (inspector_reclaim)
+    {
+        char *size=reclaimable_text(point()),*text=size ? g_strdup_printf("Deleting makes %s available for new changes.",size) : NULL;
+        gtk_label_set_text(GTK_LABEL(inspector_reclaim),text ? text : "");gtk_widget_set_visible(inspector_reclaim,text!=NULL);g_free(size);g_free(text);
+    }
+}
+
 /* Rebuild changed history only, preserving its scroll position and exact selected identity. */
 static void render_history(void)
 {
@@ -699,12 +697,11 @@ static void render_history(void)
     gtk_list_box_set_placeholder(GTK_LIST_BOX(history_list),NULL);
     clear_box(history_list);if (rows) g_ptr_array_unref(rows);rows=g_ptr_array_new_with_free_func(row_free);
     gtk_widget_hide(show_removed);gtk_widget_hide(history_legend);
-    set_label(history_path,flag(profile(),"active") ? "━ Current path" : "━ Saved path");
-    gtk_button_set_label(GTK_BUTTON(history_latest),flag(profile(),"active") ? "Go to now ↓" : "Go to latest ↓");
+    set_label(history_path,"━ Current path");
+    gtk_button_set_label(GTK_BUTTON(history_latest),"Go to now ↓");
     const char *placeholder=NULL;
-    if (!profile()) placeholder=!state || discovery_pending ? "Loading profiles…" : "Create a profile to get started.";
-    else if (strcmp(str(profile(),"kind"),"container")) placeholder="Changes are saved directly. This profile has no restore points.";
-    else if (!history || g_strcmp0(history_profile,selected)) placeholder="Loading restore points…";
+    if (!store()) placeholder=state ? "Restore points are available when changes are saved on a drive." : "Loading storage…";
+    else if (!history || g_strcmp0(history_store,selected)) placeholder="Loading restore points…";
     if (placeholder)
     {
         history_placeholder(placeholder);updating=FALSE;return;
@@ -720,16 +717,8 @@ static void render_history(void)
     gboolean has_removed=FALSE;
     for (guint i=0;i<points->len;i++) if (flag(g_ptr_array_index(points,i),"deleted")) has_removed=TRUE;
     gtk_widget_set_visible(show_removed,has_removed);
-    JsonObject *initial=unused_initial(),*current=json_object_new();
-    if (initial)
-    {
-        if (!selected_point) selected_point=g_strdup(str(initial,"id"));
-    }
-    else
-    {
-        gtk_widget_show(history_legend);json_object_set_string_member(current,"id","current");
-        json_object_set_string_member(current,"parent",str(history,"currentParent"));g_ptr_array_add(points,current);
-    }
+    JsonObject *current=json_object_new();gtk_widget_show(history_legend);json_object_set_string_member(current,"id","current");
+    json_object_set_string_member(current,"parent",str(history,"currentParent"));g_ptr_array_add(points,current);
     GHashTable *path=g_hash_table_new(g_str_hash,g_str_equal);g_hash_table_add(path,"current");
     const char *parent=str(history,"currentParent");
     while (*parent && !g_hash_table_contains(path,parent))
@@ -746,156 +735,73 @@ static void render_history(void)
         gboolean live=!strcmp(id,"current");
         row->widget=gtk_list_box_row_new();gtk_widget_set_size_request(row->widget,-1,36);
         GtkWidget *line=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_margin_start(line,36+row->depth*22);gtk_widget_set_margin_end(line,8);
-        GtkWidget *name=label(live ? state_name() : point_name(row->point),live ? "strong" : NULL);pack(line,name,TRUE);
+        GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);pack(line,name,TRUE);
         const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest restore point" : "";
-        if (initial) badge="";
-        if (next && !g_strcmp0(selected,str(next,"profileId")) && !strcmp(id,str(next,"pointId"))) badge="Next start";
-        if (live) badge=flag(profile(),"active") ? "You are here" : "";
+        if (next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(id,str(next,"pointId"))) badge="Next start";
+        if (live) badge="You are here";
         if (*badge) pack(line,label(badge,flag(row->point,"deleted") ? "muted" : "badge"),FALSE);
         if (flag(row->point,"deleted")) gtk_style_context_add_class(gtk_widget_get_style_context(name),"muted");
+        if (!live)
+        {
+            row->size=label("","muted");gtk_label_set_xalign(GTK_LABEL(row->size),1);gtk_widget_set_size_request(row->size,76,-1);pack(line,row->size,FALSE);
+        }
         if (!live) {char *date=date_text(number(row->point,"created"));GtkWidget *time=label(date,"muted");gtk_widget_set_size_request(time,100,-1);pack(line,time,FALSE);g_free(date);}
         gtk_container_add(GTK_CONTAINER(row->widget),line);gtk_container_add(GTK_CONTAINER(history_list),row->widget);
         g_object_set_data_full(G_OBJECT(row->widget),"point-id",g_strdup(id),g_free);
         g_signal_connect(row->widget,"enter-notify-event",G_CALLBACK(history_hover),row);g_signal_connect(row->widget,"leave-notify-event",G_CALLBACK(history_hover),row);
         g_signal_connect(row->widget,"state-flags-changed",G_CALLBACK(history_state_changed),NULL);
         gtk_widget_add_events(row->widget,GDK_ENTER_NOTIFY_MASK|GDK_LEAVE_NOTIFY_MASK);
-        gtk_widget_set_tooltip_text(row->widget,live ? state_name() : point_name(row->point));
         if (live ? !selected_point : !g_strcmp0(selected_point,id)) gtk_list_box_select_row(GTK_LIST_BOX(history_list),GTK_LIST_BOX_ROW(row->widget));
     }
     g_hash_table_unref(path);g_ptr_array_unref(points);json_object_unref(current);
     gtk_widget_show_all(history_list);gtk_adjustment_set_value(adjustment,scroll);updating=FALSE;
+    update_history_sizes();
     gtk_widget_queue_resize(history_scroll);
-}
-
-/* Changing a profile drops only that profile's point selection; pending next-start policy is separate. */
-static void select_profile(const char *id)
-{
-    if (!id || !g_strcmp0(id,selected)) return;
-    g_free(selected);selected=g_strdup(id);g_clear_pointer(&selected_point,g_free);manager_dirty=TRUE;reveal_current=TRUE;
-    if (history) {json_object_unref(history);history=NULL;}
-    render_history();render_inspector();update_ui();
-    if (!requesting) send_request(command("history",TRUE),FALSE);
-}
-static void profile_selected(GtkListBox *list, GtkListBoxRow *row, gpointer data)
-{
-    (void)list;(void)data;if (!updating && row) select_profile(g_object_get_data(G_OBJECT(row),"profile-id"));
-}
-static void combo_changed(GtkComboBox *combo, gpointer data)
-{
-    (void)data;if (!updating) select_profile(gtk_combo_box_get_active_id(combo));
-}
-
-/* Changing capacity counters must not replace the profile widgets or interrupt their focus. */
-static char *profile_signature(void)
-{
-    GString *text=g_string_new("");
-    g_string_append(text,str(object(state,"next"),"profileId"));
-    JsonArray *profiles=array(state,"profiles");
-    for (guint i=0;i<count(profiles);i++)
-    {
-        JsonObject *item=json_array_get_object_element(profiles,i);
-        const char *keys[]={"id","numericId","name","driveId","device"};
-        for (guint j=0;j<G_N_ELEMENTS(keys);j++) {const char *value=str(item,keys[j]);g_string_append_printf(text,"%zu:%s;",strlen(value),value);}
-        const char *name=str(find(array(state,"drives"),"id",str(item,"driveId")),"label");g_string_append_printf(text,"%zu:%s;",strlen(name),name);
-        g_string_append_c(text,flag(item,"active") ? '1' : '0');
-    }
-    return g_string_free(text,FALSE);
-}
-
-/* Keep rows and the combo model alive while GTK finishes dispatching selection events. */
-static void sync_profile_selection(void)
-{
-    updating=TRUE;
-    GList *children=gtk_container_get_children(GTK_CONTAINER(profile_list));
-    for (GList *item=children;item;item=item->next)
-        if (!g_strcmp0(selected,g_object_get_data(G_OBJECT(item->data),"profile-id")))
-        {
-            gtk_list_box_select_row(GTK_LIST_BOX(profile_list),GTK_LIST_BOX_ROW(item->data));
-            break;
-        }
-    g_list_free(children);gtk_combo_box_set_active_id(GTK_COMBO_BOX(profile_combo),selected);updating=FALSE;
-}
-
-/* Rebuild profile widgets only when their names, device or status markings change. */
-static void render_profiles(void)
-{
-    updating=TRUE;clear_box(profile_list);gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(profile_combo));
-    JsonArray *profiles=array(state,"profiles");
-    for (guint i=0;i<count(profiles);i++)
-    {
-        JsonObject *item=json_array_get_object_element(profiles,i);char *name=profile_name(item);
-        GtkWidget *row=gtk_list_box_row_new(),*line=box(GTK_ORIENTATION_HORIZONTAL,6),*titles=box(GTK_ORIENTATION_VERTICAL,4);
-        gtk_container_set_border_width(GTK_CONTAINER(line),6);pack(line,gtk_image_new_from_icon_name("folder-symbolic",GTK_ICON_SIZE_BUTTON),FALSE);
-        pack(titles,label(name,NULL),FALSE);
-        JsonObject *drive=find(array(state,"drives"),"id",str(item,"driveId"));char *drive_text=drive_name(drive);
-        GtkWidget *device_label=label(drive_text,"muted");gtk_widget_set_tooltip_text(device_label,drive_text);pack(titles,device_label,FALSE);pack(line,titles,TRUE);
-        JsonObject *next=object(state,"next");
-        if (flag(item,"active")) pack(line,label("●","running"),FALSE);
-        else if (!strcmp(str(item,"id"),str(next,"profileId"))) pack(line,label("●","queued"),FALSE);
-        gtk_container_add(GTK_CONTAINER(row),line);gtk_container_add(GTK_CONTAINER(profile_list),row);
-        g_object_set_data_full(G_OBJECT(row),"profile-id",g_strdup(str(item,"id")),g_free);gtk_widget_set_tooltip_text(row,name);
-        char *option=g_strdup_printf("%s · %s",name,drive_text);gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(profile_combo),str(item,"id"),option);g_free(option);
-        g_free(name);g_free(drive_text);
-    }
-    gtk_widget_show_all(profile_list);updating=FALSE;
 }
 
 /* A fixed inspector exposes actions without expanding or moving history rows. */
 static void render_inspector(void)
 {
-    inspector_save=inspector_choice=inspector_help=NULL;
-    clear_box(inspector);JsonObject *item=profile(),*saved=point();if (!item) return;
+    inspector_save=inspector_choice=inspector_help=inspector_reclaim=NULL;
+    clear_box(inspector);JsonObject *item=store(),*saved=point();if (!item) return;
     gboolean writable=flag(item,"writable") && !mutating;
-    const char *eyebrow=saved ? flag(saved,"deleted") ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT" : flag(item,"active") ? "YOU ARE HERE" : "LATEST STATE";
-    pack(inspector,label(eyebrow,"eyebrow"),FALSE);pack(inspector,label(saved ? point_name(saved) : state_name(),"title"),FALSE);
+    const char *eyebrow=saved ? flag(saved,"deleted") ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT" : "YOU ARE HERE";
+    pack(inspector,label(eyebrow,"eyebrow"),FALSE);
+    GtkWidget *title=paragraph(saved ? point_name(saved) : "Current state");gtk_label_set_max_width_chars(GTK_LABEL(title),22);
+    gtk_style_context_add_class(gtk_widget_get_style_context(title),"title");pack(inspector,title,FALSE);
     if (saved)
     {
         char *date=date_text(number(saved,"created"));pack(inspector,label(date,"muted"),FALSE);g_free(date);
         gboolean initial=flag(saved,"initial");
-        if (!initial)
-        {
-            JsonObject *parent=find(array(history,"snapshots"),"id",graph_parent(saved));
-            pack(inspector,label("Previous","muted"),FALSE);pack(inspector,label(parent ? point_name(parent) : "First restore point",NULL),FALSE);
-        }
-        pack(inspector,initial ? paragraph("The clean profile before its first use.") : label(flag(saved,"automatic") ? "Saved automatically" : "Saved by you","muted"),FALSE);
+        pack(inspector,initial ? paragraph("Start again with a clean Slax. Your existing restore points stay available.") : label(flag(saved,"automatic") ? "Saved automatically" : "Saved by you","muted"),FALSE);
         if (flag(saved,"deleted"))
         {
             GtkWidget *note=gtk_label_new("Its place in history remains; its files are no longer available.");gtk_label_set_line_wrap(GTK_LABEL(note),TRUE);gtk_label_set_xalign(GTK_LABEL(note),0);pack(inspector,note,FALSE);
         }
         else
         {
-            JsonObject *next=object(state,"next");gboolean fresh=unused_initial()!=NULL;
-            gboolean same_profile=!g_strcmp0(selected,str(next,"profileId"));
-            gboolean queued=same_profile && (fresh ? !*str(next,"pointId") : !strcmp(str(saved,"id"),str(next,"pointId")));
-            GtkWidget *use=primary_button(queued ? "Selected for next start" : "Use at next start",fresh ? "use-profile" : "use-point");gtk_widget_set_sensitive(use,writable && !queued);pack(inspector,use,FALSE);
+            JsonObject *next=object(state,"next");
+            gboolean queued=!g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(saved,"id"),str(next,"pointId"));
+            const char *use_text=initial ? "Fresh start" : "Use at next start";
+            GtkWidget *use=primary_button(queued ? "Selected for next start" : use_text,"use-point");gtk_widget_set_sensitive(use,writable && !queued);pack(inspector,use,FALSE);
             GtkWidget *open=button("Open files",NULL,"open-files");gtk_widget_set_sensitive(open,!mutating);pack(inspector,open,FALSE);
-            if (flag(saved,"filesOpen")) {GtkWidget *close=button("Close files",NULL,"close-files");gtk_widget_set_sensitive(close,!mutating);pack(inspector,close,FALSE);}
+            gboolean files_open=flag(saved,"filesOpen");
+            if (files_open) {GtkWidget *close=button("Close files",NULL,"close-files");gtk_widget_set_sensitive(close,!mutating);pack(inspector,close,FALSE);}
             if (!initial)
             {
-                GtkWidget *remove=button("Delete restore point",NULL,"delete-point");gtk_widget_set_sensitive(remove,writable && !flag(saved,"protected") && !flag(saved,"filesOpen"));
-                gtk_widget_set_tooltip_text(remove,flag(saved,"protected") ? "Needed by this run or a pending restore" : "Delete restore point");pack(inspector,remove,FALSE);
+                GtkWidget *rename=button("Rename restore point",NULL,"rename-point");gtk_widget_set_sensitive(rename,writable);pack(inspector,rename,FALSE);
+                GtkWidget *remove=button("Delete restore point",NULL,"delete-point");gtk_widget_set_sensitive(remove,writable && !flag(saved,"protected") && !files_open);
+                pack(inspector,remove,FALSE);
+                inspector_reclaim=paragraph("");pack(inspector,inspector_reclaim,FALSE);
             }
         }
     }
     else
     {
-        if (flag(item,"active"))
-        {
-            pack(inspector,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);update_save(inspector_save,inspector_choice,inspector_help);
-        }
-        else if (number(item,"lastUsed")) {char *date=date_text(number(item,"lastUsed"));char *text=g_strconcat("Last used ",date,NULL);pack(inspector,label(text,"muted"),FALSE);g_free(date);g_free(text);}
-        if (!flag(item,"active"))
-        {
-            GtkWidget *use=primary_button("Use at next start","use-profile");gtk_widget_set_sensitive(use,writable);pack(inspector,use,FALSE);
-            pack(inspector,paragraph("Use this profile after restarting Slax. The current run stays separate."),FALSE);
-        }
-        if (!strcmp(str(item,"kind"),"container"))
-        {
-            GtkWidget *create=flag(item,"active") ? primary_button("Create restore point","create-point") : button("Create restore point",NULL,"create-point");
-            gtk_widget_set_sensitive(create,writable);pack(inspector,create,FALSE);
-        }
+        pack(inspector,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);update_save(inspector_save,inspector_choice,inspector_help);
+        GtkWidget *create=primary_button("Create restore point","create-point");gtk_widget_set_sensitive(create,writable);pack(inspector,create,FALSE);
     }
-    gtk_widget_show_all(inspector);
+    gtk_widget_show_all(inspector);update_history_sizes();
 }
 
 /* Choose the layout before GTK allocates children; changing orientation during allocation is too late. */
@@ -904,12 +810,12 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
     (void)widget;(void)data;gboolean narrow=event->width<900,vertical=event->width<650;
     if (narrow!=compact)
     {
-        compact=narrow;gtk_orientable_set_orientation(GTK_ORIENTABLE(main_layout),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
-        gtk_orientable_set_orientation(GTK_ORIENTABLE(sidebar),compact ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
-        GtkStyleContext *style=gtk_widget_get_style_context(sidebar);
-        if (compact) gtk_style_context_add_class(style,"compact");else gtk_style_context_remove_class(style,"compact");
-        gtk_widget_set_size_request(sidebar,compact ? -1 : 250,-1);gtk_widget_set_visible(profile_scroll,!compact);gtk_widget_set_visible(profile_combo,compact);
+        compact=narrow;
         gtk_orientable_set_orientation(GTK_ORIENTABLE(context_box),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+        gtk_orientable_set_orientation(GTK_ORIENTABLE(intro_columns),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+        gtk_container_set_border_width(GTK_CONTAINER(intro),compact ? 12 : 28);
+        gtk_widget_set_halign(intro,compact ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER);
+        gtk_widget_set_size_request(intro_example,compact ? -1 : 320,-1);
     }
     if (vertical!=stacked)
     {
@@ -923,19 +829,39 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
 }
 static gboolean manager_close(GtkWidget *widget, GdkEvent *event, gpointer data)
 {
-    (void)event;(void)data;new_profile_pending=FALSE;gtk_widget_hide(widget);return TRUE;
+    (void)event;(void)data;gtk_widget_hide(widget);return TRUE;
 }
 static gboolean manager_key(GtkWidget *widget, GdkEventKey *event, gpointer data)
 {
-    (void)data;if (event->keyval!=GDK_KEY_Escape) return FALSE;new_profile_pending=FALSE;gtk_widget_hide(widget);return TRUE;
+    (void)data;if (event->keyval!=GDK_KEY_Escape) return FALSE;gtk_widget_hide(widget);return TRUE;
+}
+
+/* Draw the static example with the same nodes as history, without creating selectable records. */
+static gboolean draw_intro_example(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    (void)data;GList *children=gtk_container_get_children(GTK_CONTAINER(widget));GtkAllocation first,last;
+    gtk_widget_get_allocation(children->data,&first);gtk_widget_get_allocation(g_list_last(children)->data,&last);
+    int x,first_y,last_y;gtk_widget_translate_coordinates(children->data,widget,0,0,&x,&first_y);
+    gtk_widget_translate_coordinates(g_list_last(children)->data,widget,0,0,&x,&last_y);
+    cairo_set_source_rgb(cr,.34,.56,.27);cairo_set_line_width(cr,2);
+    cairo_move_to(cr,16,first_y+first.height/2.);cairo_line_to(cr,16,last_y+last.height/2.);cairo_stroke(cr);
+    guint index=0;
+    for (GList *item=children;item;item=item->next,index++)
+    {
+        GtkAllocation row;int row_y;gtk_widget_get_allocation(item->data,&row);gtk_widget_translate_coordinates(item->data,widget,0,0,&x,&row_y);double y=row_y+row.height/2.;
+        if (index==1) {cairo_set_source_rgba(cr,.34,.56,.27,.22);cairo_arc(cr,16,y,9,0,2*G_PI);cairo_fill(cr);}
+        cairo_arc(cr,16,y,4,0,2*G_PI);cairo_set_source_rgb(cr,index==1 ? .34 : .97,index==1 ? .56 : .98,index==1 ? .27 : .96);
+        cairo_fill_preserve(cr);cairo_set_source_rgb(cr,.34,.56,.27);cairo_set_line_width(cr,2);cairo_stroke(cr);
+    }
+    g_list_free(children);return FALSE;
 }
 
 /* Ordinary GTK windows get the system's decoration; only the tray surfaces paint their own outline. */
 static void make_manager(void)
 {
-    manager=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(manager),"Slax profiles");
+    manager=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(manager),"Restore points");
     gtk_window_set_wmclass(GTK_WINDOW(manager),"slax-status","slax-status");gtk_window_set_icon_name(GTK_WINDOW(manager),"slax-status");
-    gtk_window_set_default_size(GTK_WINDOW(manager),1140,640);gtk_window_set_position(GTK_WINDOW(manager),GTK_WIN_POS_CENTER);
+    gtk_window_set_default_size(GTK_WINDOW(manager),1040,640);gtk_window_set_position(GTK_WINDOW(manager),GTK_WIN_POS_CENTER);
     gtk_widget_set_size_request(manager,540,440);
     g_signal_connect(manager,"delete-event",G_CALLBACK(manager_close),NULL);g_signal_connect(manager,"key-press-event",G_CALLBACK(manager_key),NULL);
     manager_body=box(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(manager),manager_body);
@@ -944,39 +870,44 @@ static void make_manager(void)
     pack(manager_body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     manager_content=gtk_stack_new();gtk_stack_set_homogeneous(GTK_STACK(manager_content),FALSE);pack(manager_body,manager_content,TRUE);
     GtkWidget *intro_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(intro_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
-    GtkWidget *intro=box(GTK_ORIENTATION_VERTICAL,14);gtk_container_set_border_width(GTK_CONTAINER(intro),28);
+    intro=box(GTK_ORIENTATION_VERTICAL,14);gtk_container_set_border_width(GTK_CONTAINER(intro),28);
     gtk_widget_set_halign(intro,GTK_ALIGN_CENTER);gtk_widget_set_valign(intro,GTK_ALIGN_CENTER);gtk_container_add(GTK_CONTAINER(intro_scroll),intro);
-    pack(intro,label("Keep your Slax setup","heading"),FALSE);
-    pack(intro,paragraph("A profile keeps your apps, settings and files on a drive between starts."),FALSE);
-    pack(intro,label("Restore points","strong"),FALSE);
-    pack(intro,paragraph("Save restore points inside a profile to return to an earlier state or browse its files."),FALSE);
-    pack(intro,paragraph("Create an empty profile and choose Use at next start. This run is not copied."),FALSE);
-    intro_create=primary_button("Create profile","new-profile");gtk_widget_set_halign(intro_create,GTK_ALIGN_START);pack(intro,intro_create,FALSE);
+    pack(intro,label("Keep changes after restart","heading"),FALSE);
+    intro_columns=box(GTK_ORIENTATION_HORIZONTAL,28);pack(intro,intro_columns,FALSE);
+    GtkWidget *explanation=box(GTK_ORIENTATION_VERTICAL,12);pack(intro_columns,explanation,TRUE);
+    const char *texts[]={
+        "This run uses RAM. Apps, settings and files changed inside Slax disappear when you shut down.",
+        "Undo a change that went wrong",
+        "Before installing an app or changing settings, make a restore point. You can restart from it to undo later changes, or open it to recover files.",
+        "At next start, press Esc to open the boot menu. Choose “Choose a restore point”, select a drive and “Fresh start” to keep changes on that drive.",
+        "You will start with a clean Slax. Changes made in this run are not copied."
+    };
+    for (guint i=0;i<G_N_ELEMENTS(texts);i++)
+    {
+        GtkWidget *text=i==1 ? label(texts[i],"strong") : paragraph(texts[i]);
+        gtk_label_set_max_width_chars(GTK_LABEL(text),48);pack(explanation,text,FALSE);
+    }
+    intro_example=box(GTK_ORIENTATION_VERTICAL,10);gtk_widget_set_size_request(intro_example,320,-1);gtk_widget_set_valign(intro_example,GTK_ALIGN_CENTER);
+    gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"intro-example");pack(intro_columns,intro_example,FALSE);
+    pack(intro_example,label("EXAMPLE","eyebrow"),FALSE);pack(intro_example,label("My Slax","title"),FALSE);
+    pack(intro_example,label("Restore points on your drive","muted"),FALSE);
+    GtkWidget *example_tree=box(GTK_ORIENTATION_VERTICAL,0);pack(intro_example,example_tree,FALSE);
+    const char *examples[][2]={{"Initial state","A clean Slax"},{"Before installing an app","Your apps, settings and files"},{"After installing the app","The new app causes problems"}};
+    for (guint i=0;i<G_N_ELEMENTS(examples);i++)
+    {
+        GtkWidget *row=box(GTK_ORIENTATION_VERTICAL,3);gtk_style_context_add_class(gtk_widget_get_style_context(row),"intro-example-row");
+        if (i==1) gtk_style_context_add_class(gtk_widget_get_style_context(row),"intro-example-choice");
+        pack(row,label(examples[i][0],i==1 ? "strong" : NULL),FALSE);pack(row,label(examples[i][1],"muted"),FALSE);pack(example_tree,row,FALSE);
+    }
+    g_signal_connect_after(example_tree,"draw",G_CALLBACK(draw_intro_example),NULL);
+    GtkWidget *recovery=paragraph("Restart from “Before installing an app” to get your working Slax back.");
+    gtk_label_set_max_width_chars(GTK_LABEL(recovery),30);pack(intro_example,recovery,FALSE);
     gtk_stack_add_named(GTK_STACK(manager_content),intro_scroll,"intro");
-    main_layout=box(GTK_ORIENTATION_HORIZONTAL,0);gtk_stack_add_named(GTK_STACK(manager_content),main_layout,"profiles");
-    /* CSS padding stays inside the painted panels; container borders leave unpainted gutters. */
-    sidebar=box(GTK_ORIENTATION_VERTICAL,10);gtk_widget_set_size_request(sidebar,250,-1);
-    gtk_style_context_add_class(gtk_widget_get_style_context(sidebar),"sidebar");pack(main_layout,sidebar,FALSE);
-    GtkWidget *side_header=box(GTK_ORIENTATION_HORIZONTAL,10);gtk_style_context_add_class(gtk_widget_get_style_context(side_header),"sidebar-heading");pack(side_header,label("Profiles","strong"),TRUE);
-    profile_new=button("New profile","list-add-symbolic","new-profile");gtk_widget_set_valign(profile_new,GTK_ALIGN_CENTER);pack(side_header,profile_new,FALSE);pack(sidebar,side_header,FALSE);
-    profile_combo=gtk_combo_box_text_new();gtk_widget_set_hexpand(profile_combo,TRUE);pack(sidebar,profile_combo,TRUE);g_signal_connect(profile_combo,"changed",G_CALLBACK(combo_changed),NULL);
-    GList *cells=gtk_cell_layout_get_cells(GTK_CELL_LAYOUT(profile_combo));
-    for (GList *cell=cells;cell;cell=cell->next) g_object_set(cell->data,"ellipsize",PANGO_ELLIPSIZE_END,"width-chars",12,NULL);
-    g_list_free(cells);
-    profile_list=gtk_list_box_new();gtk_list_box_set_selection_mode(GTK_LIST_BOX(profile_list),GTK_SELECTION_SINGLE);
-    gtk_style_context_add_class(gtk_widget_get_style_context(profile_list),"profile-list");
-    profile_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(profile_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
-    gtk_container_add(GTK_CONTAINER(profile_scroll),profile_list);pack(sidebar,profile_scroll,TRUE);
-    g_signal_connect(profile_list,"row-selected",G_CALLBACK(profile_selected),NULL);
-    profile_actions=box(GTK_ORIENTATION_HORIZONTAL,6);
-    profile_rename=button("Rename profile","document-edit-symbolic","rename-profile");profile_delete=button("Delete profile","user-trash-symbolic","delete-profile");
-    pack(profile_actions,profile_rename,FALSE);pack(profile_actions,profile_delete,FALSE);
-    GtkWidget *detail=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(detail),"session-detail");pack(main_layout,detail,TRUE);
-    GtkWidget *title=box(GTK_ORIENTATION_HORIZONTAL,12);profile_heading=label("Profiles","heading");
-    pack(title,profile_heading,FALSE);pack(title,profile_actions,FALSE);pack(detail,title,FALSE);
-    history_layout=box(GTK_ORIENTATION_HORIZONTAL,18);pack(detail,history_layout,TRUE);
+    main_layout=box(GTK_ORIENTATION_VERTICAL,12);gtk_stack_add_named(GTK_STACK(manager_content),main_layout,"stores");
+    gtk_style_context_add_class(gtk_widget_get_style_context(main_layout),"storage-detail");
+    history_layout=box(GTK_ORIENTATION_HORIZONTAL,18);pack(main_layout,history_layout,TRUE);
     history_box=box(GTK_ORIENTATION_VERTICAL,10);pack(history_layout,history_box,TRUE);
-    GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,12);pack(heading,label("Restore points","strong"),TRUE);
+    GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,12);pack(heading,label("Restore points","heading"),TRUE);
     show_removed=gtk_check_button_new_with_label("Show removed");pack(heading,show_removed,FALSE);pack(history_box,heading,FALSE);g_signal_connect(show_removed,"toggled",G_CALLBACK(removed_changed),NULL);
     history_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(history_scroll),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);pack(history_box,history_scroll,TRUE);
     g_signal_connect_after(history_scroll,"size-allocate",G_CALLBACK(reveal_history),NULL);
@@ -998,14 +929,14 @@ static void make_manager(void)
     gtk_stack_add_named(GTK_STACK(manager_feedback),manager_space,"capacity");gtk_stack_add_named(GTK_STACK(manager_feedback),manager_status,"status");
     pack(footer,manager_feedback,FALSE);pack(manager_body,footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
-    gtk_widget_show_all(manager_body);gtk_widget_hide(profile_combo);
+    gtk_widget_show_all(manager_body);
 }
 
 /* A manual manager request may focus its normal window; passive alerts never call this. */
 static void show_manager(void)
 {
     hide_popup();gtk_widget_hide(notice.window);gtk_widget_show(manager);gtk_window_present(GTK_WINDOW(manager));manager_dirty=TRUE;
-    discovery_pending=TRUE;render_history();render_inspector();update_ui();refresh();
+    render_history();render_inspector();update_ui();refresh();
 }
 
 /* Hysteresis avoids warning flicker while allocations cross the low-space boundary. */
@@ -1013,7 +944,7 @@ static const char *warning_kind(void)
 {
     if (connection_error) return "service";
     if (*str(run(),"error")) return "error";
-    JsonObject *active=find(array(state,"profiles"),"id",str(run(),"profileId"));
+    JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
     if (active && !flag(active,"writable")) return "readonly";
     gint64 available=number(run(),"freeBytes")+number(run(),"reusableBytes");
     gboolean already_low=last_warning && (!strcmp(last_warning,"ram") || !strcmp(last_warning,"disk"));
@@ -1026,9 +957,10 @@ static const char *warning_kind(void)
 static void update_ui(void)
 {
     if (!manager || !popup.window) return;
-    JsonObject *active=find(array(state,"profiles"),"id",str(run(),"profileId"));
-    char *name=active ? profile_name(active) : g_strdup(state ? "Temporary run" : "Slax Status");
-    set_label(popup_title,name);set_label(popup_source,str(run(),"source"));set_label(popup_storage,str(run(),"storage"));
+    JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
+    const char *mode=state ? "Temporary run" : "Slax Status";
+    if (active) mode=flag(run(),"save") ? "Saving changes" : "Changes will be discarded";
+    set_label(popup_title,"Slax Status");set_label(popup_source,str(run(),"source"));set_label(popup_storage,str(run(),"storage"));
     set_label(manager_source,str(run(),"source"));set_label(manager_storage,str(run(),"storage"));
     gint64 available=number(run(),"freeBytes")+number(run(),"reusableBytes");
     char *size=size_text(available);
@@ -1039,19 +971,13 @@ static void update_ui(void)
     char *next=next_text();set_label(popup_next,next);set_label(manager_next,next);g_free(next);
     gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);gtk_widget_set_visible(manager_cancel,queued);
     gtk_widget_set_sensitive(popup_cancel,!mutating);gtk_widget_set_sensitive(manager_cancel,!mutating);
-    JsonObject *item=profile();char *heading=item ? profile_name(item) : g_strdup("Profiles");set_label(profile_heading,heading);gtk_widget_set_tooltip_text(profile_combo,heading);g_free(heading);
-    gtk_widget_set_sensitive(profile_rename,item && flag(item,"writable") && !mutating && !new_profile_pending);
-    gtk_widget_set_sensitive(profile_delete,item && flag(item,"writable") && !flag(item,"active") && !mutating && !new_profile_pending);
-    gtk_widget_set_sensitive(profile_new,state && !mutating && !new_profile_pending);
-    gtk_widget_set_sensitive(intro_create,state && !mutating && !new_profile_pending);
-    gtk_stack_set_visible_child_name(GTK_STACK(manager_content),count(array(state,"profiles")) ? "profiles" : "intro");
-    gtk_widget_set_sensitive(inspector,!mutating && !new_profile_pending);
+    JsonObject *item=store();
+    gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
+    gtk_widget_set_sensitive(inspector,!mutating);
     if (item)
     {
         char *free=size_text(number(item,"freeBytes")+number(item,"reusableBytes"));
-        JsonObject *drive=find(array(state,"drives"),"id",str(item,"driveId"));
-        char *device=drive_name(drive),*text=g_strdup_printf("%s available · %s",free,device);
-        set_label(manager_space,text);g_free(free);g_free(device);g_free(text);
+        char *text=g_strdup_printf("%s available",free);set_label(manager_space,text);g_free(free);g_free(text);
     }
     else set_label(manager_space,"");
     const char *warning=warning_kind();
@@ -1062,22 +988,16 @@ static void update_ui(void)
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
     set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : mutating ? "Working…" : "");
     gtk_stack_set_visible_child(GTK_STACK(manager_feedback),connection_error || mutating ? manager_status : manager_space);
-    char *tooltip=g_strdup_printf("Slax Status · %s · %s available",name,size);
+    char *tooltip=g_strdup_printf("Slax Status · %s · %s available",mode,size);
     if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
-    g_free(tooltip);g_free(name);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
-    if (state)
-    {
-        char *current=profile_signature();
-        if (g_strcmp0(current,profiles_signature)) {g_free(profiles_signature);profiles_signature=current;render_profiles();}else g_free(current);
-        sync_profile_selection();
-        if (!item && manager_dirty) {render_history();render_inspector();manager_dirty=FALSE;}
-    }
+    g_free(tooltip);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
+    if (!item && manager_dirty) {render_history();render_inspector();manager_dirty=FALSE;}
     gboolean anchored=tray && gtk_plug_get_embedded(GTK_PLUG(tray));
     if (anchored && *warning && g_strcmp0(warning,last_warning) && snooze_until<=g_get_monotonic_time() && !gtk_widget_get_visible(popup.window))
     {
         char *free=size_text(available),*text=NULL;const char *title="Space is running low";
         if (!strcmp(warning,"ram")) {title="Available memory is low";text=g_strdup_printf("About %s of RAM is available. Save important files to a drive and close unused applications.",free);}
-        else if (!strcmp(warning,"readonly")) {title="Changes cannot be saved";text=g_strdup("The profile drive became read-only. Save important files to another writable drive and check the storage device.");}
+        else if (!strcmp(warning,"readonly")) {title="Changes cannot be saved";text=g_strdup("The changes drive became read-only. Save important files to another writable drive and check the storage device.");}
         else if (!strcmp(warning,"service")) {title="Storage status is unavailable";text=g_strdup("The storage service could not be reached. Open Slax Status to review the error.");}
         else if (!strcmp(warning,"error")) {title="Storage needs attention";text=g_strdup(str(run(),"error"));}
         else text=g_strdup_printf("About %s is available for changes. Free drive space or remove unneeded restore points.",free);
@@ -1095,26 +1015,20 @@ static void update_ui(void)
     if (snooze_until<=g_get_monotonic_time() && (anchored || !*warning)) {g_free(last_warning);last_warning=g_strdup(warning);}
 }
 
-/* Confirmation defaults to Cancel and may carry the explicit keep-current-state choice. */
-static gboolean confirm(const char *title, const char *text, const char *accept, gboolean *keep)
+/* Destructive confirmations keep Cancel as default, with confirmation on the left. */
+static gboolean confirm(const char *title, const char *text, const char *accept)
 {
     hide_popup();GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,
         GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",title);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s",text);
-    gtk_dialog_add_buttons(GTK_DIALOG(dialog),"Cancel",GTK_RESPONSE_CANCEL,accept,GTK_RESPONSE_ACCEPT,NULL);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);
-    GtkWidget *check=NULL;
-    if (keep)
-    {
-        check=gtk_check_button_new_with_label(flag(profile(),"active") ? "Keep this profile’s current state as a named restore point" : "Keep this profile’s last saved state as a named restore point");gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check),TRUE);
-        gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))),check);gtk_widget_show(check);
-    }
-    gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;
-    if (keep) *keep=gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(check));
-    gtk_widget_destroy(dialog);return accepted;
+    GtkWidget *area=gtk_widget_get_parent(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog)));
+    gtk_widget_set_margin_start(area,0);gtk_widget_set_margin_end(area,0);
+    gtk_dialog_add_buttons(GTK_DIALOG(dialog),accept,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);
+    gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;gtk_widget_destroy(dialog);return accepted;
 }
 
 /* Reflect DynFileFS's UTF-8 name rules before making an expensive freeze/create request. */
-static const char *name_error(const char *name)
+static const char *name_error(const char *name, const char *renamed)
 {
     if (!*name) return "Enter a name for this restore point.";
     if (strlen(name)>250) return "Use a shorter name (at most 250 UTF-8 bytes).";
@@ -1126,47 +1040,36 @@ static const char *name_error(const char *name)
         if (g_unichar_iscntrl(character) || (character<128 && strchr("<>:\"/\\|?*",character))) return "Do not use control characters, path separators or < > : \" | ? *.";
     }
     JsonArray *points=array(history,"snapshots");
-    for (guint i=0;i<count(points);i++) {JsonObject *item=json_array_get_object_element(points,i);if (!flag(item,"deleted") && !strcmp(str(item,"name"),name)) return "A restore point with this name already exists.";}
+    for (guint i=0;i<count(points);i++) {JsonObject *item=json_array_get_object_element(points,i);if (!flag(item,"deleted") && g_strcmp0(str(item,"id"),renamed) && !strcmp(str(item,"name"),name)) return "A restore point with this name already exists.";}
     return NULL;
 }
 
-/* Name/profile creation use ordinary GTK forms, with errors retained beside the editable input. */
-static void name_dialog(const char *op)
+/* Capture stable identities before a modal dialog while background reports keep refreshing. */
+static void name_dialog(gboolean rename)
 {
-    hide_popup();gboolean create_profile=!strcmp(op,"profile.create"),create_point=!strcmp(op,"point.create");
-    g_autofree char *target=g_strdup(selected);
-    const char *title=create_profile ? "New profile" : create_point ? "Create restore point" : "Rename profile";
+    hide_popup();g_autofree char *target=g_strdup(selected);
+    g_autofree char *id=rename ? g_strdup(selected_point) : NULL,*original=rename ? g_strdup(point_name(point())) : NULL;
+    const char *title=rename ? "Rename restore point" : "Create restore point";
     GtkWidget *dialog=gtk_dialog_new_with_buttons(title,GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,
-        "Cancel",GTK_RESPONSE_CANCEL,create_profile ? "Create profile" : create_point ? "Create restore point" : "Save name",GTK_RESPONSE_ACCEPT,NULL);
+        title,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(dialog),480,-1);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT);
     GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),18);gtk_box_set_spacing(GTK_BOX(content),12);
-    const char *note=create_profile ? "Start with a clean profile." : create_point && flag(profile(),"active") && !flag(run(),"save") ? "This restore point stays even though this run will not be saved." : create_point ? "Save a point you can return to later." : "";
-    if (*note) pack(content,label(note,"muted"),FALSE);
-    pack(content,label(create_profile ? "Profile name" : "Name",NULL),FALSE);GtkWidget *entry=gtk_entry_new();gtk_entry_set_activates_default(GTK_ENTRY(entry),TRUE);
-    if (!create_profile && !create_point) gtk_entry_set_text(GTK_ENTRY(entry),str(profile(),"name"));
-    if (create_point) gtk_entry_set_placeholder_text(GTK_ENTRY(entry),"e.g. Before upgrade");
-    pack(content,entry,FALSE);
-    GtkWidget *drives=NULL;
-    if (create_profile)
-    {
-        pack(content,label("Drive",NULL),FALSE);drives=gtk_combo_box_text_new();JsonArray *items=array(state,"drives");
-        for (guint i=0;i<count(items);i++)
-        {
-            JsonObject *drive=json_array_get_object_element(items,i);if (!flag(drive,"writable")) continue;
-            char *free=size_text(number(drive,"freeBytes")),*device=drive_name(drive),*name=g_strdup_printf("%s · %s free",device,free);
-            gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(drives),str(drive,"id"),name);g_free(free);g_free(device);g_free(name);
-        }
-        gtk_combo_box_set_active(GTK_COMBO_BOX(drives),0);pack(content,drives,FALSE);
-        if (!gtk_combo_box_get_active_id(GTK_COMBO_BOX(drives))) gtk_dialog_set_response_sensitive(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT,FALSE);
-    }
+    const char *note="Save a point you can return to later.";
+    if (flag(store(),"active") && !flag(run(),"save")) note="This restore point stays even though this run will not be saved.";
+    if (rename) note="Give this restore point a name you will recognize.";
+    if (rename && flag(point(),"automatic")) note="Giving this automatic point a name keeps it until you delete it.";
+    pack(content,paragraph(note),FALSE);pack(content,label("Name",NULL),FALSE);
+    GtkWidget *entry=gtk_entry_new();gtk_entry_set_activates_default(GTK_ENTRY(entry),TRUE);gtk_entry_set_placeholder_text(GTK_ENTRY(entry),"e.g. Before upgrade");pack(content,entry,FALSE);
+    if (rename) {gtk_entry_set_text(GTK_ENTRY(entry),original);gtk_editable_select_region(GTK_EDITABLE(entry),0,-1);}
     GtkWidget *error=label("","error");pack(content,error,FALSE);gtk_widget_show_all(content);gtk_widget_grab_focus(entry);
     while (gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT)
     {
-        const char *name=gtk_entry_get_text(GTK_ENTRY(entry)),*invalid=create_point ? name_error(name) : NULL;
+        const char *name=gtk_entry_get_text(GTK_ENTRY(entry));
+        if (rename && !strcmp(name,original)) break;
+        const char *invalid=name_error(name,id);
         if (invalid) {set_label(error,invalid);continue;}
-        JsonObject *request=command(op,!create_profile);json_object_set_string_member(request,"name",name);
-        if (!create_profile) json_object_set_string_member(request,"profileId",target);
-        if (create_profile) json_object_set_string_member(request,"driveId",gtk_combo_box_get_active_id(GTK_COMBO_BOX(drives)));
+        JsonObject *request=command(rename ? "point.rename" : "point.create",FALSE);json_object_set_string_member(request,"name",name);json_object_set_string_member(request,"storeId",target);
+        if (rename) json_object_set_string_member(request,"pointId",id);
         gtk_widget_destroy(dialog);send_request(request,TRUE);return;
     }
     gtk_widget_destroy(dialog);
@@ -1175,7 +1078,7 @@ static void name_dialog(const char *op)
 /* Focus only a user-requested bubble; normal window input leaves global shortcuts available. */
 static void show_popup(void)
 {
-    new_profile_pending=FALSE;gtk_widget_hide(notice.window);update_ui();gtk_widget_show(popup.window);position_bubble(&popup);
+    gtk_widget_hide(notice.window);update_ui();gtk_widget_show(popup.window);position_bubble(&popup);
     gtk_widget_set_has_tooltip(tray,FALSE);
     gtk_window_present(GTK_WINDOW(popup.window));gtk_widget_child_focus(popup.body,GTK_DIR_TAB_FORWARD);
     refresh();
@@ -1194,37 +1097,27 @@ static void action(GtkButton *button_widget, gpointer data)
     {
         g_clear_pointer(&selected_point,g_free);reveal_current=TRUE;render_history();render_inspector();return;
     }
-    if (mutating || new_profile_pending || !state) return;
+    if (mutating || !state) return;
     if (!strcmp(op,"next-clear")) {send_request(command("next.clear",FALSE),TRUE);return;}
-    if (!strcmp(op,"new-profile")) {new_profile_pending=TRUE;discovery_pending=TRUE;update_ui();refresh();return;}
-    JsonObject *item=profile(),*saved=point();if (!item) return;
+    JsonObject *item=store(),*saved=point();if (!item) return;
     g_autofree char *target=g_strdup(selected);
-    if (!strcmp(op,"rename-profile")) {name_dialog("profile.rename");return;}
-    if (!strcmp(op,"create-point")) {name_dialog("point.create");return;}
-    if (!strcmp(op,"delete-profile"))
-    {
-        char *name=profile_name(item),*title=g_strdup_printf("Delete %s?",name);g_free(name);
-        gboolean accepted=confirm(title,"Remove this profile and its entire history from the drive.","Delete profile",NULL);g_free(title);
-        if (accepted) {JsonObject *request=command("profile.delete",TRUE);json_object_set_string_member(request,"profileId",target);send_request(request,TRUE);}
-        return;
-    }
-    if (!strcmp(op,"use-profile"))
-    {
-        JsonObject *request=command("next.set",TRUE);json_object_set_null_member(request,"pointId");json_object_set_boolean_member(request,"keepCurrent",FALSE);send_request(request,TRUE);return;
-    }
+    if (!strcmp(op,"create-point")) {name_dialog(FALSE);return;}
     if (!saved) return;
+    if (!strcmp(op,"rename-point")) {name_dialog(TRUE);return;}
     g_autofree char *saved_id=g_strdup(str(saved,"id"));
     if (!strcmp(op,"use-point"))
     {
-        char *title=g_strdup_printf("Use “%s” at next start?",point_name(saved));gboolean keep=TRUE;
-        gboolean accepted=confirm(title,"Other restore points stay available. The running desktop continues until restart.","Use at next start",&keep);g_free(title);
-        if (accepted) {JsonObject *request=command("next.set",TRUE);json_object_set_string_member(request,"profileId",target);json_object_set_string_member(request,"pointId",saved_id);json_object_set_boolean_member(request,"keepCurrent",keep);send_request(request,TRUE);}return;
+        gboolean initial=flag(saved,"initial");char *title=initial ? g_strdup("Start with a clean Slax?") : g_strdup_printf("Use “%s” at next start?",point_name(saved));
+        const char *text="This takes effect after restart. Existing restore points stay available.";
+        if (flag(item,"active")) text=flag(run(),"save") ? "This takes effect after restart. This run will be kept as another restore point." : "This takes effect after restart. Changes from this run will be discarded; existing restore points stay available.";
+        gboolean accepted=confirm(title,text,initial ? "Fresh start" : "Use at next start");g_free(title);
+        if (accepted) {JsonObject *request=command("next.set",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"delete-point"))
     {
         char *title=g_strdup_printf("Delete “%s”?",point_name(saved));
-        gboolean accepted=confirm(title,"Its files will no longer be available. Other restore points and your current state stay unchanged. Its next-start selection, if any, will be cancelled.","Delete restore point",NULL);g_free(title);
-        if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"profileId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
+        gboolean accepted=confirm(title,"Its files will no longer be available. Other restore points and your current state stay unchanged. Its next-start selection, if any, will be cancelled.","Delete restore point");g_free(title);
+        if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"open-files")) {JsonObject *request=command("files.open",TRUE);json_object_set_string_member(request,"pointId",str(saved,"id"));send_request(request,TRUE);return;}
     if (!strcmp(op,"close-files"))
@@ -1233,7 +1126,7 @@ static void action(GtkButton *button_widget, gpointer data)
         for (guint i=0;i<count(views);i++)
         {
             JsonObject *view=json_array_get_object_element(views,i);
-            if (strcmp(str(view,"profileId"),selected) || strcmp(str(view,"pointId"),str(saved,"id"))) continue;
+            if (strcmp(str(view,"storeId"),selected) || strcmp(str(view,"pointId"),str(saved,"id"))) continue;
             JsonObject *request=command("files.close",FALSE);json_object_set_string_member(request,"viewId",str(view,"id"));send_request(request,TRUE);break;
         }
     }
@@ -1317,13 +1210,11 @@ static void load_style(void)
         "window { font-size: 14px; } .muted { color: #65705f; font-size: 13px; }"
         ".title { font-size: 20px; font-weight: 600; } .heading { font-size: 24px; font-weight: 400; } .metric { font-size: 32px; }"
         ".notice-title { font-size: 16px; font-weight: 600; }"
+        ".intro-example { background: #eff1eb; border: 1px solid #d8ddd3; border-radius: 6px; padding: 16px; }"
+        ".intro-example-row { padding: 8px 8px 8px 32px; border: 1px solid transparent; } .intro-example-choice { background: #e4ecdd; border-color: #c3d4b7; border-radius: 4px; }"
         ".strong { font-weight: 600; } .eyebrow { font-size: 13px; color: #65705f; }"
         ".running { color: #397b35; } .queued { color: #2784d8; } .error { color: #ba3932; }"
-        ".sidebar { background: #eff1eb; border-right: 1px solid #d8ddd3; padding: 18px 10px; }"
-        ".sidebar-heading { padding: 0 8px; } .sidebar.compact { border-right: 0; border-bottom: 1px solid #d8ddd3; padding: 8px 12px; } .sidebar.compact .sidebar-heading { padding: 0; }"
-        ".session-detail { padding: 18px 18px 0; }"
-        ".profile-list, .history-list { background: transparent; }"
-        ".profile-list row { border-radius: 5px; } .profile-list row:selected { background: #e4ecdd; color: #292d29; }"
+        ".storage-detail { padding: 18px 18px 0; } .history-list { background: transparent; }"
         ".history-list row { min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #292d29; }"
         ".history-list row:selected { background: #e7eee0; border-color: #c3d4b7; } .history-list row:hover { background: #eef2e9; }"
         ".badge { color: #507343; font-size: 13px; } .inspector-panel { border-left: 1px solid #d8ddd3; } .inspector { padding: 4px 0 18px 18px; }"

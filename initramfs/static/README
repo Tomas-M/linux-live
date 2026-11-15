@@ -12,3 +12,9 @@ Published static/mc at commit f5024ed4bdee4645a906e2526115defd2f2415f9 (GPL-3.0)
 Git blob: 3074708112575a4418145902aa3459092bd85e2c
 Binary SHA256: f213870b9708c024063ad019dcd3d5f58d78d8d929d5ea14a45bb6e6ac3aee2a
 This is the upstream UPX-packed static i686 binary, including its terminal data.
+
+mount.dynfilefs: DynFileFS 6.02, https://github.com/Tomas-M/dynfilefs (GNU GPL).
+Built from commit 72389fb with per-point reclaimableBytes, runtime autosnapshot
+control, ID-based image paths and renaming with international names and spaces.
+Use the project's static/build.sh: musl i686, -Os, stripped and UPX-packed.
+Binary SHA256: bdbf78c4470881e7531e5d90f6fe8ffe16b61ca6ba77055f64985c4b84f1770d
