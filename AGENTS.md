@@ -995,7 +995,8 @@ must follow the general Slax repair rules above.
   application commands and launchers unchanged; styles must work from xlunch,
   Fluxbox and the terminal without leaking a theme environment to child apps.
   Its shared GtkMessageDialog show hook replaces expanded action layouts with
-  compact right-aligned buttons and keeps at least 14 px around the content.
+  compact right-aligned buttons, separates them by at least 8 px without linked
+  borders and keeps at least 14 px around the content.
   Preserve larger application margins, custom button layouts, order and defaults.
   Rebuilt Debian packages keep their original names and binary versions, including
   Debian's binary rebuild suffixes. Do not add Slax version suffixes. In
