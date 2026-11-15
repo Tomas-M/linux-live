@@ -360,7 +360,7 @@ static GtkWidget *link_button(const char *text, const char *op)
 static GtkWidget *primary_button(const char *text, const char *op)
 {
     GtkWidget *widget=button(text,NULL,op);
-    gtk_style_context_add_class(gtk_widget_get_style_context(widget),"suggested-action");
+    gtk_style_context_add_class(gtk_widget_get_style_context(widget),"primary-action");
     return widget;
 }
 
@@ -1341,12 +1341,12 @@ static void load_style(void)
         "button.link { background: transparent; box-shadow: none; border: 0; color: #306c99; padding: 5px 0; }"
         "button.icon-button { min-width: 24px; min-height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }"
         "button.icon-button:hover { background: #e2e8dc; }"
-        "button.suggested-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
-        "button.suggested-action:hover:not(:disabled) { background: linear-gradient(#367632,#2c6729); }"
-        "button.suggested-action:active:not(:disabled) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
-        "button.suggested-action.queued-action { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
-        "button.suggested-action.queued-action:hover:not(:disabled) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
-        "button.suggested-action.queued-action:active:not(:disabled) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
+        "button.primary-action:not(:backdrop) { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
+        "button.primary-action:hover:not(:disabled):not(:backdrop) { background: linear-gradient(#367632,#2c6729); }"
+        "button.primary-action:active:not(:disabled):not(:backdrop) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
+        "button.primary-action.queued-action:not(:backdrop) { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
+        "button.primary-action.queued-action:hover:not(:disabled):not(:backdrop) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
+        "button.primary-action.queued-action:active:not(:disabled):not(:backdrop) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
         "progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
         "progressbar.capacity-warning progress { background: #ce413a; } progressbar.capacity-temporary progress { background: #2784d8; }",
         -1,NULL);
