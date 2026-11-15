@@ -193,9 +193,10 @@ BOOT AND PERSISTENCE
   Fresh start selects the protected Initial state, created after filesystem
   formatting and growth. It never reformats an existing container.
 - Open files opens a restore point's complete filesystem root read-only in File
-  Manager. Copy files out to recover them. Close files releases the view; close
-  other applications using it first if it is busy. A point needing filesystem
-  recovery can be used at next start.
+  Manager. Copy files out before closing it. The view disconnects automatically
+  after its last File Manager window closes. If another application is still
+  using the files, disconnection waits until it releases them. A point needing
+  filesystem recovery can be used at next start.
 - Save this run controls the active store. Don't save returns to this run's
   starting state on the next activation; an explicit restore selection takes
   precedence. A manually created restore point remains saved even with Don't save.

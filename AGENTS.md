@@ -1028,6 +1028,9 @@ must follow the general Slax repair rules above.
   stale drop highlights. Do not show desktop icon tooltips. The GTK module still
   hides the root warning and its adjacent separator by identifying the stock
   icon; keep that logic out of the PCManFM patch.
+  `pcmanfm-standalone.diff` adds a separate browser mode that bypasses desktop IPC
+  and volume automation. It exits after its last browser/tool window closes;
+  ordinary invocations retain the desktop's existing single-instance behavior.
 - Rebuild `libfm4t64` with `03-desktop/build-libfm` and `libfm-rename.diff`,
   preserving Debian's version and holding the package.
   The same build also packages and holds `libfm-gtk3-4t64`, applying
@@ -1807,9 +1810,14 @@ must follow the general Slax repair rules above.
   can create a startup point. Explicit manual points remain intentional saves.
   Keep this independent of shutdown hooks; an interrupted run must also discard.
   Keep immutable file views read-only with XFS norecovery/nouuid or ext4 noload.
-  Open saved filesystem roots in the caller's PCManFM, retaining view ownership
-  until Close files succeeds. Do not replay journals into saved views or force
-  busy unmounts. The approved mockup is a specification, not a runtime dependency.
+  Open saved filesystem roots through a separate slax-status --open-files helper
+  that execs PCManFM --standalone on the same PID. The broker records SO_PEERCRED
+  PID and its /proc start time before mounting, then automatically releases the
+  view after that process exits. Each invocation owns a separate view. Preserve
+  live views across tray and broker restarts, retry busy ordinary unmounts, and
+  reject deleting a point while a view remains. Do not add a Close files button.
+  Do not replay journals or use force/lazy unmounts. The approved mockup is a
+  specification, not a runtime dependency.
 - Container capacity follows the backing filesystem's total size, rounded up
   to whole GiB, with a 16000 MiB minimum for `mkfs.xfs.custom`'s initial XFS.
   Do not read a `perchsize` boot parameter. Inspect existing containers with

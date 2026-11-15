@@ -6,6 +6,8 @@
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
 #include <X11/Xatom.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <math.h>
 #include <string.h>
@@ -29,7 +31,7 @@ static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *pop
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *inspector_reclaim, *manager_feedback;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
-static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_close, *inspector_rename, *inspector_delete, *inspector_create;
+static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
@@ -300,13 +302,6 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
         {
             if (!strcmp(request->op,"point.create")) {g_free(selected_point);selected_point=g_strdup(str(value,"pointId"));}
             if (!strcmp(request->op,"point.delete")) g_clear_pointer(&selected_point,g_free);
-            if (!strcmp(request->op,"files.open") && *str(value,"path"))
-            {
-                const char *argv[]={"pcmanfm",str(value,"path"),NULL};
-                GSubprocess *process=g_subprocess_newv(argv,G_SUBPROCESS_FLAGS_NONE,&error);
-                if (process) g_object_unref(process);
-                else {message("Cannot open the file manager",error->message);g_clear_error(&error);}
-            }
             if (!strcmp(request->op,"run.save")) json_object_set_boolean_member(run(),"save",flag(request->request,"save"));
             else manager_dirty=TRUE;
         }
@@ -798,7 +793,6 @@ static void make_inspector(void)
     inspector_actions=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector_saved,inspector_actions,FALSE);
     inspector_use=primary_button("Use at next start","use-point");pack(inspector_actions,inspector_use,FALSE);
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
-    inspector_close=button("Close files",NULL,"close-files");pack(inspector_actions,inspector_close,FALSE);
     inspector_rename=button("Rename restore point",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
     inspector_delete=button("Delete restore point",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_reclaim=paragraph("");pack(inspector_actions,inspector_reclaim,FALSE);
@@ -833,7 +827,6 @@ static void render_inspector(void)
     GtkStyleContext *use_style=gtk_widget_get_style_context(inspector_use);
     if (queued) gtk_style_context_add_class(use_style,"queued-action");else gtk_style_context_remove_class(use_style,"queued-action");
     gtk_widget_set_sensitive(inspector_use,queued ? !busy : writable);gtk_widget_set_sensitive(inspector_open,!busy);
-    gtk_widget_set_visible(inspector_close,files_open);gtk_widget_set_sensitive(inspector_close,!busy);
     gtk_widget_set_visible(inspector_rename,!initial);gtk_widget_set_sensitive(inspector_rename,writable);
     gtk_widget_set_visible(inspector_delete,!initial);gtk_widget_set_sensitive(inspector_delete,writable && !flag(saved,"protected") && !files_open);
     char *size=reclaimable_text(saved),*text=size ? g_strdup_printf("Deleting makes %s available for new changes.",size) : NULL;
@@ -1148,6 +1141,41 @@ static void show_popup(void)
     refresh();
 }
 
+/* The independent helper keeps the browser and its authenticated mount owner on one PID. */
+static int browse_files(const char *store_id, const char *point_id)
+{
+    JsonObject *value=command("files.open",FALSE);json_object_set_string_member(value,"storeId",store_id);json_object_set_string_member(value,"pointId",point_id);
+    Request request={.request=value};GTask *task=g_task_new(NULL,NULL,NULL,NULL);g_task_set_task_data(task,&request,NULL);
+    g_task_run_in_thread_sync(task,request_worker);GError *error=NULL;JsonObject *reply=g_task_propagate_pointer(task,&error);g_object_unref(task);json_object_unref(value);
+    if (!reply || !flag(reply,"ok"))
+    {
+        g_printerr("%s\n",error ? error->message : str(object(reply,"error"),"message"));g_clear_error(&error);
+        if (reply) json_object_unref(reply);
+        return 1;
+    }
+    char *path=g_strdup(str(object(reply,"result"),"path"));json_object_unref(reply);
+    /* Browser diagnostics must not retain a pipe to a tray process that may exit. */
+    int output=open("/dev/null",O_WRONLY|O_CLOEXEC);
+    if (output<0 || dup2(output,STDERR_FILENO)<0) {g_printerr("%s\n",g_strerror(errno));g_free(path);if (output>=0) close(output);return 1;}
+    close(output);
+    execlp("pcmanfm","pcmanfm","--standalone","--new-win",path,NULL);
+    g_printerr("Cannot start the file manager: %s\n",g_strerror(errno));g_free(path);return 1;
+}
+
+/* Closing the browser is ordinary success; launch failures remain visible in its parent UI. */
+static void files_finished(GObject *source, GAsyncResult *result, gpointer data)
+{
+    (void)data;GError *error=NULL;char *err=NULL;
+    gboolean ok=g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source),result,NULL,&err,&error);
+    if (!ok || !g_subprocess_get_successful(G_SUBPROCESS(source)))
+    {
+        const char *detail=error ? error->message : "The file manager stopped unexpectedly.";
+        if (!error && err && *err) detail=err;
+        message("Cannot open restore point files",detail);
+    }
+    g_clear_error(&error);g_free(err);refresh();
+}
+
 /* Map visible actions directly to the backend contract; confirmation never mutates storage. */
 static void action(GtkButton *button_widget, gpointer data)
 {
@@ -1211,16 +1239,13 @@ static void action(GtkButton *button_widget, gpointer data)
         gboolean accepted=confirm("Delete restore point",question,text,"Delete restore point");g_free(question);g_free(text);
         if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
-    if (!strcmp(op,"open-files")) {JsonObject *request=command("files.open",TRUE);json_object_set_string_member(request,"pointId",str(saved,"id"));send_request(request,TRUE);return;}
-    if (!strcmp(op,"close-files"))
+    if (!strcmp(op,"open-files"))
     {
-        JsonArray *views=array(state,"views");
-        for (guint i=0;i<count(views);i++)
-        {
-            JsonObject *view=json_array_get_object_element(views,i);
-            if (strcmp(str(view,"storeId"),selected) || strcmp(str(view,"pointId"),str(saved,"id"))) continue;
-            JsonObject *request=command("files.close",FALSE);json_object_set_string_member(request,"viewId",str(view,"id"));send_request(request,TRUE);break;
-        }
+        GError *error=NULL;
+        GSubprocess *process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,
+            "/usr/bin/slax-status","--open-files",selected,str(saved,"id"),NULL);
+        if (process) {g_subprocess_communicate_utf8_async(process,NULL,NULL,files_finished,NULL);g_object_unref(process);}
+        else {message("Cannot open restore point files",error->message);g_clear_error(&error);}
     }
 }
 
@@ -1331,6 +1356,7 @@ static void load_style(void)
 /* One tray per X display, screen and login UID; root and guest use the same unprivileged frontend. */
 int main(int argc, char **argv)
 {
+    if (argc==4 && !strcmp(argv[1],"--open-files")) return browse_files(argv[2],argv[3]);
     gboolean manage=argc==2 && !strcmp(argv[1],"--manage");
     if (argc>1 && !manage) {g_printerr("Usage: slax-status [--manage]\n");return 1;}
     gtk_init(&argc,&argv);display=XOpenDisplay(NULL);if (!display) return 1;

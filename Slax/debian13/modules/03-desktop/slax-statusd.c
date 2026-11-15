@@ -28,7 +28,7 @@
 
 typedef struct { char *id,*device,*path,*label,*fstype,*uuid; dev_t number,filesystem; gboolean writable; guint64 free,total; } Drive;
 typedef struct { char *id,*path,*mount,*inner; Drive *drive; ino_t inode; gboolean active; guint64 reusable; gint64 stats_at; } Store;
-typedef struct { char *id,*store,*point,*path,*image; uid_t uid; gboolean overlay; } View;
+typedef struct { char *id,*store,*point,*path,*image; uid_t uid; pid_t pid; guint64 started; gboolean overlay; } View;
 static GPtrArray *drives,*stores,*views;
 static JsonArray *block_devices;
 static JsonObject *selection;
@@ -694,28 +694,37 @@ static gboolean pin(Store *store, const char *id, GError **error)
    return identity(id) ? snapshot_command(store,"protect",id,error) : fail(error,EINVAL,"Invalid restore point identity.");
 }
 
-/* Publish a view intent before mounting so even a crash between mounts remains recoverable. */
+/* Process start time survives exec and distinguishes a browser from a reused PID. */
+static guint64 process_start(pid_t pid)
+{
+   if (pid<=0) return 0;
+   char *path=g_strdup_printf("/proc/%d/stat",pid),*text=NULL; g_file_get_contents(path,&text,NULL,NULL); g_free(path);
+   if (!text) return 0;
+   char *end=strrchr(text,')'); char **fields=end ? g_strsplit(end+2," ",21) : NULL;
+   guint64 started=0;
+   if (fields && g_strv_length(fields)>19 && fields[0][0]!='Z' && fields[0][0]!='X') started=g_ascii_strtoull(fields[19],NULL,10);
+   g_strfreev(fields); g_free(text); return started;
+}
+
+/* Publish the authenticated browser lifetime before mounting, including crash recovery. */
 static gboolean save_view(View *view, GError **error)
 {
    JsonObject *record=json_object_new(); json_object_set_string_member(record,"storeId",view->store); json_object_set_string_member(record,"pointId",view->point); json_object_set_int_member(record,"uid",view->uid);
+   json_object_set_int_member(record,"pid",view->pid); json_object_set_int_member(record,"started",view->started);
    char *base=g_path_get_dirname(view->path); gboolean ok=write_json(base,"view.json",record,error);
    g_free(base); json_object_unref(record); return ok;
 }
 
 /* Mount immutable snapshots without replay, then overlay their upper layer over the current base modules. */
-static JsonObject *open_files(Store *store, const char *id, uid_t uid, GError **error)
+static JsonObject *open_files(Store *store, const char *id, uid_t uid, pid_t pid, GError **error)
 {
    if (!identity(id)) { fail(error,EINVAL,"Invalid restore point identity."); return NULL; }
-   for (guint i=0;i<views->len;i++)
-   {
-      View *view=g_ptr_array_index(views,i);
-      if (view->uid==uid && !strcmp(view->store,store->id) && !strcmp(view->point,id))
-      { JsonObject *result=json_object_new(); json_object_set_string_member(result,"viewId",view->id); json_object_set_string_member(result,"path",view->path); return result; }
-   }
+   guint64 started=process_start(pid);
+   if (!started) { fail(error,ESRCH,"The file browser is no longer running."); return NULL; }
    JsonObject *catalog=history(store,error),*saved=point(catalog,id);
    if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The restore point is no longer available."); return NULL; }
    if (!active_mount(store,FALSE,error)) { json_object_unref(catalog); return NULL; }
-   View *view=g_new0(View,1); view->id=g_uuid_string_random(); view->uid=uid; view->store=g_strdup(store->id); view->point=g_strdup(id);
+   View *view=g_new0(View,1); view->id=g_uuid_string_random(); view->uid=uid; view->pid=pid; view->started=started; view->store=g_strdup(store->id); view->point=g_strdup(id);
    char *base=g_build_filename(RUNTIME,"views",view->id,NULL); view->image=g_build_filename(base,"image",NULL); view->path=g_build_filename(base,"files",NULL);
    g_mkdir_with_parents(view->image,0755); g_mkdir_with_parents(view->path,0755);
    gboolean mounted_image=FALSE;
@@ -752,21 +761,39 @@ failed:
    return NULL;
 }
 
-/* Keep a busy view recorded so the user can close the file-manager window and try again. */
+/* Ordinary unmounts preserve busy views until their remaining users release them. */
 static gboolean close_view(View *view, GError **error)
 {
    char *out;
-   if (view->overlay)
+   if (view->overlay && mountpoint(view->path))
    {
       const char *root[]={"/bin/umount",view->path,NULL}; out=command(root,error);
       if (!out) return FALSE;
-      g_free(out); view->overlay=FALSE;
+      g_free(out);
    }
-   const char *image[]={"/bin/umount",view->image,NULL}; out=command(image,error);
-   if (!out) return FALSE;
-   g_free(out); rmdir(view->path); rmdir(view->image); char *base=g_path_get_dirname(view->path); remove_file(base,"view.json",NULL); rmdir(base); g_free(base);
+   view->overlay=FALSE;
+   if (mountpoint(view->image))
+   {
+      const char *image[]={"/bin/umount",view->image,NULL}; out=command(image,error);
+      if (!out) return FALSE;
+      g_free(out);
+   }
+   rmdir(view->path); rmdir(view->image); char *base=g_path_get_dirname(view->path); remove_file(base,"view.json",NULL); rmdir(base); g_free(base);
    g_ptr_array_remove(views,view);
    g_free(view->id); g_free(view->store); g_free(view->point); g_free(view->path); g_free(view->image); g_free(view); return TRUE;
+}
+
+/* Retry busy mounts automatically; neither GUI lifetime nor PID reuse can close a live browser. */
+static gboolean expire_views(gpointer data)
+{
+   (void)data;
+   if (!g_mutex_trylock(&operation_lock)) return G_SOURCE_CONTINUE;
+   for (guint i=views->len;i>0;i--)
+   {
+      View *view=g_ptr_array_index(views,i-1);
+      if (process_start(view->pid)!=view->started) close_view(view,NULL);
+   }
+   g_mutex_unlock(&operation_lock); return G_SOURCE_CONTINUE;
 }
 
 /* Reattach only daemon-owned mount locations and root-owned view records after an unexpected restart. */
@@ -781,8 +808,12 @@ static void recover_mounts(void)
       char *base=g_build_filename(RUNTIME,"views",name,NULL),*record=g_build_filename(base,"view.json",NULL);
       text=read_file(record,NULL); JsonObject *data=text ? parse(text,NULL) : NULL; g_free(text); g_free(record);
       const char *store_id=string(data,"storeId"),*point_id=string(data,"pointId");
-      if (!find_store(store_id) || !identity(point_id) || !json_object_has_member(data,"uid")) { if (data) json_object_unref(data); g_free(base); continue; }
+      gboolean owner=data && json_object_has_member(data,"uid");
+      if (owner) owner=json_object_has_member(data,"pid") && json_object_has_member(data,"started");
+      if (owner) owner=json_object_get_int_member(data,"pid")>0 && json_object_get_int_member(data,"started")>0;
+      if (!find_store(store_id) || !identity(point_id) || !owner) { if (data) json_object_unref(data); g_free(base); continue; }
       View *view=g_new0(View,1); view->id=g_strdup(name); view->store=g_strdup(store_id); view->point=g_strdup(point_id); view->uid=json_object_get_int_member(data,"uid");
+      view->pid=json_object_get_int_member(data,"pid"); view->started=json_object_get_int_member(data,"started");
       view->path=g_build_filename(base,"files",NULL); view->image=g_build_filename(base,"image",NULL); view->overlay=mountpoint(view->path);
       if (mountpoint(view->image)) g_ptr_array_add(views,view);
       else
@@ -914,7 +945,7 @@ static gboolean select_next(Store *store, const char *id, GError **error)
 }
 
 /* Mutations share one worker lock; requests never provide privileged filesystem paths. */
-static JsonObject *dispatch(JsonObject *request, uid_t uid, GError **error)
+static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **error)
 {
    const char *op=string(request,"op");
    if (!op) { fail(error,EINVAL,"Missing operation."); return NULL; }
@@ -930,15 +961,8 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, GError **error)
       if (!save || json_node_get_value_type(save)!=G_TYPE_BOOLEAN) { fail(error,EINVAL,"Missing save setting."); return NULL; }
       return save_run(store,boolean(request,"save"),error) ? json_object_new() : NULL;
    }
-   if (!strcmp(op,"files.close"))
-   {
-      const char *id=string(request,"viewId");
-      for (guint i=0;id && i<views->len;i++)
-      { View *view=g_ptr_array_index(views,i); if (!strcmp(view->id,id) && (!uid || uid==view->uid)) return close_view(view,error) ? json_object_new() : NULL; }
-      fail(error,ENOENT,"This file view is no longer open."); return NULL;
-   }
    if (!validate(store,FALSE,error)) return NULL;
-   if (!strcmp(op,"files.open")) return open_files(store,string(request,"pointId"),uid,error);
+   if (!strcmp(op,"files.open")) return open_files(store,string(request,"pointId"),uid,pid,error);
    if (!strcmp(op,"next.set")) return select_next(store,string(request,"pointId"),error) ? json_object_new() : NULL;
    if (!strcmp(op,"point.rename"))
    {
@@ -968,7 +992,8 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, GError **error)
       if (!create)
       {
          JsonObject *saved=point(catalog,id);
-         if (!saved || boolean(saved,"protected")) { json_object_unref(catalog); fail(error,EBUSY,"This restore point is unavailable, protected or still in use."); return NULL; }
+         gboolean unavailable=!saved || boolean(saved,"protected") || boolean(saved,"filesOpen");
+         if (unavailable) { json_object_unref(catalog); fail(error,EBUSY,"This restore point is unavailable, protected or still in use."); return NULL; }
          if (!cancel_point(store,id,&cancelled,error))
          { json_object_unref(catalog); if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but deletion could not continue: "); return NULL; }
          if (cancelled)
@@ -1021,7 +1046,7 @@ static gboolean request_connection(GThreadedSocketService *service, GSocketConne
    g_string_free(line,TRUE);
    if (request)
    {
-      g_mutex_lock(&operation_lock); result=dispatch(request,peer.uid,&error); g_mutex_unlock(&operation_lock); json_object_unref(request);
+      g_mutex_lock(&operation_lock); result=dispatch(request,peer.uid,peer.pid,&error); g_mutex_unlock(&operation_lock); json_object_unref(request);
    }
    json_object_set_boolean_member(response,"ok",result!=NULL);
    if (result) json_object_set_object_member(response,"result",result);
@@ -1055,8 +1080,13 @@ int main(int argc, char **argv)
    { fprintf(stderr,"%s\n",error->message); return 1; }
    chmod(RUNTIME "/socket",0666); g_object_unref(address);
    g_signal_connect(service,"run",G_CALLBACK(request_connection),NULL); g_socket_service_start(service);
-   main_loop=g_main_loop_new(NULL,FALSE); g_unix_signal_add(SIGTERM,stop,NULL); g_unix_signal_add(SIGINT,stop,NULL); g_main_loop_run(main_loop);
+   main_loop=g_main_loop_new(NULL,FALSE); g_timeout_add_seconds(1,expire_views,NULL);
+   g_unix_signal_add(SIGTERM,stop,NULL); g_unix_signal_add(SIGINT,stop,NULL); g_main_loop_run(main_loop);
    g_socket_service_stop(service); g_mutex_lock(&operation_lock);
-   for (guint i=views->len;i>0;i--) close_view(g_ptr_array_index(views,i-1),NULL);
+   for (guint i=views->len;i>0;i--)
+   {
+      View *view=g_ptr_array_index(views,i-1);
+      if (process_start(view->pid)!=view->started) close_view(view,NULL);
+   }
    unlink(RUNTIME "/socket"); close(lock); return 0;
 }
