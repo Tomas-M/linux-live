@@ -476,6 +476,11 @@ must follow the general Slax repair rules above.
   Its service uses `slax-connmand` to omit the VPN plugin only while the optional
   `connman-vpnd` daemon is absent; installing the daemon restores VPN support
   on the next service start.
+- Keep SSH opt-in: cleanup disables ssh.service and core copy masks
+  systemd-ssh-generator with an /etc/systemd/system-generators symlink to
+  /dev/null. Otherwise the generator starts Unix/VSOCK socket listeners despite
+  the disabled service and reports unavailable VSOCK transports as errors.
+  Preserve ordinary manual startup through systemctl start ssh.
 - Core includes `alsa-ucm-conf` for hardware audio profiles. Repair Debian's
   duplicate `alsa_restore_go` label to `alsa_restore_std`, and let the udev rule
   restore only existing mixer state. `slax-alsa-restore` initializes fresh audio
@@ -1415,9 +1420,12 @@ must follow the general Slax repair rules above.
   Set `PromotionsEnabled=false` in the same policy to suppress Chromium's
   first-run welcome flow without shipping a per-user `First Run` sentinel.
   Keep bookmarks, cookies, history and other normal profile data available.
-- Boot error audit: VMSVGA's `vmwgfx` hypervisor warning and the SSH generator's
-  missing AF_VSOCK CID also occur when resuming without duplication. The copied
-  session reaches the desktop with no failed systemd units. The ALSA restore
+- Boot error audit: VMSVGA's `vmwgfx` hypervisor warning also occurs when resuming
+  without duplication. Older VirtualBox firmware can supply an invalid SMBIOS
+  Type 11 length; systemd ignores that optional credential source. VBoxService's
+  automounter retries without the unsupported vboxsf tag option and shares mount
+  successfully. Do not hide unrelated boot errors or patch signed kernel modules
+  to suppress these host/guest-tool compatibility messages. The ALSA restore
   rule in Debian's unmodified `alsa-utils` 1.2.14-1 has a missing
   `alsa_restore_std` label; Slax repairs it during core copy. These are separate
   findings, not failures of session copying. The copied service and module-root permission warnings

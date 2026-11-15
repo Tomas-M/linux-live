@@ -26,6 +26,8 @@ Linux Live Kit
 Slax
 ----
 
+- Keep SSH socket activation disabled by default, avoiding unnecessary VSOCK
+  discovery errors on virtual machines without a VSOCK transport.
 - Fix Slax Status crashes when clicking informational rows in empty or loading history views.
 - Explain profiles and restore points before the first profile is created; show
   a clear starting history for new profiles and hide removed points unless requested.
