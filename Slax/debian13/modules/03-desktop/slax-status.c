@@ -17,14 +17,15 @@ static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
 static char *connection_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
+static GSubprocess *restart_process;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
-static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_space, *manager_status;
+static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_cancel_slot, *manager_restart, *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *inspector_reclaim, *manager_feedback;
-static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_legend, *history_path, *history_latest;
+static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
 static GPtrArray *rows;
@@ -152,6 +153,7 @@ static void message(const char *title, const char *text)
     hide_popup();
     GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,
         GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,"%s",title);
+    gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),title);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s",text);
     gtk_dialog_run(GTK_DIALOG(dialog));gtk_widget_destroy(dialog);
 }
@@ -373,7 +375,7 @@ static gboolean save_changed(GtkSwitch *widget, gboolean save, gpointer data)
 {
     (void)widget;(void)data;
     if (updating) return FALSE;
-    if (mutating || !flag(run(),"canSetSave")) return TRUE;
+    if (mutating || restart_process || !flag(run(),"canSetSave")) return TRUE;
     JsonObject *request=command("run.save",FALSE);
     json_object_set_boolean_member(request,"save",save);
     send_request(request,TRUE);
@@ -399,9 +401,9 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
         if (gtk_switch_get_active(GTK_SWITCH(toggle))!=save) gtk_switch_set_active(GTK_SWITCH(toggle),save);
         gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
-    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating);
+    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating && !restart_process);
     set_label(choice,save ? "Save" : "Don’t save");
-    const char *text=save ? "Keep changes after restart." : "Return to the start of this run after restart.";
+    const char *text=save ? "Keep changes after restart." : "Discard changes from this run after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
     else if (!flag(run(),"canSetSave")) text="This run cannot change its save setting.";
     set_label(help,text);
@@ -631,7 +633,7 @@ static gboolean draw_history(GtkWidget *widget, cairo_t *cr, gpointer data)
         if (!row->path && !queued && !highlighted) {red=.53;green=.60;blue=.49;}
         if (highlighted) {cairo_set_source_rgba(cr,red,green,blue,.22);cairo_arc(cr,x,y,10,0,2*G_PI);cairo_fill(cr);}
         cairo_arc(cr,x,y,current ? 6 : 4,0,2*G_PI);
-        if (current || highlighted) cairo_set_source_rgb(cr,red,green,blue);else cairo_set_source_rgb(cr,.97,.98,.96);
+        if (current || highlighted || queued) cairo_set_source_rgb(cr,red,green,blue);else cairo_set_source_rgb(cr,.97,.98,.96);
         cairo_fill_preserve(cr);cairo_set_source_rgb(cr,red,green,blue);cairo_set_line_width(cr,highlighted ? 3 : 2);
         if (flag(row->point,"deleted")) {double dash[]={2,2};cairo_set_dash(cr,dash,2,0);}
         cairo_stroke(cr);cairo_set_dash(cr,NULL,0,0);
@@ -696,8 +698,7 @@ static void render_history(void)
     double scroll=gtk_adjustment_get_value(adjustment);updating=TRUE;hover_row=NULL;
     gtk_list_box_set_placeholder(GTK_LIST_BOX(history_list),NULL);
     clear_box(history_list);if (rows) g_ptr_array_unref(rows);rows=g_ptr_array_new_with_free_func(row_free);
-    gtk_widget_hide(show_removed);gtk_widget_hide(history_legend);
-    set_label(history_path,"━ Current path");
+    gtk_widget_hide(show_removed);gtk_widget_hide(history_footer);
     gtk_button_set_label(GTK_BUTTON(history_latest),"Go to now ↓");
     const char *placeholder=NULL;
     if (!store()) placeholder=state ? "Restore points are available when changes are saved on a drive." : "Loading storage…";
@@ -717,7 +718,7 @@ static void render_history(void)
     gboolean has_removed=FALSE;
     for (guint i=0;i<points->len;i++) if (flag(g_ptr_array_index(points,i),"deleted")) has_removed=TRUE;
     gtk_widget_set_visible(show_removed,has_removed);
-    JsonObject *current=json_object_new();gtk_widget_show(history_legend);json_object_set_string_member(current,"id","current");
+    JsonObject *current=json_object_new();gtk_widget_show(history_footer);json_object_set_string_member(current,"id","current");
     json_object_set_string_member(current,"parent",str(history,"currentParent"));g_ptr_array_add(points,current);
     GHashTable *path=g_hash_table_new(g_str_hash,g_str_equal);g_hash_table_add(path,"current");
     const char *parent=str(history,"currentParent");
@@ -773,10 +774,10 @@ static void render_inspector(void)
     {
         char *date=date_text(number(saved,"created"));pack(inspector,label(date,"muted"),FALSE);g_free(date);
         gboolean initial=flag(saved,"initial");
-        pack(inspector,initial ? paragraph("Start again with a clean Slax. Your existing restore points stay available.") : label(flag(saved,"automatic") ? "Saved automatically" : "Saved by you","muted"),FALSE);
+        pack(inspector,initial ? paragraph("Start with Slax’s original apps, settings and files. Other restore points stay available.") : label(flag(saved,"automatic") ? "Saved automatically" : "Kept until you delete it","muted"),FALSE);
         if (flag(saved,"deleted"))
         {
-            GtkWidget *note=gtk_label_new("Its place in history remains; its files are no longer available.");gtk_label_set_line_wrap(GTK_LABEL(note),TRUE);gtk_label_set_xalign(GTK_LABEL(note),0);pack(inspector,note,FALSE);
+            pack(inspector,paragraph("This restore point can no longer be used to start Slax or browse saved files. The point stays in the tree to show where later restore points came from."),FALSE);
         }
         else
         {
@@ -907,27 +908,34 @@ static void make_manager(void)
     gtk_style_context_add_class(gtk_widget_get_style_context(main_layout),"storage-detail");
     history_layout=box(GTK_ORIENTATION_HORIZONTAL,18);pack(main_layout,history_layout,TRUE);
     history_box=box(GTK_ORIENTATION_VERTICAL,10);pack(history_layout,history_box,TRUE);
-    GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,12);pack(heading,label("Restore points","heading"),TRUE);
-    show_removed=gtk_check_button_new_with_label("Show removed");pack(heading,show_removed,FALSE);pack(history_box,heading,FALSE);g_signal_connect(show_removed,"toggled",G_CALLBACK(removed_changed),NULL);
+    pack(history_box,label("Restore points","heading"),FALSE);
     history_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(history_scroll),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);pack(history_box,history_scroll,TRUE);
     g_signal_connect_after(history_scroll,"size-allocate",G_CALLBACK(reveal_history),NULL);
     history_list=gtk_list_box_new();gtk_list_box_set_selection_mode(GTK_LIST_BOX(history_list),GTK_SELECTION_SINGLE);
     gtk_style_context_add_class(gtk_widget_get_style_context(history_list),"history-list");gtk_container_add(GTK_CONTAINER(history_scroll),history_list);
     g_signal_connect(history_list,"row-selected",G_CALLBACK(history_selected),NULL);g_signal_connect_after(history_list,"draw",G_CALLBACK(draw_history),NULL);
-    history_legend=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_margin_bottom(history_legend,10);
-    history_path=label("━ Current path","running");history_latest=link_button("Go to now ↓","current");
-    pack(history_legend,history_path,TRUE);pack(history_legend,history_latest,FALSE);pack(history_box,history_legend,FALSE);
+    history_footer=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_margin_bottom(history_footer,10);
+    show_removed=gtk_check_button_new_with_label("Show removed");gtk_widget_set_halign(show_removed,GTK_ALIGN_START);
+    g_signal_connect(show_removed,"toggled",G_CALLBACK(removed_changed),NULL);
+    history_latest=link_button("Go to now ↓","current");
+    pack(history_footer,show_removed,TRUE);pack(history_footer,history_latest,FALSE);pack(history_box,history_footer,FALSE);
     inspector=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(inspector),"inspector");
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
     gtk_style_context_add_class(gtk_widget_get_style_context(inspector_scroll),"inspector-panel");
     gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(history_layout,inspector_scroll,FALSE);
     pack(manager_body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_container_set_border_width(GTK_CONTAINER(footer),14);pack(footer,label("Next start:","muted"),FALSE);
-    manager_next=label("Loading…",NULL);pack(footer,manager_next,TRUE);manager_cancel=link_button("Cancel","next-clear");pack(footer,manager_cancel,FALSE);
+    GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,14);gtk_container_set_border_width(GTK_CONTAINER(footer),14);
+    GtkWidget *next=box(GTK_ORIENTATION_HORIZONTAL,10);gtk_widget_set_halign(next,GTK_ALIGN_START);pack(footer,next,TRUE);
+    pack(next,label("Next start:","muted"),FALSE);manager_next=label("Loading…",NULL);pack(next,manager_next,FALSE);
+    /* Keep the native button's full height while an empty child hides only its contents. */
+    manager_cancel_slot=gtk_stack_new();gtk_stack_set_hhomogeneous(GTK_STACK(manager_cancel_slot),FALSE);
+    gtk_stack_add_named(GTK_STACK(manager_cancel_slot),box(GTK_ORIENTATION_HORIZONTAL,0),"empty");
+    manager_cancel=link_button("Cancel","next-clear");gtk_stack_add_named(GTK_STACK(manager_cancel_slot),manager_cancel,"cancel");pack(next,manager_cancel_slot,FALSE);
     /* Capacity and operation feedback share one fixed footer slot, without moving the history. */
     manager_feedback=gtk_stack_new();manager_space=label("","muted");manager_status=label("","muted");
     gtk_stack_add_named(GTK_STACK(manager_feedback),manager_space,"capacity");gtk_stack_add_named(GTK_STACK(manager_feedback),manager_status,"status");
-    pack(footer,manager_feedback,FALSE);pack(manager_body,footer,FALSE);
+    pack(footer,manager_feedback,FALSE);manager_restart=button("Restart Slax","system-reboot-symbolic","restart");pack(footer,manager_restart,FALSE);
+    pack(manager_body,footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
     gtk_widget_show_all(manager_body);
 }
@@ -969,11 +977,13 @@ static void update_ui(void)
     update_save(popup_save,popup_choice,popup_help);
     if (inspector_save) update_save(inspector_save,inspector_choice,inspector_help);
     char *next=next_text();set_label(popup_next,next);set_label(manager_next,next);g_free(next);
-    gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);gtk_widget_set_visible(manager_cancel,queued);
-    gtk_widget_set_sensitive(popup_cancel,!mutating);gtk_widget_set_sensitive(manager_cancel,!mutating);
+    gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);
+    gtk_stack_set_visible_child_name(GTK_STACK(manager_cancel_slot),queued ? "cancel" : "empty");
+    gtk_widget_set_sensitive(popup_cancel,!mutating && !restart_process);gtk_widget_set_sensitive(manager_cancel,!mutating && !restart_process);
+    gtk_widget_set_sensitive(manager_restart,!mutating && !restart_process);
     JsonObject *item=store();
     gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
-    gtk_widget_set_sensitive(inspector,!mutating);
+    gtk_widget_set_sensitive(inspector,!mutating && !restart_process);
     if (item)
     {
         char *free=size_text(number(item,"freeBytes")+number(item,"reusableBytes"));
@@ -986,8 +996,11 @@ static void update_ui(void)
     if (*warning) gtk_style_context_add_class(meter_style,"capacity-warning");
     else if (!flag(run(),"save")) gtk_style_context_add_class(meter_style,"capacity-temporary");
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
-    set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : mutating ? "Working…" : "");
-    gtk_stack_set_visible_child(GTK_STACK(manager_feedback),connection_error || mutating ? manager_status : manager_space);
+    const char *operation="";
+    if (mutating) operation="Working…";
+    if (restart_process) operation="Restarting…";
+    set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : operation);
+    gtk_stack_set_visible_child(GTK_STACK(manager_feedback),connection_error || *operation ? manager_status : manager_space);
     char *tooltip=g_strdup_printf("Slax Status · %s · %s available",mode,size);
     if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
     g_free(tooltip);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
@@ -1015,16 +1028,29 @@ static void update_ui(void)
     if (snooze_until<=g_get_monotonic_time() && (anchored || !*warning)) {g_free(last_warning);last_warning=g_strdup(warning);}
 }
 
-/* Destructive confirmations keep Cancel as default, with confirmation on the left. */
-static gboolean confirm(const char *title, const char *text, const char *accept)
+/* Use the normal window-manager frame; destructive confirmations keep Cancel on the right as default. */
+static gboolean confirm(const char *title, const char *question, const char *text, const char *accept)
 {
     hide_popup();GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,
-        GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",title);
+        GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",question);
+    gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),title);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s",text);
     GtkWidget *area=gtk_widget_get_parent(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog)));
     gtk_widget_set_margin_start(area,0);gtk_widget_set_margin_end(area,0);
     gtk_dialog_add_buttons(GTK_DIALOG(dialog),accept,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);
     gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;gtk_widget_destroy(dialog);return accepted;
+}
+
+/* Report a refused normal reboot without blocking GTK or bypassing logind authorization. */
+static void restart_done(GObject *source, GAsyncResult *result, gpointer data)
+{
+    (void)data;GError *error=NULL;char *details=NULL;
+    gboolean completed=g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source),result,NULL,&details,&error);
+    gboolean successful=completed && g_subprocess_get_successful(G_SUBPROCESS(source));
+    g_clear_object(&restart_process);update_ui();
+    if (!completed) message("Cannot restart Slax",error->message);
+    else if (!successful) message("Cannot restart Slax",details && *details ? details : "Save your open documents and try Restart from the desktop menu.");
+    g_clear_error(&error);g_free(details);
 }
 
 /* Reflect DynFileFS's UTF-8 name rules before making an expensive freeze/create request. */
@@ -1054,10 +1080,10 @@ static void name_dialog(gboolean rename)
         title,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(dialog),480,-1);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT);
     GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),18);gtk_box_set_spacing(GTK_BOX(content),12);
-    const char *note="Save a point you can return to later.";
-    if (flag(store(),"active") && !flag(run(),"save")) note="This restore point stays even though this run will not be saved.";
+    const char *note="Save your current apps, settings and files so you can return to them later.";
+    if (flag(store(),"active") && !flag(run(),"save")) note="Save your current apps, settings and files in a restore point. This point will be kept even though Don’t save is selected.";
     if (rename) note="Give this restore point a name you will recognize.";
-    if (rename && flag(point(),"automatic")) note="Giving this automatic point a name keeps it until you delete it.";
+    if (rename && flag(point(),"automatic")) note="Give this automatic restore point a name to keep it until you choose to delete it.";
     pack(content,paragraph(note),FALSE);pack(content,label("Name",NULL),FALSE);
     GtkWidget *entry=gtk_entry_new();gtk_entry_set_activates_default(GTK_ENTRY(entry),TRUE);gtk_entry_set_placeholder_text(GTK_ENTRY(entry),"e.g. Before upgrade");pack(content,entry,FALSE);
     if (rename) {gtk_entry_set_text(GTK_ENTRY(entry),original);gtk_editable_select_region(GTK_EDITABLE(entry),0,-1);}
@@ -1097,7 +1123,29 @@ static void action(GtkButton *button_widget, gpointer data)
     {
         g_clear_pointer(&selected_point,g_free);reveal_current=TRUE;render_history();render_inspector();return;
     }
-    if (mutating || !state) return;
+    if (mutating || restart_process) return;
+    if (!strcmp(op,"restart"))
+    {
+        char *text=g_strdup("Save your open documents before restarting. Slax will close running applications.");
+        if (state && !connection_error && !*str(run(),"error"))
+        {
+            const char *saving="Your changes will be saved.";
+            if (!strcmp(str(run(),"kind"),"ram")) saving="Changes made in this RAM run will be lost.";
+            else if (!flag(run(),"save")) saving="Changes from this run will be discarded.";
+            else if (object(state,"next")) saving="Your current apps, settings and files will be kept in another restore point.";
+            char *next=next_text();g_free(text);text=g_strdup_printf("Save your open documents before restarting.\n%s\n\nNext start: %s",saving,next);g_free(next);
+        }
+        gboolean accepted=confirm("Restart Slax","Restart Slax now?",text,"Restart Slax");g_free(text);
+        if (accepted && !mutating)
+        {
+            GError *error=NULL;
+            restart_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,"systemctl","reboot",NULL);
+            if (restart_process) {update_ui();g_subprocess_communicate_utf8_async(restart_process,NULL,NULL,restart_done,NULL);}
+            else {message("Cannot restart Slax",error->message);g_clear_error(&error);}
+        }
+        return;
+    }
+    if (!state) return;
     if (!strcmp(op,"next-clear")) {send_request(command("next.clear",FALSE),TRUE);return;}
     JsonObject *item=store(),*saved=point();if (!item) return;
     g_autofree char *target=g_strdup(selected);
@@ -1107,16 +1155,19 @@ static void action(GtkButton *button_widget, gpointer data)
     g_autofree char *saved_id=g_strdup(str(saved,"id"));
     if (!strcmp(op,"use-point"))
     {
-        gboolean initial=flag(saved,"initial");char *title=initial ? g_strdup("Start with a clean Slax?") : g_strdup_printf("Use “%s” at next start?",point_name(saved));
-        const char *text="This takes effect after restart. Existing restore points stay available.";
-        if (flag(item,"active")) text=flag(run(),"save") ? "This takes effect after restart. This run will be kept as another restore point." : "This takes effect after restart. Changes from this run will be discarded; existing restore points stay available.";
-        gboolean accepted=confirm(title,text,initial ? "Fresh start" : "Use at next start");g_free(title);
+        gboolean initial=flag(saved,"initial");char *question=initial ? g_strdup("Start with Slax’s original apps, settings and files?") : g_strdup_printf("Start Slax from “%s”?",point_name(saved));
+        const char *saving="Other restore points will stay available.";
+        if (flag(item,"active")) saving=flag(run(),"save") ? "Your current apps, settings and files will be kept in another restore point." : "Changes from this run will be discarded. Other restore points will stay available.";
+        char *text=g_strdup_printf("%s\n\n%s",initial ? "At the next start, Slax will use the original apps, settings and files." : "At the next start, Slax will use the apps, settings and files saved in this restore point.",saving);
+        gboolean accepted=confirm(initial ? "Fresh start" : "Use restore point at next start",question,text,initial ? "Fresh start" : "Use at next start");g_free(question);g_free(text);
         if (accepted) {JsonObject *request=command("next.set",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"delete-point"))
     {
-        char *title=g_strdup_printf("Delete “%s”?",point_name(saved));
-        gboolean accepted=confirm(title,"Its files will no longer be available. Other restore points and your current state stay unchanged. Its next-start selection, if any, will be cancelled.","Delete restore point");g_free(title);
+        char *question=g_strdup_printf("Delete “%s”?",point_name(saved));
+        JsonObject *next=object(state,"next");gboolean queued=!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId"));
+        char *text=g_strconcat("You will no longer be able to start Slax from this restore point or open files saved in this restore point. Your current apps, settings and files and all other restore points will be kept.",queued ? "\n\nSlax will no longer use this restore point at the next start." : "",NULL);
+        gboolean accepted=confirm("Delete restore point",question,text,"Delete restore point");g_free(question);g_free(text);
         if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"open-files")) {JsonObject *request=command("files.open",TRUE);json_object_set_string_member(request,"pointId",str(saved,"id"));send_request(request,TRUE);return;}
@@ -1222,8 +1273,10 @@ static void load_style(void)
         "button.link { background: transparent; box-shadow: none; border: 0; color: #306c99; padding: 5px 0; }"
         "button.icon-button { min-width: 24px; min-height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }"
         "button.icon-button:hover { background: #e2e8dc; }"
-        "button.suggested-action { background: #397b35; color: white; border-color: #397b35; }"
-        "button.suggested-action:hover { background: #2c6729; } progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
+        "button.suggested-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
+        "button.suggested-action:hover:not(:disabled) { background: linear-gradient(#367632,#2c6729); }"
+        "button.suggested-action:active:not(:disabled) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
+        "progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
         "progressbar.capacity-warning progress { background: #ce413a; } progressbar.capacity-temporary progress { background: #2784d8; }",
         -1,NULL);
     gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),GTK_STYLE_PROVIDER(css),GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);g_object_unref(css);
