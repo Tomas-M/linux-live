@@ -2,6 +2,12 @@
 #include <gtk/gtk.h>
 #include <gmodule.h>
 
+/* Remove GTK's heading emphasis, including when live secondary text reapplies it. */
+static void normal_message_font(GtkLabel *label, GParamSpec *property, gpointer data)
+{
+    if (gtk_label_get_attributes(label)) gtk_label_set_attributes(label, NULL);
+}
+
 /* Keep standard message dialogs spacious without expanding their action buttons. */
 static gboolean configure_message_dialog(GSignalInvocationHint *hint, guint count, const GValue *values, gpointer data)
 {
@@ -16,6 +22,20 @@ static gboolean configure_message_dialog(GSignalInvocationHint *hint, guint coun
     gtk_style_context_remove_class(gtk_widget_get_style_context(actions), "linked");
     GtkContainer *content=GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(widget)));
     gtk_container_set_border_width(content, MAX(14, gtk_container_get_border_width(content)));
+
+    /* Only the two built-in message labels belong to the shared dialog style. */
+    GList *labels=gtk_container_get_children(GTK_CONTAINER(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(widget))));
+    int index=0;
+    for (GList *item=labels; item && index<2; item=item->next, index++)
+    {
+        GtkLabel *label=GTK_LABEL(item->data);
+        normal_message_font(label, NULL, NULL);
+        gtk_label_set_xalign(label, 0);
+        gtk_widget_set_halign(GTK_WIDGET(label), GTK_ALIGN_FILL);
+        if (!index && !g_signal_handler_find(label, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(normal_message_font), NULL))
+            g_signal_connect(label, "notify::attributes", G_CALLBACK(normal_message_font), NULL);
+    }
+    g_list_free(labels);
     return TRUE;
 }
 
@@ -78,12 +98,15 @@ static gboolean hide_root_warning(GSignalInvocationHint *hint, guint count, cons
 /* Apply shared message-dialog spacing and optional application styles. */
 G_MODULE_EXPORT void gtk_module_init(int *argc, char ***argv)
 {
+    /* GTK may load modules before GtkWidget has registered its signals. */
+    gpointer widget_class=g_type_class_ref(GTK_TYPE_WIDGET);
     g_signal_add_emission_hook(g_signal_lookup("show", GTK_TYPE_WIDGET), 0, configure_message_dialog, NULL, NULL);
     if (g_strcmp0(g_get_prgname(), "pcmanfm")==0)
     {
         g_signal_add_emission_hook(g_signal_lookup("realize", GTK_TYPE_WIDGET), 0, hide_root_warning, NULL, NULL);
         g_signal_add_emission_hook(g_signal_lookup("realize", GTK_TYPE_WIDGET), 0, configure_file_drag, NULL, NULL);
     }
+    g_type_class_unref(widget_class);
 
     char *path=g_strdup_printf("/usr/share/slax/gtk-3.0/apps/%s.css", g_get_prgname());
     if (g_file_test(path, G_FILE_TEST_IS_REGULAR))

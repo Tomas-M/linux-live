@@ -1001,6 +1001,9 @@ must follow the general Slax repair rules above.
   Its shared GtkMessageDialog show hook replaces expanded action layouts with
   compact right-aligned buttons, separates them by at least 8 px without linked
   borders and keeps at least 14 px around the content.
+  Keep the two built-in message labels in ordinary left-aligned text, including
+  live secondary-text updates. Preserve caller-added labels and explicit markup.
+  Initialize GtkWidget's class before looking up the module's signal hooks.
   Preserve larger application margins, custom button layouts, order and defaults.
   Rebuilt Debian packages keep their original names and binary versions, including
   Debian's binary rebuild suffixes. Do not add Slax version suffixes. In
