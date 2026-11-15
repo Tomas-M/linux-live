@@ -1,5 +1,5 @@
 /*
- * Framebuffer boot splash and profile picker. No graphics libraries required.
+ * Framebuffer boot splash and storage picker. No graphics libraries required.
  * Build from tools/ with musl (i686 also runs on x86_64 with IA32 emulation):
  *   musl-gcc -Os -static -no-pie -s -ffunction-sections -fdata-sections \
  *     -fno-unwind-tables -fno-asynchronous-unwind-tables \
@@ -8,7 +8,6 @@
  * Menu files contain: value<TAB>title<TAB>detail (or a plain value per line).
  * Add --cancel to a menu request to return an empty selection when Esc is pressed.
  * Add --refresh to return refresh on F5, including when the menu is empty.
- * Add --restore to return restore:VALUE on F8 (ignored for the value new).
  * --pause/--continue bracket driver loading; overlapping pauses are counted.
  * --shutdown BRANDDIR shows the same animation from the retained initramfs.
  * One process owns both rendering and keyboard input; clients use a local socket.
@@ -40,10 +39,10 @@
 
 static const char *socket_path="/run/fbmenu.sock";
 #define DISABLED "/run/bootsplash.disabled"
-struct request { char operation, cancel, refresh, restore; char title[128]; char file[1024]; };
+struct request { char operation, cancel, refresh; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail; };
 /* Keep navigation keys outside the Unicode range. */
-enum { KEY_UP=0x110000, KEY_DOWN, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F5, KEY_F8 };
+enum { KEY_UP=0x110000, KEY_DOWN, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F5 };
 enum phase { BOOT, HANDOFF, SHUTDOWN };
 static int tty=-1, keyboard_fd=-1, fb=-1, graphics, disabled, raw, logfd=-1, animation=-1;
 static struct termios saved;
@@ -243,8 +242,7 @@ static void draw_menu(void)
 {
    const char *navigation="Up/Down: select   Enter: confirm";
    char actions[120], hint[200];
-   snprintf(actions,sizeof(actions),"%s%sEsc: %s",menu.refresh?"F5: refresh   ":"",
-      menu.restore?"F8: restore   ":"",menu.cancel?"cancel":"text mode");
+   snprintf(actions,sizeof(actions),"%sEsc: %s",menu.refresh?"F5: refresh   ":"",menu.cancel?"cancel":"text mode");
    snprintf(hint,sizeof(hint),"%s   %s",navigation,actions);
    if (!graphics) {
       dprintf(tty,"\033[2J\033[H%s\r\n\r\n\r\n",menu.title);
@@ -402,7 +400,6 @@ static int key(void)
    if (!strcmp(sequence,"[5~")) return KEY_PAGEUP;
    if (!strcmp(sequence,"[6~")) return KEY_PAGEDOWN;
    if (!strcmp(sequence,"[15~") || !strcmp(sequence,"[[E")) return KEY_F5;
-   if (!strcmp(sequence,"[19~")) return KEY_F8;
    return 0;
 }
 
@@ -609,10 +606,8 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
             if (pressed=='G' || pressed==KEY_END) selected=count-1;
             if (pressed=='u' || pressed==KEY_PAGEUP) selected=selected<5?0:selected-5;
             if (pressed=='d' || pressed==KEY_PAGEDOWN) selected=selected+5>=count?count-1:selected+5;
-            int restore=pressed==KEY_F8 && menu.restore && strcmp(items[selected].value,"new");
             int confirm=pressed=='\r' || pressed=='\n';
-            if (restore) write_all(menu_client,"restore:",8);
-            if (confirm || restore) {
+            if (confirm) {
                finish_menu(items[selected].value,frame);
             } else if (selected!=previous) draw_menu();
          }
@@ -672,7 +667,6 @@ int main(int argc, char **argv)
    while (argc>2 && argv[argc-1][0]=='-' && !strcmp(argv[1],"--menu")) {
       if (!strcmp(argv[argc-1],"--cancel")) request.cancel=1;
       else if (!strcmp(argv[argc-1],"--refresh")) request.refresh=1;
-      else if (!strcmp(argv[argc-1],"--restore")) request.restore=1;
       else break;
       argc--;
    }
@@ -693,7 +687,7 @@ int main(int argc, char **argv)
       if (!strcmp(argv[1],"--keep")) request.operation='h';
    }
    if (!request.operation) {
-      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--refresh] [--restore] | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
+      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--refresh] | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
       return 1;
    }
    int fd=connect_server(), child=0;

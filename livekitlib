@@ -941,40 +941,6 @@ perch_size()
 }
 
 
-# Check whether a session can use a native branch instead of a container.
-perch_native_fs()
-{
-   local FILE STATUS
-
-   if [ -e "$1/changes.dat" ]; then return 1; fi
-   if ! device_bestfs "$(mounted_device "$1")" | grep -qv ntfs; then return 1; fi
-   FILE=$(mktemp "$1/.posix.XXXXXX") || return 1
-   STATUS=0
-   ln -s "$FILE" "$FILE.link" 2>/dev/null && chmod +x "$FILE" 2>/dev/null && test -x "$FILE" && \
-      chmod -x "$FILE" 2>/dev/null && test ! -x "$FILE" || STATUS=$?
-   rm -f "$FILE" "$FILE.link"
-   return "$STATUS"
-}
-
-
-# Locate existing session metadata without changing its storage layout.
-perch_session_file()
-{
-   local FILE
-
-   FILE=boot/session.txt
-   if [ -e "$1/changes.dat" -o -f "$1/session.txt" ]; then FILE=session.txt; fi
-   echo "$1/$FILE"
-}
-
-
-# Read a session name from the metadata path used by its storage layout.
-perch_session_name()
-{
-   head -n 1 "$(perch_session_file "$1")" 2>/dev/null | tr -d '\r\n' | tr '\000-\037\177' ' '
-}
-
-
 # Read live restore points as timestamp, stable ID, UTF-8 name and automatic flag.
 perch_restore_points()
 {
@@ -983,6 +949,7 @@ perch_restore_points()
    if [ "${2:-}" != "" ]; then
       CATALOG=$(cat "$2/snapshots.json") || return 1
    else
+      if [ ! -f "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then return 1; fi
       CATALOG=$(@mount.dynfilefs -f "$1/changes.dat" --snapshots --json) || return 1
    fi
    # DynFileFS names cannot contain double quotes, backslashes or controls.
@@ -998,111 +965,69 @@ perch_restore_points()
 }
 
 
-# Resolve a one-shot restore request by identity, never by a possibly reused name.
-perch_restore_name()
-{
-   local ID POINTS NAME
-
-   ID=$(cat "$1/restore.txt") || return 1
-   if [ "${#ID}" -ne 16 ] || ! printf '%s\n' "$ID" | grep -qE '^[0-9a-f]+$'; then
-      echo '* Invalid restore point identity in restore.txt.' >&2
-      return 1
-   fi
-   if ! POINTS=$(perch_restore_points "$1"); then return 1; fi
-   if ! NAME=$(printf '%s\n' "$POINTS" | awk -F '\t' -v id="$ID" '
-      "x" $2=="x" id {print $3; found=1}
-      END { if (!found) exit 1 }
-   '); then
-      echo '* The requested restore point is unavailable; restore.txt was kept.' >&2
-      return 1
-   fi
-   printf '%s\n' "$NAME"
-}
-
-
-# Commit only an explicitly chosen restore point, or continue the current profile state.
-perch_set_restore()
-{
-   local FILE TEMP
-
-   FILE=$(perch_session_file "$1")
-   FILE="${FILE%/*}/restore.txt"
-   if [ "$2" = current ]; then
-      if ! rm -f "$FILE"; then return 1; fi
-      persistence save "$1" || return 1
-      sync
-      return 0
-   fi
-   TEMP=$(mktemp "${FILE%/*}/.restore.XXXXXX") || return 1
-   if ! printf '%s\n' "$2" > "$TEMP" || ! chmod 644 "$TEMP" || ! mv "$TEMP" "$FILE"; then
-      rm -f "$TEMP"
-      echo '* Could not save the restore point selection.' >&2
-      return 1
-   fi
-   sync
-}
-
-
-# Inspect history without mounting it; Esc leaves any previously queued request unchanged.
+# Inspect one drive's history; Esc returns without changing its queued request.
 perch_choose_restore()
 {
-   local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD
+   local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD INITIAL
 
    ROWS=$(mktemp /tmp/restore-points.XXXXXX) || return 1
-   printf 'current\tCurrent state\tLatest changes\n' > "$ROWS"
    POINTS=""
-   TITLE='No restore points for this profile'
-   if [ -f "$1/changes.dat" ]; then
-      if POINTS=$(perch_restore_points "$1"); then
-         if [ "$POINTS" != "" ]; then TITLE='Start profile from'; fi
+   INITIAL=""
+   TITLE='Start Slax from'
+   if [ -e "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then
+      if POINTS=$(perch_restore_points "$1") && INITIAL=$(persistence initial "$1"); then
+         if [ -f "$1/run.txt" ]; then printf 'current\tLast saved state\tContinue saved changes\n' > "$ROWS"; fi
+         printf 'fresh\tFresh start\tClean Slax; keep history\n' >> "$ROWS"
          printf '%s\n' "$POINTS" | sort -rn | while IFS="$(printf '\t')" read -r CREATED ID NAME AUTOMATIC; do
-            if [ "$ID" = "" ]; then continue; fi
-            # An interrupted reservation is not ownership if another point claimed its ID.
+            if [ "$ID" = "" -o "$ID" = "$INITIAL" ]; then continue; fi
             GUARD="$1/guard.$ID"
             if [ -f "$GUARD" ] && [ ! -L "$GUARD" ] && [ "$(cat "$GUARD" 2>/dev/null)" = "$NAME" ]; then continue; fi
             if [ "$AUTOMATIC" = 1 ]; then NAME='Automatic restore point'; fi
             printf '%s\t%s\t%s\n' "$ID" "$NAME" "$(date -u -d "@$CREATED" '+%Y-%m-%d %H:%M:%S UTC')"
          done >> "$ROWS"
       else
-         TITLE='Restore points could not be read'
+         TITLE='Saved changes could not be read'
       fi
+   else
+      printf 'fresh\tFresh start\tSave changes on this drive\n' > "$ROWS"
    fi
    CHOICE=$(fbmenu --menu "$TITLE" "$ROWS" --cancel) || CHOICE=""
    rm -f "$ROWS"
    if [ "$CHOICE" = "" ]; then return 2; fi
-   if [ "$CHOICE" != current ] && ! printf '%s\n' "$POINTS" | awk -F '\t' -v id="$CHOICE" '"x" $2=="x" id {found=1} END {exit !found}'; then return 1; fi
-   perch_set_restore "$1" "$CHOICE"
+   if [ "$CHOICE" = fresh ]; then
+      if [ "$INITIAL" = "" ]; then return 0; fi
+      CHOICE="$INITIAL"
+   fi
+   persistence select "$1" "$CHOICE"
 }
 
 
-# List sessions with sortable dates and optional disk-qualified menu values.
-perch_session_rows()
+# Reject linked storage paths before creating directories on writable media.
+perch_directory()
 {
-   local DIR NAME LASTMOD USAGE
-
-   ls -1 "$1" 2>/dev/null | grep -E '^[0-9]+$' | while read DIR; do
-      if [ ! -d "$1/$DIR" ]; then continue; fi
-      USAGE=$(perch_size "$(du -s -k "$1/$DIR" 2>/dev/null | awk '{print $1}')")
-      LASTMOD="$(date -r "$1/$DIR" "+%Y-%m-%d %H:%M")"
-      NAME=$(perch_session_name "$1/$DIR")
-      printf '%s\t%s%s\t%s\t%s%s  %9s\n' "$LASTMOD" "${2:-}" "$DIR" "${NAME:-Profile #$DIR}" "${3:+$3  }" "$LASTMOD" "$USAGE"
+   local DIR TEMP
+   DIR="$1"
+   while [ "$DIR" != / ]; do
+      if [ -L "$DIR" ] || { [ -e "$DIR" ] && [ ! -d "$DIR" ]; }; then return 1; fi
+      DIR=${DIR%/*}
+      if [ "$DIR" = "" ]; then break; fi
    done
+   mkdir -p "$1" || return 1
+   TEMP=$(mktemp "$1/.writable.XXXXXX") || return 1
+   rm -f "$TEMP"
 }
 
 
-# Choose a session across writable filesystems and return its full path.
-select_perch_session()
+# Choose a writable drive first, then a saved state; automatic resume uses only the new marker.
+select_perch_storage()
 {
-   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SESSION SELECTED LASTSESSION ERROR
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW
 
-   CHOICE="${2:-}"
    while true; do
-      SCAN=$(mktemp -d "$MEMORY/session-disks.XXXXXX") || return 1
+      SCAN=$(mktemp -d "$MEMORY/storage-disks.XXXXXX") || return 1
       BOOTDEVICE=$(mounted_device "$1")
       BOOTDIR=$(mounted_dir "$1")
-      printf 'new\tStart a new profile\n' > "$SCAN/sessions.txt"
-      touch "$SCAN/disks.txt"
-      touch "$SCAN/resume.txt"
+      touch "$SCAN/disks.txt" "$SCAN/resume.txt"
       refresh_devs
       blkid | sort | cut -d: -f 1 | grep -E -v '/loop|/ram|/zram' | while IFS= read -r DEVICE; do
          FS=$(device_bestfs "$DEVICE")
@@ -1116,390 +1041,183 @@ select_perch_session()
 
          CHANDIR="$DIR/$LIVEKITNAME/changes"
          if [ "$DEVICE" = "$BOOTDEVICE" ]; then CHANDIR="$DIR/${1#"$BOOTDIR/"}"; fi
-         if [ "${2:-}" = resume ]; then
-            LASTSESSION=$(cat "$CHANDIR/last_session.txt" 2>/dev/null || true)
-            if echo "$LASTSESSION" | grep -qE '^[0-9]+$' && [ -d "$CHANDIR/$LASTSESSION" ]; then
-               printf '%s\t%s/%s\n' "$(date -r "$CHANDIR/last_session.txt" +%s)" "$CHANDIR" "$LASTSESSION" >> "$SCAN/resume.txt"
-            fi
-            continue
+         if [ -L "$DIR/$LIVEKITNAME" ] || [ -L "$CHANDIR" ]; then continue; fi
+         if [ -f "$CHANDIR/resume.txt" ] && [ ! -L "$CHANDIR/resume.txt" ]; then
+            printf '%s\t%s\n' "$(date -r "$CHANDIR/resume.txt" +%s)" "$CHANDIR" >> "$SCAN/resume.txt"
          fi
          LABEL=$(blkid -s LABEL -o value "$DEVICE" | tr -d '\r\n' | tr '\000-\037\177' ' ')
          FREE=$(perch_size $(df -Pk "$DIR" | awk 'END {print $4, $2}'))
-         printf '%s/new\t%s (%s)\t%s  %s free\n' "$CHANDIR" "$DEVICE" "${LABEL:-No label}" "$FS" "$FREE" >> "$SCAN/disks.txt"
-         perch_session_rows "$CHANDIR" "$CHANDIR/" "$(basename "$DEVICE")"
-      done | sort -r | cut -f 2- >> "$SCAN/sessions.txt"
-
-      # Compare each disk's last-used marker before updating the selected session.
-      if [ "$CHOICE" = resume ]; then CHOICE=$(sort -nr "$SCAN/resume.txt" | head -n 1 | cut -f 2-); fi
-      SELECTED=""
-      while true; do
-         if [ "$CHOICE" != new -a "${2:-}" != resume ]; then
-            CHOICE=$(fbmenu --menu 'Select profile' "$SCAN/sessions.txt" --cancel --restore) || break
-         fi
-         if [ "$CHOICE" = "" ]; then break; fi
-         if [ "${CHOICE#restore:}" != "$CHOICE" ]; then
-            DIR=${CHOICE#restore:}
-            if ! perch_choose_restore "$DIR"; then CHOICE=""; continue; fi
-            CHOICE="$DIR"
-         elif [ "${2:-}" != resume -a "$CHOICE" != new ]; then
-            # An explicit profile selection continues its current state, overriding a queued restore.
-            if ! perch_set_restore "$CHOICE" current; then CHOICE=""; continue; fi
-         fi
-         if [ "$CHOICE" = new ]; then
-            TITLE='Select disk for new profile'
-            if [ ! -s "$SCAN/disks.txt" ]; then TITLE='No writable disks found'; fi
-            CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel --refresh) || break
-            if [ "$CHOICE" = refresh ]; then break; fi
-            if [ "$CHOICE" = "" ]; then continue; fi
-         fi
-
-         CHANDIR=${CHOICE%/*}
-         SESSION=${CHOICE##*/}
-         if SESSION=$(restore_perch_session "$CHANDIR" "$SESSION"); then
-            DIR=$(mounted_dir "$CHANDIR")
-            mkdir -p "$MEMORY/persistence"
-            mount -o move "$DIR" "$MEMORY/persistence" || break
-            SELECTED="$MEMORY/persistence/${CHANDIR#"$DIR/"}/$SESSION"
-            break
-         fi
-         if [ "${2:-}" = resume ]; then break; fi
-         CHOICE=""
+         printf '%s\t%s%s\t%s  %s free\n' "$CHANDIR" "$DEVICE" "${LABEL:+ ($LABEL)}" "$FS" "$FREE" >> "$SCAN/disks.txt"
       done
 
-      # The selected mount was moved out; release the remaining scan mounts.
+      LATEST=$(sort -nr "$SCAN/resume.txt" | head -n 1 | cut -f 1)
+      CHOICE=""
+      if [ "$2" = resume ]; then CHOICE=$(sort -nr "$SCAN/resume.txt" | head -n 1 | cut -f 2-); fi
+      SELECTED=""
+      while true; do
+         if [ "$2" != resume ]; then
+            TITLE='Select drive for saved changes'
+            if [ ! -s "$SCAN/disks.txt" ]; then TITLE='No writable drives found'; fi
+            CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel --refresh) || break
+         fi
+         if [ "$CHOICE" = "" -o "$CHOICE" = refresh ]; then break; fi
+         if [ "$2" != resume ] && ! perch_choose_restore "$CHOICE"; then continue; fi
+         if perch_directory "$CHOICE"; then
+            NOW=$(date +%s)
+            # FAT timestamps have two-second resolution; keep this choice strictly newer.
+            if [ "${LATEST:-0}" -ge "$((NOW - 1))" ]; then NOW=$((LATEST + 2)); fi
+            if ! persistence mark "$CHOICE" "$NOW"; then break; fi
+            DIR=$(mounted_dir "$CHOICE")
+            mkdir -p "$MEMORY/persistence"
+            mount -o move "$DIR" "$MEMORY/persistence" || break
+            SELECTED="$MEMORY/persistence/${CHOICE#"$DIR/"}"
+            break
+         fi
+         if [ "$2" = resume ]; then break; fi
+      done
+
+      # The selected mount moved out; release every other scan mount before refresh.
       ERROR=0
       for DIR in "$SCAN"/disk.*; do
          if mountpoint -q "$DIR" 2>/dev/null; then
             if ! umount "$DIR" >&2; then ERROR=1; fi
          fi
       done
-      rm -f "$SCAN/disks.txt" "$SCAN/sessions.txt" "$SCAN/resume.txt"
+      rm -f "$SCAN/disks.txt" "$SCAN/resume.txt"
       rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
       if [ "$ERROR" != 0 -a "$CHOICE" = refresh ]; then return 1; fi
-
-      # F5 releases the previous scan before rediscovering disks, then reopens this picker.
       if [ "$CHOICE" != refresh ]; then break; fi
-      CHOICE=new
    done
    if [ "$SELECTED" = "" ]; then return 1; fi
-   echo "$SELECTED"
+   printf '%s\n' "$SELECTED"
 }
 
 
-# Restore persistent changes from previous session.
-# Store persistent changes to a directory and keep the directory in a session file,
-# so we know which session was active last time so we can resume it next time
-# $1 = changes directory
-# $2 = optional selection from the all-disks picker
-#
-restore_perch_session()
+# Explicit perchdir=/dev/DEVICE/path remains scoped to that writable filesystem.
+perch_device_storage()
 {
-   debug_log "restore_perch_session" "$*"
-
-   local TIMEOUT DEVICE FS MOUNT DEVROOT
-   local CHANDIR PERCHDIR LAST LASTSESSION NEW NAME NAMEFILE TEMP
-
-   CHANDIR="$1"
-   PERCHDIR="${2:-$(cmdline_value perchdir)}"
-
-   # Supported syntax is even like perchdir=/dev/sda1/changes
-   # In this case, perchdir is mounted over $CHANDIR and is set to ask
-   if echo "$PERCHDIR" | grep -q '^/dev/'; then
-      DEVICE="$(echo "$PERCHDIR" | cut -d '/' -f 1-3)"
-      PERCHDIR="$(echo "$PERCHDIR" | cut -d '/' -f 4-)"
-
-      FS="$(device_bestfs "$DEVICE")"
-      MOUNT="$(mount_command $FS)"
-      DEVROOT="$MEMORY/persistence"
-      mkdir -p "$DEVROOT"
-
-      echo -n "* Waiting for persistent changes on $DEVICE .." >&2
-      for TIMEOUT in $(seq 1 20); do
-         echo -n "." >&2
-         refresh_devs
-         mount_device "$DEVICE" "$DEVROOT" "$FS"
-         if [ $? -eq 0 ]; then
-            if ! awk -v dir="$DEVROOT" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
-               umount "$DEVROOT" >&2
-               return 1
+   local DEVICE DIR ROOT FS TIMEOUT
+   DEVICE=$(printf '%s\n' "$1" | cut -d / -f 1-3)
+   DIR=$(printf '%s\n' "$1" | cut -d / -f 4-)
+   if printf '%s\n' "$DIR" | grep -qE '(^|/)\.\.?(/|$)'; then return 1; fi
+   ROOT="$MEMORY/persistence"
+   mkdir -p "$ROOT"
+   for TIMEOUT in $(seq 1 20); do
+      refresh_devs
+      FS=$(device_bestfs "$DEVICE")
+      if [ "$FS" != "" ] && mount_device "$DEVICE" "$ROOT" "$FS"; then
+         if awk -v dir="$ROOT" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
+            if perch_directory "$ROOT/$DIR" && perch_choose_restore "$ROOT/$DIR"; then
+               printf '%s\n' "$ROOT/$DIR"
+               return 0
             fi
-            if [ "$PERCHDIR" != "" -a "$PERCHDIR" != "/" ]; then
-               mkdir -p "$DEVROOT/$PERCHDIR"
-               $MOUNT --bind "$DEVROOT/$PERCHDIR" "$CHANDIR"
-               if [ $? -eq 0 ]; then
-                 echo -e "\n" >&2
-                 PERCHDIR=ask
-                 break
-               fi
-            else
-               if $MOUNT --bind "$DEVROOT" "$CHANDIR"; then
-                  echo -e "\n" >&2
-                  PERCHDIR=ask
-                  break
-               fi
-            fi
-            umount "$DEVROOT" 2>/dev/null
          fi
-         sleep 1
-      done
-   fi
-
-   # Do not select or create a profile when its storage is not writable.
-   if [ "${2:-}" = "" ]; then
-      mkdir -p "$CHANDIR" 2>/dev/null || return 1
-      touch "$CHANDIR/.empty" 2>/dev/null || return 1
-      rm -f "$CHANDIR/.empty"
-   fi
-
-   LAST=last_session.txt
-   LASTSESSION=$(cat "$CHANDIR/$LAST" 2>/dev/null || true)
-
-   while true; do
-      # Restore-point cancellation returns to the profile list.
-      if [ "$PERCHDIR" = "ask" ]; then
-         printf 'new\tStart a new profile\n' > /tmp/sessions.txt
-         perch_session_rows "$CHANDIR" | sort -r | cut -f 2- >> /tmp/sessions.txt
-         PERCHDIR="$(fbmenu --menu 'Select profile' /tmp/sessions.txt --cancel --restore)" || return 1
-         # Cancellation must not create a session or update last_session.txt.
-         if [ "$PERCHDIR" = "" ]; then return 1; fi
-         if printf '%s\n' "$PERCHDIR" | grep -qE '^[0-9]+$'; then
-            if ! perch_set_restore "$CHANDIR/$PERCHDIR" current; then PERCHDIR=ask; continue; fi
-         fi
+         umount "$ROOT" >&2
+         return 1
       fi
-
-      if [ "${PERCHDIR#restore:}" != "$PERCHDIR" ]; then
-         PERCHDIR=${PERCHDIR#restore:}
-         if ! perch_choose_restore "$CHANDIR/$PERCHDIR"; then PERCHDIR=ask; continue; fi
-      fi
-
-      # restore name for previous session if empty
-      if [ "$PERCHDIR" = "" -o "$PERCHDIR" = "resume" ]; then
-         if [ "$LASTSESSION" != "" ] && ! printf '%s\n' "$LASTSESSION" | grep -qE '^[0-9]+$'; then
-            echo '* Invalid saved profile selection.' >&2
-            return 1
-         fi
-         PERCHDIR="$LASTSESSION"
-      fi
-
-      # Only New profile or an empty automatic resume can create a profile.
-      if [ "$PERCHDIR" != "" -a "$PERCHDIR" != new ]; then
-         if ! printf '%s\n' "$PERCHDIR" | grep -qE '^[0-9]+$' || [ ! -d "$CHANDIR/$PERCHDIR" ]; then
-            echo '* The requested profile does not exist.' >&2
-            return 1
-         fi
-      else
-         NEW="$(ls -1 "$CHANDIR" 2>/dev/null | grep -E '^[0-9]+$' | sort -n | tail -n 1)"
-         if [ "$PERCHDIR" = "" -a "$NEW" != "" ]; then
-            echo '* No previous profile is selected; choose a profile during startup.' >&2
-            return 1
-         fi
-         NAME=""
-         if [ "$NEW" = "" ]; then NAME='Initial profile'; fi
-         NEW=$(($NEW + 1))
-         mkdir -p "$CHANDIR" || return 1
-         TEMP=$(mktemp -d "$CHANDIR/.new.XXXXXX") || return 1
-         # Native branches must remain accessible to unprivileged applications.
-         chmod 755 "$TEMP" 2>/dev/null || true
-
-         # Keep container metadata alongside changes.dat and native metadata under boot.
-         NAMEFILE=boot/session.txt
-         if ! perch_native_fs "$TEMP"; then NAMEFILE=session.txt; fi
-         if ! mkdir -p "$(dirname "$TEMP/$NAMEFILE")" || ! printf '%s\n' "$NAME" > "$TEMP/$NAMEFILE" || ! mv "$TEMP" "$CHANDIR/$NEW"; then
-            rm -rf "$TEMP"
-            return 1
-         fi
-         PERCHDIR="$NEW"
-      fi
-      break
+      sleep 1
    done
-
-   # remember current, update timestamp
-   echo "$PERCHDIR" > "$CHANDIR/$LAST"
-   touch "$CHANDIR/$PERCHDIR"
-   echo "$PERCHDIR"
+   return 1
 }
 
 
-# Activate persistent changes
-# $1 = data directory
-# $2 = target changes directory
-#
+# Activate one DynFileFS store on every backing filesystem, including native Linux filesystems.
+# $1 = data directory; $2 = writable union target
 persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES T1 EXISTS PERCHDIR PERCHSIZE PERCHFILE DYNMNT REQUEST RESTORE TARGET RESTORE_ID START_ID AUTOMATIC
-
+   local CHANGES MODE T1 PERCHSIZE DYNMNT RESTORE TARGET RESTORE_ID START_ID INITIAL RUN
    CHANGES="$1/$(basename "$2")"
+   mkdir -p "$2" "$MEMORY/storage"
+   chmod 700 "$MEMORY/storage"
+   printf 'ram\n' > "$MEMORY/storage/kind"
+   for T1 in storage changes dynfilefs start; do printf '\n' > "$MEMORY/storage/$T1"; done
+   if ! grep -qE '(^|[[:space:]])perch([[:space:]]|dir=|$)' /proc/cmdline; then return 0; fi
 
-   # Setup the directory anyway, it will be used in all cases
-   mkdir -p "$2"
-   mkdir -p "$MEMORY/profile"
-   chmod 700 "$MEMORY/profile"
-   printf 'ram\n' > "$MEMORY/profile/kind"
-   for T1 in profile changes dynfilefs start; do printf '\n' > "$MEMORY/profile/$T1"; done
-
-   # If persistent changes are not requested, end here
-   # so memory will be used to save chanves temporarily
-   if ! grep -qE '(^|[[:space:]])perch([[:space:]]|dir=|$)' /proc/cmdline; then
-      return
-   fi
-
-   # Keep the selected backing mount when an activation retry follows the recovery shell.
-   if [ "${PERSISTENT_SESSION:-}" != "" ]; then
-      CHANGES=${PERSISTENT_SESSION%/*}
-      PERCHDIR=${PERSISTENT_SESSION##*/}
+   # Retain the selected backing mount across recovery-shell activation retries.
+   if [ "${PERSISTENT_STORAGE:-}" != "" ]; then
+      CHANGES="$PERSISTENT_STORAGE"
    else
-      PERCHDIR=$(cmdline_value perchdir)
-      if ! printf '%s\n' "$PERCHDIR" | grep -qE '^(resume|ask|new|[0-9]+|/dev/.+)?$'; then
-         echo '* Invalid profile selection in perchdir.' >&2
+      MODE=$(cmdline_value perchdir)
+      if ! printf '%s\n' "$MODE" | grep -qE '^(resume|ask|/dev/.+)?$'; then
+         echo '* Invalid storage selection in perchdir.' >&2
          return 1
       fi
-      if printf '%s\n' "$PERCHDIR" | grep -qE '^[0-9]+$' && [ ! -d "$CHANGES/$PERCHDIR" ]; then
-         echo '* The requested profile does not exist.' >&2
-         return 1
-      fi
-      if [ "$PERCHDIR" = resume ]; then
-         T1=$(select_perch_session "$CHANGES" resume) || T1=""
-         if [ "$T1" != "" ]; then
-            CHANGES=${T1%/*}
-            PERCHDIR=${T1##*/}
-         else
-            PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
-         fi
-      elif [ "$PERCHDIR" = ask -o "$PERCHDIR" = new ]; then
-         CHANGES=$(select_perch_session "$CHANGES" "$PERCHDIR") || CHANGES=""
-         PERCHDIR=${CHANGES##*/}
-         CHANGES=${CHANGES%/*}
-      else
-         PERCHDIR=$(restore_perch_session "$CHANGES") || PERCHDIR=""
+      if [ "$MODE" = resume ]; then
+         T1=$(select_perch_storage "$CHANGES" resume) || T1=""
+         if [ "$T1" != "" ]; then CHANGES="$T1"
+         elif ! perch_directory "$CHANGES" 2>/dev/null; then CHANGES=""; fi
+      elif [ "$MODE" = ask ]; then
+         CHANGES=$(select_perch_storage "$CHANGES" ask) || CHANGES=""
+      elif [ "${MODE#/dev/}" != "$MODE" ]; then
+         CHANGES=$(perch_device_storage "$MODE") || CHANGES=""
+      elif ! perch_directory "$CHANGES" 2>/dev/null; then
+         CHANGES=""
       fi
    fi
-   if [ "$PERCHDIR" = "" ]; then
-      echo "* Persistent changes disabled; using RAM for changes"
+   if [ "$CHANGES" = "" ]; then
+      echo '* Persistent changes disabled; using RAM for changes'
       return 0
    fi
-   PERSISTENT_SESSION="$CHANGES/$PERCHDIR"
+   PERSISTENT_STORAGE="$CHANGES"
 
-   T1="$CHANGES/.empty"
-
-   # check if changes directory exists and is writable
-   touch "$T1" 2>/dev/null && rm -f "$T1" 2>/dev/null
-
-   # if not, simply return back
-   if [ $? -ne 0 ]; then
-      echo "* Persistent changes not writable or not used"
-      return 1
-   fi
-
-   REQUEST=$(perch_session_file "$CHANGES/$PERCHDIR")
-   REQUEST="${REQUEST%/*}/restore.txt"
-   RESTORE=""
-   RESTORE_ID=$(persistence target "${REQUEST%/*}") || return 1
-   if [ "$RESTORE_ID" != "" ]; then
-      if [ -L "$REQUEST" ]; then
-         echo '* The restore point request restore.txt must be a regular file.' >&2
-         return 1
-      fi
-      if [ ! -f "$CHANGES/$PERCHDIR/changes.dat" ]; then
-         echo '* Restore points require a container-backed profile.' >&2
-         return 1
-      fi
-      T1=$(perch_restore_points "$CHANGES/$PERCHDIR") || return 1
-      RESTORE=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $3; found=1} END {exit !found}') || return 1
-      AUTOMATIC=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $4}')
-   fi
-
-   # try to use native fs if posix-compatible
-   echo_green_star
-   echo "Testing persistent changes for posix compatibility"
-   if perch_native_fs "$CHANGES/$PERCHDIR"; then
-      echo "* Activating native persistent changes for profile #$PERCHDIR"
-      mount --bind "$CHANGES/$PERCHDIR" "$2" || return 1
-      printf 'native\n' > "$MEMORY/profile/kind"
-      printf '%s\n' "/run/initramfs$CHANGES/$PERCHDIR" > "$MEMORY/profile/profile"
-      printf '%s\n' "/run/initramfs$2" > "$MEMORY/profile/changes"
-      return 0
-   fi
-
-
-   # Round total backing capacity up to GiB; the initial XFS image needs 16000 MiB.
+   # Round backing capacity up to GiB; mkfs.xfs.custom needs at least 16000 MiB.
    PERCHSIZE=$(df -Pk "$CHANGES" | awk 'END {
       size=int(($2 + 1048575) / 1048576) * 1024
       if (size < 16000) size=16000
       printf "%.0f\n",size
    }')
-
-   PERCHFILE="$PERCHDIR/changes.dat"
-
-   # resume or use new
-   if [ -e "$CHANGES/$PERCHFILE" ]; then
-      echo "* Resuming persistent changes for profile #$PERCHDIR"
-      EXISTS="true"
-      if ! T1=$(@mount.dynfilefs -i -f "$CHANGES/$PERCHFILE"); then return 1; fi
-      T1=$(printf '%s\n' "$T1" | sed -n 's/^sizeMiB://p')
-      if [ "$RESTORE" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
-   else
-      echo "* Creating new persistent changes for profile #$PERCHDIR"
-      EXISTS=""
+   if [ ! -e "$CHANGES/changes.dat" ] && [ ! -L "$CHANGES/changes.dat" ]; then
+      echo '* Preparing storage for saved changes'
+      persistence create "$CHANGES" "$PERCHSIZE" || return 1
    fi
+   if [ ! -f "$CHANGES/changes.dat" ] || [ -L "$CHANGES/changes.dat" ]; then return 1; fi
+   INITIAL=$(persistence initial "$CHANGES") || return 1
+   RESTORE_ID=$(persistence target "$CHANGES") || return 1
+   RESTORE=""
+   if [ "$RESTORE_ID" != "" ]; then
+      T1=$(perch_restore_points "$CHANGES") || return 1
+      RESTORE=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $3; found=1} END {exit !found}') || return 1
+   fi
+   T1=$(@mount.dynfilefs -i -f "$CHANGES/changes.dat") || return 1
+   T1=$(printf '%s\n' "$T1" | sed -n 's/^sizeMiB://p')
+   if [ "$RESTORE" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
 
-   # Use FAT32-sized parts for new storage; existing storage retains its split size.
-   echo "- mounting dynamically enlarged storage"
-
-   # Keep FUSE visible so shutdown uses its own filesystem options.
+   TARGET="$2"
    DYNMNT="$2.dfs"
    mkdir -p "$DYNMNT"
-   if mountpoint -q "$2" || mountpoint -q "$DYNMNT"; then
+   if mountpoint -q "$TARGET" || mountpoint -q "$DYNMNT"; then
       echo '* Persistent storage is still mounted; unmount it before retrying.' >&2
       return 1
    fi
-   TARGET="$2"
-   # Preserve recovered current data before restore; protection precedes DynFileFS's startup pruning.
-   if [ "$RESTORE_ID" != "" ] && { [ -e "$CHANGES/$PERCHDIR/keep-current.$RESTORE_ID" ] || [ -L "$CHANGES/$PERCHDIR/keep-current.$RESTORE_ID" ]; }; then
-      @mount.dynfilefs -f "$CHANGES/$PERCHFILE" -m "$DYNMNT" --protect "$RESTORE_ID" || return 1
-      # Replay an interrupted XFS journal, then capture a clean filesystem without live writers.
-      if ! mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then umount "$DYNMNT"; return 1; fi
-      if ! umount "$TARGET"; then return 1; fi
-      if ! persistence prepare "$CHANGES/$PERCHDIR" "$DYNMNT"; then umount "$DYNMNT"; return 1; fi
+   RUN=$(persistence run "$CHANGES") || return 1
+   if [ -f "$CHANGES/restore.txt" ] && [ "$RUN" != "" ] && [ "${RUN#* }" != discard ]; then
+      # Recover the previous XFS before preserving saved work, without any union writers.
+      @mount.dynfilefs -f "$CHANGES/changes.dat" -m "$DYNMNT" --protect "$INITIAL" --protect "$RESTORE_ID" || return 1
+      if ! mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then umount "$DYNMNT"; return 1; fi
+      if ! persistence detach "$TARGET"; then return 1; fi
+      if ! persistence prepare "$CHANGES" "$DYNMNT"; then umount "$DYNMNT"; return 1; fi
       umount "$DYNMNT" || return 1
+      persistence closed "$CHANGES" || return 1
    fi
-   set -- -f "$CHANGES/$PERCHFILE" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000
+   set -- -f "$CHANGES/changes.dat" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000 --protect "$INITIAL"
    if [ "$RESTORE" != "" ]; then
-      echo "* Restoring profile from: $RESTORE"
-      set -- "$@" --restore "$RESTORE"
-      if [ "$AUTOMATIC" = 1 ]; then set -- "$@" --protect "$RESTORE_ID"; fi
+      echo "* Restoring saved changes from: $RESTORE"
+      set -- "$@" --restore "$RESTORE" --protect "$RESTORE_ID"
    fi
-   if ! @mount.dynfilefs "$@"; then return 1; fi
-   if [ ! "$EXISTS" ]; then
-      echo "- creating filesystem"
-      if ! mkfs.xfs.custom "$DYNMNT/virtual.dat"; then umount "$DYNMNT"; return 1; fi
-      # The new store's first automatic point predates formatting and cannot boot a profile.
-      if ! T1=$(cat "$DYNMNT/snapshot"); then umount "$DYNMNT"; return 1; fi
-   fi
-
-   echo "- mounting persistent changes"
-   if mount -t xfs -o loop "$DYNMNT/virtual.dat" "$TARGET"; then
-      # Check XFS too, including a previous boot interrupted after container growth.
-      if xfs_growfs "$TARGET" >/dev/null; then
-         if [ ! "$EXISTS" ]; then
-            # DynFileFS freezes the mounted XFS before saving its fully sized initial state.
-            if ! persistence initialize "$CHANGES/$PERCHDIR" "$DYNMNT" || ! printf 'delete %s\n' "$T1" > "$DYNMNT/snapshot"; then
-               umount "$TARGET"
-               umount "$DYNMNT"
-               return 1
-            fi
-         fi
-         if START_ID=$(persistence start "$CHANGES/$PERCHDIR" "$DYNMNT"); then
-            printf 'container\n' > "$MEMORY/profile/kind"
-            printf '%s\n' "/run/initramfs$CHANGES/$PERCHDIR" > "$MEMORY/profile/profile"
-            printf '%s\n' "/run/initramfs$TARGET" > "$MEMORY/profile/changes"
-            printf '%s\n' "/run/initramfs$DYNMNT" > "$MEMORY/profile/dynfilefs"
-            printf '%s\n' "$START_ID" > "$MEMORY/profile/start"
-            return 0
-         fi
+   @mount.dynfilefs "$@" || return 1
+   if mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then
+      # Finish any interrupted growth before establishing this run's durable starting guard.
+      if xfs_growfs "$TARGET" >/dev/null && START_ID=$(persistence start "$CHANGES" "$DYNMNT") && persistence mark "$CHANGES"; then
+         printf 'container\n' > "$MEMORY/storage/kind"
+         printf '%s\n' "/run/initramfs$CHANGES" > "$MEMORY/storage/storage"
+         printf '%s\n' "/run/initramfs$TARGET" > "$MEMORY/storage/changes"
+         printf '%s\n' "/run/initramfs$DYNMNT" > "$MEMORY/storage/dynfilefs"
+         printf '%s\n' "$START_ID" > "$MEMORY/storage/start"
+         return 0
       fi
-      if ! umount "$TARGET"; then return 1; fi
+      if ! persistence detach "$TARGET"; then return 1; fi
    fi
    umount "$DYNMNT"
    return 1

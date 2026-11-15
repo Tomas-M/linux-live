@@ -4,53 +4,72 @@ Unreleased changes
 Linux Live Kit
 --------------
 
-- Skip EFI System Partitions during live-data discovery, profile selection and automount.
+- Skip EFI System Partitions during live-data discovery, storage selection and automount.
 - Update the static initramfs blkid and eject to util-linux 2.42.4 and Mini Commander to 2.0.
 - Show device search results, mount errors and storage messages when live data
   cannot be found, with a complete diagnostic report retained in RAM.
 - Automatically size persistence containers from their backing filesystem and grow
   existing containers without shrinking them; remove the perchsize boot parameter.
 - Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.
+- Report reusable capacity released by deleting individual DynFileFS restore points,
+  using cached block ownership instead of scanning saved filesystem contents.
+- Allow disabling DynFileFS automatic end-of-run points without disabling explicit
+  restore points or normal filesystem synchronization.
+- Rename DynFileFS restore points by stable identity while retaining their data,
+  ancestry, open read-only views and next-start targets. Expose saved images by ID.
 - Keep DynFileFS backing files and automatic filesystem freezing accessible after
   switching from the initramfs to the live root, fixing persistent boot I/O errors.
-- Restore a saved state at profile startup using its stable ID; keep the
+- Restore a saved state at storage startup using its stable ID; keep the
   request on failure and stop for recovery instead of silently continuing in RAM.
-- Simplify boot profile menus to selection and clean-profile creation; remove
-  copying, renaming and name entry. Refresh the disk list with F5 after connecting a drive.
+- Keep one DynFileFS changes.dat directly in changes on every filesystem,
+  including native Linux storage; ignore older numbered profile directories.
+- Choose a drive and then a restore point during boot. Fresh start restores
+  Initial state while retaining history; F5 refreshes the drive list.
 - Preserve the starting state before persistent writes and apply save/discard
   policy at the next activation; protect scheduled restore points during recovery.
   Recover interrupted creation of the starting state without losing unrelated points.
-- Give new container profiles a permanent Initial state restore point after
+- Give new containers a permanent Initial state restore point after
   formatting and filesystem growth; hide the unusable pre-formatting point.
 
 Slax
 ----
 
+- Rename restore points without changing their contents or next-start selection,
+  including international names and spaces. Wrap inspector titles, omit redundant
+  parent information and button tooltips, and reduce confirmation text margins.
+- Make Don't save suppress automatic restore points for the discarded run,
+  including when a different point is selected for the next start.
+- Show space reusable after deleting a restore point and remove repeated-name
+  tree tooltips. Refresh size figures without rebuilding unchanged history rows.
+- Keep the Save this run switch from getting stuck between positions during
+  repeated clicks or dragging while storage status refreshes.
 - Keep SSH socket activation disabled by default, avoiding unnecessary VSOCK
   discovery errors on virtual machines without a VSOCK transport.
 - Keep a consistent gap between buttons in standard GTK message dialogs.
+- Replace profile management with restore points for the currently used drive.
+  Choose storage only at boot; explain persistence and recovery with an example
+  when running in RAM. Keep confirmation left and Cancel right.
+- Open restore-point files at the saved filesystem root instead of the user's home.
 - Fix Slax Status crashes when clicking informational rows in empty or loading history views.
-- Explain profiles and restore points before the first profile is created; show
-  a clear starting history for new profiles and hide removed points unless requested.
-  Reserve Current state for the running profile; new profiles show only Initial state.
+- Show a clean Initial state for new storage; reserve Current state for the
+  running store. Preserve the state being left before a restore when saving is
+  enabled, and always retain existing history.
 - Increase the gap between Partition Manager's operation percentage and progress bar.
-- Keep the profile manager open when toggling its tray bubble, remove storage Details,
+- Keep the restore-point window open when toggling its tray bubble, remove storage Details,
   and fix asynchronous save switches, footer movement and bubble positioning.
-- Exclude EFI System Partitions from automatic mounting and profile-drive discovery;
+- Exclude EFI System Partitions from automatic mounting and storage discovery;
   prevent both installers from using them for Slax data while retaining EFI-on-data fallback.
 - Keep desktop shortcuts available in tray bubbles and refine Slax Status spacing
-  and profile actions. Show used space in the bar while keeping available space in text.
+  and restore-point actions. Show used space in the bar while keeping available space in text.
 - Use light file icons for Windows shortcuts, applications, libraries and images.
 - Prefer the installed variants of Slax's held packages in APT, preventing rebuilt
   packages from appearing as same-version updates while retaining ordinary updates.
 - Increased default storage size for persistent changes. Previously, the default
   virtual size was 16 GB; it now follows the actual capacity of the filesystem
-  storing the profile without unnecessary overhead.
-- Call persistent environments Slax profiles and saved states restore points.
-  Choose a profile or restore point during startup; keep ordinary resume automatic.
-- Add Slax Status to the desktop tray, with anchored storage warnings, estimated
-  available space, Save this run and native profile/restore-point management.
-  Browse saved files read-only and choose the next profile or restore point.
+  storing saved changes without unnecessary overhead.
+- Add Slax Status to the desktop tray, with anchored warnings, estimated available
+  space, Save this run and native restore-point management. Browse saved files
+  read-only and choose a restore point for the next start.
 - Include whiptail for debconf's text dialogs during package installation,
   avoiding frontend initialization warnings.
 - Highlight the Start button on hover using the shared GTK panel style.

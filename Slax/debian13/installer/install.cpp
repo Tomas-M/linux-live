@@ -138,13 +138,13 @@ static std::string bootDigest(FileTree &tree,const std::string &path)
    fclose(file); auto value=hash.finish(); return {reinterpret_cast<const char *>(value.data()),value.size()};
 }
 
-// Saved profiles and this disk's recovery records must never come from a different installation.
+// Saved changes and this disk's recovery records must never come from a different installation.
 static bool retainedPath(const std::string &path)
 {
    auto key=filenameKey(path);
-   bool session=key=="slax/changes" || key.find("slax/changes/")==0;
+   bool changes=key=="slax/changes" || key.find("slax/changes/")==0;
    bool recovery=key=="slax/boot/grub/boot-backup" || key.find("slax/boot/grub/boot-backup/")==0;
-   return session || recovery;
+   return changes || recovery;
 }
 
 // Detect aliases by native file identity, not by the spelling of the source path.
@@ -342,7 +342,7 @@ InstallPlan prepareInstall(Device device,const Image &source,bool erase)
    else
    {
       plan.confirmation+="Keep your files and existing partitions. ";
-      plan.confirmation+=overwrite?"Replace matching files in the existing slax folder. Keep saved profiles and files not present in the source.\n\n":"Copy Slax into a new slax folder on "+device.label+".\n\n";
+      plan.confirmation+=overwrite?"Replace matching files in the existing slax folder. Keep saved changes, restore points and files not present in the source.\n\n":"Copy Slax into a new slax folder on "+device.label+".\n\n";
       if (!plan.bootConfig.empty()) plan.confirmation+="Add Slax Linux to the existing "+std::string(plan.bootConfig=="boot.ini"?"Windows XP":plan.bootConfig=="Boot/BCD"?"Windows":"GRUB")+" boot menu. Keep the original operating system as the default and preserve its boot code. ";
       else if (plan.bios) plan.confirmation+="Set up BIOS boot (for older computers). "+std::string(plan.previousBios.empty()?"":"Show a text system-selection menu first, with the original system as the default. ");
       if (plan.bios && replaceBios) plan.confirmation+="Any existing BIOS boot loader on this disk will be replaced. ";
