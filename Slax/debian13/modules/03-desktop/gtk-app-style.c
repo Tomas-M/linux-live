@@ -12,6 +12,8 @@ static gboolean configure_message_dialog(GSignalInvocationHint *hint, guint coun
     G_GNUC_END_IGNORE_DEPRECATIONS
     if (gtk_button_box_get_layout(GTK_BUTTON_BOX(actions))==GTK_BUTTONBOX_EXPAND)
         gtk_button_box_set_layout(GTK_BUTTON_BOX(actions), GTK_BUTTONBOX_END);
+    gtk_box_set_spacing(GTK_BOX(actions), MAX(8, gtk_box_get_spacing(GTK_BOX(actions))));
+    gtk_style_context_remove_class(gtk_widget_get_style_context(actions), "linked");
     GtkContainer *content=GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(widget)));
     gtk_container_set_border_width(content, MAX(14, gtk_container_get_border_width(content)));
     return TRUE;
