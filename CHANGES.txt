@@ -34,6 +34,8 @@ Linux Live Kit
 Slax
 ----
 
+- Release the shutdown splash console before systemd's initramfs handoff,
+  preventing restarts from hanging until a key is pressed.
 - Rename restore points without changing their contents or next-start selection,
   including international names and spaces. Wrap inspector titles, omit redundant
   parent information and button tooltips, and reduce confirmation text margins.

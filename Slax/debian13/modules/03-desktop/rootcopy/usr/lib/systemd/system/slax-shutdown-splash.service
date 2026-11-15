@@ -4,8 +4,7 @@ DefaultDependencies=no
 # Slax starts X directly; wait for it to release the console before painting.
 After=xorg.service getty@tty1.service display-manager.service
 Before=shutdown.target
-# The renderer holds files only in the initramfs while the live root is unmounted.
-SurviveFinalKillSignal=yes
+# Final process termination releases the console before systemd enters the initramfs.
 ConditionKernelCommandLine=quiet
 ConditionKernelCommandLine=!debug
 ConditionKernelCommandLine=!text
