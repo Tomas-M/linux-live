@@ -1762,6 +1762,8 @@ must follow the general Slax repair rules above.
   explaining the affected restore point and what happens to the current apps,
   settings and files. Keep Show removed below history instead of a Current path
   legend. A queued point's node stays filled blue independently of row selection.
+  Its badge and Cancel next-start selection action share that blue. Clicking the
+  queued action clears the selection just like Cancel beside Next start.
   Group Cancel with Next start on the left; reserve one stable footer height.
   The Restart Slax icon on the right confirms and invokes ordinary systemctl
   reboot as the logged-in user, without force or a new privileged broker API.
@@ -1774,6 +1776,13 @@ must follow the general Slax repair rules above.
   GTK's asynchronous state-set signal; apply confirmed backend policy without
   generating another mutation. Set their active property only when it differs:
   GTK 3 cancels animation even for an unchanged value, leaving the thumb midway.
+  Keep controls visually enabled during run.save writes. Serialize writes and
+  coalesce only pending save intents to the latest choice; preserve unrelated
+  mutations. GTK's backend-state acknowledgement must also avoid setting an
+  unchanged active value, so an acknowledgement cannot interrupt the next gesture.
+  Keep inspector widgets alive across history changes and update only changed
+  properties. During other mutations disable individual actions, leaving text at normal
+  contrast. Keep native history rows flat when pressed.
   Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
   Keep the single capacity estimate directly in the UI without a Details dialog.
