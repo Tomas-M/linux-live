@@ -1,0 +1,76 @@
+Description: Follow the moving switch slider and preserve newer async animations
+
+--- a/gtk/gtkswitch.c
++++ b/gtk/gtkswitch.c
+@@ -55,5 +55,6 @@
+ #include "gtkintl.h"
+ #include "gtkprivate.h"
++#include "gtkrender.h"
+ #include "gtkwidget.h"
+ #include "gtkmarshalers.h"
+ #include "gtkapplicationprivate.h"
+@@ -618,7 +619,47 @@
+ gtk_switch_draw (GtkWidget *widget,
+                  cairo_t   *cr)
+ {
+-  gtk_css_gadget_draw (GTK_SWITCH (widget)->priv->gadget, cr);
++  GtkSwitchPrivate *priv = GTK_SWITCH (widget)->priv;
++  GtkStyleContext *context = gtk_widget_get_style_context (widget);
++  GtkStateFlags state = gtk_widget_get_state_flags (widget);
++  GtkAllocation allocation, track, slider;
++  double x1, y1, x2, y2, split;
++  int side;
++
++  gtk_widget_get_allocation (widget, &allocation);
++  gtk_css_gadget_get_border_allocation (priv->gadget, &track, NULL);
++  gtk_css_gadget_get_border_allocation (priv->slider_gadget, &slider, NULL);
++  track.x -= allocation.x;
++  track.y -= allocation.y;
++  split = slider.x - allocation.x + slider.width / 2.0;
++  cairo_clip_extents (cr, &x1, &y1, &x2, &y2);
++
++  /* Preserve complete endpoint styles even when themes add trough padding. */
++  if (priv->handle_pos <= 0.0)
++    split = x1;
++  else if (priv->handle_pos >= 1.0)
++    split = x2;
++
++  /* The thumb covers the junction, including while dragging or reversing. */
++  for (side = 0; side < 2; side++)
++    {
++      gtk_style_context_save (context);
++      gtk_style_context_set_state (context, (state & ~GTK_STATE_FLAG_CHECKED) |
++                                   (side == 0 ? GTK_STATE_FLAG_CHECKED : 0));
++      cairo_save (cr);
++      cairo_rectangle (cr, side == 0 ? x1 : split, y1,
++                       side == 0 ? split - x1 : x2 - split, y2 - y1);
++      cairo_clip (cr);
++      gtk_render_background (context, cr, track.x, track.y,
++                             track.width, track.height);
++      gtk_render_frame (context, cr, track.x, track.y,
++                        track.width, track.height);
++      cairo_restore (cr);
++      gtk_style_context_restore (context);
++    }
++
++  gtk_switch_render_trough (priv->gadget, cr, track.x, track.y,
++                           track.width, track.height, NULL);
+ 
+   return FALSE;
+ }
+@@ -1188,11 +1229,10 @@
+   sw->priv->state = state;
+ 
+-  /* This will be a no-op if we're switching the state in response
+-   * to a UI change. We're setting active anyway, to catch 'spontaneous'
+-   * state changes.
+-   */
+-  gtk_switch_set_active (sw, state);
++  /* A backend reply must not cancel a newer animation
++   * when active already matches the confirmed state. */
++  if (sw->priv->is_active != state)
++    gtk_switch_set_active (sw, state);
+ 
+   if (state)
+     gtk_widget_set_state_flags (GTK_WIDGET (sw), GTK_STATE_FLAG_CHECKED, FALSE);
+   else

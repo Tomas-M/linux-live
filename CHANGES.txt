@@ -34,6 +34,8 @@ Linux Live Kit
 Slax
 ----
 
+- Keep switch tracks blue to the left of the moving thumb and gray to its right,
+  avoiding the color flash at the end of animation or dragging.
 - Clarify restore-point dialogs and give them normal window titles. Keep queued
   points marked in blue, group next-start controls in a stable footer, move
   Show removed below history, and add a normal Restart Slax action.
