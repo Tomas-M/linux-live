@@ -1,0 +1,72 @@
+Description: Keep disposable file browsers separate from the desktop process
+
+--- a/src/pcmanfm.c
++++ b/src/pcmanfm.c
+@@ -48,6 +48,7 @@
+ 
+ static int signal_pipe[2] = {-1, -1};
+ static gboolean daemon_mode = FALSE;
++static gboolean standalone = FALSE;
+ static gboolean first_run = TRUE;
+ static guint save_config_idle = 0;
+ 
+@@ -80,6 +81,8 @@
+     { "daemon-mode", 'd', 0, G_OPTION_ARG_NONE, &daemon_mode, N_("Run PCManFM as a daemon"), NULL },
+     { "no-desktop", '\0', 0, G_OPTION_ARG_NONE, &no_desktop, N_("No function. Just to be compatible with nautilus"), NULL },
+ 
++    { "standalone", '\0', 0, G_OPTION_ARG_NONE, &standalone, N_("Run a separate browser until its last window closes"), NULL },
++
+     /* options that are acceptable for every instance of pcmanfm and will be passed through IPC. */
+     { "desktop", '\0', 0, G_OPTION_ARG_NONE, &show_desktop, N_("Launch desktop manager"), NULL },
+     { "desktop-off", '\0', 0, G_OPTION_ARG_NONE, &desktop_off, N_("Turn off desktop manager if it's running"), NULL },
+@@ -219,12 +222,21 @@
+         return 1;
+     }
+ 
++    /* A disposable browser must not join the desktop process or manage volumes. */
++    gboolean desktop_request = show_desktop || desktop_off || desktop_pref;
++    gboolean settings_request = set_wallpaper || wallpaper_mode || show_pref >= 0;
++    if (standalone && (daemon_mode || desktop_request || settings_request))
++    {
++        g_printerr("Standalone mode only supports file-browser windows.\n");
++        return 1;
++    }
++
+     /* ensure that there is only one instance of pcmanfm. */
+     inst.prog_name = "pcmanfm";
+     inst.cb = single_inst_cb;
+-    inst.opt_entries = opt_entries + 3;
++    inst.opt_entries = opt_entries + 4;
+     inst.screen_num = gdk_x11_get_default_screen();
+-    switch(single_inst_init(&inst))
++    if (!standalone) switch(single_inst_init(&inst))
+     {
+     case SINGLE_INST_CLIENT: /* we're not the first instance. */
+         single_inst_finalize(&inst);
+@@ -277,7 +289,7 @@
+     if(pcmanfm_run(gdk_screen_get_number(gdk_screen_get_default())))
+     {
+         first_run = FALSE;
+-        fm_volume_manager_init();
++        if (!standalone) fm_volume_manager_init();
+ #if !GTK_CHECK_VERSION(3, 6, 0)
+         GDK_THREADS_ENTER();
+ #endif
+@@ -293,7 +305,7 @@
+             g_source_remove(save_config_idle);
+             save_config_idle = 0;
+         }
+-        fm_volume_manager_finalize();
++        if (!standalone) fm_volume_manager_finalize();
+     }
+ 
+ #if FM_CHECK_VERSION(1, 2, 0)
+@@ -305,7 +317,7 @@
+     _tab_page_modules = NULL;
+ #endif
+ 
+-    single_inst_finalize(&inst);
++    if (!standalone) single_inst_finalize(&inst);
+     fm_gtk_finalize();
+ 
+     g_object_unref(config);
