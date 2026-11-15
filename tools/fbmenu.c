@@ -38,7 +38,7 @@
 #include "fbmenu-font.h"
 
 static const char *socket_path="/run/fbmenu.sock";
-#define DISABLED "/run/bootsplash.disabled"
+static const char *disabled_path="/run/bootsplash.disabled";
 struct request { char operation, cancel, refresh; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail; };
 /* Keep navigation keys outside the Unicode range. */
@@ -346,7 +346,7 @@ static void disable_splash(void)
 {
    if (disabled) return;
    disabled=1; graphics=0;
-   close(open(DISABLED,O_WRONLY|O_CREAT,0600));
+   close(open(disabled_path,O_WRONLY|O_CREAT,0600));
    ioctl(tty,KDSETMODE,KD_TEXT);
    /* Shutdown messages already live in the console buffer; preserve them on Esc. */
    const char *clear=logfd>=0?"\033[2J\033[H\033[?25h":"\033[?25h";
@@ -456,6 +456,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
 {
    int resumed=phase==HANDOFF, shutting_down=phase==SHUTDOWN;
    if (shutting_down) {
+      if (!access(disabled_path,F_OK)) return 0;
       struct sigaction action={.sa_handler=shutdown_timeout};
       sigemptyset(&action.sa_mask); sigaction(SIGALRM,&action,NULL);
       alarm(10);
@@ -469,7 +470,6 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
    if (keyboard_fd<0) return 1;
    /* Run from the initramfs again, taking over only after X and getty have stopped. */
    if (shutting_down) {
-      unlink(DISABLED);
       if (open_graphics() || ioctl(tty,VT_ACTIVATE,1)) return 0;
       /* A refused or stalled VT switch must not hold up shutdown. */
       for (int attempt=0;attempt<50;attempt++) {
@@ -496,7 +496,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
    unlink(socket_path);
    if (bind(listener,(struct sockaddr *)&address,sizeof(address)) || listen(listener,4)) return 1;
    chmod(socket_path,0600); keyboard(1);
-   if (!access(DISABLED,F_OK)) disable_splash();
+   if (!access(disabled_path,F_OK)) disable_splash();
    else if (resumed || shutting_down) {
       if (open_graphics()) disable_splash();
       else {
@@ -655,8 +655,9 @@ static int connect_server(void)
 int main(int argc, char **argv)
 {
    if (argc==3 && !strcmp(argv[1],"--shutdown")) {
-      /* systemd overlays /run at shutdown handoff; retain IPC in the initramfs root. */
+      /* Keep shutdown dismissal across systemd's /run overlay and renderer restart. */
       socket_path="/fbmenu-shutdown.sock";
+      disabled_path="/fbmenu-shutdown.disabled";
       return serve(argv[2],NULL,SHUTDOWN,-1,0);
    }
    if (argc==4 && (!strcmp(argv[1],"--serve") || !strcmp(argv[1],"--resume")))

@@ -1597,18 +1597,23 @@ must follow the general Slax repair rules above.
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
   Shutdown uses `fbmenu --shutdown` from the retained initramfs after Xorg, getty
-  and the display manager stop. Its shutdown-only systemd unit survives final
-  process termination without holding files on the live root or saved-changes disks.
+  and the display manager stop. Its shutdown-only systemd unit must end during
+  systemd's final process termination, before systemd acquires the console.
+  Systemd waits for that renderer to exit; only then may the exitrd start a new
+  renderer. Never let the splash read or change termios during that handoff:
+  systemd's terminal-size query can otherwise block indefinitely waiting for input.
   Reuse the logo and dots timing. Esc restores the console's existing shutdown
   output and kernel verbosity while shutdown continues. Quiet text/debug boots
   keep their console, and unavailable framebuffer graphics must not block shutdown.
   Bound the shutdown renderer to ten seconds, restoring the console like Escape.
   Allow one further second for console cleanup before exiting the renderer;
   this deadline never interrupts filesystem cleanup or applies to boot menus.
-  Keep shutdown IPC at `/fbmenu-shutdown.sock`: systemd overlays `/run` during
-  the exitrd pivot and resets the console to KD_TEXT. At the start of `shutdown`,
-  before sourcing configuration, call `fbmenu --start /fbmenu-shutdown.sock` to
-  synchronously reacquire graphics. Do not restart a splash dismissed with Esc.
+  Keep shutdown IPC and dismissal at `/fbmenu-shutdown.sock` and
+  `/fbmenu-shutdown.disabled`: systemd overlays `/run` during the exitrd pivot.
+  At the start of `shutdown`, before sourcing configuration, start a new
+  `fbmenu --shutdown /lib/bootsplash` in the background for quiet graphical boots.
+  Keep text/debug boots unchanged and honor an earlier Esc dismissal or timeout
+  before touching the console. Shutdown never clears the dismissal marker.
   Read keyboard input through a separate nonblocking descriptor and restore raw
   termios after console resets in every phase. A reset can invalidate poll
   readiness; a blocking read then deadlocks the exitrd's splash request. Bound

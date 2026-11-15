@@ -6,9 +6,11 @@
 # Author: Tomas M <http://www.linux-live.org/>
 #
 
-# Reacquire graphics after systemd reset the console for this handoff.
-if [ -S /fbmenu-shutdown.sock ]; then
-   /bin/fbmenu --start /fbmenu-shutdown.sock
+# Systemd has finished acquiring the console; start a new owner after the handoff.
+if [ -f /lib/bootsplash/config ] && grep -qw quiet /proc/cmdline; then
+   if ! grep -qwE 'text|debug' /proc/cmdline; then
+      /bin/fbmenu --shutdown /lib/bootsplash >/dev/null 2>&1 &
+   fi
 fi
 
 . /lib/config
