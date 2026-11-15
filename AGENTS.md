@@ -957,7 +957,11 @@ must follow the general Slax repair rules above.
   Enable `gtk-dialogs-use-header` in GTK 3 and GTK 4 settings so native file
   dialogs retain the same header style. No XSettings daemon is needed.
 - `03-desktop/build-gtk` rebuilds GTK 3's runtime library with
-  `gtk-chromium-file-activation.diff` and `gtk3-combo-list.diff`.
+  `gtk-chromium-file-activation.diff`, `gtk3-combo-list.diff` and
+  `gtk3-switch-track.diff`. Switch tracks follow the actual native thumb geometry
+  during animation and dragging; retain GTK's input, accessibility and theme colors.
+  Backend state updates must preserve a newer animation when active already matches
+  the confirmed value.
   `build-gtk2` rebuilds Debian's GTK 2 runtime with `gtk2-combo-list.diff`.
   Keep both original package versions on hold. Chromium 156 uses a custom Open response
   and makes Cancel the keyboard default. On X11, recognize its custom response
