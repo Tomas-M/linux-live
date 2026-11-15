@@ -8,6 +8,8 @@ reporting progress.
 
 - Write all code, comments, documentation and product strings in English,
   even when Tomas speaks Czech. Conversation may stay in Czech.
+- When adding or editing Slax dialogs, put the confirming action on the left and
+  Cancel on the right. Keep Cancel as the keyboard default for destructive actions.
 - Keep the repository-root `SLAX-KNOWLEDGE.txt` current whenever desktop or system
   changes affect user-visible behavior, commands or defaults. It is the concise
   user knowledge base for Slax Assistant: prioritize working graphical workflows
@@ -150,7 +152,7 @@ reporting progress.
   Keep only Back and Next in the
   wizard footer; close through the native window controls. Preserve the write-phase
   close protection and Cancel in file/installation confirmation dialogs.
-  Installation confirmations place Cancel on the left and Install on the right,
+  Installation confirmations place Install on the left and Cancel on the right,
   with Cancel remaining the keyboard default on both platforms.
   The sidebar clover is 32 by 32 logical pixels, using slax.ico's exact 32-pixel
   frame. Windows loads the ICO natively for DPI scaling; GTK uses its extracted PNG.
