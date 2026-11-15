@@ -1773,6 +1773,8 @@ must follow the general Slax repair rules above.
   Wait for storage mutations before allowing restart and report launch failures.
   Green action buttons retain a subtle gradient, bottom edge and shadow with
   pressed feedback in Slax Status and Partition Manager.
+  Apply `partition-manager-style.diff` after fetching Partition Manager so fresh
+  builds retain the approved button relief and operation-percentage spacing.
   Slax Status colors only focused primary buttons. In backdrop state, use the
   ordinary native button style for both green and queued blue actions.
   Status confirmations remove the native message parent's horizontal margins so

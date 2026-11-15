@@ -1,0 +1,27 @@
+Description: Retain raised buttons and progress-label spacing in the Slax build
+
+diff --git a/style.css b/style.css
+index e0ec225..0725caf 100644
+--- a/style.css
++++ b/style.css
+@@ -10,8 +10,10 @@
+ .partitions button,.partitions-dialog button { min-height:0; min-width:0; padding:6px 12px; border:1px solid #cdd4c9; border-radius:5px; background:linear-gradient(#fff,#f4f6f1); box-shadow:0 1px 1px alpha(#223020,.02); color:#25302d; font-size:14px; font-weight:400; text-shadow:none; -gtk-icon-shadow:none; }
+ .partitions button:hover,.partitions-dialog button:hover { background:#edf1e8; border-color:#b4c0af; }
+ .partitions button:disabled,.partitions-dialog button:disabled { opacity:.4; color:#78817c; }
+-.partitions button.suggested-action,.partitions-dialog button.suggested-action { background:#347e56; border-color:#2b704b; color:#fff; box-shadow:inset 0 1px alpha(#fff,.08); }
+-.partitions button.suggested-action:hover,.partitions-dialog button.suggested-action:hover { background:#286b46; }
++.partitions button.suggested-action,.partitions-dialog button.suggested-action { background:linear-gradient(shade(#347e56,1.08),#347e56); border-color:#2b704b; border-bottom-color:#245e3f; color:#fff; box-shadow:inset 0 1px alpha(#fff,.16),0 1px 1px alpha(#223020,.04); }
++.partitions button.suggested-action:hover:not(:disabled),.partitions-dialog button.suggested-action:hover:not(:disabled) { background:linear-gradient(shade(#286b46,1.08),#286b46); }
++.partitions button.suggested-action:active:not(:disabled),.partitions-dialog button.suggested-action:active:not(:disabled) { background:#286b46; border-color:#245e3f; box-shadow:inset 0 1px 2px alpha(#102a1b,.22); }
++.partitions button.suggested-action:disabled,.partitions-dialog button.suggested-action:disabled { box-shadow:none; }
+ .partitions button.icon-button { padding:6px; min-width:19px; }
+ .partitions button.link-button,.partitions-dialog button.link-button { min-height:0; padding:5px 0; border:0; border-radius:0; background:none; box-shadow:none; color:#277652; }
+ .partitions button:focus,.partitions-dialog button:focus { outline:none; border-color:#8ca590; }
+@@ -62,6 +64,7 @@
+ .partitions .pending-status { color:#7d8776; font-size:13px; }
+ .partitions-dialog { background:#fbfcf8; -GtkDialog-button-spacing:9; }
+ .partitions-dialog headerbar { min-height:52px; padding:0 22px; background:linear-gradient(#f8faf4,#eef2e8); border:0; border-bottom:1px solid #dce2d5; border-radius:8px 8px 0 0; box-shadow:none; }
++.partitions-dialog progressbar text { margin-bottom:12px; }
+ .partitions-dialog .modal-title { font-size:16px; font-weight:500; }
+ .partitions-dialog .modal-footer { padding:15px 22px; background:#f2f5ed; border-top:1px solid #dce2d5; }
+ .partitions-dialog .modal-footer button { min-width:56px; }
