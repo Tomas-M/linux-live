@@ -34,6 +34,11 @@ Linux Live Kit
 Slax
 ----
 
+- Clarify restore-point dialogs and give them normal window titles. Keep queued
+  points marked in blue, group next-start controls in a stable footer, move
+  Show removed below history, and add a normal Restart Slax action.
+- Give green action buttons in Slax Status and Partition Manager the same
+  raised appearance and pressed feedback as ordinary buttons.
 - Release the shutdown splash console before systemd's initramfs handoff,
   preventing restarts from hanging until a key is pressed.
 - Rename restore points without changing their contents or next-start selection,

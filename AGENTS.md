@@ -1751,6 +1751,16 @@ must follow the general Slax repair rules above.
   also preserves active file views. Renamed automatic points become manually retained names.
   Keep Initial state and hidden lifecycle guards unrenameable. Wrap full inspector
   titles, omit the redundant Previous section and do not repeat Delete in a tooltip.
+  Give action and error dialogs explicit native window titles, with plain text
+  explaining the affected restore point and what happens to the current apps,
+  settings and files. Keep Show removed below history instead of a Current path
+  legend. A queued point's node stays filled blue independently of row selection.
+  Group Cancel with Next start on the left; reserve one stable footer height.
+  The Restart Slax icon on the right confirms and invokes ordinary systemctl
+  reboot as the logged-in user, without force or a new privileged broker API.
+  Wait for storage mutations before allowing restart and report launch failures.
+  Green action buttons retain a subtle gradient, bottom edge and shadow with
+  pressed feedback in Slax Status and Partition Manager.
   Status confirmations remove the native message parent's horizontal margins so
   text keeps a single compact inset while shared dialog button spacing remains.
   Tray toggles must leave the manager open. Keep save switches alive and use

@@ -159,7 +159,9 @@ BOOT AND PERSISTENCE
   the recovery shell to retry. The graphical and boot menus handle this for you.
 - Open Restore points from the Slax Status tray bubble to manage the history
   on the currently used drive. Current state and You are here identify this run.
-  Selecting a row highlights its own node; Show removed includes deleted points.
+  Selecting a row highlights its own node. A filled blue node marks the point
+  selected for the next start, even while another row is selected.
+  Show removed below the tree includes deleted points.
   Sizes beside deletable points show space reusable for new changes after deletion.
   Shared blocks are excluded; deleting several points can release more than the
   individual values suggest. Data parts retain their size and reuse freed blocks.
@@ -169,7 +171,10 @@ BOOT AND PERSISTENCE
   changes from the current RAM run are not copied. Disk selection belongs only
   in the boot menu; the application does not manage other drives.
 - Create restore point saves a named state. Use at next start schedules a point
-  without replacing the running desktop. Cancel removes that selection.
+  without replacing the running desktop. Cancel beside Next start removes that
+  selection. The Restart Slax icon on the right restarts through the normal
+  shutdown procedure after confirmation; save open documents first. Restart follows
+  Next start and Save this run. Selecting a row alone does not change the next start.
   Rename restore point changes its name while preserving its files and place in
   the tree. Giving an automatic point a name keeps it until explicitly deleted.
   Names support international text and spaces. Initial state cannot be renamed.
