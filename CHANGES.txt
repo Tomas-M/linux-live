@@ -34,6 +34,12 @@ Linux Live Kit
 Slax
 ----
 
+- Label the queued restore-point action Cancel next-start selection.
+- Keep save switches and restore-point actions from flashing during policy writes;
+  serialize rapid save changes and apply the latest choice without interrupting animation.
+- Refresh restore-point details without replacing controls or dimming their text.
+  Match queued-point labels and actions to the blue node; clicking the selected
+  next-start action cancels it. Remove the pressed inset from history rows.
 - Use ordinary left-aligned text in standard GTK 3 message dialogs.
 - Keep switch tracks blue to the left of the moving thumb and gray to its right,
   avoiding the color flash at the end of animation or dragging.

@@ -171,10 +171,12 @@ BOOT AND PERSISTENCE
   changes from the current RAM run are not copied. Disk selection belongs only
   in the boot menu; the application does not manage other drives.
 - Create restore point saves a named state. Use at next start schedules a point
-  without replacing the running desktop. Cancel beside Next start removes that
+  without replacing the running desktop. The scheduled point is marked in blue.
+  Click Cancel next-start selection, or Cancel beside Next start, to remove that
   selection. The Restart Slax icon on the right restarts through the normal
   shutdown procedure after confirmation; save open documents first. Restart follows
   Next start and Save this run. Selecting a row alone does not change the next start.
+  Rapid changes to Save this run apply the last choice.
   Rename restore point changes its name while preserving its files and place in
   the tree. Giving an automatic point a name keeps it until explicitly deleted.
   Names support international text and spaces. Initial state cannot be renamed.

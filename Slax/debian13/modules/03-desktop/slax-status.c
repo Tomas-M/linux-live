@@ -10,12 +10,15 @@
 #include <math.h>
 #include <string.h>
 
+#define QUEUED_COLOR "#2978b8"
+
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
+static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
-static char *connection_error, *last_warning;
+static char *connection_error, *history_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
 static GSubprocess *restart_process;
 static gint64 snooze_until;
@@ -25,6 +28,8 @@ static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_canc
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *inspector_reclaim, *manager_feedback;
+static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
+static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_close, *inspector_rename, *inspector_delete, *inspector_create;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
@@ -35,6 +40,7 @@ static gboolean reveal_current=TRUE;
 static Display *display;
 static Window command_window;
 static Atom tray_selection, manager_atom, command_atom;
+static GdkRGBA queued_color;
 
 static void refresh(void);
 static void update_ui(void);
@@ -81,6 +87,14 @@ static JsonObject *store(void) { return find(array(state,"stores"),"id",selected
 static JsonObject *point(void) { return find(array(history,"snapshots"),"id",selected_point); }
 static JsonObject *run(void) { return object(state,"run"); }
 
+/* Save intents may replace one another while the serialized policy write finishes. */
+static gboolean saving(void)
+{
+    if (!mutating) return FALSE;
+    if (active_request && active_request->mutation && strcmp(active_request->op,"run.save")) return FALSE;
+    return !pending_request || !strcmp(str(pending_request,"op"),"run.save");
+}
+
 static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatic restore point" : str(item,"name"); }
 static char *size_text(gint64 bytes) { return g_format_size_full(MAX((gint64)0,bytes),G_FORMAT_SIZE_DEFAULT); }
 /* Only deletable points can promise reusable capacity; unknown amounts stay blank. */
@@ -114,8 +128,10 @@ static GtkWidget *label(const char *text, const char *css)
 }
 static void set_label(GtkWidget *widget, const char *text)
 {
+    if (!g_strcmp0(gtk_label_get_text(GTK_LABEL(widget)),text ? text : "")) return;
     gtk_label_set_text(GTK_LABEL(widget),text ? text : "");
-    gtk_widget_set_tooltip_text(widget,text && *text ? text : NULL);
+    if (gtk_label_get_ellipsize(GTK_LABEL(widget))!=PANGO_ELLIPSIZE_NONE)
+        gtk_widget_set_tooltip_text(widget,text && *text ? text : NULL);
 }
 static void clear_box(GtkWidget *widget)
 {
@@ -239,7 +255,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     Request *request=g_task_get_task_data(G_TASK(result));
     GError *error=NULL;
     JsonObject *reply=g_task_propagate_pointer(G_TASK(result),&error);
-    requesting=FALSE;mutating=pending_request!=NULL;
+    requesting=FALSE;active_request=NULL;mutating=pending_request!=NULL;
     if (error || !flag(reply,"ok"))
     {
         const char *detail=error ? error->message : str(object(reply,"error"),"message");
@@ -247,8 +263,9 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
         else if (!strcmp(request->op,"state")) {g_free(connection_error);connection_error=g_strdup(detail);}
         else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
         {
-            hover_row=NULL;g_clear_pointer(&rows,g_ptr_array_unref);
-            clear_box(history_list);history_placeholder(detail);
+            g_free(history_error);history_error=g_strdup(detail);
+            /* Retain the confirmed tree during transient failures; retry an initial placeholder. */
+            if (!history || g_strcmp0(history_store,selected)) {history_placeholder(detail);manager_dirty=TRUE;}
         }
         g_clear_error(&error);
     }
@@ -262,12 +279,14 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             if (g_strcmp0(selected,str(run(),"storeId")))
             {
                 g_free(selected);selected=g_strdup(str(run(),"storeId"));
+                g_clear_pointer(&history_error,g_free);
                 g_clear_pointer(&selected_point,g_free);manager_dirty=TRUE;reveal_current=TRUE;
                 render_history();render_inspector();
             }
         }
         else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
         {
+            g_clear_pointer(&history_error,g_free);
             char *current=signature(json_object_get_member(reply,"result"));
             gboolean changed=g_strcmp0(current,history_signature) || g_strcmp0(history_store,selected);
             if (history) json_object_unref(history);
@@ -307,13 +326,15 @@ static void send_request(JsonObject *value, gboolean mutation)
 {
     if (requesting)
     {
+        /* Keep the newest native switch intent instead of dropping rapid changes. */
+        if (mutation && !strcmp(str(value,"op"),"run.save") && saving()) g_clear_pointer(&pending_request,json_object_unref);
         if (mutation && !pending_request) {pending_request=value;mutating=TRUE;update_ui();}
         else json_object_unref(value);
         return;
     }
     Request *request=g_new0(Request,1);
     request->request=value;request->op=g_strdup(str(value,"op"));request->store=g_strdup(str(value,"storeId"));request->mutation=mutation;
-    requesting=TRUE;mutating=mutation;update_ui();
+    requesting=TRUE;active_request=request;mutating=mutation;update_ui();
     GTask *task=g_task_new(NULL,NULL,request_done,NULL);
     g_task_set_task_data(task,request,request_free);g_task_run_in_thread(task,request_worker);g_object_unref(task);
 }
@@ -375,7 +396,7 @@ static gboolean save_changed(GtkSwitch *widget, gboolean save, gpointer data)
 {
     (void)widget;(void)data;
     if (updating) return FALSE;
-    if (mutating || restart_process || !flag(run(),"canSetSave")) return TRUE;
+    if ((mutating && !saving()) || restart_process || !flag(run(),"canSetSave")) return TRUE;
     JsonObject *request=command("run.save",FALSE);
     json_object_set_boolean_member(request,"save",save);
     send_request(request,TRUE);
@@ -394,6 +415,8 @@ static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **choice, GtkWidget
 static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
 {
     gboolean save=flag(run(),"save");
+    /* Describe the latest intent while acknowledgements catch up with the native thumb. */
+    if (saving()) save=flag(pending_request ? pending_request : active_request->request,"save");
     if (!mutating)
     {
         /* Setting an unchanged active value cancels GTK's animation and can strand its slider. */
@@ -401,7 +424,7 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
         if (gtk_switch_get_active(GTK_SWITCH(toggle))!=save) gtk_switch_set_active(GTK_SWITCH(toggle),save);
         gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
-    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && !mutating && !restart_process);
+    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || saving()) && !restart_process);
     set_label(choice,save ? "Save" : "Don’t save");
     const char *text=save ? "Keep changes after restart." : "Discard changes from this run after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
@@ -629,7 +652,7 @@ static gboolean draw_history(GtkWidget *widget, cairo_t *cr, gpointer data)
         gboolean highlighted=chosen || hover_row==row || gtk_widget_has_focus(row->widget) || (gtk_widget_get_state_flags(row->widget)&GTK_STATE_FLAG_PRELIGHT);
         gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(row->point,"id"),str(next,"pointId"));
         GtkAllocation a;gtk_widget_get_allocation(row->widget,&a);double x=18+row->depth*22,y=a.y+a.height/2.;
-        double red=queued ? .16 : .34,green=queued ? .47 : .56,blue=queued ? .72 : .27;
+        double red=queued ? queued_color.red : .34,green=queued ? queued_color.green : .56,blue=queued ? queued_color.blue : .27;
         if (!row->path && !queued && !highlighted) {red=.53;green=.60;blue=.49;}
         if (highlighted) {cairo_set_source_rgba(cr,red,green,blue,.22);cairo_arc(cr,x,y,10,0,2*G_PI);cairo_fill(cr);}
         cairo_arc(cr,x,y,current ? 6 : 4,0,2*G_PI);
@@ -682,12 +705,8 @@ static void update_history_sizes(void)
     {
         HistoryRow *row=g_ptr_array_index(rows,i);if (!row->size) continue;
         char *text=reclaimable_text(find(array(history,"snapshots"),"id",str(row->point,"id")));
-        gtk_label_set_text(GTK_LABEL(row->size),text ? text : "");g_free(text);
-    }
-    if (inspector_reclaim)
-    {
-        char *size=reclaimable_text(point()),*text=size ? g_strdup_printf("Deleting makes %s available for new changes.",size) : NULL;
-        gtk_label_set_text(GTK_LABEL(inspector_reclaim),text ? text : "");gtk_widget_set_visible(inspector_reclaim,text!=NULL);g_free(size);g_free(text);
+        if (g_strcmp0(gtk_label_get_text(GTK_LABEL(row->size)),text ? text : "")) gtk_label_set_text(GTK_LABEL(row->size),text ? text : "");
+        g_free(text);
     }
 }
 
@@ -738,9 +757,15 @@ static void render_history(void)
         GtkWidget *line=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_margin_start(line,36+row->depth*22);gtk_widget_set_margin_end(line,8);
         GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);pack(line,name,TRUE);
         const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest restore point" : "";
-        if (next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(id,str(next,"pointId"))) badge="Next start";
+        gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(id,str(next,"pointId"));
+        if (queued) badge="Next start";
         if (live) badge="You are here";
-        if (*badge) pack(line,label(badge,flag(row->point,"deleted") ? "muted" : "badge"),FALSE);
+        if (*badge)
+        {
+            GtkWidget *status=label(badge,flag(row->point,"deleted") ? "muted" : "badge");
+            if (queued) gtk_style_context_add_class(gtk_widget_get_style_context(status),"queued");
+            pack(line,status,FALSE);
+        }
         if (flag(row->point,"deleted")) gtk_style_context_add_class(gtk_widget_get_style_context(name),"muted");
         if (!live)
         {
@@ -760,49 +785,60 @@ static void render_history(void)
     gtk_widget_queue_resize(history_scroll);
 }
 
-/* A fixed inspector exposes actions without expanding or moving history rows. */
+/* Build controls once so reports never replace a switch, focus target or text widget. */
+static void make_inspector(void)
+{
+    inspector_eyebrow=label("","eyebrow");pack(inspector,inspector_eyebrow,FALSE);
+    inspector_title=paragraph("");gtk_label_set_max_width_chars(GTK_LABEL(inspector_title),22);
+    gtk_style_context_add_class(gtk_widget_get_style_context(inspector_title),"title");pack(inspector,inspector_title,FALSE);
+    inspector_saved=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_saved,FALSE);
+    inspector_date=label("","muted");pack(inspector_saved,inspector_date,FALSE);
+    inspector_origin=paragraph("");pack(inspector_saved,inspector_origin,FALSE);
+    inspector_removed=paragraph("This restore point can no longer be used to start Slax or browse saved files. The point stays in the tree to show where later restore points came from.");pack(inspector_saved,inspector_removed,FALSE);
+    inspector_actions=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector_saved,inspector_actions,FALSE);
+    inspector_use=primary_button("Use at next start","use-point");pack(inspector_actions,inspector_use,FALSE);
+    inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
+    inspector_close=button("Close files",NULL,"close-files");pack(inspector_actions,inspector_close,FALSE);
+    inspector_rename=button("Rename restore point",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
+    inspector_delete=button("Delete restore point",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
+    inspector_reclaim=paragraph("");pack(inspector_actions,inspector_reclaim,FALSE);
+    inspector_current=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_current,FALSE);
+    pack(inspector_current,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);
+    inspector_create=primary_button("Create restore point","create-point");pack(inspector_current,inspector_create,FALSE);
+}
+
+/* Refresh only changed properties; busy actions must not fade the inspector's text. */
 static void render_inspector(void)
 {
-    inspector_save=inspector_choice=inspector_help=inspector_reclaim=NULL;
-    clear_box(inspector);JsonObject *item=store(),*saved=point();if (!item) return;
-    gboolean writable=flag(item,"writable") && !mutating;
-    const char *eyebrow=saved ? flag(saved,"deleted") ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT" : "YOU ARE HERE";
-    pack(inspector,label(eyebrow,"eyebrow"),FALSE);
-    GtkWidget *title=paragraph(saved ? point_name(saved) : "Current state");gtk_label_set_max_width_chars(GTK_LABEL(title),22);
-    gtk_style_context_add_class(gtk_widget_get_style_context(title),"title");pack(inspector,title,FALSE);
-    if (saved)
-    {
-        char *date=date_text(number(saved,"created"));pack(inspector,label(date,"muted"),FALSE);g_free(date);
-        gboolean initial=flag(saved,"initial");
-        pack(inspector,initial ? paragraph("Start with Slax’s original apps, settings and files. Other restore points stay available.") : label(flag(saved,"automatic") ? "Saved automatically" : "Kept until you delete it","muted"),FALSE);
-        if (flag(saved,"deleted"))
-        {
-            pack(inspector,paragraph("This restore point can no longer be used to start Slax or browse saved files. The point stays in the tree to show where later restore points came from."),FALSE);
-        }
-        else
-        {
-            JsonObject *next=object(state,"next");
-            gboolean queued=!g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(saved,"id"),str(next,"pointId"));
-            const char *use_text=initial ? "Fresh start" : "Use at next start";
-            GtkWidget *use=primary_button(queued ? "Selected for next start" : use_text,"use-point");gtk_widget_set_sensitive(use,writable && !queued);pack(inspector,use,FALSE);
-            GtkWidget *open=button("Open files",NULL,"open-files");gtk_widget_set_sensitive(open,!mutating);pack(inspector,open,FALSE);
-            gboolean files_open=flag(saved,"filesOpen");
-            if (files_open) {GtkWidget *close=button("Close files",NULL,"close-files");gtk_widget_set_sensitive(close,!mutating);pack(inspector,close,FALSE);}
-            if (!initial)
-            {
-                GtkWidget *rename=button("Rename restore point",NULL,"rename-point");gtk_widget_set_sensitive(rename,writable);pack(inspector,rename,FALSE);
-                GtkWidget *remove=button("Delete restore point",NULL,"delete-point");gtk_widget_set_sensitive(remove,writable && !flag(saved,"protected") && !files_open);
-                pack(inspector,remove,FALSE);
-                inspector_reclaim=paragraph("");pack(inspector,inspector_reclaim,FALSE);
-            }
-        }
-    }
-    else
-    {
-        pack(inspector,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);update_save(inspector_save,inspector_choice,inspector_help);
-        GtkWidget *create=primary_button("Create restore point","create-point");gtk_widget_set_sensitive(create,writable);pack(inspector,create,FALSE);
-    }
-    gtk_widget_show_all(inspector);update_history_sizes();
+    JsonObject *item=store(),*saved=point();if (!item) return;
+    gboolean busy=(mutating && !saving()) || restart_process,writable=flag(item,"writable") && !busy;
+    gboolean initial=flag(saved,"initial"),removed=flag(saved,"deleted"),files_open=flag(saved,"filesOpen");
+    JsonObject *next=object(state,"next");
+    gboolean queued=saved && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(saved,"id"),str(next,"pointId"));
+    const char *eyebrow="YOU ARE HERE";
+    if (saved) eyebrow=removed ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT";
+    set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current state");
+    gtk_widget_set_visible(inspector_saved,saved!=NULL);gtk_widget_set_visible(inspector_current,saved==NULL);
+    char *date=date_text(number(saved,"created"));set_label(inspector_date,date);g_free(date);
+    const char *origin="Kept until you delete it";
+    if (initial) origin="Start with Slax’s original apps, settings and files. Other restore points stay available.";
+    else if (flag(saved,"automatic")) origin="Saved automatically";
+    set_label(inspector_origin,origin);
+    GtkStyleContext *origin_style=gtk_widget_get_style_context(inspector_origin);
+    if (initial) gtk_style_context_remove_class(origin_style,"muted");else gtk_style_context_add_class(origin_style,"muted");
+    gtk_widget_set_visible(inspector_removed,removed);gtk_widget_set_visible(inspector_actions,!removed);
+    const char *use_text=initial ? "Fresh start" : "Use at next start";
+    if (g_strcmp0(gtk_button_get_label(GTK_BUTTON(inspector_use)),queued ? "Cancel next-start selection" : use_text))
+        gtk_button_set_label(GTK_BUTTON(inspector_use),queued ? "Cancel next-start selection" : use_text);
+    GtkStyleContext *use_style=gtk_widget_get_style_context(inspector_use);
+    if (queued) gtk_style_context_add_class(use_style,"queued-action");else gtk_style_context_remove_class(use_style,"queued-action");
+    gtk_widget_set_sensitive(inspector_use,queued ? !busy : writable);gtk_widget_set_sensitive(inspector_open,!busy);
+    gtk_widget_set_visible(inspector_close,files_open);gtk_widget_set_sensitive(inspector_close,!busy);
+    gtk_widget_set_visible(inspector_rename,!initial);gtk_widget_set_sensitive(inspector_rename,writable);
+    gtk_widget_set_visible(inspector_delete,!initial);gtk_widget_set_sensitive(inspector_delete,writable && !flag(saved,"protected") && !files_open);
+    char *size=reclaimable_text(saved),*text=size ? g_strdup_printf("Deleting makes %s available for new changes.",size) : NULL;
+    set_label(inspector_reclaim,text);gtk_widget_set_visible(inspector_reclaim,!initial && text!=NULL);g_free(size);g_free(text);
+    update_save(inspector_save,inspector_choice,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
 }
 
 /* Choose the layout before GTK allocates children; changing orientation during allocation is too late. */
@@ -920,6 +956,7 @@ static void make_manager(void)
     history_latest=link_button("Go to now ↓","current");
     pack(history_footer,show_removed,TRUE);pack(history_footer,history_latest,FALSE);pack(history_box,history_footer,FALSE);
     inspector=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(inspector),"inspector");
+    make_inspector();
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
     gtk_style_context_add_class(gtk_widget_get_style_context(inspector_scroll),"inspector-panel");
     gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(history_layout,inspector_scroll,FALSE);
@@ -975,7 +1012,7 @@ static void update_ui(void)
     set_label(popup_space,state ? size : "Loading…");
     double total=number(run(),"totalBytes");gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(popup_meter),total>0 ? CLAMP(1-available/total,0,1) : 0);
     update_save(popup_save,popup_choice,popup_help);
-    if (inspector_save) update_save(inspector_save,inspector_choice,inspector_help);
+    render_inspector();
     char *next=next_text();set_label(popup_next,next);set_label(manager_next,next);g_free(next);
     gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);
     gtk_stack_set_visible_child_name(GTK_STACK(manager_cancel_slot),queued ? "cancel" : "empty");
@@ -983,7 +1020,6 @@ static void update_ui(void)
     gtk_widget_set_sensitive(manager_restart,!mutating && !restart_process);
     JsonObject *item=store();
     gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
-    gtk_widget_set_sensitive(inspector,!mutating && !restart_process);
     if (item)
     {
         char *free=size_text(number(item,"freeBytes")+number(item,"reusableBytes"));
@@ -999,8 +1035,10 @@ static void update_ui(void)
     const char *operation="";
     if (mutating) operation="Working…";
     if (restart_process) operation="Restarting…";
-    set_label(popup_status,status);set_label(manager_status,connection_error ? connection_error : operation);
-    gtk_stack_set_visible_child(GTK_STACK(manager_feedback),connection_error || *operation ? manager_status : manager_space);
+    const char *feedback=connection_error;
+    if (!feedback) feedback=*operation ? operation : history_error;
+    set_label(popup_status,status);set_label(manager_status,feedback);
+    gtk_stack_set_visible_child(GTK_STACK(manager_feedback),feedback ? manager_status : manager_space);
     char *tooltip=g_strdup_printf("Slax Status · %s · %s available",mode,size);
     if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
     g_free(tooltip);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
@@ -1155,6 +1193,9 @@ static void action(GtkButton *button_widget, gpointer data)
     g_autofree char *saved_id=g_strdup(str(saved,"id"));
     if (!strcmp(op,"use-point"))
     {
+        JsonObject *next=object(state,"next");
+        if (!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId")))
+        {send_request(command("next.clear",FALSE),TRUE);return;}
         gboolean initial=flag(saved,"initial");char *question=initial ? g_strdup("Start with Slax’s original apps, settings and files?") : g_strdup_printf("Start Slax from “%s”?",point_name(saved));
         const char *saving="Other restore points will stay available.";
         if (flag(item,"active")) saving=flag(run(),"save") ? "Your current apps, settings and files will be kept in another restore point." : "Changes from this run will be discarded. Other restore points will stay available.";
@@ -1255,6 +1296,7 @@ static gboolean x_events(gint fd, GIOCondition condition, gpointer data)
 /* Keep styling local to this application; native controls and the desktop's font settings remain intact. */
 static void load_style(void)
 {
+    gdk_rgba_parse(&queued_color,QUEUED_COLOR);
     GtkCssProvider *css=gtk_css_provider_new();
     gtk_css_provider_load_from_data(css,
         "#slax-status-tray, #slax-status-bubble { background: transparent; border: 0; box-shadow: none; }"
@@ -1264,9 +1306,10 @@ static void load_style(void)
         ".intro-example { background: #eff1eb; border: 1px solid #d8ddd3; border-radius: 6px; padding: 16px; }"
         ".intro-example-row { padding: 8px 8px 8px 32px; border: 1px solid transparent; } .intro-example-choice { background: #e4ecdd; border-color: #c3d4b7; border-radius: 4px; }"
         ".strong { font-weight: 600; } .eyebrow { font-size: 13px; color: #65705f; }"
-        ".running { color: #397b35; } .queued { color: #2784d8; } .error { color: #ba3932; }"
+        ".running { color: #397b35; } .badge.queued { color: " QUEUED_COLOR "; } .error { color: #ba3932; }"
         ".storage-detail { padding: 18px 18px 0; } .history-list { background: transparent; }"
-        ".history-list row { min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #292d29; }"
+        ".history-list row { min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #292d29; box-shadow: none; background-image: none; }"
+        ".history-list row:active { box-shadow: none; background-image: none; }"
         ".history-list row:selected { background: #e7eee0; border-color: #c3d4b7; } .history-list row:hover { background: #eef2e9; }"
         ".badge { color: #507343; font-size: 13px; } .inspector-panel { border-left: 1px solid #d8ddd3; } .inspector { padding: 4px 0 18px 18px; }"
         ".inspector-panel.stacked { border-left: 0; border-top: 1px solid #d8ddd3; } .inspector-panel.stacked .inspector { padding: 12px 0; }"
@@ -1276,6 +1319,9 @@ static void load_style(void)
         "button.suggested-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
         "button.suggested-action:hover:not(:disabled) { background: linear-gradient(#367632,#2c6729); }"
         "button.suggested-action:active:not(:disabled) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
+        "button.suggested-action.queued-action { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
+        "button.suggested-action.queued-action:hover:not(:disabled) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
+        "button.suggested-action.queued-action:active:not(:disabled) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
         "progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
         "progressbar.capacity-warning progress { background: #ce413a; } progressbar.capacity-temporary progress { background: #2784d8; }",
         -1,NULL);
