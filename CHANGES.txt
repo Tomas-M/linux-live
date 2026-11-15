@@ -34,6 +34,7 @@ Linux Live Kit
 Slax
 ----
 
+- Use ordinary left-aligned text in standard GTK 3 message dialogs.
 - Keep switch tracks blue to the left of the moving thumb and gray to its right,
   avoiding the color flash at the end of animation or dragging.
 - Clarify restore-point dialogs and give them normal window titles. Keep queued
