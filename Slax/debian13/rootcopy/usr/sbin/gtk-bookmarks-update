@@ -1,22 +1,33 @@
 #!/bin/bash
 
+CONFIG=${XDG_CONFIG_HOME:-$HOME/.config}
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}
+BOOKMARKS=$HOME/.gtk-bookmarks
+OTHER=$CONFIG/gtk-3.0/bookmarks
+
+# System services may lack HOME; skip root-level settings and symlink targets before any writes.
+if [ "${HOME#/}" = "$HOME" ] || [ ! -d "$HOME" ]; then exit 0; fi
+for DIR in "$HOME" "$CONFIG" "$CACHE" "$BOOKMARKS" "$OTHER"; do
+   if [ "${DIR#/}" = "$DIR" ]; then exit 0; fi
+   DIR=$(realpath -m -- "$DIR") || exit 0
+   if [ "$DIR" = / ] || [ "${DIR#/.}" != "$DIR" ]; then exit 0; fi
+done
+
 # Root serializes ISO mounting and cleanup; other desktops lock only their own bookmarks.
 if [ "$(id -u)" = 0 ]; then
    mkdir -p /run/lock
    exec 9>/run/lock/slax-mount-iso.lock
 else
-   mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
-   exec 9>"${XDG_CACHE_HOME:-$HOME/.cache}/slax-bookmarks.lock"
+   mkdir -p "$CACHE"
+   exec 9>"$CACHE/slax-bookmarks.lock"
 fi
 flock 9
-BOOKMARKS=$HOME/.gtk-bookmarks
-OTHER=${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0/bookmarks
 # Prefer GTK 3's current bookmarks and keep GTK 2 file choosers synchronized.
 if [ -f "$OTHER" ]; then
    BOOKMARKS=$OTHER
    OTHER=$HOME/.gtk-bookmarks
 fi
-mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/gtk-3.0"
+mkdir -p "$CONFIG/gtk-3.0"
 
 # Remove only empty mount points reserved for ISO images after they are unmounted.
 if [ "$(id -u)" = 0 ]; then

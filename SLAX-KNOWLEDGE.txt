@@ -44,6 +44,8 @@ FILES AND DRIVES
 - Open File Manager from the launcher. Double-click files/folders to open them.
   The sidebar shows Home Folder, mounted drives and bookmarks. Ctrl+L focuses
   the editable path bar; enter a path and press Enter or click Go.
+  Bookmark refreshes skip missing or invalid HOME/XDG paths instead of creating
+  user settings in the filesystem root.
 - Toolbar: Back, Forward, History, Up. Right-click files or empty space for actions
   such as Create New, Rename and Properties. Ctrl+C/Ctrl+V copies, Ctrl+X/Ctrl+V
   moves, Ctrl+H toggles hidden files, F2 renames the selection.
