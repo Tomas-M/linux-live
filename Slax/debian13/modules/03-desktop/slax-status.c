@@ -30,7 +30,7 @@ static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *insp
 static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_cancel_slot, *manager_restart, *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
-static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *inspector_reclaim, *manager_feedback;
+static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
 static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
@@ -352,10 +352,17 @@ static GtkWidget *button(const char *text, const char *icon, const char *op)
     if (op) g_signal_connect(widget,"clicked",G_CALLBACK(action),(gpointer)op);
     return widget;
 }
+/* Give link-style controls a pointer only inside their own input window. */
+static void link_realized(GtkWidget *widget, gpointer data)
+{
+    (void)data;GdkCursor *cursor=gdk_cursor_new_from_name(gtk_widget_get_display(widget),"pointer");
+    gdk_window_set_cursor(gtk_button_get_event_window(GTK_BUTTON(widget)),cursor);g_object_unref(cursor);
+}
 static GtkWidget *link_button(const char *text, const char *op)
 {
     GtkWidget *widget=button(text,NULL,op);
     gtk_style_context_add_class(gtk_widget_get_style_context(widget),"link");
+    g_signal_connect(widget,"realize",G_CALLBACK(link_realized),NULL);
     return widget;
 }
 static GtkWidget *primary_button(const char *text, const char *op)
@@ -422,7 +429,7 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
     }
     gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || saving()) && !restart_process);
     set_label(choice,save ? "Save" : "Don’t save");
-    const char *text=save ? "Keep changes after restart." : "Discard changes from this run after restart.";
+    const char *text=save ? "Keep changes after restart." : "Discard changes after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
     else if (!flag(run(),"canSetSave")) text="This run cannot change its save setting.";
     set_label(help,text);
@@ -483,7 +490,7 @@ static void position_bubble(Bubble *bubble)
     if (bubble==&popup)
     {
         gtk_widget_get_preferred_width(bubble->body,NULL,&width);
-        width=MIN(width,MIN(600,area.width-20));
+        width=MIN(CLAMP(width,350,600),area.width-20);
     }
     else gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
     gtk_widget_set_margin_top(bubble->body,16);gtk_widget_set_margin_bottom(bubble->body,16);
@@ -536,10 +543,13 @@ static void make_popups(void)
     pack(header,gtk_image_new_from_icon_name("slax-status",GTK_ICON_SIZE_LARGE_TOOLBAR),FALSE);
     popup_title=label("Slax Status","title");pack(titles,popup_title,FALSE);
     pack(header,titles,TRUE);pack(header,button("Close popup","window-close-symbolic","close-popup"),FALSE);pack(popup.body,header,FALSE);
+    pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
     pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
-    GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);popup_space=label("Loading…","metric");pack(capacity,popup_space,FALSE);
-    GtkWidget *available_label=label("available",NULL);gtk_widget_set_valign(available_label,GTK_ALIGN_END);gtk_widget_set_margin_bottom(available_label,4);pack(capacity,available_label,TRUE);
+    pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
+    GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_halign(capacity,GTK_ALIGN_END);
+    GtkWidget *available_label=label("available",NULL);gtk_widget_set_valign(available_label,GTK_ALIGN_END);gtk_widget_set_margin_bottom(available_label,4);pack(capacity,available_label,FALSE);
+    popup_space=label("Loading…","metric");pack(capacity,popup_space,FALSE);
     GtkWidget *storage=box(GTK_ORIENTATION_VERTICAL,8);pack(storage,capacity,FALSE);
     popup_meter=gtk_progress_bar_new();gtk_widget_set_tooltip_text(popup_meter,"Space used");pack(storage,popup_meter,FALSE);pack(popup.body,storage,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
@@ -699,6 +709,12 @@ static void removed_changed(GtkToggleButton *toggle, gpointer data)
     (void)data;removed_visible=gtk_toggle_button_get_active(toggle);render_history();render_inspector();
 }
 
+/* A brief highlight confirms the jump even when the current state is already visible. */
+static gboolean jump_feedback_done(gpointer widget)
+{
+    gtk_style_context_remove_class(gtk_widget_get_style_context(widget),"jump-target");return G_SOURCE_REMOVE;
+}
+
 /* Reusable slots increase the capacity for future changes, without shrinking data files. */
 static void update_history_sizes(void)
 {
@@ -801,7 +817,6 @@ static void make_inspector(void)
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
     inspector_rename=button("Rename saved state",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
     inspector_delete=button("Delete saved state",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
-    inspector_reclaim=paragraph("");pack(inspector_actions,inspector_reclaim,FALSE);
     inspector_current=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_current,FALSE);
     pack(inspector_current,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);
     inspector_create=primary_button("Save current state","create-point");pack(inspector_current,inspector_create,FALSE);
@@ -835,8 +850,6 @@ static void render_inspector(void)
     gtk_widget_set_sensitive(inspector_use,queued ? !busy : writable);gtk_widget_set_sensitive(inspector_open,!busy);
     gtk_widget_set_visible(inspector_rename,!initial);gtk_widget_set_sensitive(inspector_rename,writable);
     gtk_widget_set_visible(inspector_delete,!initial);gtk_widget_set_sensitive(inspector_delete,writable && !flag(saved,"protected") && !files_open);
-    char *size=reclaimable_text(saved),*text=size ? g_strdup_printf("Deleting makes %s available for new changes.",size) : NULL;
-    set_label(inspector_reclaim,text);gtk_widget_set_visible(inspector_reclaim,!initial && text!=NULL);g_free(size);g_free(text);
     update_save(inspector_save,inspector_choice,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
 }
 
@@ -994,10 +1007,11 @@ static void make_manager(void)
     gtk_style_context_add_class(gtk_widget_get_style_context(history_list),"history-list");gtk_container_add(GTK_CONTAINER(history_scroll),history_list);
     g_signal_connect(history_list,"row-selected",G_CALLBACK(history_selected),NULL);g_signal_connect_after(history_list,"draw",G_CALLBACK(draw_history),NULL);
     history_footer=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_margin_bottom(history_footer,10);
-    show_removed=gtk_check_button_new_with_label("Show removed");gtk_widget_set_halign(show_removed,GTK_ALIGN_START);
+    show_removed=gtk_check_button_new_with_label("Show removed states");gtk_widget_set_halign(show_removed,GTK_ALIGN_START);gtk_widget_set_valign(show_removed,GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(gtk_bin_get_child(GTK_BIN(show_removed)),GTK_ALIGN_CENTER);
     g_signal_connect(show_removed,"toggled",G_CALLBACK(removed_changed),NULL);
-    history_latest=link_button("Go to now ↓","current");
-    pack(history_footer,show_removed,TRUE);pack(history_footer,history_latest,FALSE);pack(history_box,history_footer,FALSE);
+    history_latest=link_button("Go to now ↓","current");gtk_style_context_add_class(gtk_widget_get_style_context(history_latest),"history-jump");
+    pack(history_footer,show_removed,FALSE);gtk_box_pack_end(GTK_BOX(history_footer),history_latest,FALSE,FALSE,0);pack(history_box,history_footer,FALSE);
     inspector=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(inspector),"inspector");
     make_inspector();
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
@@ -1238,7 +1252,10 @@ static void action(GtkButton *button_widget, gpointer data)
     if (!strcmp(op,"review")) {show_popup();return;}
     if (!strcmp(op,"current"))
     {
-        g_clear_pointer(&selected_point,g_free);reveal_current=TRUE;render_history();render_inspector();return;
+        g_clear_pointer(&selected_point,g_free);reveal_current=TRUE;render_history();render_inspector();
+        GtkListBoxRow *row=gtk_list_box_get_selected_row(GTK_LIST_BOX(history_list));
+        if (row) {gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(row)),"jump-target");g_timeout_add_full(G_PRIORITY_DEFAULT,600,jump_feedback_done,g_object_ref(row),g_object_unref);}
+        return;
     }
     if (mutating || restart_process) return;
     if (!strcmp(op,"restart"))
@@ -1390,9 +1407,12 @@ static void load_style(void)
         ".history-list row { min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #292d29; box-shadow: none; background-image: none; }"
         ".history-list row:active { box-shadow: none; background-image: none; }"
         ".history-list row:selected { background: #e7eee0; border-color: #c3d4b7; } .history-list row:hover { background: #eef2e9; }"
+        ".history-list row.jump-target { background: #d7e8c8; border-color: #579044; }"
         ".badge { color: #507343; font-size: 13px; } .inspector-panel { border-left: 1px solid #d8ddd3; } .inspector { padding: 4px 0 18px 18px; }"
         ".inspector-panel.stacked { border-left: 0; border-top: 1px solid #d8ddd3; } .inspector-panel.stacked .inspector { padding: 12px 0; }"
         "button.link { background: transparent; box-shadow: none; border: 0; color: #306c99; padding: 5px 0; }"
+        "button.link.history-jump { padding: 5px 8px; }"
+        "button.link:hover { color: #20537a; } button.link:active { background: #dce8f2; }"
         "button.icon-button { min-width: 24px; min-height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }"
         "button.icon-button:hover { background: #e2e8dc; }"
         "button.primary-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"

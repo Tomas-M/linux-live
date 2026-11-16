@@ -1774,7 +1774,7 @@ must follow the general Slax repair rules above.
   titles, omit the redundant Previous section and do not repeat Delete in a tooltip.
   Give action and error dialogs explicit native window titles, with plain text
   explaining the affected saved state and what happens to the current apps,
-  settings and files. Keep Show removed below history instead of a Current path
+  settings and files. Keep Show removed states below history instead of a Current path
   legend. A queued point's node stays filled blue independently of row selection.
   Its badge and Cancel next-start selection action share that blue. Clicking the
   queued action clears the selection just like Cancel beside Next start.
@@ -1791,6 +1791,8 @@ must follow the general Slax repair rules above.
   draw keyboard focus from GTK's remembered target without changing real focus.
   Modifier keys and key releases must not enable keyboard focus styling during
   Alt+Tab; ordinary keyboard navigation must still reveal its focus indicator.
+  Keep sizes beside tree rows without repeating a deletion-space explanation
+  in the inspector.
   Status confirmations remove the native message parent's horizontal margins so
   text keeps a single compact inset while shared dialog button spacing remains.
   Tray toggles must leave the manager open. Keep save switches alive and use
@@ -1807,8 +1809,10 @@ must follow the general Slax repair rules above.
   Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
   Size the status bubble to its current single-line content, including while open.
-  Cap its width at 600 logical pixels and the monitor edges; ellipsize unusually
-  long names rather than wrapping them or widening the bubble across the screen.
+  Right-align the capacity row with available before the number; put separators
+  below the heading and between drive locations and the capacity section.
+  Keep its width between 350 and 600 logical pixels, within the monitor edges.
+  Ellipsize unusually long names rather than wrapping them or widening the bubble across the screen.
   Keep the single capacity estimate directly in the UI without a Details dialog.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
   saved-state rows are selectable and carry point IDs.
@@ -1816,7 +1820,9 @@ must follow the general Slax repair rules above.
   example. Direct the user to Choose a saved state, a drive and Fresh start at
   the next boot. This RAM run is not copied. Do not offer storage setup in the app.
   Ignore numeric legacy directories.
-  Show removed controls deleted rows while full ancestry determines tree lanes.
+  Show removed states controls deleted rows while full ancestry determines tree lanes.
+  Center its indicator and text. Pack Go to now at the footer's right edge even
+  when Show removed states is hidden; use a pointer cursor and briefly highlight its destination.
   Derive Initial state from its exact owned unformatted ancestor and protect it.
   Never infer ownership from old names or order. Retain matching tombstone
   ownership records. Derive hasStarted from run.txt, not another persisted status.

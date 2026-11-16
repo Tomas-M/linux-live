@@ -35,14 +35,19 @@ Slax
 ----
 
 - Skip bookmark updates without a valid home or when settings resolve to filesystem-root paths.
+- Keep the Don't save explanation fully readable in the side panel.
+- Align Show removed states and keep Go to now at the right edge, with padding, pointer and click feedback.
 - Remove the unused SystrayIconLauncher utility from the desktop module.
 - Include Slax Status and Keyboard layout in the predefined tray icon order.
 - Use Saved states throughout the desktop, boot menu and installers, with
   Save current state, Rename saved state and Delete saved state actions.
-- Fit the status bubble's width to its current content without wrapping its rows.
+- Fit the status bubble's width to its current content, with a 350 px minimum
+  and no wrapping of its rows.
 - Automatically disconnect saved-state file views after their File Manager
   windows close, including across tray or broker restarts; remove Close files.
 - Keep saved-state controls visually stable when switching applications.
+- Remove the repeated deletion-space explanation from saved-state details.
+- Right-align available space in the status bubble and separate its heading, drive details and capacity.
 - Label the queued saved-state action Cancel next-start selection.
 - Keep save switches and saved-state actions from flashing during policy writes;
   serialize rapid save changes and apply the latest choice without interrupting animation.
@@ -54,7 +59,7 @@ Slax
   avoiding the color flash at the end of animation or dragging.
 - Clarify saved-state dialogs and give them normal window titles. Keep queued
   points marked in blue, group next-start controls in a stable footer, move
-  Show removed below history, and add a normal Restart Slax action.
+  Show removed states below history, and add a normal Restart Slax action.
 - Give green action buttons in Slax Status and Partition Manager the same
   raised appearance and pressed feedback as ordinary buttons.
 - Release the shutdown splash console before systemd's initramfs handoff,
