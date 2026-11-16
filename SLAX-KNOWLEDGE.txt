@@ -131,6 +131,8 @@ BOOT AND PERSISTENCE
 - Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's
   signed UEFI chain supports Secure Boot. Esc during the five-second countdown
   reveals the full boot menu.
+- Early boot menus include drivers for Apple USB/SPI keyboards and vendor HID
+  keyboards and receivers, in addition to generic USB and PS/2 keyboards.
 - Slax keeps saved changes and saved states together on the selected drive.
   Each drive has one history; there are no separate profiles or sessions to manage.
 - Normal startup continues saved changes from the most recently selected writable

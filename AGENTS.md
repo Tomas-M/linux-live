@@ -288,6 +288,11 @@ reporting progress.
   their dependencies for early live-data discovery. Slax emits
   an actual-driver capability list so older ISOs cannot be installed to a
   filesystem their early boot environment cannot read.
+  Keep generic USB/PS/2 input and common vendor HID keyboard drivers available
+  before storage selection, including Apple keyboards and Logitech receivers. Include
+  Apple SPI, PXA2xx SPI and Intel LPSS with their DMA providers too; bus controllers
+  and soft dependencies are not all listed in the keyboard driver's modules.dep.
+  Do not copy the whole HID tree: it includes unrelated tablets, gamepads and sensors.
   Build unmodified GNU GRUB mkimage and fstest for Linux and Windows during
   installer compilation, using pinned and SHA256-verified GNU sources and
   matching i386-pc modules from the official GNU Windows release. Linux helpers

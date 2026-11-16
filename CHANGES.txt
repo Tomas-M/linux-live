@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Include common vendor HID keyboard drivers and Apple SPI keyboards with their
+  controllers in initramfs so they are available for early boot menus.
 - Skip EFI System Partitions during live-data discovery, storage selection and automount.
 - Update the static initramfs blkid and eject to util-linux 2.42.4 and Mini Commander to 2.0.
 - Show device search results, mount errors and storage messages when live data

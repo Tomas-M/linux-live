@@ -116,14 +116,25 @@ copy_including_deps /$LMK/kernel/drivers/usb/storage
 copy_including_deps /$LMK/kernel/drivers/usb/host
 copy_including_deps /$LMK/kernel/drivers/usb/common
 copy_including_deps /$LMK/kernel/drivers/usb/core
+# Vendor keyboards may need a specialized HID driver instead of hid-generic.
 copy_including_deps /$LMK/kernel/drivers/hid/usbhid
 copy_including_deps /$LMK/kernel/drivers/hid/hid.*
 copy_including_deps /$LMK/kernel/drivers/hid/uhid.*
 copy_including_deps /$LMK/kernel/drivers/hid/hid-generic.*
+for DRIVER in apple cherry chicony lenovo logitech logitech-dj logitech-hidpp microsoft; do
+   copy_including_deps /$LMK/kernel/drivers/hid/hid-$DRIVER.*
+done
 
-# Keyboard support must be available before the session picker and Esc listener.
+# Keyboard support must be available before the storage picker and Esc listener.
 copy_including_deps /$LMK/kernel/drivers/input/keyboard/atkbd.*
 copy_including_deps /$LMK/kernel/drivers/input/serio
+
+# Apple SPI keyboards also need their bus controllers and DMA providers.
+copy_including_deps /$LMK/kernel/drivers/input/keyboard/applespi.*
+copy_including_deps /$LMK/kernel/drivers/spi/spi-pxa2xx*
+copy_including_deps /$LMK/kernel/drivers/mfd/intel-lpss*
+copy_including_deps /$LMK/kernel/drivers/dma/dw
+copy_including_deps /$LMK/kernel/drivers/dma/idma64.*
 
 # disk and cdrom drivers
 copy_including_deps /$LMK/kernel/drivers/cdrom
