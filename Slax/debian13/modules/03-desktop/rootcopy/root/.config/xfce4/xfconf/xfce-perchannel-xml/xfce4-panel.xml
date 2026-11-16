@@ -41,6 +41,8 @@
     <property name="plugin-6" type="string" value="systray">
       <property name="square-icons" type="bool" value="false"/>
       <property name="known-legacy-items" type="array">
+        <value type="string" value="keyboard layout"/>
+        <value type="string" value="slax status"/>
         <value type="string" value="connman-gtk"/>
         <value type="string" value="volumeicon"/>
       </property>
