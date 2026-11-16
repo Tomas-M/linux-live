@@ -143,7 +143,7 @@ BOOT AND PERSISTENCE
   returns to drives; Esc from drives continues in RAM without saving changes.
   Explicit Last saved state cancels a queued restore but respects Don't save.
   Normal automatic startup honors a restore queued for the next start.
-- Run Slax from RAM (copy to ram) copies the complete Slax source into memory,
+- Run Slax from RAM (with no automount) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
   save files to a mounted drive to retain them after shutdown. This entry leaves
   automatic disk mounting disabled. Slax Status does not mount other drives.

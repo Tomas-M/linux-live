@@ -41,6 +41,7 @@ Slax
 - Include Slax Status and Keyboard layout in the predefined tray icon order.
 - Use Saved states throughout the desktop, boot menu and installers, with
   Save current state, Rename saved state and Delete saved state actions.
+- Clarify boot-menu labels for resuming saved changes and running from RAM without automount.
 - Fit the status bubble's width to its current content, with a 350 px minimum
   and no wrapping of its rows.
 - Automatically disconnect saved-state file views after their File Manager

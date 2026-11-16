@@ -1591,8 +1591,8 @@ must follow the general Slax repair rules above.
   leaves the nested countdown menu for the full menu. The full menu uses
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
-  The first three entries are `Continue saved changes`,
-  `Choose a saved state` and `Run Slax from RAM (copy to ram)`.
+  The first three entries are `Resume previously saved changes (if any)`,
+  `Choose a saved state` and `Run Slax from RAM (with no automount)`.
   The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
   without splash, quiet, hidden cursor, persistence, automount or copy-to-RAM flags.
   Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
