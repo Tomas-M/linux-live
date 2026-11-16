@@ -22,6 +22,7 @@ static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
 static char *connection_error, *history_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
+static gboolean keep_focus_hidden; /* Used only between GTK's key observer and focus-visible notification. */
 static GSubprocess *restart_process;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body;
@@ -649,7 +650,7 @@ static gboolean draw_history(GtkWidget *widget, cairo_t *cr, gpointer data)
         HistoryRow *row=g_ptr_array_index(rows,i);if (!row->widget) continue;
         gboolean current=!strcmp(str(row->point,"id"),"current");
         gboolean chosen=current ? !selected_point : !g_strcmp0(selected_point,str(row->point,"id"));
-        gboolean highlighted=chosen || hover_row==row || gtk_widget_has_focus(row->widget) || (gtk_widget_get_state_flags(row->widget)&GTK_STATE_FLAG_PRELIGHT);
+        gboolean highlighted=chosen || hover_row==row || gtk_widget_is_focus(row->widget) || (gtk_widget_get_state_flags(row->widget)&GTK_STATE_FLAG_PRELIGHT);
         gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(row->point,"id"),str(next,"pointId"));
         GtkAllocation a;gtk_widget_get_allocation(row->widget,&a);double x=18+row->depth*22,y=a.y+a.height/2.;
         double red=queued ? queued_color.red : .34,green=queued ? queued_color.green : .56,blue=queued ? queued_color.blue : .27;
@@ -839,6 +840,45 @@ static void render_inspector(void)
     update_save(inspector_save,inspector_choice,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
 }
 
+/* Keep content styling steady without changing native window or keyboard focus. */
+static gboolean manager_state(GtkWidget *widget, GdkEventWindowState *event, gpointer data)
+{
+    (void)event;(void)data;gtk_widget_unset_state_flags(widget,GTK_STATE_FLAG_BACKDROP);return FALSE;
+}
+
+/* Observe keys before GTK changes focus styling; never consume or redirect input. */
+static gint manager_key_mode(GtkWidget *widget, GdkEventKey *event, gpointer data)
+{
+    (void)data;gboolean to_manager=widget && gtk_widget_get_toplevel(widget)==manager;
+    gboolean passive=event->type==GDK_KEY_RELEASE || event->is_modifier || (event->state&GDK_MOD1_MASK);
+    keep_focus_hidden=to_manager && passive && !gtk_window_get_focus_visible(GTK_WINDOW(manager));return FALSE;
+}
+
+/* Modifier-only app switching preserves mouse styling; actual navigation still reveals focus. */
+static void manager_focus_visible(GtkWindow *window, GParamSpec *property, gpointer data)
+{
+    (void)property;(void)data;
+    if (keep_focus_hidden && gtk_window_get_focus_visible(window))
+    {keep_focus_hidden=FALSE;gtk_window_set_focus_visible(window,FALSE);}
+    gtk_widget_queue_draw(GTK_WIDGET(window));
+}
+
+/* Paint keyboard focus from GTK's remembered target, including while another window is active. */
+static gboolean manager_focus_outline(GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    (void)data;if (!gtk_widget_is_focus(widget) || !gtk_window_get_focus_visible(GTK_WINDOW(manager))) return FALSE;
+    GtkStyleContext *style=gtk_widget_get_style_context(widget);gtk_style_context_save(style);gtk_style_context_add_class(style,"focus-outline");
+    gtk_render_focus(style,cr,0,0,gtk_widget_get_allocated_width(widget),gtk_widget_get_allocated_height(widget));gtk_style_context_restore(style);return FALSE;
+}
+
+/* Include dynamically created rows without changing any control's real focus state. */
+static gboolean manager_focus_control(GSignalInvocationHint *hint, guint count, const GValue *values, gpointer data)
+{
+    (void)hint;(void)count;(void)data;GtkWidget *widget=g_value_get_object(values);
+    if (gtk_widget_get_toplevel(widget)!=manager || !gtk_widget_get_can_focus(widget)) return TRUE;
+    gtk_style_context_add_class(gtk_widget_get_style_context(widget),"focus-control");g_signal_connect_after(widget,"draw",G_CALLBACK(manager_focus_outline),NULL);return TRUE;
+}
+
 /* Choose the layout before GTK allocates children; changing orientation during allocation is too late. */
 static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 {
@@ -895,6 +935,11 @@ static gboolean draw_intro_example(GtkWidget *widget, cairo_t *cr, gpointer data
 static void make_manager(void)
 {
     manager=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(manager),"Restore points");
+    gtk_widget_set_name(manager,"slax-status-manager");
+    g_signal_connect_after(manager,"window-state-event",G_CALLBACK(manager_state),NULL);
+    g_signal_connect(manager,"notify::focus-visible",G_CALLBACK(manager_focus_visible),NULL);
+    gtk_key_snooper_install(manager_key_mode,NULL);
+    g_signal_add_emission_hook(g_signal_lookup("realize",GTK_TYPE_WIDGET),0,manager_focus_control,NULL,NULL);
     gtk_window_set_wmclass(GTK_WINDOW(manager),"slax-status","slax-status");gtk_window_set_icon_name(GTK_WINDOW(manager),"slax-status");
     gtk_window_set_default_size(GTK_WINDOW(manager),1040,640);gtk_window_set_position(GTK_WINDOW(manager),GTK_WIN_POS_CENTER);
     gtk_widget_set_size_request(manager,540,440);
@@ -1332,6 +1377,9 @@ static void load_style(void)
     gtk_css_provider_load_from_data(css,
         "#slax-status-tray, #slax-status-bubble { background: transparent; border: 0; box-shadow: none; }"
         "window { font-size: 14px; } .muted { color: #65705f; font-size: 13px; }"
+        "#slax-status-manager * { transition: none; }"
+        "#slax-status-manager .focus-control, #slax-status-manager .focus-control * { outline-style: none; }"
+        "#slax-status-manager .focus-control.focus-outline { outline-style: dashed; }"
         ".title { font-size: 20px; font-weight: 600; } .heading { font-size: 24px; font-weight: 400; } .metric { font-size: 32px; }"
         ".notice-title { font-size: 16px; font-weight: 600; }"
         ".intro-example { background: #eff1eb; border: 1px solid #d8ddd3; border-radius: 6px; padding: 16px; }"
@@ -1347,12 +1395,12 @@ static void load_style(void)
         "button.link { background: transparent; box-shadow: none; border: 0; color: #306c99; padding: 5px 0; }"
         "button.icon-button { min-width: 24px; min-height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }"
         "button.icon-button:hover { background: #e2e8dc; }"
-        "button.primary-action:not(:backdrop) { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
-        "button.primary-action:hover:not(:disabled):not(:backdrop) { background: linear-gradient(#367632,#2c6729); }"
-        "button.primary-action:active:not(:disabled):not(:backdrop) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
-        "button.primary-action.queued-action:not(:backdrop) { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
-        "button.primary-action.queued-action:hover:not(:disabled):not(:backdrop) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
-        "button.primary-action.queued-action:active:not(:disabled):not(:backdrop) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
+        "button.primary-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
+        "button.primary-action:hover:not(:disabled) { background: linear-gradient(#367632,#2c6729); }"
+        "button.primary-action:active:not(:disabled) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
+        "button.primary-action.queued-action { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
+        "button.primary-action.queued-action:hover:not(:disabled) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
+        "button.primary-action.queued-action:active:not(:disabled) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
         "progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
         "progressbar.capacity-warning progress { background: #ce413a; } progressbar.capacity-temporary progress { background: #2784d8; }",
         -1,NULL);

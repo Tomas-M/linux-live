@@ -40,7 +40,7 @@ Slax
 - Fit the status bubble's width to its current content without wrapping its rows.
 - Automatically disconnect restore-point file views after their File Manager
   windows close, including across tray or broker restarts; remove Close files.
-- Give green and blue Slax Status actions the ordinary gray backdrop appearance.
+- Keep restore-point controls visually stable when switching applications.
 - Label the queued restore-point action Cancel next-start selection.
 - Keep save switches and restore-point actions from flashing during policy writes;
   serialize rapid save changes and apply the latest choice without interrupting animation.
