@@ -1235,6 +1235,10 @@ must follow the general Slax repair rules above.
   `panel-tray-spacing.diff` gives compact XEmbed icons 12 px between items,
   avoiding both full-height square slots and the crowded upstream 2 px gap.
   The shared panel stylesheet adds 8 px on either side of the tray plugin.
+  Native tray preferences already reorder icons and remember absent items.
+  `known-legacy-items` in the panel XML orders XEmbed identities (lowercase window
+  titles, including `slax status` and `keyboard layout`); `known-items` orders
+  Status Notifiers separately. Newly discovered identities are prepended.
   The shared
   `03-desktop/rootcopy/usr/share/slax/gtk-3.0/panel.css` gives groups four background
   levels: transparent at rest, 12 percent on hover, 25 percent when selected and

@@ -17,6 +17,11 @@ DESKTOP
   Scroll over the icon to adjust volume.
 - Click EN (or the current layout label) in the taskbar to select a keyboard layout.
   Ctrl+Shift, Alt+Shift and Super+Space switch layouts when the keys are released.
+- To reorder tray icons, run xfce4-panel --preferences, open Items, select Status
+  Tray Plugin and open its settings. In Systray Icons, select an item and use the
+  up/down arrows. Its order is remembered when it disappears and returns.
+  Status Notifiers has a separate list for applications using that tray protocol.
+  Slax Status and the keyboard layout indicator have predefined tray positions.
 - Close a tray bubble with Esc or by clicking another window. Print Screen and
   Alt+F2 remain available while a bubble is open.
 - Slax Status starts with the desktop. Click its stacked-drive tray icon to see
