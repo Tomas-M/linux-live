@@ -13,7 +13,7 @@ In Windows
 2. Follow the prompts and wait for the tool to finish.
 3. Open the new USB-DATA drive in File Explorer and copy your files to it.
 
-The tool also prepares slax/changes for saved changes and restore points.
+The tool also prepares slax/changes for saved changes and saved states.
 Slax automatically saves your changes there when you start it normally.
 Keep this whole directory to retain your saved changes and history.
 

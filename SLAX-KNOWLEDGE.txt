@@ -30,9 +30,9 @@ DESKTOP
   The bubble fits its current text on single lines; unusually long names are shortened.
   Drives are identified by /dev/device, followed by their label in parentheses.
   Available space includes reusable blocks already allocated inside the active container.
-  Clicking the tray icon toggles the bubble without closing Restore points.
+  Clicking the tray icon toggles the bubble without closing Saved states.
   Low-space and storage warnings appear beside the icon without taking focus;
-  Remind in 15 min postpones them. Open Restore points from this bubble.
+  Remind in 15 min postpones them. Open Saved states from this bubble.
 - Right-click empty desktop space for Create New and Desktop Preferences.
   Desktop Preferences controls wallpaper, icon appearance and screen resolution.
   After a resolution change, choose Keep changes within 10 seconds; Revert or
@@ -130,12 +130,12 @@ BOOT AND PERSISTENCE
 - Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's
   signed UEFI chain supports Secure Boot. Esc during the five-second countdown
   reveals the full boot menu.
-- Slax keeps saved changes and restore points together on the selected drive.
+- Slax keeps saved changes and saved states together on the selected drive.
   Each drive has one history; there are no separate profiles or sessions to manage.
 - Normal startup continues saved changes from the most recently selected writable
   drive. On a writable boot medium, storage can be prepared automatically.
-- Choose a restore point opens a drive list, then that drive's history. Choose
-  Last saved state to continue, a restore point to return to it, or Fresh start
+- Choose a saved state opens a drive list, then that drive's history. Choose
+  Last saved state to continue, a saved state to return to it, or Fresh start
   to return to the original Slax. Fresh start keeps the existing history.
   On a drive without saved changes, Fresh start prepares storage there.
   F5 Refresh detects newly connected disks in the drive list. Esc from history
@@ -162,53 +162,53 @@ BOOT AND PERSISTENCE
   exact 16-digit lowercase ID to restore.txt beside changes.dat. Inspect an
   inactive container with /run/initramfs/bin/@mount.dynfilefs -f /path/to/changes.dat
   --snapshots --json. Mounted containers expose snapshots.json beside virtual.dat.
-  Use a live point ID, not its name. A successful restore consumes restore.txt;
+  Use a live state ID, not its name. A successful restore consumes restore.txt;
   an invalid request stops for recovery. Correct or remove restore.txt and exit
   the recovery shell to retry. The graphical and boot menus handle this for you.
-- Open Restore points from the Slax Status tray bubble to manage the history
+- Open Saved states from the Slax Status tray bubble to manage the history
   on the currently used drive. Current state and You are here identify this run.
-  Selecting a row highlights its own node. A filled blue node marks the point
+  Selecting a row highlights its own node. A filled blue node marks the state
   selected for the next start, even while another row is selected.
-  Show removed below the tree includes deleted points.
-  Sizes beside deletable points show space reusable for new changes after deletion.
-  Shared blocks are excluded; deleting several points can release more than the
+  Show removed below the tree includes deleted states.
+  Sizes beside deletable states show space reusable for new changes after deletion.
+  Shared blocks are excluded; deleting several states can release more than the
   individual values suggest. Data parts retain their size and reuse freed blocks.
   In RAM, the introduction explains persistence and recovery with an example tree.
-  At the next boot, use Choose a restore point, select a writable drive and
+  At the next boot, use Choose a saved state, select a writable drive and
   Fresh start to begin saving changes. This starts with the original Slax;
   changes from the current RAM run are not copied. Disk selection belongs only
   in the boot menu; the application does not manage other drives.
-- Create restore point saves a named state. Use at next start schedules a point
-  without replacing the running desktop. The scheduled point is marked in blue.
+- Save current state saves a named state. Use at next start schedules a state
+  without replacing the running desktop. The scheduled state is marked in blue.
   Click Cancel next-start selection, or Cancel beside Next start, to remove that
   selection. The Restart Slax icon on the right restarts through the normal
   shutdown procedure after confirmation; save open documents first. Restart follows
   Next start and Save this run. Selecting a row alone does not change the next start.
   Rapid changes to Save this run apply the last choice.
-  Rename restore point changes its name while preserving its files and place in
-  the tree. Giving an automatic point a name keeps it until explicitly deleted.
+  Rename saved state changes its name while preserving its files and place in
+  the tree. Giving an automatic state a name keeps it until explicitly deleted.
   Names support international text and spaces. Initial state cannot be renamed.
-  Open file views remain available while their restore point is renamed.
-  DynFileFS also creates automatic points at storage startup and clean shutdown
-  when the state changed. It retains ten automatic points, removing the oldest
-  eligible ones; protected, open and current-parent points can extend this limit.
-  Named points remain until explicitly deleted. Normal startup continues the
+  Open file views remain available while their saved state is renamed.
+  DynFileFS also creates automatic states at storage startup and clean shutdown
+  when the state changed. It retains ten automatic states, removing the oldest
+  eligible ones; protected, open and current-parent states can extend this limit.
+  Named states remain until explicitly deleted. Normal startup continues the
   saved current state unless a restore or discard was requested.
-  Before a scheduled restore, Slax retains the previous state as a restore point
+  Before a scheduled restore, Slax retains the previous state as a saved state
   when saving is enabled. With Don't save selected, it does not retain that run
-  as an automatic point or an additional Before restore point. Existing saved
+  as an automatic state or an additional state named Before restore. Existing saved
   history stays available.
   Fresh start selects the protected Initial state, created after filesystem
   formatting and growth. It never reformats an existing container.
-- Open files opens a restore point's complete filesystem root read-only in File
+- Open files opens a saved state's complete filesystem root read-only in File
   Manager. Copy files out before closing it. The view disconnects automatically
   after its last File Manager window closes. If another application is still
-  using the files, disconnection waits until it releases them. A point needing
+  using the files, disconnection waits until it releases them. A state needing
   filesystem recovery can be used at next start.
 - Save this run controls the active store. Don't save returns to this run's
   starting state on the next activation; an explicit restore selection takes
-  precedence. A manually created restore point remains saved even with Don't save.
-  Don't save also prevents an automatic restore point for the discarded run.
+  precedence. A manually saved state remains available even with Don't save.
+  Don't save also prevents an automatically saved state for the discarded run.
   RAM runs are fixed to Don't save.
 - Files saved directly to mounted drives remain independently of saved Slax changes.
   savechanges exports changes as a module; ordinary persistence saves automatically.

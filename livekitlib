@@ -941,7 +941,7 @@ perch_size()
 }
 
 
-# Read live restore points as timestamp, stable ID, UTF-8 name and automatic flag.
+# Read live saved states as timestamp, stable ID, UTF-8 name and automatic flag.
 perch_restore_points()
 {
    local CATALOG
@@ -970,7 +970,7 @@ perch_choose_restore()
 {
    local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD INITIAL
 
-   ROWS=$(mktemp /tmp/restore-points.XXXXXX) || return 1
+   ROWS=$(mktemp /tmp/saved-states.XXXXXX) || return 1
    POINTS=""
    INITIAL=""
    TITLE='Start Slax from'
@@ -982,7 +982,7 @@ perch_choose_restore()
             if [ "$ID" = "" -o "$ID" = "$INITIAL" ]; then continue; fi
             GUARD="$1/guard.$ID"
             if [ -f "$GUARD" ] && [ ! -L "$GUARD" ] && [ "$(cat "$GUARD" 2>/dev/null)" = "$NAME" ]; then continue; fi
-            if [ "$AUTOMATIC" = 1 ]; then NAME='Automatic restore point'; fi
+            if [ "$AUTOMATIC" = 1 ]; then NAME='Automatically saved state'; fi
             printf '%s\t%s\t%s\n' "$ID" "$NAME" "$(date -u -d "@$CREATED" '+%Y-%m-%d %H:%M:%S UTC')"
          done >> "$ROWS"
       else

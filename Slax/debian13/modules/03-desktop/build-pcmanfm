@@ -14,7 +14,7 @@ sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 patch -p1 < "$CWD/patches/pcmanfm-desktop.diff"
 # Use compact navigation and an unlabelled sidebar in file-manager windows.
 patch -p1 < "$CWD/patches/pcmanfm-browser.diff"
-# Disposable restore-point browsers end independently of the desktop manager.
+# Disposable saved-state browsers end independently of the desktop manager.
 patch -p1 < "$CWD/patches/pcmanfm-standalone.diff"
 dpkg-buildpackage -b -us -uc
 cp ../pcmanfm_*.deb "$OUTPUT/"
