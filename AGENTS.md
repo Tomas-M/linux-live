@@ -382,14 +382,10 @@ must follow the general Slax repair rules above.
   Slax itself uses Fluxbox; these are separate environments.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
-- Slax boot test uses `VM/virtualbox/slax-profile-restore.vdi`, a dynamic 4 GiB
+- Slax boot test uses `VM/virtualbox/Slax boot test/Slax boot test_1.vdi`, a dynamic 20 GiB
   GPT disk with a 256 MiB FAT32 ESP (`SLAXEFI`) and the remaining FAT32 data
-  partition (`SLAXDATA`).
-  UI checks currently boot from RAM with its data attachment detached: the
-  configured differencing VDI `Snapshots/{d284e031-2340-44b3-a73b-f5ed8ae31207}.vdi`
-  is missing. Preserve the base disk; do not attach it as a replacement for the
-  missing child. The previous VM configuration is saved in
-  `VM/status-bubble-width/vm-before-missing-disk-detach.vbox`.
+  partition (`SLAXDATA`). It currently runs persistently using this disk; preserve
+  the active desktop and its save/next-start policy during UI-only testing.
 - This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
   freeze its filesystem, save its state, then use `zerofree` from a temporary
   RAM-only maintenance VM with host I/O caching enabled and the work filesystem
@@ -572,8 +568,8 @@ must follow the general Slax repair rules above.
   report deferred changes as requiring restart, and verify kernel geometry
   before filesystem operations. Keep tests on owned sparse files and Linux
   loop devices; never use host disks or Windows VHDs for development tests.
-  The dedicated `Slax boot test` VM boots only from CD and has two owned 4 GiB
-  persistence fixtures: `VM/virtualbox/slax-sessions-native-20261106.vdi` (ext4,
+  Two spare owned 4 GiB persistence fixtures are available for `Slax boot test`:
+  `VM/virtualbox/slax-sessions-native-20261106.vdi` (ext4,
   `SLAX_NATIVE`) and `slax-sessions-fat-20261106.vdi` (FAT32, `SLAX_FAT`).
   Identify them by disk serial or filesystem UUID, since Linux device names
   can change between boots. Create a separate owned fixture for partition-write tests.
