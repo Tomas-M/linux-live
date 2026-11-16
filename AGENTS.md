@@ -1084,6 +1084,8 @@ must follow the general Slax repair rules above.
   incorrectly treats file-info objects as paths and crashes.
   The media bookmark updater reads GTK 3's current bookmarks when present and
   mirrors the result to GTK 2, so PCManFM and both file chooser versions refresh.
+  Validate HOME and XDG paths before any writes; skip missing/relative homes and
+  paths resolving to `/` or root-level dotfiles, including through symlinks.
   The shared Places model refreshes bookmarks asynchronously when opened and
   on Unix mount changes, including terminal unmounts. The updater removes only empty, unmounted
   `/media/ISO-DEVICE-INODE` directories. Use the same flock for mounting, cleanup

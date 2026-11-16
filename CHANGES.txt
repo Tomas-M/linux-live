@@ -34,6 +34,7 @@ Linux Live Kit
 Slax
 ----
 
+- Skip bookmark updates without a valid home or when settings resolve to filesystem-root paths.
 - Fit the status bubble's width to its current content without wrapping its rows.
 - Automatically disconnect restore-point file views after their File Manager
   windows close, including across tray or broker restarts; remove Close files.
