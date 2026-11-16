@@ -1786,8 +1786,11 @@ must follow the general Slax repair rules above.
   pressed feedback in Slax Status and Partition Manager.
   Apply `partition-manager-style.diff` after fetching Partition Manager so fresh
   builds retain the approved button relief and operation-percentage spacing.
-  Slax Status colors only focused primary buttons. In backdrop state, use the
-  ordinary native button style for both green and queued blue actions.
+  Keep the restore-point manager's foreground styling when inactive. Clear GTK's
+  backdrop state after its window-state handler and disable content transitions;
+  draw keyboard focus from GTK's remembered target without changing real focus.
+  Modifier keys and key releases must not enable keyboard focus styling during
+  Alt+Tab; ordinary keyboard navigation must still reveal its focus indicator.
   Status confirmations remove the native message parent's horizontal margins so
   text keeps a single compact inset while shared dialog button spacing remains.
   Tray toggles must leave the manager open. Keep save switches alive and use
