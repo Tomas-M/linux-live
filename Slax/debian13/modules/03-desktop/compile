@@ -122,13 +122,6 @@ mkdir -p "$PACKAGE/usr/share/xlunch"
 cp -a extra/focus-icons "$PACKAGE/usr/share/xlunch/"
 
 cd /tmp
-wget -O systrayiconlauncher.tar.gz https://github.com/Tomas-M/SystrayIconLauncher/archive/master.tar.gz
-tar -xf systrayiconlauncher.tar.gz
-cd SystrayIconLauncher-master
-make
-cp systrayicon "$PACKAGE/usr/bin/"
-
-cd /tmp
 wget -O gtkdialog.tar.gz https://github.com/Tomas-M/GTKdialog/archive/master.tar.gz
 tar -xf gtkdialog.tar.gz
 cd GTKdialog-master
@@ -142,7 +135,7 @@ cd cbatticon-1.6.10
 sed -i 's/WITH_GTK3 = 1/WITH_GTK3 = 0/' Makefile
 make
 cp cbatticon "$PACKAGE/usr/bin/"
-strip "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
+strip "$PACKAGE/usr/bin/xlunch" \
    "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon"
 
 # Derive runtime dependencies from the compiled executables, not build dependencies.
@@ -158,7 +151,7 @@ Package: slax-desktop-tools
 Architecture: any
 Description: Slax desktop launchers, software installer and battery indicator
 EOF
-DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" "$PACKAGE/usr/bin/systrayicon" \
+DEPENDS=$(dpkg-shlibdeps -O "$PACKAGE/usr/bin/xlunch" \
    "$PACKAGE/usr/bin/gtkdialog" "$PACKAGE/usr/bin/cbatticon" "$PACKAGE/usr/bin/fbinstall" "$PACKAGE/usr/bin/fbstartupnotify" "$PACKAGE/usr/bin/fbvboxpointer" "$PACKAGE/usr/bin/fbkeyboard" "$PACKAGE/usr/bin/slax-status" "$PACKAGE/usr/bin/slax-statusd" "$PACKAGE/usr/bin/partition-manager")
 cat > "$PACKAGE/DEBIAN/control" <<EOF
 Package: slax-desktop-tools
