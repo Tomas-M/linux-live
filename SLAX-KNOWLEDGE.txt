@@ -22,6 +22,7 @@ DESKTOP
 - Slax Status starts with the desktop. Click its stacked-drive tray icon to see
   where Slax runs, where changes are stored and the estimated space available.
   The number shows available space; the bar shows how much is used.
+  The bubble fits its current text on single lines; unusually long names are shortened.
   Drives are identified by /dev/device, followed by their label in parentheses.
   Available space includes reusable blocks already allocated inside the active container.
   Clicking the tray icon toggles the bubble without closing Restore points.

@@ -478,8 +478,13 @@ static void position_bubble(Bubble *bubble)
     GdkWindow *window=gtk_widget_get_window(tray);int x,y;gdk_window_get_origin(window,&x,&y);
     GdkMonitor *monitor=gdk_display_get_monitor_at_window(gtk_widget_get_display(tray),window);
     GdkRectangle area;gdk_monitor_get_geometry(monitor,&area);
-    int width=MIN(bubble==&popup ? 500 : 480,area.width-20);
-    gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
+    int width=MIN(480,area.width-20);
+    if (bubble==&popup)
+    {
+        gtk_widget_get_preferred_width(bubble->body,NULL,&width);
+        width=MIN(width,MIN(600,area.width-20));
+    }
+    else gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
     gtk_widget_set_margin_top(bubble->body,16);gtk_widget_set_margin_bottom(bubble->body,16);
     GtkRequisition size;gtk_widget_get_preferred_size(bubble->body,NULL,&size);
     int height=size.height+12;
@@ -1032,6 +1037,7 @@ static void update_ui(void)
     if (!feedback) feedback=*operation ? operation : history_error;
     set_label(popup_status,status);set_label(manager_status,feedback);
     gtk_stack_set_visible_child(GTK_STACK(manager_feedback),feedback ? manager_status : manager_space);
+    if (gtk_widget_get_visible(popup.window)) position_bubble(&popup);
     char *tooltip=g_strdup_printf("Slax Status · %s · %s available",mode,size);
     if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
     g_free(tooltip);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);

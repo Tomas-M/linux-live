@@ -385,6 +385,11 @@ must follow the general Slax repair rules above.
 - Slax boot test uses `VM/virtualbox/slax-profile-restore.vdi`, a dynamic 4 GiB
   GPT disk with a 256 MiB FAT32 ESP (`SLAXEFI`) and the remaining FAT32 data
   partition (`SLAXDATA`).
+  UI checks currently boot from RAM with its data attachment detached: the
+  configured differencing VDI `Snapshots/{d284e031-2340-44b3-a73b-f5ed8ae31207}.vdi`
+  is missing. Preserve the base disk; do not attach it as a replacement for the
+  missing child. The previous VM configuration is saved in
+  `VM/status-bubble-width/vm-before-missing-disk-detach.vbox`.
 - This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
   freeze its filesystem, save its state, then use `zerofree` from a temporary
   RAM-only maintenance VM with host I/O caching enabled and the work filesystem
@@ -1792,6 +1797,9 @@ must follow the general Slax repair rules above.
   contrast. Keep native history rows flat when pressed.
   Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
+  Size the status bubble to its current single-line content, including while open.
+  Cap its width at 600 logical pixels and the monitor edges; ellipsize unusually
+  long names rather than wrapping them or widening the bubble across the screen.
   Keep the single capacity estimate directly in the UI without a Details dialog.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
   restore-point rows are selectable and carry point IDs.
