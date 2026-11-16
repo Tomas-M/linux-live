@@ -586,7 +586,7 @@ static BOOL prepare_changes(const Job *job)
          return windows_error(L"Could not create the changes directory on USB-DATA. USB-SPACE has been kept.");
    }
    swprintf(path,512,L"%ls%ls\\readme.txt",job->drive,job->plan->livekit);
-   if (!create_changes_file(path,"Changes made while running this live system with persistence enabled are\r\nautomatically saved in the changes directory and used at the next start.\r\nKeep this whole directory to retain your saved changes and restore points.\r\n")) return FALSE;
+   if (!create_changes_file(path,"Changes made while running this live system with persistence enabled are\r\nautomatically saved in the changes directory and used at the next start.\r\nKeep this whole directory to retain your saved changes and saved states.\r\n")) return FALSE;
    // Preserve existing markers and old directories; never create an empty changes.dat.
    swprintf(path,512,L"%ls%ls\\changes\\resume.txt",job->drive,job->plan->livekit);
    return create_changes_file(path,"");

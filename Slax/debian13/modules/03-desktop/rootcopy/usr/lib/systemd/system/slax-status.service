@@ -1,5 +1,5 @@
 [Unit]
-Description=Slax profiles and restore points
+Description=Slax saved states
 After=local-fs.target
 ConditionPathIsDirectory=/run/initramfs/memory
 

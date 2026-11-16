@@ -11,11 +11,11 @@ Linux Live Kit
 - Automatically size persistence containers from their backing filesystem and grow
   existing containers without shrinking them; remove the perchsize boot parameter.
 - Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.
-- Report reusable capacity released by deleting individual DynFileFS restore points,
+- Report reusable capacity released by deleting individual DynFileFS saved states,
   using cached block ownership instead of scanning saved filesystem contents.
 - Allow disabling DynFileFS automatic end-of-run points without disabling explicit
-  restore points or normal filesystem synchronization.
-- Rename DynFileFS restore points by stable identity while retaining their data,
+  saved states or normal filesystem synchronization.
+- Rename DynFileFS saved states by stable identity while retaining their data,
   ancestry, open read-only views and next-start targets. Expose saved images by ID.
 - Keep DynFileFS backing files and automatic filesystem freezing accessible after
   switching from the initramfs to the live root, fixing persistent boot I/O errors.
@@ -23,12 +23,12 @@ Linux Live Kit
   request on failure and stop for recovery instead of silently continuing in RAM.
 - Keep one DynFileFS changes.dat directly in changes on every filesystem,
   including native Linux storage; ignore older numbered profile directories.
-- Choose a drive and then a restore point during boot. Fresh start restores
+- Choose a drive and then a saved state during boot. Fresh start restores
   Initial state while retaining history; F5 refreshes the drive list.
 - Preserve the starting state before persistent writes and apply save/discard
-  policy at the next activation; protect scheduled restore points during recovery.
+  policy at the next activation; protect scheduled saved states during recovery.
   Recover interrupted creation of the starting state without losing unrelated points.
-- Give new containers a permanent Initial state restore point after
+- Give new containers a permanent Initial state saved state after
   formatting and filesystem growth; hide the unusable pre-formatting point.
 
 Slax
@@ -37,53 +37,55 @@ Slax
 - Skip bookmark updates without a valid home or when settings resolve to filesystem-root paths.
 - Remove the unused SystrayIconLauncher utility from the desktop module.
 - Include Slax Status and Keyboard layout in the predefined tray icon order.
+- Use Saved states throughout the desktop, boot menu and installers, with
+  Save current state, Rename saved state and Delete saved state actions.
 - Fit the status bubble's width to its current content without wrapping its rows.
-- Automatically disconnect restore-point file views after their File Manager
+- Automatically disconnect saved-state file views after their File Manager
   windows close, including across tray or broker restarts; remove Close files.
-- Keep restore-point controls visually stable when switching applications.
-- Label the queued restore-point action Cancel next-start selection.
-- Keep save switches and restore-point actions from flashing during policy writes;
+- Keep saved-state controls visually stable when switching applications.
+- Label the queued saved-state action Cancel next-start selection.
+- Keep save switches and saved-state actions from flashing during policy writes;
   serialize rapid save changes and apply the latest choice without interrupting animation.
-- Refresh restore-point details without replacing controls or dimming their text.
+- Refresh saved-state details without replacing controls or dimming their text.
   Match queued-point labels and actions to the blue node; clicking the selected
   next-start action cancels it. Remove the pressed inset from history rows.
 - Use ordinary left-aligned text in standard GTK 3 message dialogs.
 - Keep switch tracks blue to the left of the moving thumb and gray to its right,
   avoiding the color flash at the end of animation or dragging.
-- Clarify restore-point dialogs and give them normal window titles. Keep queued
+- Clarify saved-state dialogs and give them normal window titles. Keep queued
   points marked in blue, group next-start controls in a stable footer, move
   Show removed below history, and add a normal Restart Slax action.
 - Give green action buttons in Slax Status and Partition Manager the same
   raised appearance and pressed feedback as ordinary buttons.
 - Release the shutdown splash console before systemd's initramfs handoff,
   preventing restarts from hanging until a key is pressed.
-- Rename restore points without changing their contents or next-start selection,
+- Rename saved states without changing their contents or next-start selection,
   including international names and spaces. Wrap inspector titles, omit redundant
   parent information and button tooltips, and reduce confirmation text margins.
-- Make Don't save suppress automatic restore points for the discarded run,
+- Make Don't save suppress automatically saved states for the discarded run,
   including when a different point is selected for the next start.
-- Show space reusable after deleting a restore point and remove repeated-name
+- Show space reusable after deleting a saved state and remove repeated-name
   tree tooltips. Refresh size figures without rebuilding unchanged history rows.
 - Keep the Save this run switch from getting stuck between positions during
   repeated clicks or dragging while storage status refreshes.
 - Keep SSH socket activation disabled by default, avoiding unnecessary VSOCK
   discovery errors on virtual machines without a VSOCK transport.
 - Keep a consistent gap between buttons in standard GTK message dialogs.
-- Replace profile management with restore points for the currently used drive.
+- Replace profile management with saved states for the currently used drive.
   Choose storage only at boot; explain persistence and recovery with an example
   when running in RAM. Keep confirmation left and Cancel right.
-- Open restore-point files at the saved filesystem root instead of the user's home.
+- Open saved-state files at the saved filesystem root instead of the user's home.
 - Fix Slax Status crashes when clicking informational rows in empty or loading history views.
 - Show a clean Initial state for new storage; reserve Current state for the
   running store. Preserve the state being left before a restore when saving is
   enabled, and always retain existing history.
 - Increase the gap between Partition Manager's operation percentage and progress bar.
-- Keep the restore-point window open when toggling its tray bubble, remove storage Details,
+- Keep the saved-state window open when toggling its tray bubble, remove storage Details,
   and fix asynchronous save switches, footer movement and bubble positioning.
 - Exclude EFI System Partitions from automatic mounting and storage discovery;
   prevent both installers from using them for Slax data while retaining EFI-on-data fallback.
 - Keep desktop shortcuts available in tray bubbles and refine Slax Status spacing
-  and restore-point actions. Show used space in the bar while keeping available space in text.
+  and saved-state actions. Show used space in the bar while keeping available space in text.
 - Use light file icons for Windows shortcuts, applications, libraries and images.
 - Prefer the installed variants of Slax's held packages in APT, preventing rebuilt
   packages from appearing as same-version updates while retaining ordinary updates.
@@ -91,8 +93,8 @@ Slax
   virtual size was 16 GB; it now follows the actual capacity of the filesystem
   storing saved changes without unnecessary overhead.
 - Add Slax Status to the desktop tray, with anchored warnings, estimated available
-  space, Save this run and native restore-point management. Browse saved files
-  read-only and choose a restore point for the next start.
+  space, Save this run and native saved-state management. Browse saved files
+  read-only and choose a saved state for the next start.
 - Include whiptail for debconf's text dialogs during package installation,
   avoiding frontend initialization warnings.
 - Highlight the Start button on hover using the shared GTK panel style.

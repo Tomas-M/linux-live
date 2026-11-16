@@ -1,4 +1,4 @@
-/* Slax's native status tray and restore-point manager. Storage operations belong to slax-statusd. */
+/* Slax's native status tray and saved-state manager. Storage operations belong to slax-statusd. */
 #include <gtk/gtk.h>
 #include <gtk/gtkx.h>
 #include <gdk/gdkx.h>
@@ -76,7 +76,7 @@ static JsonArray *array(JsonObject *parent, const char *key)
 }
 static guint count(JsonArray *items) { return items ? json_array_get_length(items) : 0; }
 
-/* Storage and restore-point actions use exact opaque identities. */
+/* Storage and saved-state actions use exact opaque identities. */
 static JsonObject *find(JsonArray *items, const char *key, const char *value)
 {
     for (guint i=0; value && i<count(items); i++)
@@ -98,7 +98,7 @@ static gboolean saving(void)
     return !pending_request || !strcmp(str(pending_request,"op"),"run.save");
 }
 
-static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatic restore point" : str(item,"name"); }
+static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatically saved state" : str(item,"name"); }
 static char *size_text(gint64 bytes) { return g_format_size_full(MAX((gint64)0,bytes),G_FORMAT_SIZE_DEFAULT); }
 /* Only deletable points can promise reusable capacity; unknown amounts stay blank. */
 static char *reclaimable_text(JsonObject *item)
@@ -119,7 +119,7 @@ static char *date_text(gint64 seconds)
     return text;
 }
 
-/* Use plain GTK text, never treat restore-point names or backend errors as markup. */
+/* Use plain GTK text, never treat saved-state names or backend errors as markup. */
 static GtkWidget *label(const char *text, const char *css)
 {
     GtkWidget *widget=gtk_label_new(text);
@@ -152,7 +152,7 @@ static GtkWidget *paragraph(const char *text)
     gtk_label_set_line_wrap_mode(GTK_LABEL(widget),PANGO_WRAP_WORD_CHAR);gtk_label_set_max_width_chars(GTK_LABEL(widget),74);return widget;
 }
 
-/* Informational history messages are placeholders, never selectable restore-point rows. */
+/* Informational history messages are placeholders, never selectable saved-state rows. */
 static void history_placeholder(const char *text)
 {
     GtkWidget *message=label(text,"muted");gtk_widget_set_size_request(message,-1,36);gtk_widget_set_valign(message,GTK_ALIGN_START);
@@ -372,7 +372,7 @@ static char *next_text(void)
     if (next && *str(next,"pointId"))
     {
         char *date=date_text(number(next,"created"));
-        char *text=g_strdup_printf("%s · %s",*str(next,"pointName") ? str(next,"pointName") : "Selected restore point",date);
+        char *text=g_strdup_printf("%s · %s",*str(next,"pointName") ? str(next,"pointName") : "Selected saved state",date);
         g_free(date);return text;
     }
     if (!strcmp(str(run(),"kind"),"ram")) return g_strdup("Fresh temporary run");
@@ -549,7 +549,7 @@ static void make_popups(void)
     popup_cancel=link_button("Cancel","next-clear");pack(next,popup_cancel,FALSE);pack(popup.body,next,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
-    pack(footer,button("Restore points",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
+    pack(footer,button("Saved states",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
     g_signal_connect(popup.window,"focus-out-event",G_CALLBACK(popup_focus_out),NULL);
     g_signal_connect(popup.window,"key-press-event",G_CALLBACK(popup_key),NULL);
     gtk_widget_add_events(popup.window,GDK_BUTTON_PRESS_MASK|GDK_KEY_PRESS_MASK);
@@ -609,7 +609,7 @@ static void append_history(GPtrArray *points, GHashTable *path, const char *pare
     g_ptr_array_unref(children);
 }
 
-/* Hidden guards are never UI restore points; their visible descendants retain truthful ancestry. */
+/* Hidden guards are never UI saved states; their visible descendants retain truthful ancestry. */
 static HistoryRow *visible_parent(HistoryRow *row)
 {
     const char *parent=graph_parent(row->point);
@@ -721,8 +721,8 @@ static void render_history(void)
     gtk_widget_hide(show_removed);gtk_widget_hide(history_footer);
     gtk_button_set_label(GTK_BUTTON(history_latest),"Go to now ↓");
     const char *placeholder=NULL;
-    if (!store()) placeholder=state ? "Restore points are available when changes are saved on a drive." : "Loading storage…";
-    else if (!history || g_strcmp0(history_store,selected)) placeholder="Loading restore points…";
+    if (!store()) placeholder=state ? "Saved states are available when changes are saved on a drive." : "Loading storage…";
+    else if (!history || g_strcmp0(history_store,selected)) placeholder="Loading saved states…";
     if (placeholder)
     {
         history_placeholder(placeholder);updating=FALSE;return;
@@ -757,7 +757,7 @@ static void render_history(void)
         row->widget=gtk_list_box_row_new();gtk_widget_set_size_request(row->widget,-1,36);
         GtkWidget *line=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_margin_start(line,36+row->depth*22);gtk_widget_set_margin_end(line,8);
         GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);pack(line,name,TRUE);
-        const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest restore point" : "";
+        const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest saved state" : "";
         gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(id,str(next,"pointId"));
         if (queued) badge="Next start";
         if (live) badge="You are here";
@@ -795,16 +795,16 @@ static void make_inspector(void)
     inspector_saved=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_saved,FALSE);
     inspector_date=label("","muted");pack(inspector_saved,inspector_date,FALSE);
     inspector_origin=paragraph("");pack(inspector_saved,inspector_origin,FALSE);
-    inspector_removed=paragraph("This restore point can no longer be used to start Slax or browse saved files. The point stays in the tree to show where later restore points came from.");pack(inspector_saved,inspector_removed,FALSE);
+    inspector_removed=paragraph("This saved state can no longer be used to start Slax or browse saved files. It stays in the tree to show where later saved states came from.");pack(inspector_saved,inspector_removed,FALSE);
     inspector_actions=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector_saved,inspector_actions,FALSE);
     inspector_use=primary_button("Use at next start","use-point");pack(inspector_actions,inspector_use,FALSE);
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
-    inspector_rename=button("Rename restore point",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
-    inspector_delete=button("Delete restore point",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
+    inspector_rename=button("Rename saved state",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
+    inspector_delete=button("Delete saved state",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_reclaim=paragraph("");pack(inspector_actions,inspector_reclaim,FALSE);
     inspector_current=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_current,FALSE);
     pack(inspector_current,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);
-    inspector_create=primary_button("Create restore point","create-point");pack(inspector_current,inspector_create,FALSE);
+    inspector_create=primary_button("Save current state","create-point");pack(inspector_current,inspector_create,FALSE);
 }
 
 /* Refresh only changed properties; busy actions must not fade the inspector's text. */
@@ -816,12 +816,12 @@ static void render_inspector(void)
     JsonObject *next=object(state,"next");
     gboolean queued=saved && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(saved,"id"),str(next,"pointId"));
     const char *eyebrow="YOU ARE HERE";
-    if (saved) eyebrow=removed ? "REMOVED RESTORE POINT" : "SAVED RESTORE POINT";
+    if (saved) eyebrow=removed ? "REMOVED STATE" : "SAVED STATE";
     set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current state");
     gtk_widget_set_visible(inspector_saved,saved!=NULL);gtk_widget_set_visible(inspector_current,saved==NULL);
     char *date=date_text(number(saved,"created"));set_label(inspector_date,date);g_free(date);
     const char *origin="Kept until you delete it";
-    if (initial) origin="Start with Slax’s original apps, settings and files. Other restore points stay available.";
+    if (initial) origin="Start with Slax’s original apps, settings and files. Other saved states stay available.";
     else if (flag(saved,"automatic")) origin="Saved automatically";
     set_label(inspector_origin,origin);
     GtkStyleContext *origin_style=gtk_widget_get_style_context(inspector_origin);
@@ -934,7 +934,7 @@ static gboolean draw_intro_example(GtkWidget *widget, cairo_t *cr, gpointer data
 /* Ordinary GTK windows get the system's decoration; only the tray surfaces paint their own outline. */
 static void make_manager(void)
 {
-    manager=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(manager),"Restore points");
+    manager=gtk_window_new(GTK_WINDOW_TOPLEVEL);gtk_window_set_title(GTK_WINDOW(manager),"Saved states");
     gtk_widget_set_name(manager,"slax-status-manager");
     g_signal_connect_after(manager,"window-state-event",G_CALLBACK(manager_state),NULL);
     g_signal_connect(manager,"notify::focus-visible",G_CALLBACK(manager_focus_visible),NULL);
@@ -958,8 +958,8 @@ static void make_manager(void)
     const char *texts[]={
         "This run uses RAM. Apps, settings and files changed inside Slax disappear when you shut down.",
         "Undo a change that went wrong",
-        "Before installing an app or changing settings, make a restore point. You can restart from it to undo later changes, or open it to recover files.",
-        "At next start, press Esc to open the boot menu. Choose “Choose a restore point”, select a drive and “Fresh start” to keep changes on that drive.",
+        "Before installing an app or changing settings, save the current state. You can restart from it to undo later changes, or open it to recover files.",
+        "At next start, press Esc to open the boot menu. Choose “Choose a saved state”, select a drive and “Fresh start” to keep changes on that drive.",
         "You will start with a clean Slax. Changes made in this run are not copied."
     };
     for (guint i=0;i<G_N_ELEMENTS(texts);i++)
@@ -970,7 +970,7 @@ static void make_manager(void)
     intro_example=box(GTK_ORIENTATION_VERTICAL,10);gtk_widget_set_size_request(intro_example,320,-1);gtk_widget_set_valign(intro_example,GTK_ALIGN_CENTER);
     gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"intro-example");pack(intro_columns,intro_example,FALSE);
     pack(intro_example,label("EXAMPLE","eyebrow"),FALSE);pack(intro_example,label("My Slax","title"),FALSE);
-    pack(intro_example,label("Restore points on your drive","muted"),FALSE);
+    pack(intro_example,label("Saved states on your drive","muted"),FALSE);
     GtkWidget *example_tree=box(GTK_ORIENTATION_VERTICAL,0);pack(intro_example,example_tree,FALSE);
     const char *examples[][2]={{"Initial state","A clean Slax"},{"Before installing an app","Your apps, settings and files"},{"After installing the app","The new app causes problems"}};
     for (guint i=0;i<G_N_ELEMENTS(examples);i++)
@@ -987,7 +987,7 @@ static void make_manager(void)
     gtk_style_context_add_class(gtk_widget_get_style_context(main_layout),"storage-detail");
     history_layout=box(GTK_ORIENTATION_HORIZONTAL,18);pack(main_layout,history_layout,TRUE);
     history_box=box(GTK_ORIENTATION_VERTICAL,10);pack(history_layout,history_box,TRUE);
-    pack(history_box,label("Restore points","heading"),FALSE);
+    pack(history_box,label("Saved states","heading"),FALSE);
     history_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(history_scroll),GTK_POLICY_AUTOMATIC,GTK_POLICY_AUTOMATIC);pack(history_box,history_scroll,TRUE);
     g_signal_connect_after(history_scroll,"size-allocate",G_CALLBACK(reveal_history),NULL);
     history_list=gtk_list_box_new();gtk_list_box_set_selection_mode(GTK_LIST_BOX(history_list),GTK_SELECTION_SINGLE);
@@ -1095,7 +1095,7 @@ static void update_ui(void)
         else if (!strcmp(warning,"readonly")) {title="Changes cannot be saved";text=g_strdup("The changes drive became read-only. Save important files to another writable drive and check the storage device.");}
         else if (!strcmp(warning,"service")) {title="Storage status is unavailable";text=g_strdup("The storage service could not be reached. Open Slax Status to review the error.");}
         else if (!strcmp(warning,"error")) {title="Storage needs attention";text=g_strdup(str(run(),"error"));}
-        else text=g_strdup_printf("About %s is available for changes. Free drive space or remove unneeded restore points.",free);
+        else text=g_strdup_printf("About %s is available for changes. Free drive space or remove unneeded saved states.",free);
         /* Pango limits lines per paragraph, so flatten separators in the preview, retaining the full tooltip. */
         GString *preview=g_string_new(NULL);
         for (const char *cursor=text;*cursor;cursor=g_utf8_next_char(cursor))
@@ -1138,9 +1138,9 @@ static void restart_done(GObject *source, GAsyncResult *result, gpointer data)
 /* Reflect DynFileFS's UTF-8 name rules before making an expensive freeze/create request. */
 static const char *name_error(const char *name, const char *renamed)
 {
-    if (!*name) return "Enter a name for this restore point.";
+    if (!*name) return "Enter a name for this saved state.";
     if (strlen(name)>250) return "Use a shorter name (at most 250 UTF-8 bytes).";
-    if (g_str_has_prefix(name,"auto-") || g_str_has_prefix(name,"live-start-") || g_str_has_prefix(name,"live-end-")) return "This prefix is reserved for Slax’s automatic restore points.";
+    if (g_str_has_prefix(name,"auto-") || g_str_has_prefix(name,"live-start-") || g_str_has_prefix(name,"live-end-")) return "This prefix is reserved for Slax’s automatically saved states.";
     if (name[strlen(name)-1]==' ' || name[strlen(name)-1]=='.') return "Do not end the name with a dot or space.";
     for (const char *cursor=name;*cursor;cursor=g_utf8_next_char(cursor))
     {
@@ -1148,7 +1148,7 @@ static const char *name_error(const char *name, const char *renamed)
         if (g_unichar_iscntrl(character) || (character<128 && strchr("<>:\"/\\|?*",character))) return "Do not use control characters, path separators or < > : \" | ? *.";
     }
     JsonArray *points=array(history,"snapshots");
-    for (guint i=0;i<count(points);i++) {JsonObject *item=json_array_get_object_element(points,i);if (!flag(item,"deleted") && g_strcmp0(str(item,"id"),renamed) && !strcmp(str(item,"name"),name)) return "A restore point with this name already exists.";}
+    for (guint i=0;i<count(points);i++) {JsonObject *item=json_array_get_object_element(points,i);if (!flag(item,"deleted") && g_strcmp0(str(item,"id"),renamed) && !strcmp(str(item,"name"),name)) return "A saved state with this name already exists.";}
     return NULL;
 }
 
@@ -1157,15 +1157,15 @@ static void name_dialog(gboolean rename)
 {
     hide_popup();g_autofree char *target=g_strdup(selected);
     g_autofree char *id=rename ? g_strdup(selected_point) : NULL,*original=rename ? g_strdup(point_name(point())) : NULL;
-    const char *title=rename ? "Rename restore point" : "Create restore point";
+    const char *title=rename ? "Rename saved state" : "Save current state";
     GtkWidget *dialog=gtk_dialog_new_with_buttons(title,GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,
         title,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(dialog),480,-1);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT);
     GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),18);gtk_box_set_spacing(GTK_BOX(content),12);
     const char *note="Save your current apps, settings and files so you can return to them later.";
-    if (flag(store(),"active") && !flag(run(),"save")) note="Save your current apps, settings and files in a restore point. This point will be kept even though Don’t save is selected.";
-    if (rename) note="Give this restore point a name you will recognize.";
-    if (rename && flag(point(),"automatic")) note="Give this automatic restore point a name to keep it until you choose to delete it.";
+    if (flag(store(),"active") && !flag(run(),"save")) note="Save your current apps, settings and files so you can return to them later. This state will be kept even though Don’t save is selected.";
+    if (rename) note="Give this saved state a name you will recognize.";
+    if (rename && flag(point(),"automatic")) note="Give this automatically saved state a name to keep it until you choose to delete it.";
     pack(content,paragraph(note),FALSE);pack(content,label("Name",NULL),FALSE);
     GtkWidget *entry=gtk_entry_new();gtk_entry_set_activates_default(GTK_ENTRY(entry),TRUE);gtk_entry_set_placeholder_text(GTK_ENTRY(entry),"e.g. Before upgrade");pack(content,entry,FALSE);
     if (rename) {gtk_entry_set_text(GTK_ENTRY(entry),original);gtk_editable_select_region(GTK_EDITABLE(entry),0,-1);}
@@ -1222,7 +1222,7 @@ static void files_finished(GObject *source, GAsyncResult *result, gpointer data)
     {
         const char *detail=error ? error->message : "The file manager stopped unexpectedly.";
         if (!error && err && *err) detail=err;
-        message("Cannot open restore point files",detail);
+        message("Cannot open saved state files",detail);
     }
     g_clear_error(&error);g_free(err);refresh();
 }
@@ -1249,7 +1249,7 @@ static void action(GtkButton *button_widget, gpointer data)
             const char *saving="Your changes will be saved.";
             if (!strcmp(str(run(),"kind"),"ram")) saving="Changes made in this RAM run will be lost.";
             else if (!flag(run(),"save")) saving="Changes from this run will be discarded.";
-            else if (object(state,"next")) saving="Your current apps, settings and files will be kept in another restore point.";
+            else if (object(state,"next")) saving="Your current apps, settings and files will be kept in another saved state.";
             char *next=next_text();g_free(text);text=g_strdup_printf("Save your open documents before restarting.\n%s\n\nNext start: %s",saving,next);g_free(next);
         }
         gboolean accepted=confirm("Restart Slax","Restart Slax now?",text,"Restart Slax");g_free(text);
@@ -1276,18 +1276,18 @@ static void action(GtkButton *button_widget, gpointer data)
         if (!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId")))
         {send_request(command("next.clear",FALSE),TRUE);return;}
         gboolean initial=flag(saved,"initial");char *question=initial ? g_strdup("Start with Slax’s original apps, settings and files?") : g_strdup_printf("Start Slax from “%s”?",point_name(saved));
-        const char *saving="Other restore points will stay available.";
-        if (flag(item,"active")) saving=flag(run(),"save") ? "Your current apps, settings and files will be kept in another restore point." : "Changes from this run will be discarded. Other restore points will stay available.";
-        char *text=g_strdup_printf("%s\n\n%s",initial ? "At the next start, Slax will use the original apps, settings and files." : "At the next start, Slax will use the apps, settings and files saved in this restore point.",saving);
-        gboolean accepted=confirm(initial ? "Fresh start" : "Use restore point at next start",question,text,initial ? "Fresh start" : "Use at next start");g_free(question);g_free(text);
+        const char *saving="Other saved states will stay available.";
+        if (flag(item,"active")) saving=flag(run(),"save") ? "Your current apps, settings and files will be kept in another saved state." : "Changes from this run will be discarded. Other saved states will stay available.";
+        char *text=g_strdup_printf("%s\n\n%s",initial ? "At the next start, Slax will use the original apps, settings and files." : "At the next start, Slax will use the apps, settings and files saved in this saved state.",saving);
+        gboolean accepted=confirm(initial ? "Fresh start" : "Use saved state at next start",question,text,initial ? "Fresh start" : "Use at next start");g_free(question);g_free(text);
         if (accepted) {JsonObject *request=command("next.set",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"delete-point"))
     {
         char *question=g_strdup_printf("Delete “%s”?",point_name(saved));
         JsonObject *next=object(state,"next");gboolean queued=!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId"));
-        char *text=g_strconcat("You will no longer be able to start Slax from this restore point or open files saved in this restore point. Your current apps, settings and files and all other restore points will be kept.",queued ? "\n\nSlax will no longer use this restore point at the next start." : "",NULL);
-        gboolean accepted=confirm("Delete restore point",question,text,"Delete restore point");g_free(question);g_free(text);
+        char *text=g_strconcat("You will no longer be able to start Slax from this saved state or open files saved in this saved state. Your current apps, settings and files and all other saved states will be kept.",queued ? "\n\nSlax will no longer use this saved state at the next start." : "",NULL);
+        gboolean accepted=confirm("Delete saved state",question,text,"Delete saved state");g_free(question);g_free(text);
         if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"open-files"))
@@ -1296,7 +1296,7 @@ static void action(GtkButton *button_widget, gpointer data)
         GSubprocess *process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,
             "/usr/bin/slax-status","--open-files",selected,str(saved,"id"),NULL);
         if (process) {g_subprocess_communicate_utf8_async(process,NULL,NULL,files_finished,NULL);g_object_unref(process);}
-        else {message("Cannot open restore point files",error->message);g_clear_error(&error);}
+        else {message("Cannot open saved state files",error->message);g_clear_error(&error);}
     }
 }
 

@@ -1412,7 +1412,7 @@ must follow the general Slax repair rules above.
   preserve Slax's original mark and the menu icons' clean outlines and gradients.
 - Inject test keystrokes only after GRUB has started. Early input during POST
   caused a local SeaBIOS keyboard error. Keep automation timing fixes outside
-  Slax. Use `Choose a restore point` to select saved changes on
+  Slax. Use `Choose a saved state` to select saved changes on
   the attached fixtures while booting from CD.
 - The scratch VM boots the current distribution ISO at SATA port 0, with its
   two disposable persistence fixtures at ports 1 and 2. The launcher must not
@@ -1470,7 +1470,7 @@ must follow the general Slax repair rules above.
   Mini Commander binary's source commit in `initramfs/static/README`.
 - Slax has one saved-changes store per selected drive, directly at
   /slax/changes/changes.dat. Use DynFileFS with XFS on every backing filesystem,
-  including native Linux filesystems, so restore points are always available.
+  including native Linux filesystems, so saved states are always available.
   There is no profile/session layer in boot, the broker or the desktop UI.
   Ignore old numbered directories, session.txt and last_session.txt; leave them
   untouched. Do not migrate, reuse or remove their data. Preserve unrelated X11,
@@ -1592,7 +1592,7 @@ must follow the general Slax repair rules above.
   `[Enter] boot` and `[e] cmdline`; no anykey module or Tab remapping is shipped.
   Both menus source `grub/entries.cfg` and preserve the configured default.
   The first three entries are `Continue saved changes`,
-  `Choose a restore point` and `Run Slax from RAM (copy to ram)`.
+  `Choose a saved state` and `Run Slax from RAM (copy to ram)`.
   The fourth is `Start Slax in text mode only (no desktop)`, using `text nomodeset`
   without splash, quiet, hidden cursor, persistence, automount or copy-to-RAM flags.
   Initramfs must suppress the splash for `text` even if `quiet` is also supplied;
@@ -1608,7 +1608,7 @@ must follow the general Slax repair rules above.
   errors visible without routine kernel/systemd messages. Keep full kernel and
   journal records; `debug` still enables verbose console output. Omit obsolete
   `load_ramdisk` and `prompt_ramdisk` flags from Slax entries.
-  Fresh start belongs in the selected drive's restore-point menu.
+  Fresh start belongs in the selected drive's saved-state menu.
   Both menu contexts source `grub/graphics.cfg`: initialize graphics inside
   the nested countdown configuration and again after returning to the full menu.
   Initializing only the parent configuration can leave the countdown in text
@@ -1674,7 +1674,7 @@ must follow the general Slax repair rules above.
   support. The tty decoder waits 100 ms after a single Esc; double Esc cancels
   immediately. Consume unsupported escape sequences without treating them as input.
 - perchdir=ask lists writable non-ESP devices first, then the chosen drive's
-  Last saved state, Fresh start and live restore points. On an empty drive,
+  Last saved state, Fresh start and live saved states. On an empty drive,
   Fresh start prepares saved changes. Esc from history returns to drives;
   Esc from drives cancels persistence without changing durable choices.
   F5 releases scan mounts and rescans without choosing or modifying storage.
@@ -1689,7 +1689,7 @@ must follow the general Slax repair rules above.
 - Fresh start restores the protected, formatted Initial state. It never erases
   a store or its history. Before restoring a point, retain the previous current
   state as a manual point only if run.txt does not request discard. An explicit
-  Create restore point is allowed even with Save this run off. Last saved state
+  Save current state is allowed even with Save this run off. Last saved state
   clears a queued explicit restore but must not override the discard policy.
 - Initialize through the shared persistence helper: stage a fully formatted and
   grown XFS with Initial state, then publish changes.dat last. Preserve existing
@@ -1701,21 +1701,21 @@ must follow the general Slax repair rules above.
   then synchronize the work VM and repack Slax's initramfs when the binary changes. Keep the static
   32-bit x86 build. The current binary is DynFileFS 6.02, storage format 600;
   it automatically converts format 500 on first mount. Converted containers
-  cannot be opened with DynFileFS 5. Keep graphical restore point controls in Slax.
+  cannot be opened with DynFileFS 5. Keep graphical saved state controls in Slax.
   The published binary at commit `72389fb` includes the DynFileFS source fix for
   `pivot_root`: backing files and the FUSE parent use retained directory handles,
-  preserving writes, restore points, automatic freezing and clean unmount across
+  preserving writes, saved states, automatic freezing and clean unmount across
   root changes. Build it with DynFileFS's pinned `static/build.sh` in the work VM's
   tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
   and full persistent Slax boots before replacing it; do not overwrite it with an
   older published binary that lacks this fix. The storage format is unchanged.
-- A saved-changes store can request one restore point for its next activation through
+- A saved-changes store can request one saved state for its next activation through
   `restore.txt`, beside `changes.dat`, containing its stable
   16-digit lowercase hexadecimal ID. Never source metadata as shell code or
   restore by a saved display name: deleted names may be reused. Resolve the live
   ID through DynFileFS's offline catalog and pass its name to `--restore`.
   Consume and sync the request only after XFS mounts and grows successfully.
-  Invalid or unavailable restore points retain the request and open the boot recovery
+  Invalid or unavailable saved states retain the request and open the boot recovery
   shell; exiting retries activation of the same selected store.
   `initramfs/persistence` establishes a manual starting guard after XFS recovery/grow
   and before union writers. `run.txt` holds its exact ID and save/discard policy;
@@ -1756,7 +1756,7 @@ must follow the general Slax repair rules above.
   Background startup and polling inspect mounted drives without mounting others.
   Discover only the active store published by initramfs; never mount other drives
   for the application. Storage selection and preparation belong only in boot.
-  Show the current drive's restore-point tree and inspector without a drive
+  Show the current drive's saved-state tree and inspector without a drive
   selector, profile sidebar or profile creation/rename/delete controls. Draw
   square branch connectors and highlight the corresponding node when its row
   is hovered, focused or selected. Only the active store uses Current state
@@ -1773,7 +1773,7 @@ must follow the general Slax repair rules above.
   Keep Initial state and hidden lifecycle guards unrenameable. Wrap full inspector
   titles, omit the redundant Previous section and do not repeat Delete in a tooltip.
   Give action and error dialogs explicit native window titles, with plain text
-  explaining the affected restore point and what happens to the current apps,
+  explaining the affected saved state and what happens to the current apps,
   settings and files. Keep Show removed below history instead of a Current path
   legend. A queued point's node stays filled blue independently of row selection.
   Its badge and Cancel next-start selection action share that blue. Clicking the
@@ -1786,7 +1786,7 @@ must follow the general Slax repair rules above.
   pressed feedback in Slax Status and Partition Manager.
   Apply `partition-manager-style.diff` after fetching Partition Manager so fresh
   builds retain the approved button relief and operation-percentage spacing.
-  Keep the restore-point manager's foreground styling when inactive. Clear GTK's
+  Keep the saved-state manager's foreground styling when inactive. Clear GTK's
   backdrop state after its window-state handler and disable content transitions;
   draw keyboard focus from GTK's remembered target without changing real focus.
   Modifier keys and key releases must not enable keyboard focus styling during
@@ -1811,9 +1811,9 @@ must follow the general Slax repair rules above.
   long names rather than wrapping them or widening the bubble across the screen.
   Keep the single capacity estimate directly in the UI without a Details dialog.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
-  restore-point rows are selectable and carry point IDs.
-  In RAM, explain why to save changes on a drive and show the static restore-point
-  example. Direct the user to Choose a restore point, a drive and Fresh start at
+  saved-state rows are selectable and carry point IDs.
+  In RAM, explain why to save changes on a drive and show the static saved-state
+  example. Direct the user to Choose a saved state, a drive and Fresh start at
   the next boot. This RAM run is not copied. Do not offer storage setup in the app.
   Ignore numeric legacy directories.
   Show removed controls deleted rows while full ancestry determines tree lanes.

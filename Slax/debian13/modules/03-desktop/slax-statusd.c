@@ -205,7 +205,7 @@ static gboolean valid_name(const char *name, GError **error)
       if (g_unichar_iscntrl(g_utf8_get_char(p))) return fail(error,EINVAL,"Names cannot contain control characters.");
    gboolean reserved=g_str_has_prefix(name,"auto-") || g_str_has_prefix(name,"live-start-");
    if (!*name || reserved || strpbrk(name,"<>:\"/\\|?*") || name[strlen(name)-1]=='.' || name[strlen(name)-1]==' ')
-      return fail(error,EINVAL,"Choose a restore point name without reserved prefixes, path punctuation or a final dot or space.");
+      return fail(error,EINVAL,"Choose a saved state name without reserved prefixes, path punctuation or a final dot or space.");
    return TRUE;
 }
 
@@ -628,7 +628,7 @@ static JsonObject *state(GError **error)
             {
                JsonNode *mode=json_object_get_member(stats,"automaticSnapshots");
                gboolean supported=mode && JSON_NODE_HOLDS_VALUE(mode) && json_node_get_value_type(mode)==G_TYPE_BOOLEAN;
-               if (!supported) fail(&local,ENOTSUP,"The changes storage cannot control automatic restore points.");
+               if (!supported) fail(&local,ENOTSUP,"The changes storage cannot control automatically saved states.");
                else
                {
                   automatic=json_node_get_boolean(mode);
@@ -672,7 +672,7 @@ static JsonObject *state(GError **error)
       /* Resolve names by stable identity so a queued restore follows later renames. */
       JsonObject *catalog=report(next,TRUE,NULL),*saved=point(catalog,string(selection,"pointId"));
       const char *name=NULL;
-      if (saved) name=boolean(saved,"automatic") ? "Automatic restore point" : string(saved,"name");
+      if (saved) name=boolean(saved,"automatic") ? "Automatically saved state" : string(saved,"name");
       nullable(queued,"pointName",name);
       if (catalog) json_object_unref(catalog);
       json_object_set_int_member(queued,"created",json_object_has_member(selection,"created") ? json_object_get_int_member(selection,"created") : 0);
@@ -691,7 +691,7 @@ static JsonObject *state(GError **error)
 /* Engine protection survives the broker and remains active through clean DynFileFS unmount. */
 static gboolean pin(Store *store, const char *id, GError **error)
 {
-   return identity(id) ? snapshot_command(store,"protect",id,error) : fail(error,EINVAL,"Invalid restore point identity.");
+   return identity(id) ? snapshot_command(store,"protect",id,error) : fail(error,EINVAL,"Invalid saved state identity.");
 }
 
 /* Process start time survives exec and distinguishes a browser from a reused PID. */
@@ -718,11 +718,11 @@ static gboolean save_view(View *view, GError **error)
 /* Mount immutable snapshots without replay, then overlay their upper layer over the current base modules. */
 static JsonObject *open_files(Store *store, const char *id, uid_t uid, pid_t pid, GError **error)
 {
-   if (!identity(id)) { fail(error,EINVAL,"Invalid restore point identity."); return NULL; }
+   if (!identity(id)) { fail(error,EINVAL,"Invalid saved state identity."); return NULL; }
    guint64 started=process_start(pid);
    if (!started) { fail(error,ESRCH,"The file browser is no longer running."); return NULL; }
    JsonObject *catalog=history(store,error),*saved=point(catalog,id);
-   if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The restore point is no longer available."); return NULL; }
+   if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return NULL; }
    if (!active_mount(store,FALSE,error)) { json_object_unref(catalog); return NULL; }
    View *view=g_new0(View,1); view->id=g_uuid_string_random(); view->uid=uid; view->pid=pid; view->started=started; view->store=g_strdup(store->id); view->point=g_strdup(id);
    char *base=g_build_filename(RUNTIME,"views",view->id,NULL); view->image=g_build_filename(base,"image",NULL); view->path=g_build_filename(base,"files",NULL);
@@ -894,10 +894,10 @@ static gboolean select_next(Store *store, const char *id, GError **error)
    JsonObject *catalog=NULL,*saved=NULL;
    if (id)
    {
-      if (!identity(id)) return fail(error,EINVAL,"Invalid restore point identity.");
+      if (!identity(id)) return fail(error,EINVAL,"Invalid saved state identity.");
       catalog=history(store,error); saved=point(catalog,id);
       if (!saved)
-      { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The restore point is no longer available."); return FALSE; }
+      { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return FALSE; }
    }
    if (selection && g_strcmp0(string(selection,"storeId"),store->id))
    { if (catalog) json_object_unref(catalog); return fail(error,ESTALE,"The pending restore belongs to different storage."); }
@@ -972,7 +972,7 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       if (!catalog) return NULL;
       JsonObject *saved=point(catalog,id);
       gboolean editable=saved && !boolean(saved,"initial") && !boolean(saved,"hidden");
-      if (!editable) { json_object_unref(catalog); fail(error,EPERM,"This restore point cannot be renamed."); return NULL; }
+      if (!editable) { json_object_unref(catalog); fail(error,EPERM,"This saved state cannot be renamed."); return NULL; }
       char *argument=g_strdup_printf("%s %s",id,name);
       gboolean ok=snapshot_command(store,"rename",argument,error); g_free(argument); json_object_unref(catalog);
       return ok ? json_object_new() : NULL;
@@ -993,18 +993,18 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       {
          JsonObject *saved=point(catalog,id);
          gboolean unavailable=!saved || boolean(saved,"protected") || boolean(saved,"filesOpen");
-         if (unavailable) { json_object_unref(catalog); fail(error,EBUSY,"This restore point is unavailable, protected or still in use."); return NULL; }
+         if (unavailable) { json_object_unref(catalog); fail(error,EBUSY,"This saved state is unavailable, protected or still in use."); return NULL; }
          if (!cancel_point(store,id,&cancelled,error))
          { json_object_unref(catalog); if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but deletion could not continue: "); return NULL; }
          if (cancelled)
          {
             json_object_unref(catalog); catalog=history(store,error); saved=point(catalog,id);
-            if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The next-start selection was cancelled; the restore point is no longer available."); return NULL; }
+            if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The next-start selection was cancelled; the saved state is no longer available."); return NULL; }
          }
          name=string(saved,"name");
       }
       gboolean ok=snapshot_command(store,create ? "create" : "delete",name,error); json_object_unref(catalog);
-      if (!ok) { if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but the restore point could not be deleted: "); return NULL; }
+      if (!ok) { if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but the saved state could not be deleted: "); return NULL; }
       JsonObject *result=json_object_new();
       if (create)
       {

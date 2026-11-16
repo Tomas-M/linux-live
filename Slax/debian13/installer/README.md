@@ -95,7 +95,7 @@ symbols, including native error dialogs, instead of operating-system status icon
 
 The installer verifies a complete staged copy with SHA-256 before publishing it.
 If a `slax` directory already exists, the plan warns that matching source files
-will be replaced. Unmatched files and the entire existing `slax/changes` directory and its restore-point history stay untouched. Source and destination must be different, including aliases
+will be replaced. Unmatched files and the entire existing `slax/changes` directory and its saved-state history stay untouched. Source and destination must be different, including aliases
 or hardlinked source files. File/directory conflicts are rejected before replacement.
 The destination's existing boot-recovery records also stay separate from source
 recovery files. Original files remain in a temporary recovery directory until boot activation
