@@ -4,6 +4,7 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Increase the generated fstab device timeout from 10 to 30 seconds.
 - Link every available BusyBox applet in initramfs, including strings, using
   the complete applet list instead of parsing formatted help output.
 - Include common vendor HID keyboard drivers and Apple SPI keyboards with their

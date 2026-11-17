@@ -1403,7 +1403,7 @@ fstab_create()
       fi
 
       FS="$(device_bestfs $DEVICE)"
-      OPTS="defaults,noatime,nofail,x-systemd.device-timeout=10"
+      OPTS="defaults,noatime,nofail,x-systemd.device-timeout=30"
 
       if [ "$FS" != "" -a "$FS" != "swap" -a "$FS" != "squashfs" ]; then
          MOUNTPOINT=$(awk -v dev="$DEVICE" '$1==dev {print $2; exit}' /proc/mounts)
