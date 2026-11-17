@@ -17,10 +17,16 @@ GRUB_EFI=false sh "$KIT/tools/grub.create" "$MEDIA" slax
 install -m 644 "$SIGNED/files/usr/lib/shim/shimx64.efi.signed" "$BOOT/EFI/BOOT/BOOTX64.EFI"
 install -m 644 "$SIGNED/files/usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed" "$BOOT/EFI/BOOT/grubx64.efi"
 install -m 644 "$SIGNED/files/usr/lib/shim/mmx64.efi.signed" "$BOOT/EFI/BOOT/mmx64.efi"
+# PXE needs the signed network GRUB image behind shim, separate from the disk loader.
+install -m 644 "$SIGNED/files/usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed" "$BOOT/grub/net/grubx64.efi"
 mkdir -p "$BOOT/EFI/debian"
 cp "$BOOT/grub/grub.cfg" "$BOOT/EFI/debian/grub.cfg"
 # The same bootstrap also supports removable-media paths used by firmware.
 cp "$BOOT/grub/grub.cfg" "$BOOT/EFI/BOOT/grub.cfg"
-for FILE in "$BOOT/EFI/BOOT/BOOTX64.EFI" "$BOOT/EFI/BOOT/grubx64.efi" "$BOOT/EFI/BOOT/mmx64.efi" "$BOOT/vmlinuz"; do
+for FILE in "$BOOT/EFI/BOOT/BOOTX64.EFI" "$BOOT/EFI/BOOT/grubx64.efi" "$BOOT/EFI/BOOT/mmx64.efi" \
+   "$BOOT/grub/net/grubx64.efi" "$BOOT/vmlinuz"; do
    sbverify --list "$FILE"
 done
+# Only the PXE server needs these images; reuse the disk chain's shim and MokManager.
+XZ_OPT=-9e tar -cJf "$BOOT/grub/net.tar.xz" -C "$BOOT/grub/net" .
+rm -r "$BOOT/grub/net"

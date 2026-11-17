@@ -514,6 +514,15 @@ must follow the general Slax repair rules above.
   PXE needs GNU `cpio` for initramfs repacking and Debian's dynamically linked
   `busybox` for `httpd`. Install both without recommends; keep the separate
   static BusyBox bundled in the initramfs unchanged.
+  `build-boot` must also package signed grubnetx64.efi.signed as grubx64.efi with
+  the BIOS PXE image in boot/grub/net.tar.xz. Unpack these into the server's runtime
+  directory and reuse shim and MokManager from boot/EFI/BOOT, without duplicate
+  media payloads or changes to signed binaries. GRUB_EFI=false skips unsigned EFI generation,
+  including network images, so the signed disk chain alone does not provide PXE.
+  Serve the generated network config at both /grub.cfg (embedded BIOS bootstrap)
+  and /grub/grub.cfg (Debian network GRUB). Validate media before changing interfaces.
+  UEFI DHCP advertises BOOTX64.EFI at the TFTP root; expose grubx64.efi and
+  mmx64.efi there too because shim fetches its next stages from that root.
 - Core includes `e2fsprogs`, `exfatprogs` and `btrfs-progs` for filesystem
   creation and recovery, plus `iputils-ping`, `bind9-dnsutils`, `traceroute`,
   `ethtool`, `iw`, `usbutils` and `tcpdump` for network and hardware diagnostics.

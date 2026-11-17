@@ -38,6 +38,9 @@ Linux Live Kit
 Slax
 ----
 
+- Include Debian's signed network GRUB for UEFI PXE boot, reusing the existing
+  shim and MokManager. Compress network loaders until pxe starts and serve the
+  paths expected by shim and GRUB alongside the existing BIOS network bootstrap.
 - Skip bookmark updates without a valid home or when settings resolve to filesystem-root paths.
 - Keep the Don't save explanation fully readable in the side panel.
 - Align Show removed states and keep Go to now at the right edge, with padding, pointer and click feedback.

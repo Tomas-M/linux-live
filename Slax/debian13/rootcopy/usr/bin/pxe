@@ -8,6 +8,14 @@ FTPROOT="$STATE/root"
 KERNEL=$(uname -r)
 if [ "$(id -u)" != 0 ]; then echo "Run pxe as root." >&2; exit 1; fi
 
+# Check media before changing interface addresses or forwarding.
+BOOT=''
+for DIRECTORY in "$LIVE/memory/data/slax" "$LIVE/memory/iso/slax" "$LIVE/memory/toram"; do
+   if [ -f "$DIRECTORY/boot/grub/net.tar.xz" ]; then BOOT="$DIRECTORY/boot"; break; fi
+done
+if [ -z "$BOOT" ]; then echo "Cannot find the bundled Slax GRUB network loaders." >&2; exit 1; fi
+BOOT=$(cd "$BOOT" && pwd -P)
+
 INTERFACE=${1:-$(ip -o -4 addr show scope global | awk 'NR==1 {print $2}')}
 if [ -z "$INTERFACE" ]; then
    for DEVICE in /sys/class/net/*; do
@@ -31,13 +39,6 @@ RANGE=${IP%.*}
 BITS=$(( (0xffffffff << (32-${ADDRESS#*/})) & 0xffffffff ))
 MASK="$((BITS>>24&255)).$((BITS>>16&255)).$((BITS>>8&255)).$((BITS&255))"
 
-BOOT=''
-for DIRECTORY in "$LIVE/memory/data/slax" "$LIVE/memory/iso/slax" "$LIVE/memory/toram"; do
-   if [ -f "$DIRECTORY/boot/grub/net/BOOTX64.EFI" ]; then BOOT="$DIRECTORY/boot"; break; fi
-done
-if [ -z "$BOOT" ]; then echo "Cannot find the bundled Slax GRUB network loaders." >&2; exit 1; fi
-BOOT=$(cd "$BOOT" && pwd -P)
-
 # Restart only the servers started here, leaving other dnsmasq/BusyBox users alone.
 for SERVICE in dnsmasq httpd; do
    FILE="$STATE/pxe-$SERVICE.pid"
@@ -51,7 +52,15 @@ for SERVICE in dnsmasq httpd; do
 done
 mkdir -p "$STATE"
 rm -rf "$FTPROOT"
-mkdir -p "$FTPROOT/tmp"
+mkdir -p "$FTPROOT/tmp" "$FTPROOT/grub/net"
+# Serve ordinary EFI files after unpacking; their original signatures stay intact.
+tar -xJf "$BOOT/grub/net.tar.xz" -C "$FTPROOT/grub/net"
+ln -s "$BOOT/EFI/BOOT/BOOTX64.EFI" "$FTPROOT/grub/net/BOOTX64.EFI"
+ln -s "$BOOT/EFI/BOOT/mmx64.efi" "$FTPROOT/grub/net/mmx64.efi"
+# Shim requests its next-stage loaders from the TFTP root.
+for FILE in BOOTX64.EFI grubx64.efi mmx64.efi; do
+   ln -s "grub/net/$FILE" "$FTPROOT/$FILE"
+done
 
 # Repack the running initrd with wired NIC drivers and their module dependencies.
 cd "$LIVE"
@@ -76,8 +85,6 @@ rm -rf "$FTPROOT/tmp"
 
 ln -s "$BOOT/vmlinuz" "$FTPROOT/vmlinuz"
 ln -s "$BOOT/grub/unicode.pf2" "$FTPROOT/unicode.pf2"
-mkdir "$FTPROOT/grub"
-ln -s "$BOOT/grub/net" "$FTPROOT/grub/net"
 : > "$FTPROOT/PXEFILELIST"
 find "${BOOT%/boot}" -type f -name '*.sb' | sort -n | while IFS= read -r FILE; do
    NAME=$(basename "$FILE")
@@ -105,14 +112,16 @@ linux /vmlinuz load_ramdisk=1 prompt_ramdisk=0 rw printk.time=0 consoleblank=0 q
 initrd /initrfs.img
 boot
 EOF
+# Debian's signed network GRUB uses /grub; the embedded BIOS bootstrap uses /.
+ln -s ../grub.cfg "$FTPROOT/grub/grub.cfg"
 
 set -- --conf-file= --interface="$INTERFACE" --except-interface=lo --bind-interfaces \
    --enable-tftp --tftp-root="$FTPROOT" --pid-file="$STATE/pxe-dnsmasq.pid" \
    --dhcp-leasefile="$STATE/pxe.leases" --log-facility="$STATE/pxe-dnsmasq.log" --log-dhcp \
    --dhcp-no-override --dhcp-option="3,$GW" --dhcp-range="$RANGE.2,$RANGE.250,$MASK,infinite" \
    --dhcp-match=set:efi64,option:client-arch,7 --dhcp-match=set:efi64,option:client-arch,9 \
-   --dhcp-boot="tag:efi64,grub/net/BOOTX64.EFI,,$IP"
-if [ -f "$BOOT/grub/net/pxe.0" ]; then
+   --dhcp-boot="tag:efi64,BOOTX64.EFI,,$IP"
+if [ -f "$FTPROOT/grub/net/pxe.0" ]; then
    set -- "$@" --dhcp-match=set:bios,option:client-arch,0 --dhcp-boot="tag:bios,grub/net/pxe.0,,$IP"
 fi
 
