@@ -285,7 +285,9 @@ Filesystem/module commands run as root; quote paths containing spaces.
   fbstartupnotify COMMAND [ARGS...]
     Launch a command with desktop startup feedback.
 Advanced: pxe [INTERFACE] serves Slax over DHCP/TFTP/HTTP to BIOS/UEFI clients;
-use a network where starting DHCP is intended. initramfs_unpack initrfs.img and
+UEFI clients use the bundled signed shim and network GRUB, supporting Secure Boot.
+Network loaders are unpacked automatically when pxe starts.
+Use a network where starting DHCP is intended. initramfs_unpack initrfs.img and
 initramfs_pack initrfs.img edit/repack that image in place. slax activate FILE.sb
 and slax deactivate FILE.sb require AUFS; the current OverlayFS build loads
 added modules at the next boot instead.
