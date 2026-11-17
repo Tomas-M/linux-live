@@ -1739,10 +1739,10 @@ must follow the general Slax repair rules above.
   Deferred keep-current intent is tied to the target ID and processed only at the
   next activation, after recovering and cleanly unmounting the old XFS, before
   actually restoring. There is no storage-specific shutdown hook.
-  DynFileFS's `protect ID` / `unprotect ID` controls keep queued points safe through
+  DynFileFS's `protect ID` / `unprotect ID` controls keep restore targets safe through
   final automatic pruning, independent of the desktop service's lifetime. Protect
-  the new selection before publishing its durable request, then release the old
-  protection. `--protect ID` protects the recorded target before startup pruning;
+  the confirmed target before publishing its durable request.
+  `--protect ID` protects the recorded target before startup pruning;
   supply it again from the durable request on later mounts, including crash recovery.
   The storage format is unchanged. This API is included in published commit
   `72389fb`; retain it together with the pivot-root fix when replacing the binary.
@@ -1778,23 +1778,41 @@ must follow the general Slax repair rules above.
   Do not repeat row names in tree tooltips. Point sizes use DynFileFS's live
   reclaimableBytes: exclusive allocator slots reusable after deleting that point,
   excluding other points and current/checkpoint/read pins. They do not promise
-  physical data-file shrinking and are not additive across points. Update numeric
-  labels in place; size changes alone must not rebuild rows or inspector controls.
+  physical data-file shrinking and are not additive across points. Keep sizes visible
+  while files are open; temporary file views are separate from engine protection.
+  Update names, sizes and action availability in place; metadata changes must not
+  rebuild rows or inspector controls. Keep rename actions visually steady while
+  the serialized write finishes; reject overlapping actions in their handlers.
   Rename points by stable ID through DynFileFS, preserving contents, ancestry and
   pending restores. Open immutable images through snapshots/<ID>.dat so renaming
   also preserves active file views. Renamed automatic points become manually retained names.
   Keep Initial state and hidden lifecycle guards unrenameable. Wrap full inspector
   titles, omit the redundant Previous section and do not repeat Delete in a tooltip.
   Give action and error dialogs explicit native window titles, with plain text
-  explaining the affected saved state and what happens to the current apps,
-  settings and files. Keep Show removed states below history instead of a Current path
-  legend. A queued point's node stays filled blue independently of row selection.
-  Its badge and Cancel next-start selection action share that blue. Clicking the
-  queued action clears the selection just like Cancel beside Next start.
-  Group Cancel with Next start on the left; reserve one stable footer height.
-  The Restart Slax icon on the right confirms and invokes ordinary systemctl
-  reboot as the logged-in user, without force or a new privileged broker API.
-  Wait for storage mutations before allowing restart and report launch failures.
+  explaining the affected saved state and what happens to installed programs,
+  settings and saved files. Never imply that running programs or unsaved work
+  are captured. Keep Show removed states below history instead of a Current path
+  legend. Do not expose scheduled restores, blue target markers or Next start controls.
+  Restore, including on Initial state, confirms an immediate restart, never just schedules
+  one. The confirmation stages the shared Save this run switch with plain explanations;
+  Cancel changes neither policy nor selection. Keep the confirmation compact.
+  Label the inspector actions Restore, Rename, Delete and Open files, in that order.
+  Keep capacity at the right of the footer; do not add a separate Restart Slax action.
+  Restore first asks the broker to close all saved-state
+  file views through their authenticated browser PID/start time and pidfds, using
+  SIGTERM and ordinary unmounts. Busy views abort before policy changes; do not force
+  or lazily unmount them. Flush XFS before its backing storage, durably apply the
+  confirmed save choice and protect/publish the stable restore target. The frontend
+  then invokes ordinary systemctl reboot as the logged-in user, without force or a
+  privileged reboot API. Preserve the current run after clean shutdown at the next
+  activation when saving; Don't save must not leave that run in automatic history.
+  Journal only the current confirmed restore in `/run/slax-status/restart.json`,
+  with its store ID, point ID, request UUID and previous protection flag. There is
+  no replace/clear-selection API, previous-selection chain or legacy journal fallback.
+  A failed reboot cancels only its exact restore request UUID, preserving the
+  confirmed save choice. Reject overlapping mutations while a restore is prepared.
+  Wait for storage mutations and keep
+  actions disabled from preparation through reboot; report cleanup and launch failures.
   Green action buttons retain a subtle gradient, bottom edge and shadow with
   pressed feedback in Slax Status and Partition Manager.
   Apply `partition-manager-style.diff` after fetching Partition Manager so fresh
@@ -1808,7 +1826,9 @@ must follow the general Slax repair rules above.
   in the inspector.
   Status confirmations remove the native message parent's horizontal margins so
   text keeps a single compact inset while shared dialog button spacing remains.
-  Tray toggles must leave the manager open. Keep save switches alive and use
+  Tray toggles must leave the manager open. Use compact save switches throughout
+  Slax Status, including confirmations, with an 18 px native slider.
+  Keep save switches alive and use
   GTK's asynchronous state-set signal; apply confirmed backend policy without
   generating another mutation. Set their active property only when it differs:
   GTK 3 cancels animation even for an unchanged value, leaving the thumb midway.
@@ -1817,7 +1837,7 @@ must follow the general Slax repair rules above.
   mutations. GTK's backend-state acknowledgement must also avoid setting an
   unchanged active value, so an acknowledgement cannot interrupt the next gesture.
   Keep inspector widgets alive across history changes and update only changed
-  properties. During other mutations disable individual actions, leaving text at normal
+  properties. During other storage mutations disable individual actions, leaving text at normal
   contrast. Keep native history rows flat when pressed.
   Capacity and operation feedback share one footer
   slot. Re-anchor bubbles after window-manager placement using their actual size.
@@ -1834,8 +1854,11 @@ must follow the general Slax repair rules above.
   the next boot. This RAM run is not copied. Do not offer storage setup in the app.
   Ignore numeric legacy directories.
   Show removed states controls deleted rows while full ancestry determines tree lanes.
-  Center its indicator and text. Pack Go to now at the footer's right edge even
-  when Show removed states is hidden; use a pointer cursor and briefly highlight its destination.
+  Center its indicator and text. Put Show removed states at the left of the shared
+  bottom bar, with Go to now right-aligned to the tree column and an upward arrow,
+  even when the checkbox is hidden. Share native column widths with the inspector;
+  let stacked layouts fit the remaining footer space. Use a pointer cursor and
+  briefly highlight its destination.
   Derive Initial state from its exact owned unformatted ancestor and protect it.
   Never infer ownership from old names or order. Retain matching tombstone
   ownership records. Derive hasStarted from run.txt, not another persisted status.
@@ -1853,7 +1876,9 @@ must follow the general Slax repair rules above.
   Open saved filesystem roots through a separate slax-status --open-files helper
   that execs PCManFM --standalone on the same PID. The broker records SO_PEERCRED
   PID and its /proc start time before mounting, then automatically releases the
-  view after that process exits. Each invocation owns a separate view. Preserve
+  view after that process exits. Allow one view per saved state: disable Open files
+  immediately while its helper runs and until the broker finishes unmounting it.
+  Reject duplicate requests in the broker too. Preserve
   live views across tray and broker restarts, retry busy ordinary unmounts, and
   reject deleting a point while a view remains. Do not add a Close files button.
   Do not replay journals or use force/lazy unmounts. The approved mockup is a

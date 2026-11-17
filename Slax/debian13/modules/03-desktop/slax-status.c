@@ -12,11 +12,10 @@
 #include <math.h>
 #include <string.h>
 
-#define QUEUED_COLOR "#2978b8"
-
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
-typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *size; } HistoryRow;
+typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
+typedef struct { GtkWidget *choice, *help; } RestoreChoice;
 static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
@@ -24,37 +23,42 @@ static char *connection_error, *history_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
 static gboolean keep_focus_hidden; /* Used only between GTK's key observer and focus-visible notification. */
 static GSubprocess *restart_process;
+static JsonObject *restart_request;
+static char *restart_error;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
-static GtkWidget *manager_source, *manager_storage, *manager_next, *manager_cancel, *manager_cancel_slot, *manager_restart, *manager_space, *manager_status;
+static GtkWidget *manager_source, *manager_storage, *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
-static GtkWidget *popup_help, *popup_next, *popup_cancel, *popup_status, *notice_title, *notice_message, *show_removed;
+static GtkWidget *popup_help, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
+static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
 static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
 static GPtrArray *rows;
+static GHashTable *file_browsers;
 static HistoryRow *hover_row;
 static gboolean removed_visible;
 static gboolean reveal_current=TRUE;
 static Display *display;
 static Window command_window;
 static Atom tray_selection, manager_atom, command_atom;
-static GdkRGBA queued_color;
 
 static void refresh(void);
 static void update_ui(void);
 static void show_manager(void);
 static void render_history(void);
 static void render_inspector(void);
-static void update_history_sizes(void);
+static void update_history_rows(void);
 static void dock_tray(void);
 static void send_request(JsonObject *request, gboolean mutation);
 static void action(GtkButton *button, gpointer data);
 static void name_dialog(gboolean rename);
+static void restart_done(GObject *source, GAsyncResult *result, gpointer data);
+static void restart_failed(const char *detail);
 
 /* Optional JSON values stay absent instead of acquiring guessed UI state. */
 static const char *str(JsonObject *object, const char *key)
@@ -90,21 +94,21 @@ static JsonObject *store(void) { return find(array(state,"stores"),"id",selected
 static JsonObject *point(void) { return find(array(history,"snapshots"),"id",selected_point); }
 static JsonObject *run(void) { return object(state,"run"); }
 
-/* Save intents may replace one another while the serialized policy write finishes. */
-static gboolean saving(void)
+/* Identify a serialized operation, including an intent waiting behind a poll. */
+static gboolean changing(const char *op)
 {
     if (!mutating) return FALSE;
-    if (active_request && active_request->mutation && strcmp(active_request->op,"run.save")) return FALSE;
-    return !pending_request || !strcmp(str(pending_request,"op"),"run.save");
+    if (active_request && active_request->mutation && strcmp(active_request->op,op)) return FALSE;
+    return !pending_request || !strcmp(str(pending_request,"op"),op);
 }
 
 static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatically saved state" : str(item,"name"); }
 static char *size_text(gint64 bytes) { return g_format_size_full(MAX((gint64)0,bytes),G_FORMAT_SIZE_DEFAULT); }
-/* Only deletable points can promise reusable capacity; unknown amounts stay blank. */
+/* Temporary file views do not hide the engine's reported reusable capacity. */
 static char *reclaimable_text(JsonObject *item)
 {
     if (!item) return NULL;
-    if (flag(item,"deleted") || flag(item,"protected") || flag(item,"filesOpen")) return NULL;
+    if (flag(item,"deleted") || flag(item,"protected")) return NULL;
     JsonNode *value=json_object_get_member(item,"reclaimableBytes");
     if (!value || JSON_NODE_HOLDS_NULL(value)) return NULL;
     gint64 bytes=json_node_get_int(value);
@@ -227,11 +231,12 @@ static void request_worker(GTask *task, gpointer source, gpointer task_data, GCa
     g_object_unref(parser);
 }
 
-/* Copy structural fields without the live capacity counter. */
+/* Only tree changes require rebuilding rows; names, capacity and action state update in place. */
 static void copy_history_field(JsonObject *source, const char *name, JsonNode *value, gpointer data)
 {
     (void)source;
-    if (strcmp(name,"reclaimableBytes")) json_object_set_member(data,name,json_node_copy(value));
+    const char *metadata[]={"reclaimableBytes","name","automatic","protected","filesOpen",NULL};
+    if (!g_strv_contains(metadata,name)) json_object_set_member(data,name,json_node_copy(value));
 }
 
 /* Capacity changes update labels in place without replacing hovered or selected rows. */
@@ -259,7 +264,19 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     GError *error=NULL;
     JsonObject *reply=g_task_propagate_pointer(G_TASK(result),&error);
     requesting=FALSE;active_request=NULL;mutating=pending_request!=NULL;
-    if (error || !flag(reply,"ok"))
+    gboolean failed=error || !flag(reply,"ok");
+    if (failed && !strcmp(request->op,"restart.prepare"))
+    {
+        const char *detail=error ? error->message : str(object(reply,"error"),"message");
+        restart_failed(detail);
+    }
+    else if (restart_error && !strcmp(request->op,"restart.cancel"))
+    {
+        char *text=g_strdup_printf("%s\n\n%s",restart_error,failed ? "The restore request could not be cancelled. Do not restart until the storage problem is resolved." : "Slax has not restarted. The requested restore was cancelled. Your Save this run choice is unchanged.");
+        g_clear_pointer(&restart_error,g_free);g_clear_pointer(&restart_request,json_object_unref);
+        message("Cannot restart Slax",text);g_free(text);
+    }
+    else if (failed)
     {
         const char *detail=error ? error->message : str(object(reply,"error"),"message");
         if (request->mutation) message("The action could not be completed",detail);
@@ -297,14 +314,21 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             g_free(history_store);history_store=g_strdup(selected);
             g_free(history_signature);history_signature=current;
             if (changed || manager_dirty) {render_history();render_inspector();manager_dirty=FALSE;}
-            else update_history_sizes();
+            else update_history_rows();
         }
         else if (request->mutation)
         {
+            if (!strcmp(request->op,"restart.prepare"))
+            {
+                GError *launch_error=NULL;
+                restart_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&launch_error,"systemctl","reboot",NULL);
+                if (restart_process) g_subprocess_communicate_utf8_async(restart_process,NULL,NULL,restart_done,NULL);
+                else {restart_failed(launch_error->message);g_clear_error(&launch_error);}
+            }
             if (!strcmp(request->op,"point.create")) {g_free(selected_point);selected_point=g_strdup(str(value,"pointId"));}
             if (!strcmp(request->op,"point.delete")) g_clear_pointer(&selected_point,g_free);
             if (!strcmp(request->op,"run.save")) json_object_set_boolean_member(run(),"save",flag(request->request,"save"));
-            else manager_dirty=TRUE;
+            if (!strcmp(request->op,"point.create") || !strcmp(request->op,"point.delete")) manager_dirty=TRUE;
         }
     }
     if (reply) json_object_unref(reply);
@@ -323,7 +347,7 @@ static void send_request(JsonObject *value, gboolean mutation)
     if (requesting)
     {
         /* Keep the newest native switch intent instead of dropping rapid changes. */
-        if (mutation && !strcmp(str(value,"op"),"run.save") && saving()) g_clear_pointer(&pending_request,json_object_unref);
+        if (mutation && !strcmp(str(value,"op"),"run.save") && changing("run.save")) g_clear_pointer(&pending_request,json_object_unref);
         if (mutation && !pending_request) {pending_request=value;mutating=TRUE;update_ui();}
         else json_object_unref(value);
         return;
@@ -337,7 +361,7 @@ static void send_request(JsonObject *value, gboolean mutation)
 /* The application inspects the running storage only; drive selection belongs to boot. */
 static void refresh(void)
 {
-    if (requesting) return;
+    if (requesting || restart_request) return;
     send_request(command("state",FALSE),FALSE);
 }
 
@@ -372,20 +396,6 @@ static GtkWidget *primary_button(const char *text, const char *op)
     return widget;
 }
 
-/* The next-start summary describes the chosen state on the current drive. */
-static char *next_text(void)
-{
-    JsonObject *next=object(state,"next");
-    if (next && *str(next,"pointId"))
-    {
-        char *date=date_text(number(next,"created"));
-        char *text=g_strdup_printf("%s · %s",*str(next,"pointName") ? str(next,"pointName") : "Selected saved state",date);
-        g_free(date);return text;
-    }
-    if (!strcmp(str(run(),"kind"),"ram")) return g_strdup("Fresh temporary run");
-    return g_strdup(flag(run(),"save") ? "Continue current state" : "Return to the start of this run");
-}
-
 /* Hold a stable width and reserve a single line for changing descriptions. */
 static GtkWidget *location_row(const char *heading, GtkWidget **value)
 {
@@ -399,19 +409,20 @@ static gboolean save_changed(GtkSwitch *widget, gboolean save, gpointer data)
 {
     (void)widget;(void)data;
     if (updating) return FALSE;
-    if ((mutating && !saving()) || restart_process || !flag(run(),"canSetSave")) return TRUE;
+    if ((mutating && !changing("run.save")) || restart_request || !flag(run(),"canSetSave")) return TRUE;
     JsonObject *request=command("run.save",FALSE);
     json_object_set_boolean_member(request,"save",save);
     send_request(request,TRUE);
     return TRUE;
 }
+/* Share the switch layout while callers choose live or confirmation-only behavior. */
 static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **choice, GtkWidget **help)
 {
     GtkWidget *outer=box(GTK_ORIENTATION_VERTICAL,8),*row=box(GTK_ORIENTATION_HORIZONTAL,10);
     GtkWidget *heading=label("Save this run",NULL);gtk_label_set_ellipsize(GTK_LABEL(heading),PANGO_ELLIPSIZE_NONE);
     pack(row,heading,TRUE);*choice=label("Save","muted");pack(row,*choice,FALSE);
     *toggle=gtk_switch_new();gtk_widget_set_valign(*toggle,GTK_ALIGN_CENTER);pack(row,*toggle,FALSE);
-    g_signal_connect(*toggle,"state-set",G_CALLBACK(save_changed),NULL);
+    atk_object_set_name(gtk_widget_get_accessible(*toggle),"Save this run");
     pack(outer,row,FALSE);*help=label("Keep changes after restart.","muted");pack(outer,*help,FALSE);
     return outer;
 }
@@ -419,7 +430,7 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
 {
     gboolean save=flag(run(),"save");
     /* Describe the latest intent while acknowledgements catch up with the native thumb. */
-    if (saving()) save=flag(pending_request ? pending_request : active_request->request,"save");
+    if (changing("run.save")) save=flag(pending_request ? pending_request : active_request->request,"save");
     if (!mutating)
     {
         /* Setting an unchanged active value cancels GTK's animation and can strand its slider. */
@@ -427,7 +438,7 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
         if (gtk_switch_get_active(GTK_SWITCH(toggle))!=save) gtk_switch_set_active(GTK_SWITCH(toggle),save);
         gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
-    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || saving()) && !restart_process);
+    gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || changing("run.save")) && !restart_request);
     set_label(choice,save ? "Save" : "Don’t save");
     const char *text=save ? "Keep changes after restart." : "Discard changes after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
@@ -554,9 +565,7 @@ static void make_popups(void)
     popup_meter=gtk_progress_bar_new();gtk_widget_set_tooltip_text(popup_meter,"Space used");pack(storage,popup_meter,FALSE);pack(popup.body,storage,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     pack(popup.body,save_control(&popup_save,&popup_choice,&popup_help),FALSE);
-    pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    GtkWidget *next=box(GTK_ORIENTATION_HORIZONTAL,12);pack(next,label("Next start","muted"),FALSE);popup_next=label("",NULL);pack(next,popup_next,TRUE);
-    popup_cancel=link_button("Cancel","next-clear");pack(next,popup_cancel,FALSE);pack(popup.body,next,FALSE);
+    g_signal_connect(popup_save,"state-set",G_CALLBACK(save_changed),NULL);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
     pack(footer,button("Saved states",NULL,"manager"),FALSE);pack(popup.body,footer,FALSE);
@@ -654,20 +663,18 @@ static gboolean draw_history(GtkWidget *widget, cairo_t *cr, gpointer data)
         cairo_set_line_width(cr,row->path ? 2.5 : 2);
         cairo_move_to(cr,px,py);cairo_line_to(cr,px,y);cairo_line_to(cr,x,y);cairo_stroke(cr);
     }
-    JsonObject *next=object(state,"next");
     for (guint i=0;i<rows->len;i++)
     {
         HistoryRow *row=g_ptr_array_index(rows,i);if (!row->widget) continue;
         gboolean current=!strcmp(str(row->point,"id"),"current");
         gboolean chosen=current ? !selected_point : !g_strcmp0(selected_point,str(row->point,"id"));
         gboolean highlighted=chosen || hover_row==row || gtk_widget_is_focus(row->widget) || (gtk_widget_get_state_flags(row->widget)&GTK_STATE_FLAG_PRELIGHT);
-        gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(row->point,"id"),str(next,"pointId"));
         GtkAllocation a;gtk_widget_get_allocation(row->widget,&a);double x=18+row->depth*22,y=a.y+a.height/2.;
-        double red=queued ? queued_color.red : .34,green=queued ? queued_color.green : .56,blue=queued ? queued_color.blue : .27;
-        if (!row->path && !queued && !highlighted) {red=.53;green=.60;blue=.49;}
+        double red=.34,green=.56,blue=.27;
+        if (!row->path && !highlighted) {red=.53;green=.60;blue=.49;}
         if (highlighted) {cairo_set_source_rgba(cr,red,green,blue,.22);cairo_arc(cr,x,y,10,0,2*G_PI);cairo_fill(cr);}
         cairo_arc(cr,x,y,current ? 6 : 4,0,2*G_PI);
-        if (current || highlighted || queued) cairo_set_source_rgb(cr,red,green,blue);else cairo_set_source_rgb(cr,.97,.98,.96);
+        if (current || highlighted) cairo_set_source_rgb(cr,red,green,blue);else cairo_set_source_rgb(cr,.97,.98,.96);
         cairo_fill_preserve(cr);cairo_set_source_rgb(cr,red,green,blue);cairo_set_line_width(cr,highlighted ? 3 : 2);
         if (flag(row->point,"deleted")) {double dash[]={2,2};cairo_set_dash(cr,dash,2,0);}
         cairo_stroke(cr);cairo_set_dash(cr,NULL,0,0);
@@ -715,13 +722,19 @@ static gboolean jump_feedback_done(gpointer widget)
     gtk_style_context_remove_class(gtk_widget_get_style_context(widget),"jump-target");return G_SOURCE_REMOVE;
 }
 
-/* Reusable slots increase the capacity for future changes, without shrinking data files. */
-static void update_history_sizes(void)
+/* Refresh metadata without replacing rows, focus targets or inspector controls. */
+static void update_history_rows(void)
 {
     for (guint i=0;rows && i<rows->len;i++)
     {
-        HistoryRow *row=g_ptr_array_index(rows,i);if (!row->size) continue;
-        char *text=reclaimable_text(find(array(history,"snapshots"),"id",str(row->point,"id")));
+        HistoryRow *row=g_ptr_array_index(rows,i);
+        JsonObject *saved=find(array(history,"snapshots"),"id",str(row->point,"id"));
+        if (saved) {json_object_unref(row->point);row->point=json_object_ref(saved);}
+        if (!row->size) continue;
+        if (g_strcmp0(gtk_label_get_text(GTK_LABEL(row->name)),point_name(row->point)))
+            gtk_label_set_text(GTK_LABEL(row->name),point_name(row->point));
+        char *size=reclaimable_text(row->point);
+        char *text=size ? g_strconcat(size," ·",NULL) : NULL;g_free(size);
         if (g_strcmp0(gtk_label_get_text(GTK_LABEL(row->size)),text ? text : "")) gtk_label_set_text(GTK_LABEL(row->size),text ? text : "");
         g_free(text);
     }
@@ -735,7 +748,7 @@ static void render_history(void)
     gtk_list_box_set_placeholder(GTK_LIST_BOX(history_list),NULL);
     clear_box(history_list);if (rows) g_ptr_array_unref(rows);rows=g_ptr_array_new_with_free_func(row_free);
     gtk_widget_hide(show_removed);gtk_widget_hide(history_footer);
-    gtk_button_set_label(GTK_BUTTON(history_latest),"Go to now ↓");
+    gtk_button_set_label(GTK_BUTTON(history_latest),"Go to now ↑");
     const char *placeholder=NULL;
     if (!store()) placeholder=state ? "Saved states are available when changes are saved on a drive." : "Loading storage…";
     else if (!history || g_strcmp0(history_store,selected)) placeholder="Loading saved states…";
@@ -763,7 +776,6 @@ static void render_history(void)
         g_hash_table_add(path,(gpointer)parent);JsonObject *ancestor=find(catalog,"id",parent);if (!ancestor) break;parent=str(ancestor,"parent");
     }
     append_history(points,path,"",0);
-    JsonObject *next=object(state,"next");
     for (guint i=0;i<rows->len;i++)
     {
         HistoryRow *row=g_ptr_array_index(rows,i);const char *id=str(row->point,"id");
@@ -772,15 +784,12 @@ static void render_history(void)
         gboolean live=!strcmp(id,"current");
         row->widget=gtk_list_box_row_new();gtk_widget_set_size_request(row->widget,-1,36);
         GtkWidget *line=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_margin_start(line,36+row->depth*22);gtk_widget_set_margin_end(line,8);
-        GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);pack(line,name,TRUE);
+        GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);row->name=name;pack(line,name,TRUE);
         const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest saved state" : "";
-        gboolean queued=next && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(id,str(next,"pointId"));
-        if (queued) badge="Next start";
         if (live) badge="You are here";
         if (*badge)
         {
             GtkWidget *status=label(badge,flag(row->point,"deleted") ? "muted" : "badge");
-            if (queued) gtk_style_context_add_class(gtk_widget_get_style_context(status),"queued");
             pack(line,status,FALSE);
         }
         if (flag(row->point,"deleted")) gtk_style_context_add_class(gtk_widget_get_style_context(name),"muted");
@@ -798,7 +807,7 @@ static void render_history(void)
     }
     g_hash_table_unref(path);g_ptr_array_unref(points);json_object_unref(current);
     gtk_widget_show_all(history_list);gtk_adjustment_set_value(adjustment,scroll);updating=FALSE;
-    update_history_sizes();
+    update_history_rows();
     gtk_widget_queue_resize(history_scroll);
 }
 
@@ -813,12 +822,13 @@ static void make_inspector(void)
     inspector_origin=paragraph("");pack(inspector_saved,inspector_origin,FALSE);
     inspector_removed=paragraph("This saved state can no longer be used to start Slax or browse saved files. It stays in the tree to show where later saved states came from.");pack(inspector_saved,inspector_removed,FALSE);
     inspector_actions=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector_saved,inspector_actions,FALSE);
-    inspector_use=primary_button("Use at next start","use-point");pack(inspector_actions,inspector_use,FALSE);
+    inspector_use=primary_button("Restore","use-point");pack(inspector_actions,inspector_use,FALSE);
+    inspector_rename=button("Rename",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
+    inspector_delete=button("Delete",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
-    inspector_rename=button("Rename saved state",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
-    inspector_delete=button("Delete saved state",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_current=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_current,FALSE);
     pack(inspector_current,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);
+    g_signal_connect(inspector_save,"state-set",G_CALLBACK(save_changed),NULL);
     inspector_create=primary_button("Save current state","create-point");pack(inspector_current,inspector_create,FALSE);
 }
 
@@ -826,10 +836,11 @@ static void make_inspector(void)
 static void render_inspector(void)
 {
     JsonObject *item=store(),*saved=point();if (!item) return;
-    gboolean busy=(mutating && !saving()) || restart_process,writable=flag(item,"writable") && !busy;
-    gboolean initial=flag(saved,"initial"),removed=flag(saved,"deleted"),files_open=flag(saved,"filesOpen");
-    JsonObject *next=object(state,"next");
-    gboolean queued=saved && !g_strcmp0(selected,str(next,"storeId")) && !strcmp(str(saved,"id"),str(next,"pointId"));
+    gboolean metadata_update=changing("run.save") || changing("point.rename");
+    gboolean busy=(mutating && !metadata_update) || restart_request;
+    gboolean writable=flag(item,"writable") && !busy;
+    gboolean initial=flag(saved,"initial"),removed=flag(saved,"deleted");
+    gboolean files_open=flag(saved,"filesOpen") || g_hash_table_contains(file_browsers,str(saved,"id"));
     const char *eyebrow="YOU ARE HERE";
     if (saved) eyebrow=removed ? "REMOVED STATE" : "SAVED STATE";
     set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current state");
@@ -842,12 +853,7 @@ static void render_inspector(void)
     GtkStyleContext *origin_style=gtk_widget_get_style_context(inspector_origin);
     if (initial) gtk_style_context_remove_class(origin_style,"muted");else gtk_style_context_add_class(origin_style,"muted");
     gtk_widget_set_visible(inspector_removed,removed);gtk_widget_set_visible(inspector_actions,!removed);
-    const char *use_text=initial ? "Fresh start" : "Use at next start";
-    if (g_strcmp0(gtk_button_get_label(GTK_BUTTON(inspector_use)),queued ? "Cancel next-start selection" : use_text))
-        gtk_button_set_label(GTK_BUTTON(inspector_use),queued ? "Cancel next-start selection" : use_text);
-    GtkStyleContext *use_style=gtk_widget_get_style_context(inspector_use);
-    if (queued) gtk_style_context_add_class(use_style,"queued-action");else gtk_style_context_remove_class(use_style,"queued-action");
-    gtk_widget_set_sensitive(inspector_use,queued ? !busy : writable);gtk_widget_set_sensitive(inspector_open,!busy);
+    gtk_widget_set_sensitive(inspector_use,writable && flag(run(),"canSetSave"));gtk_widget_set_sensitive(inspector_open,!busy && !files_open);
     gtk_widget_set_visible(inspector_rename,!initial);gtk_widget_set_sensitive(inspector_rename,writable);
     gtk_widget_set_visible(inspector_delete,!initial);gtk_widget_set_sensitive(inspector_delete,writable && !flag(saved,"protected") && !files_open);
     update_save(inspector_save,inspector_choice,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
@@ -908,6 +914,7 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
     if (vertical!=stacked)
     {
         stacked=vertical;gtk_orientable_set_orientation(GTK_ORIENTABLE(history_layout),stacked ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+        gtk_size_group_set_mode(inspector_width,stacked ? GTK_SIZE_GROUP_NONE : GTK_SIZE_GROUP_HORIZONTAL);
         GtkStyleContext *style=gtk_widget_get_style_context(inspector_scroll);
         if (stacked) gtk_style_context_add_class(style,"stacked");else gtk_style_context_remove_class(style,"stacked");
         gtk_box_set_spacing(GTK_BOX(history_layout),stacked ? 8 : 18);
@@ -1006,29 +1013,28 @@ static void make_manager(void)
     history_list=gtk_list_box_new();gtk_list_box_set_selection_mode(GTK_LIST_BOX(history_list),GTK_SELECTION_SINGLE);
     gtk_style_context_add_class(gtk_widget_get_style_context(history_list),"history-list");gtk_container_add(GTK_CONTAINER(history_scroll),history_list);
     g_signal_connect(history_list,"row-selected",G_CALLBACK(history_selected),NULL);g_signal_connect_after(history_list,"draw",G_CALLBACK(draw_history),NULL);
-    history_footer=box(GTK_ORIENTATION_HORIZONTAL,12);gtk_widget_set_margin_bottom(history_footer,10);
+    history_footer=box(GTK_ORIENTATION_HORIZONTAL,12);
     show_removed=gtk_check_button_new_with_label("Show removed states");gtk_widget_set_halign(show_removed,GTK_ALIGN_START);gtk_widget_set_valign(show_removed,GTK_ALIGN_CENTER);
     gtk_widget_set_valign(gtk_bin_get_child(GTK_BIN(show_removed)),GTK_ALIGN_CENTER);
     g_signal_connect(show_removed,"toggled",G_CALLBACK(removed_changed),NULL);
-    history_latest=link_button("Go to now ↓","current");gtk_style_context_add_class(gtk_widget_get_style_context(history_latest),"history-jump");
-    pack(history_footer,show_removed,FALSE);gtk_box_pack_end(GTK_BOX(history_footer),history_latest,FALSE,FALSE,0);pack(history_box,history_footer,FALSE);
+    history_latest=link_button("Go to now ↑","current");gtk_style_context_add_class(gtk_widget_get_style_context(history_latest),"history-jump");
+    pack(history_footer,show_removed,FALSE);gtk_box_pack_end(GTK_BOX(history_footer),history_latest,FALSE,FALSE,0);
     inspector=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(inspector),"inspector");
     make_inspector();
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
     gtk_style_context_add_class(gtk_widget_get_style_context(inspector_scroll),"inspector-panel");
     gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(history_layout,inspector_scroll,FALSE);
     pack(manager_body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,14);gtk_container_set_border_width(GTK_CONTAINER(footer),14);
-    GtkWidget *next=box(GTK_ORIENTATION_HORIZONTAL,10);gtk_widget_set_halign(next,GTK_ALIGN_START);pack(footer,next,TRUE);
-    pack(next,label("Next start:","muted"),FALSE);manager_next=label("Loading…",NULL);pack(next,manager_next,FALSE);
-    /* Keep the native button's full height while an empty child hides only its contents. */
-    manager_cancel_slot=gtk_stack_new();gtk_stack_set_hhomogeneous(GTK_STACK(manager_cancel_slot),FALSE);
-    gtk_stack_add_named(GTK_STACK(manager_cancel_slot),box(GTK_ORIENTATION_HORIZONTAL,0),"empty");
-    manager_cancel=link_button("Cancel","next-clear");gtk_stack_add_named(GTK_STACK(manager_cancel_slot),manager_cancel,"cancel");pack(next,manager_cancel_slot,FALSE);
+    GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,18);gtk_style_context_add_class(gtk_widget_get_style_context(footer),"storage-footer");
+    pack(footer,history_footer,TRUE);
     /* Capacity and operation feedback share one fixed footer slot, without moving the history. */
     manager_feedback=gtk_stack_new();manager_space=label("","muted");manager_status=label("","muted");
     gtk_stack_add_named(GTK_STACK(manager_feedback),manager_space,"capacity");gtk_stack_add_named(GTK_STACK(manager_feedback),manager_status,"status");
-    pack(footer,manager_feedback,FALSE);manager_restart=button("Restart Slax","system-reboot-symbolic","restart");pack(footer,manager_restart,FALSE);
+    gtk_label_set_xalign(GTK_LABEL(manager_space),1);gtk_label_set_xalign(GTK_LABEL(manager_status),1);
+    /* Share the inspector column width so the footer link ends at the tree's right edge. */
+    inspector_width=gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL);
+    gtk_size_group_add_widget(inspector_width,inspector_scroll);gtk_size_group_add_widget(inspector_width,manager_feedback);
+    gtk_widget_set_halign(manager_feedback,GTK_ALIGN_END);gtk_box_pack_end(GTK_BOX(footer),manager_feedback,FALSE,FALSE,0);
     pack(manager_body,footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
     gtk_widget_show_all(manager_body);
@@ -1070,11 +1076,6 @@ static void update_ui(void)
     double total=number(run(),"totalBytes");gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(popup_meter),total>0 ? CLAMP(1-available/total,0,1) : 0);
     update_save(popup_save,popup_choice,popup_help);
     render_inspector();
-    char *next=next_text();set_label(popup_next,next);set_label(manager_next,next);g_free(next);
-    gboolean queued=object(state,"next")!=NULL;gtk_widget_set_visible(popup_cancel,queued);
-    gtk_stack_set_visible_child_name(GTK_STACK(manager_cancel_slot),queued ? "cancel" : "empty");
-    gtk_widget_set_sensitive(popup_cancel,!mutating && !restart_process);gtk_widget_set_sensitive(manager_cancel,!mutating && !restart_process);
-    gtk_widget_set_sensitive(manager_restart,!mutating && !restart_process);
     JsonObject *item=store();
     gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
     if (item)
@@ -1091,7 +1092,7 @@ static void update_ui(void)
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
     const char *operation="";
     if (mutating) operation="Working…";
-    if (restart_process) operation="Restarting…";
+    if (restart_request) operation=mutating ? "Preparing restart…" : "Restarting…";
     const char *feedback=connection_error;
     if (!feedback) feedback=*operation ? operation : history_error;
     set_label(popup_status,status);set_label(manager_status,feedback);
@@ -1137,6 +1138,53 @@ static gboolean confirm(const char *title, const char *question, const char *tex
     gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;gtk_widget_destroy(dialog);return accepted;
 }
 
+/* Explain the staged choice without writing policy while the confirmation is open. */
+static void restore_save_changed(GtkSwitch *toggle, GParamSpec *property, gpointer data)
+{
+    (void)property;RestoreChoice *labels=data;gboolean save=gtk_switch_get_active(toggle);
+    set_label(labels->choice,save ? "Save" : "Don’t save");
+    set_label(labels->help,save
+        ? "Save this run’s changes as another saved state before restarting. You can restore them later."
+        : "Discard this run’s changes when restarting. Previously saved states will remain available.");
+}
+
+/* Restore requires a restart; Cancel leaves both startup selection and save policy untouched. */
+static gboolean restore_dialog(const char *name, gboolean initial, gboolean *save)
+{
+    hide_popup();char *question=initial ? g_strdup("Start fresh?") : g_strdup_printf("Restore “%s”?",name);
+    GtkWidget *dialog=gtk_message_dialog_new(GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",question);g_free(question);
+    gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),initial ? "Start fresh" : "Restore saved state");
+    const char *effect=initial ? "Slax will restart with its original programs, settings and files. Existing saved states will stay available."
+        : "Slax will restart with the installed programs, settings and files from this saved state.";
+    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s\n\nSave your documents first. Saved states do not remember open windows or unsaved work.",effect);
+    GtkWidget *area=gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog)),*parent=gtk_widget_get_parent(area);
+    gtk_widget_set_margin_start(parent,0);gtk_widget_set_margin_end(parent,0);gtk_box_set_spacing(GTK_BOX(area),12);
+    pack(area,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
+    GtkWidget *toggle;RestoreChoice labels;
+    pack(area,save_control(&toggle,&labels.choice,&labels.help),FALSE);
+    gtk_label_set_single_line_mode(GTK_LABEL(labels.help),FALSE);gtk_label_set_ellipsize(GTK_LABEL(labels.help),PANGO_ELLIPSIZE_NONE);
+    gtk_label_set_line_wrap(GTK_LABEL(labels.help),TRUE);gtk_label_set_max_width_chars(GTK_LABEL(labels.help),58);
+    gtk_style_context_remove_class(gtk_widget_get_style_context(labels.help),"muted");
+    gtk_switch_set_active(GTK_SWITCH(toggle),*save);
+    g_signal_connect(toggle,"notify::active",G_CALLBACK(restore_save_changed),&labels);restore_save_changed(GTK_SWITCH(toggle),NULL,&labels);
+    gtk_dialog_add_buttons(GTK_DIALOG(dialog),initial ? "Start fresh and restart" : "Restore and restart",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);gtk_widget_show_all(area);
+    gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;
+    if (accepted) *save=gtk_switch_get_active(GTK_SWITCH(toggle));
+    gtk_widget_destroy(dialog);return accepted;
+}
+
+/* A refused restart must not silently turn an immediate restore into a scheduled one. */
+static void restart_failed(const char *detail)
+{
+    if (restart_request && *str(restart_request,"pointId"))
+    {
+        g_free(restart_error);restart_error=g_strdup(detail);
+        JsonObject *request=command("restart.cancel",FALSE);json_object_set_string_member(request,"requestId",str(restart_request,"requestId"));send_request(request,TRUE);
+    }
+    else {g_clear_pointer(&restart_request,json_object_unref);update_ui();message("Cannot restart Slax",detail);}
+}
+
 /* Report a refused normal reboot without blocking GTK or bypassing logind authorization. */
 static void restart_done(GObject *source, GAsyncResult *result, gpointer data)
 {
@@ -1144,8 +1192,8 @@ static void restart_done(GObject *source, GAsyncResult *result, gpointer data)
     gboolean completed=g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source),result,NULL,&details,&error);
     gboolean successful=completed && g_subprocess_get_successful(G_SUBPROCESS(source));
     g_clear_object(&restart_process);update_ui();
-    if (!completed) message("Cannot restart Slax",error->message);
-    else if (!successful) message("Cannot restart Slax",details && *details ? details : "Save your open documents and try Restart from the desktop menu.");
+    if (!completed) restart_failed(error->message);
+    else if (!successful) restart_failed(details && *details ? details : "Save your open documents and try Restart from the desktop menu.");
     g_clear_error(&error);g_free(details);
 }
 
@@ -1176,8 +1224,8 @@ static void name_dialog(gboolean rename)
         title,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(dialog),480,-1);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT);
     GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),18);gtk_box_set_spacing(GTK_BOX(content),12);
-    const char *note="Save your current apps, settings and files so you can return to them later.";
-    if (flag(store(),"active") && !flag(run(),"save")) note="Save your current apps, settings and files so you can return to them later. This state will be kept even though Don’t save is selected.";
+    const char *note="Save your installed programs, settings and saved files so you can restore them later. Open windows and unsaved work are not included.";
+    if (flag(store(),"active") && !flag(run(),"save")) note="Save your installed programs, settings and saved files. Open windows and unsaved work are not included. This state will be kept even though Don’t save is selected.";
     if (rename) note="Give this saved state a name you will recognize.";
     if (rename && flag(point(),"automatic")) note="Give this automatically saved state a name to keep it until you choose to delete it.";
     pack(content,paragraph(note),FALSE);pack(content,label("Name",NULL),FALSE);
@@ -1230,9 +1278,10 @@ static int browse_files(const char *store_id, const char *point_id)
 /* Closing the browser is ordinary success; launch failures remain visible in its parent UI. */
 static void files_finished(GObject *source, GAsyncResult *result, gpointer data)
 {
-    (void)data;GError *error=NULL;char *err=NULL;
+    g_hash_table_remove(file_browsers,data);GError *error=NULL;char *err=NULL;
     gboolean ok=g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source),result,NULL,&err,&error);
-    if (!ok || !g_subprocess_get_successful(G_SUBPROCESS(source)))
+    gboolean closed=ok && g_subprocess_get_if_signaled(G_SUBPROCESS(source)) && g_subprocess_get_term_sig(G_SUBPROCESS(source))==SIGTERM;
+    if (!restart_request && !closed && (!ok || !g_subprocess_get_successful(G_SUBPROCESS(source))))
     {
         const char *detail=error ? error->message : "The file manager stopped unexpectedly.";
         if (!error && err && *err) detail=err;
@@ -1257,30 +1306,8 @@ static void action(GtkButton *button_widget, gpointer data)
         if (row) {gtk_style_context_add_class(gtk_widget_get_style_context(GTK_WIDGET(row)),"jump-target");g_timeout_add_full(G_PRIORITY_DEFAULT,600,jump_feedback_done,g_object_ref(row),g_object_unref);}
         return;
     }
-    if (mutating || restart_process) return;
-    if (!strcmp(op,"restart"))
-    {
-        char *text=g_strdup("Save your open documents before restarting. Slax will close running applications.");
-        if (state && !connection_error && !*str(run(),"error"))
-        {
-            const char *saving="Your changes will be saved.";
-            if (!strcmp(str(run(),"kind"),"ram")) saving="Changes made in this RAM run will be lost.";
-            else if (!flag(run(),"save")) saving="Changes from this run will be discarded.";
-            else if (object(state,"next")) saving="Your current apps, settings and files will be kept in another saved state.";
-            char *next=next_text();g_free(text);text=g_strdup_printf("Save your open documents before restarting.\n%s\n\nNext start: %s",saving,next);g_free(next);
-        }
-        gboolean accepted=confirm("Restart Slax","Restart Slax now?",text,"Restart Slax");g_free(text);
-        if (accepted && !mutating)
-        {
-            GError *error=NULL;
-            restart_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,"systemctl","reboot",NULL);
-            if (restart_process) {update_ui();g_subprocess_communicate_utf8_async(restart_process,NULL,NULL,restart_done,NULL);}
-            else {message("Cannot restart Slax",error->message);g_clear_error(&error);}
-        }
-        return;
-    }
+    if (mutating || restart_request) return;
     if (!state) return;
-    if (!strcmp(op,"next-clear")) {send_request(command("next.clear",FALSE),TRUE);return;}
     JsonObject *item=store(),*saved=point();if (!item) return;
     g_autofree char *target=g_strdup(selected);
     if (!strcmp(op,"create-point")) {name_dialog(FALSE);return;}
@@ -1289,30 +1316,34 @@ static void action(GtkButton *button_widget, gpointer data)
     g_autofree char *saved_id=g_strdup(str(saved,"id"));
     if (!strcmp(op,"use-point"))
     {
-        JsonObject *next=object(state,"next");
-        if (!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId")))
-        {send_request(command("next.clear",FALSE),TRUE);return;}
-        gboolean initial=flag(saved,"initial");char *question=initial ? g_strdup("Start with Slax’s original apps, settings and files?") : g_strdup_printf("Start Slax from “%s”?",point_name(saved));
-        const char *saving="Other saved states will stay available.";
-        if (flag(item,"active")) saving=flag(run(),"save") ? "Your current apps, settings and files will be kept in another saved state." : "Changes from this run will be discarded. Other saved states will stay available.";
-        char *text=g_strdup_printf("%s\n\n%s",initial ? "At the next start, Slax will use the original apps, settings and files." : "At the next start, Slax will use the apps, settings and files saved in this saved state.",saving);
-        gboolean accepted=confirm(initial ? "Fresh start" : "Use saved state at next start",question,text,initial ? "Fresh start" : "Use at next start");g_free(question);g_free(text);
-        if (accepted) {JsonObject *request=command("next.set",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
+        gboolean save=flag(run(),"save");
+        gboolean accepted=restore_dialog(point_name(saved),flag(saved,"initial"),&save);
+        if (accepted && !mutating && !restart_request)
+        {
+            JsonObject *request=command("restart.prepare",FALSE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);json_object_set_boolean_member(request,"save",save);
+            char *id=g_uuid_string_random();json_object_set_string_member(request,"requestId",id);g_free(id);
+            restart_request=json_object_ref(request);send_request(request,TRUE);
+        }
+        return;
     }
     if (!strcmp(op,"delete-point"))
     {
         char *question=g_strdup_printf("Delete “%s”?",point_name(saved));
-        JsonObject *next=object(state,"next");gboolean queued=!g_strcmp0(target,str(next,"storeId")) && !strcmp(saved_id,str(next,"pointId"));
-        char *text=g_strconcat("You will no longer be able to start Slax from this saved state or open files saved in this saved state. Your current apps, settings and files and all other saved states will be kept.",queued ? "\n\nSlax will no longer use this saved state at the next start." : "",NULL);
-        gboolean accepted=confirm("Delete saved state",question,text,"Delete saved state");g_free(question);g_free(text);
+        const char *text="You will no longer be able to start Slax from this saved state or open files saved in this saved state. Your installed programs, settings, saved files and all other saved states will be kept.";
+        gboolean accepted=confirm("Delete saved state",question,text,"Delete saved state");g_free(question);
         if (accepted) {JsonObject *request=command("point.delete",TRUE);json_object_set_string_member(request,"storeId",target);json_object_set_string_member(request,"pointId",saved_id);send_request(request,TRUE);}return;
     }
     if (!strcmp(op,"open-files"))
     {
+        if (flag(saved,"filesOpen") || g_hash_table_contains(file_browsers,saved_id)) return;
         GError *error=NULL;
         GSubprocess *process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,
             "/usr/bin/slax-status","--open-files",selected,str(saved,"id"),NULL);
-        if (process) {g_subprocess_communicate_utf8_async(process,NULL,NULL,files_finished,NULL);g_object_unref(process);}
+        if (process)
+        {
+            char *id=g_strdup(saved_id);g_hash_table_insert(file_browsers,id,process);
+            g_subprocess_communicate_utf8_async(process,NULL,NULL,files_finished,id);render_inspector();
+        }
         else {message("Cannot open saved state files",error->message);g_clear_error(&error);}
     }
 }
@@ -1389,11 +1420,11 @@ static gboolean x_events(gint fd, GIOCondition condition, gpointer data)
 /* Keep styling local to this application; native controls and the desktop's font settings remain intact. */
 static void load_style(void)
 {
-    gdk_rgba_parse(&queued_color,QUEUED_COLOR);
     GtkCssProvider *css=gtk_css_provider_new();
     gtk_css_provider_load_from_data(css,
         "#slax-status-tray, #slax-status-bubble { background: transparent; border: 0; box-shadow: none; }"
         "window { font-size: 14px; } .muted { color: #65705f; font-size: 13px; }"
+        "switch slider { min-width: 18px; min-height: 18px; }"
         "#slax-status-manager * { transition: none; }"
         "#slax-status-manager .focus-control, #slax-status-manager .focus-control * { outline-style: none; }"
         "#slax-status-manager .focus-control.focus-outline { outline-style: dashed; }"
@@ -1402,8 +1433,8 @@ static void load_style(void)
         ".intro-example { background: #eff1eb; border: 1px solid #d8ddd3; border-radius: 6px; padding: 16px; }"
         ".intro-example-row { padding: 8px 8px 8px 32px; border: 1px solid transparent; } .intro-example-choice { background: #e4ecdd; border-color: #c3d4b7; border-radius: 4px; }"
         ".strong { font-weight: 600; } .eyebrow { font-size: 13px; color: #65705f; }"
-        ".running { color: #397b35; } .badge.queued { color: " QUEUED_COLOR "; } .error { color: #ba3932; }"
-        ".storage-detail { padding: 18px 18px 0; } .history-list { background: transparent; }"
+        ".running { color: #397b35; } .error { color: #ba3932; }"
+        ".storage-detail { padding: 18px 18px 0; } .storage-footer { padding: 14px 18px; } .history-list { background: transparent; }"
         ".history-list row { min-height: 34px; padding: 0; border: 1px solid transparent; border-radius: 4px; color: #292d29; box-shadow: none; background-image: none; }"
         ".history-list row:active { box-shadow: none; background-image: none; }"
         ".history-list row:selected { background: #e7eee0; border-color: #c3d4b7; } .history-list row:hover { background: #eef2e9; }"
@@ -1418,9 +1449,6 @@ static void load_style(void)
         "button.primary-action { background: linear-gradient(#43863e,#397b35); color: white; border-color: #2e642a; border-bottom-color: #245320; box-shadow: inset 0 1px rgba(255,255,255,.2), 0 1px 2px rgba(0,0,0,.07); }"
         "button.primary-action:hover:not(:disabled) { background: linear-gradient(#367632,#2c6729); }"
         "button.primary-action:active:not(:disabled) { background: linear-gradient(#2b6027,#326e2e); border-bottom-color: #2e642a; box-shadow: inset 0 1px 2px rgba(0,0,0,.2); }"
-        "button.primary-action.queued-action { background: linear-gradient(shade(" QUEUED_COLOR ",1.08)," QUEUED_COLOR "); border-color: shade(" QUEUED_COLOR ",.8); border-bottom-color: shade(" QUEUED_COLOR ",.65); }"
-        "button.primary-action.queued-action:hover:not(:disabled) { background: linear-gradient(" QUEUED_COLOR ",shade(" QUEUED_COLOR ",.85)); }"
-        "button.primary-action.queued-action:active:not(:disabled) { background: linear-gradient(shade(" QUEUED_COLOR ",.75),shade(" QUEUED_COLOR ",.9)); border-bottom-color: shade(" QUEUED_COLOR ",.8); }"
         "progressbar progress { background: #579044; border: 0; min-height: 6px; } progressbar trough { min-height: 6px; }"
         "progressbar.capacity-warning progress { background: #ce413a; } progressbar.capacity-temporary progress { background: #2784d8; }",
         -1,NULL);
@@ -1446,6 +1474,7 @@ int main(int argc, char **argv)
     name=g_strdup_printf("_NET_SYSTEM_TRAY_S%d",DefaultScreen(display));tray_selection=XInternAtom(display,name,False);g_free(name);
     manager_atom=XInternAtom(display,"MANAGER",False);XSelectInput(display,DefaultRootWindow(display),StructureNotifyMask);XFlush(display);
     g_unix_fd_add(ConnectionNumber(display),G_IO_IN|G_IO_HUP,x_events,NULL);
+    file_browsers=g_hash_table_new_full(g_str_hash,g_str_equal,g_free,g_object_unref);
     load_style();make_manager();make_popups();dock_tray();update_ui();refresh();g_timeout_add_seconds(3,poll_state,NULL);
     if (manage) show_manager();
     gtk_main();XDestroyWindow(display,command_window);XCloseDisplay(display);return 0;

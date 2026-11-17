@@ -14,12 +14,14 @@
 #include <string.h>
 #include <sys/file.h>
 #include <sys/mount.h>
+#include <sys/pidfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/sysmacros.h>
 #include <time.h>
 #include <unistd.h>
+#include "slax-status-history.h"
 
 #define RUNTIME "/run/slax-status"
 #define BOOT "/run/initramfs/memory/storage"
@@ -31,19 +33,15 @@ typedef struct { char *id,*path,*mount,*inner; Drive *drive; ino_t inode; gboole
 typedef struct { char *id,*store,*point,*path,*image; uid_t uid; pid_t pid; guint64 started; gboolean overlay; } View;
 static GPtrArray *drives,*stores,*views;
 static JsonArray *block_devices;
-static JsonObject *selection;
+static JsonObject *restart_request;
 static GMutex operation_lock;
 static GMainLoop *main_loop;
 static uid_t guest_uid=(uid_t)-1;
 static gint64 scanned;
 static char *active_path,*run_start,*run_error;
 static gboolean recovered;
-static gboolean pin(Store *store, const char *id, GError **error);
-static void recover_mounts(void);
-static gboolean clear_next(GError **error);
-static gboolean restore_selection(gboolean release, GError **error);
-static gboolean select_next(Store *store, const char *id, GError **error);
 static gboolean save_run(Store *store, gboolean save, GError **error);
+static void recover_mounts(void);
 
 /* Use structured errors throughout IPC; command stderr remains ordinary text. */
 static gboolean fail(GError **error, int code, const char *message)
@@ -93,8 +91,7 @@ static JsonObject *parse(const char *text, GError **error)
 /* Missing and explicitly null optional strings have the same meaning. */
 static const char *string(JsonObject *object, const char *name)
 {
-   JsonNode *node=object ? json_object_get_member(object,name) : NULL;
-   return node && JSON_NODE_HOLDS_VALUE(node) && json_node_get_value_type(node)==G_TYPE_STRING ? json_node_get_string(node) : NULL;
+   return status_text(object,name);
 }
 
 /* Booleans never coerce client strings or numeric values. */
@@ -187,14 +184,6 @@ static gboolean remove_file(const char *directory, const char *name, GError **er
 {
    int fd=open(directory,O_RDONLY|O_DIRECTORY|O_CLOEXEC|O_NOFOLLOW);
    gboolean ok=remove_at(fd,name,error); if (fd>=0) close(fd); return ok;
-}
-
-/* Snapshot IDs stay exact across JSON, filenames and FUSE commands. */
-static gboolean identity(const char *value)
-{
-   if (!value || strlen(value)!=16) return FALSE;
-   for (const char *p=value;*p;p++) if (!g_ascii_isdigit(*p) && (*p<'a' || *p>'f')) return FALSE;
-   return TRUE;
 }
 
 /* UTF-8 labels remain international; controls and line delimiters cannot enter metadata. */
@@ -299,15 +288,6 @@ static gboolean write_store(Store *store, const char *name, const char *text, GE
    int fd=store_fd(store); gboolean ok=text ? atomic_at(fd,name,text,error) : remove_at(fd,name,error);
    if (fd>=0) close(fd);
    return ok;
-}
-
-/* Rollback does not allocate metadata again when an atomic replacement never changed it. */
-static gboolean restore_store_file(Store *store, const char *name, const char *text, GError **error)
-{
-   int fd=store_fd(store); char *current=fd>=0 ? read_fd(openat(fd,name,O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW),NULL) : NULL;
-   if (fd>=0) close(fd);
-   gboolean same=!g_strcmp0(current,text); g_free(current);
-   return same || write_store(store,name,text,error);
 }
 
 /* Revalidate every mutation against the registered directory instead of trusting a stale GUI row. */
@@ -465,10 +445,12 @@ static JsonObject *report(Store *store, gboolean history, GError **error)
       output=command_at(argv,fd,error); close(fd);
    }
    if (!output) return NULL;
-   JsonObject *object=parse(output,error); g_free(output); return object;
+   JsonObject *object=parse(output,error); g_free(output);
+   if (object && history && !valid_history(object,error)) g_clear_pointer(&object,json_object_unref);
+   return object;
 }
 
-/* Runtime metadata identifies guarded/queued points without trusting their display names. */
+/* Runtime metadata identifies guarded states without trusting their display names. */
 static char *store_file(Store *store, const char *name)
 {
    int fd=store_fd(store);
@@ -517,7 +499,7 @@ static JsonObject *history(Store *store, GError **error)
    if (!validate(store,FALSE,error)) return NULL;
    JsonObject *catalog=report(store,TRUE,error);
    if (!catalog) return NULL;
-   char *run=store_file(store,"run.txt"),*queued=store_file(store,"restore.txt");
+   char *run=store_file(store,"run.txt");
    json_object_set_boolean_member(catalog,"hasStarted",run!=NULL);
    if (run) { char *line=strchr(run,'\n'); if (line) *line=0; }
    JsonArray *array=json_object_get_array_member(catalog,"snapshots"); const char *unformatted=NULL;
@@ -530,10 +512,7 @@ static JsonObject *history(Store *store, GError **error)
       if (guard && !string(item,"parent")) unformatted=id;
       json_object_set_boolean_member(item,"filesOpen",open);
       json_object_set_boolean_member(item,"hidden",guard);
-      gboolean queued_point=!g_strcmp0(queued,id);
-      gboolean other_pin=boolean(item,"protected") && !queued_point;
-      if (queued_point && selection && !g_strcmp0(string(selection,"storeId"),store->id) && !g_strcmp0(string(selection,"pointId"),id)) other_pin=boolean(selection,"wasProtected");
-      json_object_set_boolean_member(item,"protected",other_pin || guard || open || !g_strcmp0(run,id));
+      json_object_set_boolean_member(item,"protected",boolean(item,"protected") || guard || !g_strcmp0(run,id));
    }
    /* The initial point directly follows our recorded unformatted root, not an arbitrary name. */
    for (guint i=0;unformatted && i<json_array_get_length(array);i++)
@@ -542,7 +521,7 @@ static JsonObject *history(Store *store, GError **error)
       gboolean initial=!g_strcmp0(string(item,"parent"),unformatted) && !g_strcmp0(string(item,"name"),"Initial state");
       if (initial) { json_object_set_boolean_member(item,"initial",TRUE); json_object_set_boolean_member(item,"protected",TRUE); }
    }
-   g_free(run); g_free(queued); return catalog;
+   g_free(run); return catalog;
 }
 
 /* Keep the device recognizable even when its optional filesystem label is long or duplicated. */
@@ -664,21 +643,6 @@ static JsonObject *state(GError **error)
       { char **lines=g_strsplit(memory,"\n",-1); for (char **line=lines;*line;line++) { if (g_str_has_prefix(*line,"MemAvailable:")) free_bytes=g_ascii_strtoull(*line+13,NULL,10)*1024; if (g_str_has_prefix(*line,"MemTotal:")) total_bytes=g_ascii_strtoull(*line+9,NULL,10)*1024; } g_strfreev(lines); g_free(memory); }
    }
    json_object_set_int_member(run,"freeBytes",free_bytes); json_object_set_int_member(run,"totalBytes",total_bytes); json_object_set_int_member(run,"reusableBytes",active ? active->reusable : 0);
-   Store *next=selection ? find_store(string(selection,"storeId")) : NULL;
-   if (next)
-   {
-      JsonObject *queued=json_object_new(); json_object_set_string_member(queued,"storeId",next->id); nullable(queued,"pointId",string(selection,"pointId")); char *label=device_text(next->drive->device,next->drive->label); json_object_set_string_member(queued,"label",label); g_free(label);
-      json_object_set_string_member(queued,"device",next->drive->device);
-      /* Resolve names by stable identity so a queued restore follows later renames. */
-      JsonObject *catalog=report(next,TRUE,NULL),*saved=point(catalog,string(selection,"pointId"));
-      const char *name=NULL;
-      if (saved) name=boolean(saved,"automatic") ? "Automatically saved state" : string(saved,"name");
-      nullable(queued,"pointName",name);
-      if (catalog) json_object_unref(catalog);
-      json_object_set_int_member(queued,"created",json_object_has_member(selection,"created") ? json_object_get_int_member(selection,"created") : 0);
-      json_object_set_object_member(result,"next",queued);
-   }
-   else json_object_set_null_member(result,"next");
    for (guint i=0;i<views->len;i++)
    {
       View *view=g_ptr_array_index(views,i); JsonObject *object=json_object_new();
@@ -686,12 +650,6 @@ static JsonObject *state(GError **error)
    }
    json_object_set_array_member(result,"drives",ds); json_object_set_array_member(result,"stores",ps); json_object_set_array_member(result,"views",vs); json_object_set_object_member(result,"run",run);
    return result;
-}
-
-/* Engine protection survives the broker and remains active through clean DynFileFS unmount. */
-static gboolean pin(Store *store, const char *id, GError **error)
-{
-   return identity(id) ? snapshot_command(store,"protect",id,error) : fail(error,EINVAL,"Invalid saved state identity.");
 }
 
 /* Process start time survives exec and distinguishes a browser from a reused PID. */
@@ -723,6 +681,7 @@ static JsonObject *open_files(Store *store, const char *id, uid_t uid, pid_t pid
    if (!started) { fail(error,ESRCH,"The file browser is no longer running."); return NULL; }
    JsonObject *catalog=history(store,error),*saved=point(catalog,id);
    if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return NULL; }
+   if (boolean(saved,"filesOpen")) { json_object_unref(catalog); fail(error,EBUSY,"Files from this saved state are already open."); return NULL; }
    if (!active_mount(store,FALSE,error)) { json_object_unref(catalog); return NULL; }
    View *view=g_new0(View,1); view->id=g_uuid_string_random(); view->uid=uid; view->pid=pid; view->started=started; view->store=g_strdup(store->id); view->point=g_strdup(id);
    char *base=g_build_filename(RUNTIME,"views",view->id,NULL); view->image=g_build_filename(base,"image",NULL); view->path=g_build_filename(base,"files",NULL);
@@ -783,6 +742,34 @@ static gboolean close_view(View *view, GError **error)
    g_free(view->id); g_free(view->store); g_free(view->point); g_free(view->path); g_free(view->image); g_free(view); return TRUE;
 }
 
+/* Close only authenticated file browsers; pidfds cannot signal a reused process ID. */
+static gboolean close_views(GError **error)
+{
+   for (guint i=0;i<views->len;i++)
+   {
+      View *view=g_ptr_array_index(views,i);
+      int fd=pidfd_open(view->pid,0);
+      if (fd<0 && errno!=ESRCH) return fail(error,errno,g_strerror(errno));
+      gboolean ok=TRUE;
+      if (fd>=0 && process_start(view->pid)==view->started) ok=!pidfd_send_signal(fd,SIGTERM,NULL,0) || errno==ESRCH;
+      int saved=errno; if (fd>=0) close(fd);
+      if (!ok) return fail(error,saved,g_strerror(saved));
+   }
+   gint64 deadline=g_get_monotonic_time()+10*G_USEC_PER_SEC;
+   while (views->len)
+   {
+      for (guint i=views->len;i>0;i--)
+      {
+         View *view=g_ptr_array_index(views,i-1);
+         if (process_start(view->pid)!=view->started) close_view(view,NULL);
+      }
+      if (!views->len) return TRUE;
+      if (g_get_monotonic_time()>=deadline) return fail(error,EBUSY,"Close applications using saved-state files and try again. Slax has not restarted.");
+      g_usleep(100000);
+   }
+   return TRUE;
+}
+
 /* Retry busy mounts automatically; neither GUI lifetime nor PID reuse can close a live browser. */
 static gboolean expire_views(gpointer data)
 {
@@ -799,8 +786,8 @@ static gboolean expire_views(gpointer data)
 /* Reattach only daemon-owned mount locations and root-owned view records after an unexpected restart. */
 static void recover_mounts(void)
 {
-   char *text=read_file(RUNTIME "/selection.json",NULL);
-   if (text) { selection=parse(text,NULL); g_free(text); }
+   char *text=read_file(RUNTIME "/restart.json",NULL);
+   if (text) { restart_request=parse(text,NULL); g_free(text); }
    GDir *dir=g_dir_open(RUNTIME "/views",0,NULL); const char *name;
    while (dir && (name=g_dir_read_name(dir)))
    {
@@ -824,13 +811,6 @@ static void recover_mounts(void)
       json_object_unref(data); g_free(base);
    }
    if (dir) g_dir_close(dir);
-   while (selection && json_object_has_member(selection,"previous"))
-   {
-      JsonNode *node=json_object_get_member(selection,"previous");
-      JsonObject *previous=JSON_NODE_HOLDS_OBJECT(node) ? json_object_ref(json_node_get_object(node)) : NULL;
-      if (!restore_selection(TRUE,NULL)) { if (previous) json_object_unref(previous); break; }
-      if (previous) { selection=previous; write_json(RUNTIME,"selection.json",selection,NULL); }
-   }
 }
 
 /* Disable engine snapshots before discard; enable them only after durable save policy. */
@@ -848,100 +828,83 @@ static gboolean save_run(Store *store, gboolean save, GError **error)
    return ok;
 }
 
-/* Cancel only this daemon's pending restore, preserving the independent run save policy. */
-static gboolean restore_selection(gboolean release, GError **error)
+/* A failed reboot cancels only its own handoff and releases its temporary engine pin. */
+static gboolean cancel_restore(GError **error)
 {
-   if (!selection) return TRUE;
-   Store *store=find_store(string(selection,"storeId"));
+   if (!restart_request) return TRUE;
+   Store *store=find_store(string(restart_request,"storeId"));
    if (!validate(store,TRUE,error)) return FALSE;
-   const char *previous=string(selection,"restore"),*selected=string(selection,"pointId");
-   char *previous_id=previous ? g_strdup(previous) : NULL; if (previous_id) g_strchomp(previous_id);
-   if (store->mount && previous_id && !pin(store,previous_id,error)) { g_free(previous_id); return FALSE; }
-   if (!restore_store_file(store,"restore.txt",string(selection,"restore"),error)) { g_free(previous_id); return FALSE; }
-   if (release && selected && store->mount && g_strcmp0(selected,previous_id) && !boolean(selection,"wasProtected")) snapshot_command(store,"unprotect",selected,NULL);
-   g_free(previous_id);
-   if (!remove_file(RUNTIME,"selection.json",error)) return FALSE;
-   json_object_unref(selection); selection=NULL; return TRUE;
+   const char *id=string(restart_request,"pointId");
+   char *target=store_file(store,"restore.txt"); gboolean own=!g_strcmp0(target,id); g_free(target);
+   if (own && !write_store(store,"restore.txt",NULL,error)) return FALSE;
+   if (!boolean(restart_request,"wasProtected") && !snapshot_command(store,"unprotect",id,error)) return FALSE;
+   if (!remove_file(RUNTIME,"restart.json",error)) return FALSE;
+   json_object_unref(restart_request); restart_request=NULL; return TRUE;
 }
 
-/* Explicit cancel releases the superseded engine pin only after restoring durable policy. */
-static gboolean clear_next(GError **error)
+/* Journal one confirmed restore before pinning and publishing its durable boot target. */
+static gboolean prepare_restore(Store *store, const char *id, const char *request_id, GError **error)
 {
-   return restore_selection(TRUE,error);
-}
-
-/* Deleting a queued point cancels only that exact request, never another store's next start. */
-static gboolean cancel_point(Store *store, const char *id, gboolean *cancelled, GError **error)
-{
-   char *queued=store_file(store,"restore.txt"); gboolean match=!g_strcmp0(queued,id); g_free(queued);
-   if (!match) return TRUE;
-   gboolean own=selection && !g_strcmp0(string(selection,"storeId"),store->id) && !g_strcmp0(string(selection,"pointId"),id);
-   gboolean ok=own ? clear_next(error) : write_store(store,"restore.txt",NULL,error);
-   queued=store_file(store,"restore.txt"); gboolean remains=!g_strcmp0(queued,id); g_free(queued);
-   if (ok && remains) ok=write_store(store,"restore.txt",NULL,error);
-   queued=store_file(store,"restore.txt"); *cancelled=g_strcmp0(queued,id)!=0; g_free(queued);
-   if (ok && (!own || remains))
+   JsonObject *catalog=history(store,error),*saved=point(catalog,id);
+   if (!saved || boolean(saved,"hidden"))
+   { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return FALSE; }
+   JsonObject *pending=json_object_new();
+   json_object_set_string_member(pending,"storeId",store->id); json_object_set_string_member(pending,"pointId",id);
+   json_object_set_string_member(pending,"requestId",request_id); json_object_set_boolean_member(pending,"wasProtected",boolean(saved,"protected"));
+   json_object_unref(catalog);
+   if (!write_json(RUNTIME,"restart.json",pending,error)) { json_object_unref(pending); return FALSE; }
+   restart_request=pending;
+   gboolean ok=snapshot_command(store,"protect",id,error);
+   char *line=g_strconcat(id,"\n",NULL);
+   if (ok) ok=write_store(store,"restore.txt",line,error);
+   g_free(line);
+   if (!ok)
    {
-      if (ok && store->mount) ok=snapshot_command(store,"unprotect",id,error);
+      GError *cleanup=NULL;
+      if (!cancel_restore(&cleanup))
+      { g_prefix_error(error,"The restore request could not be cancelled: %s. ",cleanup->message); g_clear_error(&cleanup); }
    }
    return ok;
 }
 
-/* Journal replacement of the active store's restore request so Cancel survives daemon restarts. */
-static gboolean select_next(Store *store, const char *id, GError **error)
+/* Flush the writable filesystem before its provider; shutdown performs the final clean unmount. */
+static gboolean sync_store(Store *store, GError **error)
 {
-   if (!validate(store,TRUE,error)) return FALSE;
-   JsonObject *catalog=NULL,*saved=NULL;
-   if (id)
-   {
-      if (!identity(id)) return fail(error,EINVAL,"Invalid saved state identity.");
-      catalog=history(store,error); saved=point(catalog,id);
-      if (!saved)
-      { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return FALSE; }
-   }
-   if (selection && g_strcmp0(string(selection,"storeId"),store->id))
-   { if (catalog) json_object_unref(catalog); return fail(error,ESTALE,"The pending restore belongs to different storage."); }
-   JsonObject *previous=selection ? json_object_ref(selection) : NULL;
-   char *previous_id=previous ? g_strdup(string(previous,"pointId")) : NULL;
-   gboolean was_protected=boolean(saved,"protected");
-   if (previous && !g_strcmp0(previous_id,id)) was_protected=boolean(previous,"wasProtected");
-   if (id && !pin(store,id,error)) { if (catalog) json_object_unref(catalog); if (previous) json_object_unref(previous); g_free(previous_id); return FALSE; }
-   JsonObject *pending=json_object_new();
-   if (previous) json_object_set_object_member(pending,"previous",json_object_ref(previous));
-   else json_object_set_null_member(pending,"previous");
-   json_object_set_string_member(pending,"storeId",store->id); nullable(pending,"pointId",id);
-   json_object_set_boolean_member(pending,"wasProtected",was_protected);
-   if (saved)
-   {
-      json_object_set_int_member(pending,"created",json_object_get_int_member(saved,"created"));
-   }
-   int fd=store_fd(store);
-   char *old=fd>=0 ? read_fd(openat(fd,"restore.txt",O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW),NULL) : NULL;
-   if (fd>=0) close(fd);
-   nullable(pending,"restore",old); g_free(old);
-   gboolean ok=write_json(RUNTIME,"selection.json",pending,error),started=ok;
-   if (ok) { if (selection) json_object_unref(selection); selection=pending; pending=NULL; }
-   /* Selecting latest clears only an explicit restore; discard still returns to this run's start. */
-   char *line=id ? g_strconcat(id,"\n",NULL) : NULL;
-   if (ok) ok=write_store(store,"restore.txt",line,error);
-   g_free(line);
-   if (ok)
-   {
-      /* Keep the provisional rollback record intact until the completed journal is durable. */
-      JsonObject *complete=json_object_new(); GList *members=json_object_get_members(selection);
-      for (GList *member=members;member;member=member->next) json_object_set_member(complete,member->data,json_node_copy(json_object_get_member(selection,member->data)));
-      g_list_free(members);
-      if (previous) json_object_set_member(complete,"restore",json_node_copy(json_object_get_member(previous,"restore")));
-      json_object_remove_member(complete,"previous"); ok=write_json(RUNTIME,"selection.json",complete,error);
-      if (ok) { json_object_unref(selection); selection=complete; } else json_object_unref(complete);
-   }
+   int inner=open(store->inner,O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+   if (inner<0) return fail(error,errno,g_strerror(errno));
+   int backing=store_fd(store); gboolean ok=backing>=0;
+   if (ok) ok=!syncfs(inner) && !syncfs(backing);
+   int saved=errno; if (inner>=0) close(inner); if (backing>=0) close(backing);
+   return ok || fail(error,saved,g_strerror(saved));
+}
+
+/* Prepare a confirmed restart without changing its save policy until file views are closed. */
+static gboolean prepare_restart(Store *store, JsonObject *request, GError **error)
+{
+   gboolean previous_save=FALSE;
+   const char *id=string(request,"pointId"),*request_id=string(request,"requestId");
+   JsonNode *save=json_object_get_member(request,"save");
+   if (!identity(id) || !request_id || !g_uuid_string_is_valid(request_id)) return fail(error,EINVAL,"Invalid restore request.");
+   if (!save || json_node_get_value_type(save)!=G_TYPE_BOOLEAN) return fail(error,EINVAL,"Choose whether to save this run.");
+   if (!active_mount(store,TRUE,error)) return FALSE;
+   JsonObject *catalog=history(store,error); gboolean available=point(catalog,id)!=NULL;
    if (catalog) json_object_unref(catalog);
-   if (pending) json_object_unref(pending);
-   if (!ok && started && restore_selection(TRUE,NULL) && previous)
-   { selection=json_object_ref(previous); write_json(RUNTIME,"selection.json",selection,NULL); if (previous_id) pin(store,previous_id,NULL); }
-   if (!ok && !started && id && !was_protected) snapshot_command(store,"unprotect",id,NULL);
-   if (ok && previous_id && g_strcmp0(previous_id,id) && !boolean(previous,"wasProtected")) snapshot_command(store,"unprotect",previous_id,NULL);
-   g_free(previous_id); if (previous) json_object_unref(previous); return ok;
+   if (!available) { if (!error || !*error) fail(error,ENOENT,"The saved state is no longer available."); return FALSE; }
+   char *policy=store_file(store,"run.txt"),*keep=g_strdup_printf("%s\nsave",run_start ? run_start : ""),*discard=g_strdup_printf("%s\ndiscard",run_start ? run_start : "");
+   previous_save=!g_strcmp0(policy,keep); gboolean valid=previous_save || !g_strcmp0(policy,discard);
+   g_free(policy); g_free(keep); g_free(discard);
+   if (!valid) return fail(error,EIO,"The current run save policy could not be read.");
+   if (!close_views(error)) return FALSE;
+   if (!active_mount(store,FALSE,error) || !sync_store(store,error)) return FALSE;
+   gboolean ok=save_run(store,boolean(request,"save"),error);
+   if (ok) ok=prepare_restore(store,id,request_id,error);
+   if (!ok)
+   {
+      GError *rollback=NULL;
+      if (!save_run(store,previous_save,&rollback))
+      { g_prefix_error(error,"The previous Save this run setting could not be restored: %s. ",rollback->message); g_clear_error(&rollback); }
+   }
+   return ok;
 }
 
 /* Mutations share one worker lock; requests never provide privileged filesystem paths. */
@@ -953,7 +916,18 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
    if (!strcmp(op,"state")) return state(error);
    Store *store=find_store(string(request,"storeId"));
    if (!strcmp(op,"history")) return history(store,error);
-   if (!strcmp(op,"next.clear")) return clear_next(error) ? json_object_new() : NULL;
+   if (!strcmp(op,"restart.cancel"))
+   {
+      const char *id=string(request,"requestId");
+      if (!id || !g_uuid_string_is_valid(id)) { fail(error,EINVAL,"Invalid restore request."); return NULL; }
+      if (restart_request && !g_strcmp0(id,string(restart_request,"requestId")) && !cancel_restore(error)) return NULL;
+      return json_object_new();
+   }
+   if (restart_request) { fail(error,EBUSY,"Slax is preparing to restart."); return NULL; }
+   if (!strcmp(op,"restart.prepare"))
+   {
+      return prepare_restart(store,request,error) ? json_object_new() : NULL;
+   }
    if (!strcmp(op,"run.save"))
    {
       for (guint i=0;i<stores->len;i++) { Store *p=g_ptr_array_index(stores,i); if (p->active) { store=p; break; } }
@@ -963,7 +937,6 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
    }
    if (!validate(store,FALSE,error)) return NULL;
    if (!strcmp(op,"files.open")) return open_files(store,string(request,"pointId"),uid,pid,error);
-   if (!strcmp(op,"next.set")) return select_next(store,string(request,"pointId"),error) ? json_object_new() : NULL;
    if (!strcmp(op,"point.rename"))
    {
       const char *name=string(request,"name"),*id=string(request,"pointId");
@@ -983,28 +956,17 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       const char *name=string(request,"name"),*id=string(request,"pointId");
       if (create && !valid_name(name,error)) return NULL;
       if (!active_mount(store,TRUE,error)) return NULL;
-      char *queued=store_file(store,"restore.txt");
-      if (queued && !pin(store,queued,error)) { g_free(queued); return NULL; }
-      g_free(queued);
       JsonObject *catalog=history(store,error);
       if (!catalog) return NULL;
-      gboolean cancelled=FALSE;
       if (!create)
       {
          JsonObject *saved=point(catalog,id);
          gboolean unavailable=!saved || boolean(saved,"protected") || boolean(saved,"filesOpen");
          if (unavailable) { json_object_unref(catalog); fail(error,EBUSY,"This saved state is unavailable, protected or still in use."); return NULL; }
-         if (!cancel_point(store,id,&cancelled,error))
-         { json_object_unref(catalog); if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but deletion could not continue: "); return NULL; }
-         if (cancelled)
-         {
-            json_object_unref(catalog); catalog=history(store,error); saved=point(catalog,id);
-            if (!saved) { if (catalog) json_object_unref(catalog); if (!error || !*error) fail(error,ENOENT,"The next-start selection was cancelled; the saved state is no longer available."); return NULL; }
-         }
          name=string(saved,"name");
       }
       gboolean ok=snapshot_command(store,create ? "create" : "delete",name,error); json_object_unref(catalog);
-      if (!ok) { if (cancelled) g_prefix_error(error,"The next-start selection was cancelled, but the saved state could not be deleted: "); return NULL; }
+      if (!ok) return NULL;
       JsonObject *result=json_object_new();
       if (create)
       {
