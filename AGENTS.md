@@ -1269,8 +1269,11 @@ must follow the general Slax repair rules above.
   The Slax theme uses `background: unset`; `none` restores the last
   background at startup. PCManFM owns the wallpaper, including restoration after
   screen changes; do not overwrite it with feh. Do not ship a lastwallpaper file.
-- Picom replaces Compton and uses `/etc/picom.conf` at startup. Resolution
-  changes do not restart the compositor. Keep compositor shadows disabled: XRender's rectangular
+- Picom replaces Compton and uses `/etc/picom.conf` at startup. Share the panel's
+  foreground process supervision: restart failed exits after one second while X
+  remains available, preserve clean exits and log failures to the X session log.
+  Do not daemonize Picom with `-b`, which loses its exit status and diagnostics.
+  Resolution changes do not restart the compositor. Keep compositor shadows disabled: XRender's rectangular
   shadow masks do not follow Slax's rounded window outline.
   `picom-window-outline.diff` adds a cached one-pixel inset XRender outline.
   `xrender-window-outline` is its master switch. `xrender-outline-active-color`

@@ -6,6 +6,7 @@ check the running system when needed. Older Slax guides may describe other versi
 DESKTOP
 - Fluxbox manages windows and four workspaces. PCManFM supplies desktop icons,
   wallpaper and File Manager. The bottom panel uses Xfce components.
+  The panel and compositor restart automatically after an unexpected failure.
 - Open the launcher: click the bottom-left Slax button, tap Super (Windows key),
   or press Alt+F2 / Ctrl+Esc. Type to search apps or run a command; browse categories
   with the sidebar. Esc dismisses it. The Slax button highlights when hovered.

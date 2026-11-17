@@ -70,20 +70,23 @@ if [ ! -e /dev/virtio-ports/com.redhat.spice.0 ] && [ "$(systemd-detect-virt --v
    done
 fi
 
-# Restart a crashed panel while preserving clean exits and the X session lifetime.
-(
+# Restart failed desktop components while preserving clean exits and the X session lifetime.
+supervise_desktop()
+{
    while true; do
-      if xfce4-panel --disable-wm-check --sm-client-disable; then break; fi
+      if "$@"; then break; else DESKTOP_STATUS=$?; fi
       if ! xdpyinfo >/dev/null 2>&1; then break; fi
+      printf '%s exited with status %s; restarting in 1 second.\n' "$1" "$DESKTOP_STATUS" >&2
       sleep 1
    done
-) &
+}
+supervise_desktop xfce4-panel --disable-wm-check --sm-client-disable &
 
 (
    while [ "$(wmctrl -l | grep xfce4-panel)" = "" ]; do
       sleep 0.1
    done
-   picom -b --config /etc/picom.conf
+   supervise_desktop picom --config /etc/picom.conf &
    # Retain window snapshots for Alt+Tab, including minimized applications.
    # Fluxbox commands include the default screen in DISPLAY; match its IPC path.
    SKIPPYDISPLAY=$DISPLAY
