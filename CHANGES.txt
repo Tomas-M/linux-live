@@ -38,6 +38,8 @@ Linux Live Kit
 Slax
 ----
 
+- Automatically restart a failed Picom compositor while the desktop is running,
+  sharing the panel's supervision and retaining failure diagnostics.
 - Include Debian's signed network GRUB for UEFI PXE boot, reusing the existing
   shim and MokManager. Compress network loaders until pxe starts and serve the
   paths expected by shim and GRUB alongside the existing BIOS network bootstrap.
