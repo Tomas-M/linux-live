@@ -20,7 +20,7 @@ Linux Live Kit
 - Allow disabling DynFileFS automatic end-of-run points without disabling explicit
   saved states or normal filesystem synchronization.
 - Rename DynFileFS saved states by stable identity while retaining their data,
-  ancestry, open read-only views and next-start targets. Expose saved images by ID.
+  ancestry, open read-only views and restore targets. Expose saved images by ID.
 - Keep DynFileFS backing files and automatic filesystem freezing accessible after
   switching from the initramfs to the live root, fixing persistent boot I/O errors.
 - Restore a saved state at storage startup using its stable ID; keep the
@@ -30,7 +30,7 @@ Linux Live Kit
 - Choose a drive and then a saved state during boot. Fresh start restores
   Initial state while retaining history; F5 refreshes the drive list.
 - Preserve the starting state before persistent writes and apply save/discard
-  policy at the next activation; protect scheduled saved states during recovery.
+  policy at the next activation; protect restore targets during recovery.
   Recover interrupted creation of the starting state without losing unrelated points.
 - Give new containers a permanent Initial state saved state after
   formatting and filesystem growth; hide the unusable pre-formatting point.
@@ -43,9 +43,21 @@ Slax
 - Include Debian's signed network GRUB for UEFI PXE boot, reusing the existing
   shim and MokManager. Compress network loaders until pxe starts and serve the
   paths expected by shim and GRUB alongside the existing BIOS network bootstrap.
+- Restore saved states through a confirmed immediate restart, with a Save this run
+  choice, automatic file-view cleanup and storage synchronization before restarting.
+- Remove obsolete next-start scheduling, blue target markers and cancellation controls.
+  Keep only the confirmed restart's internal boot handoff and failure cleanup.
+- Keep saved-state sizes visible during file browsing and prevent duplicate file views.
+  Rename states in place without flashing controls; remove the separate restart button.
+- Clarify that saved states keep installed programs, settings and saved files,
+  not open windows or unsaved work. Use a smaller Save this run switch throughout
+  Slax Status, including restore confirmations.
+- Shorten saved-state action labels, move Open files last and separate sizes and dates with a middle dot.
 - Skip bookmark updates without a valid home or when settings resolve to filesystem-root paths.
 - Keep the Don't save explanation fully readable in the side panel.
-- Align Show removed states and keep Go to now at the right edge, with padding, pointer and click feedback.
+- Move Show removed states and Go to now into the shared bottom bar. Align the checkbox
+  and align Go to now with the tree's right edge, with an upward arrow, padding,
+  pointer and click feedback.
 - Remove the unused SystrayIconLauncher utility from the desktop module.
 - Include Slax Status and Keyboard layout in the predefined tray icon order.
 - Use Saved states throughout the desktop, boot menu and installers, with
@@ -58,27 +70,24 @@ Slax
 - Keep saved-state controls visually stable when switching applications.
 - Remove the repeated deletion-space explanation from saved-state details.
 - Right-align available space in the status bubble and separate its heading, drive details and capacity.
-- Label the queued saved-state action Cancel next-start selection.
 - Keep save switches and saved-state actions from flashing during policy writes;
   serialize rapid save changes and apply the latest choice without interrupting animation.
 - Refresh saved-state details without replacing controls or dimming their text.
-  Match queued-point labels and actions to the blue node; clicking the selected
-  next-start action cancels it. Remove the pressed inset from history rows.
+  Remove the pressed inset from history rows.
 - Use ordinary left-aligned text in standard GTK 3 message dialogs.
 - Keep switch tracks blue to the left of the moving thumb and gray to its right,
   avoiding the color flash at the end of animation or dragging.
-- Clarify saved-state dialogs and give them normal window titles. Keep queued
-  points marked in blue, group next-start controls in a stable footer, move
-  Show removed states below history, and add a normal Restart Slax action.
+- Clarify saved-state dialogs and give them normal window titles. Move
+  Show removed states below history.
 - Give green action buttons in Slax Status and Partition Manager the same
   raised appearance and pressed feedback as ordinary buttons.
 - Release the shutdown splash console before systemd's initramfs handoff,
   preventing restarts from hanging until a key is pressed.
-- Rename saved states without changing their contents or next-start selection,
+- Rename saved states without changing their contents,
   including international names and spaces. Wrap inspector titles, omit redundant
   parent information and button tooltips, and reduce confirmation text margins.
 - Make Don't save suppress automatically saved states for the discarded run,
-  including when a different point is selected for the next start.
+  including when restoring a different saved state.
 - Show space reusable after deleting a saved state and remove repeated-name
   tree tooltips. Refresh size figures without rebuilding unchanged history rows.
 - Keep the Save this run switch from getting stuck between positions during
@@ -109,7 +118,7 @@ Slax
   storing saved changes without unnecessary overhead.
 - Add Slax Status to the desktop tray, with anchored warnings, estimated available
   space, Save this run and native saved-state management. Browse saved files
-  read-only and choose a saved state for the next start.
+  read-only and restore saved states through a confirmed restart.
 - Include whiptail for debconf's text dialogs during package installation,
   avoiding frontend initialization warnings.
 - Highlight the Start button on hover using the shared GTK panel style.

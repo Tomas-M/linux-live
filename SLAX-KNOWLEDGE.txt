@@ -144,8 +144,7 @@ BOOT AND PERSISTENCE
   On a drive without saved changes, Fresh start prepares storage there.
   F5 Refresh detects newly connected disks in the drive list. Esc from history
   returns to drives; Esc from drives continues in RAM without saving changes.
-  Explicit Last saved state cancels a queued restore but respects Don't save.
-  Normal automatic startup honors a restore queued for the next start.
+  Last saved state respects the previous run's Save this run choice.
 - Run Slax from RAM (with no automount) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
   save files to a mounted drive to retain them after shutdown. This entry leaves
@@ -162,18 +161,10 @@ BOOT AND PERSISTENCE
   all files beside changes.dat and its snapshots directory belong together.
   Back up the complete changes directory while inactive, after a normal shutdown.
   Old numbered directories from earlier Slax versions are left alone and ignored.
-- For a store selected for automatic startup, request a restore by writing its
-  exact 16-digit lowercase ID to restore.txt beside changes.dat. Inspect an
-  inactive container with /run/initramfs/bin/@mount.dynfilefs -f /path/to/changes.dat
-  --snapshots --json. Mounted containers expose snapshots.json beside virtual.dat.
-  Use a live state ID, not its name. A successful restore consumes restore.txt;
-  an invalid request stops for recovery. Correct or remove restore.txt and exit
-  the recovery shell to retry. The graphical and boot menus handle this for you.
 - Open Saved states from the Slax Status tray bubble to manage the history
   on the currently used drive. Current state and You are here identify this run.
-  Selecting a row highlights its own node. A filled blue node marks the state
-  selected for the next start, even while another row is selected.
-  Show removed states below the tree includes deleted states.
+  Selecting a row highlights its own node.
+  Show removed states in the bottom bar includes deleted states.
   Go to now selects and reveals Current state, briefly highlighting the destination.
   Sizes beside deletable states show space reusable for new changes after deletion.
   Shared blocks are excluded; deleting several states can release more than the
@@ -183,27 +174,35 @@ BOOT AND PERSISTENCE
   Fresh start to begin saving changes. This starts with the original Slax;
   changes from the current RAM run are not copied. Disk selection belongs only
   in the boot menu; the application does not manage other drives.
-- Save current state saves a named state. Use at next start schedules a state
-  without replacing the running desktop. The scheduled state is marked in blue.
-  Click Cancel next-start selection, or Cancel beside Next start, to remove that
-  selection. The Restart Slax icon on the right restarts through the normal
-  shutdown procedure after confirmation; save open documents first. Restart follows
-  Next start and Save this run. Selecting a row alone does not change the next start.
+- Save current state saves a named state. Restore asks for confirmation
+  and restarts Slax into the selected saved state. Save open documents first.
+  The confirmation's Save this run switch chooses whether to keep installed
+  programs, settings and saved files as another saved state or discard this run's changes.
+  Saved states do not remember open program windows or unsaved work.
+  Cancel leaves both choices unchanged. Saved-state File Manager views close
+  automatically before restart; applications still using their files must be closed.
+  If restarting fails, Slax cancels that restore request and keeps the chosen
+  Save this run setting.
+  Restore always confirms and restarts immediately; there is no separate scheduling action.
+  Selecting a row alone does not restore it or restart Slax.
   Rapid changes to Save this run apply the last choice.
-  Rename saved state changes its name while preserving its files and place in
+  Rename changes its name while preserving its files and place in
   the tree. Giving an automatic state a name keeps it until explicitly deleted.
   Names support international text and spaces. Initial state cannot be renamed.
+  Open files stays unavailable until the saved-state File Manager closes and its
+  files are unmounted. The size remains visible while browsing.
   Open file views remain available while their saved state is renamed.
   DynFileFS also creates automatic states at storage startup and clean shutdown
   when the state changed. It retains ten automatic states, removing the oldest
   eligible ones; protected, open and current-parent states can extend this limit.
   Named states remain until explicitly deleted. Normal startup continues the
   saved current state unless a restore or discard was requested.
-  Before a scheduled restore, Slax retains the previous state as a saved state
+  Before restoring, Slax retains the previous state as a saved state
   when saving is enabled. With Don't save selected, it does not retain that run
   as an automatic state or an additional state named Before restore. Existing saved
   history stays available.
-  Fresh start selects the protected Initial state, created after filesystem
+  Fresh start at boot and Restore on Initial state in Saved states select the
+  protected Initial state, created after filesystem
   formatting and growth. It never reformats an existing container.
 - Open files opens a saved state's complete filesystem root read-only in File
   Manager. Copy files out before closing it. The view disconnects automatically
