@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <string.h>
+#include "slax-status-history.h"
 
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
@@ -63,11 +64,10 @@ static void restart_failed(const char *detail);
 /* Optional JSON values stay absent instead of acquiring guessed UI state. */
 static const char *str(JsonObject *object, const char *key)
 {
-    JsonNode *node=object ? json_object_get_member(object, key) : NULL;
-    return node && JSON_NODE_HOLDS_VALUE(node) && json_node_get_value_type(node)==G_TYPE_STRING ? json_node_get_string(node) : "";
+    const char *value=status_text(object,key);return value ? value : "";
 }
-static gboolean flag(JsonObject *object, const char *key) { return object && json_object_has_member(object, key) && json_object_get_boolean_member(object, key); }
-static gint64 number(JsonObject *object, const char *key) { return object && json_object_has_member(object, key) ? json_object_get_int_member(object, key) : 0; }
+static gboolean flag(JsonObject *object, const char *key) { return status_value(object,key,G_TYPE_BOOLEAN) && json_object_get_boolean_member(object,key); }
+static gint64 number(JsonObject *object, const char *key) { return status_value(object,key,G_TYPE_INT64) ? json_object_get_int_member(object,key) : 0; }
 static JsonObject *object(JsonObject *parent, const char *key)
 {
     JsonNode *node=parent ? json_object_get_member(parent, key) : NULL;
@@ -195,6 +195,33 @@ static void request_free(gpointer data)
     json_object_unref(request->request);g_free(request->op);g_free(request->store);g_free(request);
 }
 
+/* Reject incomplete replies before replacing confirmed data or walking external history. */
+static gboolean valid_reply(JsonObject *reply, const char *op, GError **error)
+{
+    if (!status_value(reply,"ok",G_TYPE_BOOLEAN)) goto invalid;
+    if (!flag(reply,"ok"))
+    {
+        if (!status_text(object(reply,"error"),"message")) goto invalid;
+        return TRUE;
+    }
+    JsonObject *value=object(reply,"result");
+    if (!value) goto invalid;
+    if (!g_strcmp0(op,"history")) return valid_history(value,error);
+    if (!g_strcmp0(op,"state"))
+    {
+        JsonArray *stores=array(value,"stores");
+        if (!object(value,"run") || !stores) goto invalid;
+        for (guint i=0;i<count(stores);i++)
+            if (!JSON_NODE_HOLDS_OBJECT(json_array_get_element(stores,i))) goto invalid;
+    }
+    if (!g_strcmp0(op,"point.create") && !identity(status_text(value,"pointId"))) goto invalid;
+    if (!g_strcmp0(op,"files.open") && !g_path_is_absolute(str(value,"path"))) goto invalid;
+    return TRUE;
+invalid:
+    g_set_error_literal(error,G_IO_ERROR,G_IO_ERROR_INVALID_DATA,"The storage service returned an invalid reply.");
+    return FALSE;
+}
+
 /* Blocking socket work runs exclusively in GTask's worker, including JSON decoding. */
 static void request_worker(GTask *task, gpointer source, gpointer task_data, GCancellable *cancel)
 {
@@ -226,6 +253,7 @@ static void request_worker(GTask *task, gpointer source, gpointer task_data, GCa
     JsonNode *root=json_parser_get_root(parser);
     if (!error && (!root || !JSON_NODE_HOLDS_OBJECT(root)))
         g_set_error_literal(&error,G_IO_ERROR,G_IO_ERROR_INVALID_DATA,"The storage service returned an invalid reply.");
+    if (!error) valid_reply(json_node_get_object(root),request->op,&error);
     if (error) g_task_return_error(task,error);
     else g_task_return_pointer(task,json_object_ref(json_node_get_object(root)),(GDestroyNotify)json_object_unref);
     g_object_unref(parser);
@@ -287,7 +315,6 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             /* Retain the confirmed tree during transient failures; retry an initial placeholder. */
             if (!history || g_strcmp0(history_store,selected)) {history_placeholder(detail);manager_dirty=TRUE;}
         }
-        g_clear_error(&error);
     }
     else
     {
@@ -331,7 +358,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             if (!strcmp(request->op,"point.create") || !strcmp(request->op,"point.delete")) manager_dirty=TRUE;
         }
     }
-    if (reply) json_object_unref(reply);
+    g_clear_error(&error);if (reply) json_object_unref(reply);
     update_ui();
     if (pending_request) {JsonObject *queued=pending_request;pending_request=NULL;send_request(queued,TRUE);}
     else if (request->mutation) refresh();
@@ -474,6 +501,7 @@ static void anchor_bubble(Bubble *bubble, int width, int height)
     int x,y;GtkAllocation anchor;gtk_widget_get_allocation(tray,&anchor);
     gdk_window_get_origin(gtk_widget_get_window(tray),&x,&y);
     GdkMonitor *monitor=gdk_display_get_monitor_at_window(gtk_widget_get_display(tray),gtk_widget_get_window(tray));
+    if (!monitor) return;
     GdkRectangle area;gdk_monitor_get_geometry(monitor,&area);
     int left=CLAMP(x+anchor.width/2-width+32,area.x+10,MAX(area.x+10,area.x+area.width-width-10));
     int top=bubble->bottom ? y-height : y+anchor.height;
@@ -496,6 +524,7 @@ static void position_bubble(Bubble *bubble)
     if (!tray || !gtk_widget_get_realized(tray)) return;
     GdkWindow *window=gtk_widget_get_window(tray);int x,y;gdk_window_get_origin(window,&x,&y);
     GdkMonitor *monitor=gdk_display_get_monitor_at_window(gtk_widget_get_display(tray),window);
+    if (!monitor) return;
     GdkRectangle area;gdk_monitor_get_geometry(monitor,&area);
     int width=MIN(480,area.width-20);
     if (bubble==&popup)
@@ -588,8 +617,8 @@ static gint compare_points(gconstpointer first, gconstpointer second, gpointer d
     JsonObject *a=*(JsonObject **)first,*b=*(JsonObject **)second;GHashTable *path=data;
     gboolean pa=g_hash_table_contains(path,str(a,"id")),pb=g_hash_table_contains(path,str(b,"id"));
     if (pa!=pb) return pa-pb;
-    gint64 delta=number(a,"created")-number(b,"created");
-    return delta ? (delta<0 ? -1 : 1) : strcmp(str(a,"id"),str(b,"id"));
+    gint64 first_time=number(a,"created"),second_time=number(b,"created");
+    return first_time!=second_time ? (first_time<second_time ? -1 : 1) : strcmp(str(a,"id"),str(b,"id"));
 }
 static void row_free(gpointer data) { HistoryRow *row=data;json_object_unref(row->point);g_free(row); }
 
@@ -606,26 +635,39 @@ static const char *graph_parent(JsonObject *point)
     return parent;
 }
 
-/* Lane assignment uses the full catalog; filtering later cannot invent or flatten a fork. */
+/* Traverse iteratively so long, valid histories cannot exhaust the process stack. */
 static void append_history(GPtrArray *points, GHashTable *path, const char *parent, int depth)
 {
-    GPtrArray *children=g_ptr_array_new();
+    GHashTable *branches=g_hash_table_new_full(g_str_hash,g_str_equal,NULL,(GDestroyNotify)g_ptr_array_unref);
     for (guint i=0;i<points->len;i++)
     {
         JsonObject *point=g_ptr_array_index(points,i);
-        if (!strcmp(graph_parent(point),parent)) g_ptr_array_add(children,point);
+        const char *ancestor=graph_parent(point);
+        GPtrArray *children=g_hash_table_lookup(branches,ancestor);
+        if (!children) {children=g_ptr_array_new();g_hash_table_insert(branches,(gpointer)ancestor,children);}
+        g_ptr_array_add(children,point);
     }
-    g_ptr_array_sort_with_data(children,compare_points,path);
-    for (guint i=0;i<children->len;i++)
+    GHashTableIter iter;gpointer children;
+    g_hash_table_iter_init(&iter,branches);
+    while (g_hash_table_iter_next(&iter,NULL,&children)) g_ptr_array_sort_with_data(children,compare_points,path);
+    HistoryRow root={.depth=depth};GQueue pending=G_QUEUE_INIT;g_queue_push_head(&pending,&root);
+    while (!g_queue_is_empty(&pending))
     {
-        JsonObject *point=g_ptr_array_index(children,i);
-        HistoryRow *row=g_new0(HistoryRow,1);row->point=json_object_ref(point);
-        row->path=g_hash_table_contains(path,str(point,"id"));
-        gboolean branch=*parent && !row->path && (g_hash_table_contains(path,parent) || children->len>1);
-        row->depth=depth+branch;g_ptr_array_add(rows,row);
-        append_history(points,path,str(point,"id"),row->depth);
+        HistoryRow *current=g_queue_pop_head(&pending);
+        const char *id=current==&root ? parent : str(current->point,"id");
+        if (current!=&root) g_ptr_array_add(rows,current);
+        GPtrArray *siblings=g_hash_table_lookup(branches,id);
+        for (guint i=siblings ? siblings->len : 0;i>0;i--)
+        {
+            JsonObject *point=g_ptr_array_index(siblings,i-1);
+            HistoryRow *row=g_new0(HistoryRow,1);row->point=json_object_ref(point);
+            row->path=g_hash_table_contains(path,str(point,"id"));
+            gboolean fork=g_hash_table_contains(path,id) || siblings->len>1;
+            gboolean branch=*id && !row->path && fork;
+            row->depth=current->depth+branch;g_queue_push_head(&pending,row);
+        }
     }
-    g_ptr_array_unref(children);
+    g_hash_table_unref(branches);
 }
 
 /* Hidden guards are never UI saved states; their visible descendants retain truthful ancestry. */
@@ -1258,7 +1300,7 @@ static void show_popup(void)
 static int browse_files(const char *store_id, const char *point_id)
 {
     JsonObject *value=command("files.open",FALSE);json_object_set_string_member(value,"storeId",store_id);json_object_set_string_member(value,"pointId",point_id);
-    Request request={.request=value};GTask *task=g_task_new(NULL,NULL,NULL,NULL);g_task_set_task_data(task,&request,NULL);
+    Request request={.request=value,.op="files.open"};GTask *task=g_task_new(NULL,NULL,NULL,NULL);g_task_set_task_data(task,&request,NULL);
     g_task_run_in_thread_sync(task,request_worker);GError *error=NULL;JsonObject *reply=g_task_propagate_pointer(task,&error);g_object_unref(task);json_object_unref(value);
     if (!reply || !flag(reply,"ok"))
     {

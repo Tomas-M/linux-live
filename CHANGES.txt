@@ -38,6 +38,8 @@ Linux Live Kit
 Slax
 ----
 
+- Reject malformed status-service replies while retaining confirmed saved-state
+  history. Traverse long histories without recursion and avoid timestamp-sort overflow.
 - Automatically restart a failed Picom compositor while the desktop is running,
   sharing the panel's supervision and retaining failure diagnostics.
 - Include Debian's signed network GRUB for UEFI PXE boot, reusing the existing
