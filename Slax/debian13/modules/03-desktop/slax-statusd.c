@@ -28,7 +28,7 @@
 #define DYN "/run/initramfs/bin/@mount.dynfilefs"
 #define LIMIT (8*1024*1024)
 
-typedef struct { char *id,*device,*path,*label,*fstype,*uuid; dev_t number,filesystem; gboolean writable; guint64 free,total; } Drive;
+typedef struct { char *id,*device,*path,*label,*fstype,*uuid,*icon; dev_t number,filesystem; ino_t inode; gboolean writable,present; guint64 free,total; } Drive;
 typedef struct { char *id,*path,*mount,*inner; Drive *drive; ino_t inode; gboolean active; guint64 reusable; gint64 stats_at; } Store;
 typedef struct { char *id,*store,*point,*path,*image; uid_t uid; pid_t pid; guint64 started; gboolean overlay; } View;
 static GPtrArray *drives,*stores,*views;
@@ -372,36 +372,58 @@ static char *active_store_path(Drive *drive)
    g_free(logical); g_free(drive_root); return result;
 }
 
-/* Locate only the already-mounted backing disk of this run; never mount discovery targets. */
-static void scan_devices(JsonArray *array)
+/* Match Partition Manager's disk/USB/virtual classification and inherit it for partitions. */
+static const char *drive_icon(JsonObject *device, const char *parent)
+{
+   const char *type=string(device,"type"),*transport=string(device,"tran"),*name=string(device,"name");
+   if (!g_strcmp0(type,"part")) return parent;
+   if (type && (g_str_has_prefix(type,"raid") || !strcmp(type,"md"))) return "server";
+   gboolean virtual_type=type && (!strcmp(type,"lvm") || !strcmp(type,"crypt") || !strcmp(type,"loop") || !strcmp(type,"dm"));
+   gboolean virtual_disk=!g_strcmp0(transport,"virtio") || (name && g_str_has_prefix(name,"/dev/vd"));
+   if (virtual_type || virtual_disk) return "layer-group";
+   return !g_strcmp0(transport,"usb") ? "usb" : "hard-drive";
+}
+
+/* List mounted disks without mounting discovery targets or opening inactive stores. */
+static void scan_devices(JsonArray *array, const char *parent)
 {
    struct stat active;
-   if (!active_path || stat(active_path,&active)) return;
+   gboolean have_active=active_path && !stat(active_path,&active);
    for (guint i=0;i<json_array_get_length(array);i++)
    {
       JsonObject *item=json_array_get_object_element(array,i);
       JsonArray *children=json_object_has_member(item,"children") ? json_object_get_array_member(item,"children") : NULL;
-      if (children) scan_devices(children);
+      const char *icon=drive_icon(item,parent);
+      if (children) scan_devices(children,icon);
       const char *device=string(item,"name"),*fs=string(item,"fstype");
       if (!device || !fs || !*fs) continue;
+      const char *type=string(item,"type");
+      if (!have_active && g_strcmp0(type,"part") && g_strcmp0(type,"disk")) continue;
       const char *partition=string(item,"parttype");
       if (partition && (!g_ascii_strcasecmp(partition,"c12a7328-f81f-11d2-ba4b-00a0c93ec93b") || !g_ascii_strcasecmp(partition,"0xef"))) continue;
       struct stat node,root;
       if (stat(device,&node) || !S_ISBLK(node.st_mode)) continue;
       char *path=mounted(node.st_rdev);
-      gboolean current=path && !stat(path,&root) && root.st_dev==active.st_dev;
-      if (!current) { g_free(path); continue; }
+      gboolean attached=path && !stat(path,&root);
+      gboolean current=attached && have_active && root.st_dev==active.st_dev;
+      if (!attached) { g_free(path); continue; }
       Drive *drive=NULL;
-      for (guint j=0;j<drives->len;j++) { Drive *d=g_ptr_array_index(drives,j); if (d->number==node.st_rdev) { drive=d; break; } }
+      for (guint j=0;j<drives->len;j++)
+      {
+         Drive *d=g_ptr_array_index(drives,j);
+         gboolean same_root=d->number==node.st_rdev && d->inode==root.st_ino && !g_strcmp0(d->path,path);
+         if (same_root && !g_strcmp0(d->uuid,string(item,"uuid"))) { drive=d; break; }
+      }
       if (!drive)
       {
          drive=g_new0(Drive,1); drive->device=g_strdup(device); drive->number=node.st_rdev;
-         drive->uuid=g_strdup(string(item,"uuid")); drive->fstype=g_strdup(fs); drive->id=handle(device,drive->uuid,NULL,0);
-         const char *label=string(item,"label"); drive->label=g_strdup(label ? label : "");
-         drive->path=path; path=NULL; g_ptr_array_add(drives,drive);
+         drive->uuid=g_strdup(string(item,"uuid")); drive->fstype=g_strdup(fs); drive->id=handle(device,drive->uuid,path,root.st_ino);
+         drive->path=path; path=NULL; drive->inode=root.st_ino; g_ptr_array_add(drives,drive);
       }
-      g_free(path); drive->filesystem=active.st_dev; capacity(drive);
-      char *changes=active_store_path(drive);
+      g_free(path); drive->filesystem=root.st_dev; drive->present=TRUE; capacity(drive);
+      const char *label=string(item,"label"); g_free(drive->label); drive->label=g_strdup(label ? label : "");
+      g_free(drive->icon); drive->icon=g_strdup(icon);
+      char *changes=current ? active_store_path(drive) : NULL;
       if (changes) { scan_stores_at(drive,changes); g_free(changes); }
    }
 }
@@ -411,7 +433,7 @@ static gboolean discover(gboolean force, GError **error)
 {
    boot_state();
    if (!force && scanned && g_get_monotonic_time()-scanned<15*G_USEC_PER_SEC) return TRUE;
-   const char *argv[]={"/bin/lsblk","--json","--bytes","--paths","--output","NAME,TYPE,FSTYPE,LABEL,UUID,PARTTYPE",NULL};
+   const char *argv[]={"/bin/lsblk","--json","--bytes","--paths","--output","NAME,TYPE,FSTYPE,LABEL,UUID,PARTTYPE,TRAN",NULL};
    char *output=command(argv,error);
    if (!output) return FALSE;
    JsonObject *data=parse(output,error); g_free(output);
@@ -420,7 +442,8 @@ static gboolean discover(gboolean force, GError **error)
    {
       g_clear_pointer(&block_devices,json_array_unref); block_devices=json_array_ref(json_object_get_array_member(data,"blockdevices"));
       for (guint i=0;i<stores->len;i++) ((Store *)g_ptr_array_index(stores,i))->active=FALSE;
-      scan_devices(block_devices);
+      for (guint i=0;i<drives->len;i++) ((Drive *)g_ptr_array_index(drives,i))->present=FALSE;
+      scan_devices(block_devices,"hard-drive");
    }
    json_object_unref(data); scanned=g_get_monotonic_time();
    if (!recovered) { recover_mounts(); recovered=TRUE; }
@@ -568,6 +591,36 @@ static char *source(void)
    g_free(device); return path;
 }
 
+/* New stores must be reachable at normal early boot, without mounting or unlocking extra devices. */
+static const char *setup_reason(Drive *drive)
+{
+   if (!drive->writable) return "Read-only drive";
+   if (!drive->uuid || !*drive->uuid) return "This filesystem has no stable UUID";
+   const char *supported[]={"vfat","exfat","ntfs","ntfs3","ext2","ext3","ext4","xfs","btrfs"};
+   gboolean readable=FALSE;
+   for (guint i=0;i<G_N_ELEMENTS(supported);i++) if (!strcmp(drive->fstype,supported[i])) readable=TRUE;
+   if (!readable) return "This filesystem is not supported for saved changes";
+   if (!drive->free) return "No space available";
+   char *text=NULL; gboolean root=FALSE;
+   if (g_file_get_contents("/proc/self/mountinfo",&text,NULL,NULL))
+   {
+      char **lines=g_strsplit(text,"\n",-1);
+      for (char **line=lines;*line;line++)
+      {
+         char **fields=g_strsplit(*line," ",-1);
+         if (g_strv_length(fields)>=6)
+         {
+            char *path=g_strcompress(fields[4]);
+            if (!strcmp(path,drive->path) && !strcmp(fields[3],"/")) root=TRUE;
+            g_free(path);
+         }
+         g_strfreev(fields);
+      }
+      g_strfreev(lines); g_free(text);
+   }
+   return root ? "" : "Mount the filesystem root to use this drive";
+}
+
 /* Compose a cheap status model. Offline allocator reports are cached until an explicit refresh. */
 static JsonObject *state(GError **error)
 {
@@ -577,10 +630,18 @@ static JsonObject *state(GError **error)
    for (guint i=0;i<drives->len;i++)
    {
       Drive *drive=g_ptr_array_index(drives,i); struct stat st;
-      if (stat(drive->path,&st) || st.st_dev!=drive->filesystem) continue;
+      struct stat node;
+      if (!drive->present) continue;
+      if (stat(drive->path,&st) || st.st_dev!=drive->filesystem || st.st_ino!=drive->inode) continue;
+      if (stat(drive->device,&node) || !S_ISBLK(node.st_mode) || node.st_rdev!=drive->number) continue;
+      char *attached=mounted(drive->number); gboolean present=!g_strcmp0(attached,drive->path); g_free(attached);
+      if (!present) continue;
       capacity(drive); JsonObject *object=json_object_new();
       json_object_set_string_member(object,"id",drive->id); json_object_set_string_member(object,"label",drive->label);
       json_object_set_string_member(object,"device",drive->device); json_object_set_string_member(object,"path",drive->path);
+      json_object_set_string_member(object,"filesystem",drive->fstype); json_object_set_string_member(object,"icon",drive->icon);
+      const char *reason=setup_reason(drive);
+      json_object_set_boolean_member(object,"canSetup",!*reason); json_object_set_string_member(object,"setupError",reason);
       json_object_set_int_member(object,"freeBytes",drive->free); json_object_set_int_member(object,"totalBytes",drive->total); json_object_set_boolean_member(object,"writable",drive->writable);
       json_array_add_object_element(ds,object);
    }
@@ -878,6 +939,8 @@ static gboolean sync_store(Store *store, GError **error)
    return ok || fail(error,saved,g_strerror(saved));
 }
 
+#include "slax-status-setup.h"
+
 /* Prepare a confirmed restart without changing its save policy until file views are closed. */
 static gboolean prepare_restart(Store *store, JsonObject *request, GError **error)
 {
@@ -898,6 +961,16 @@ static gboolean prepare_restart(Store *store, JsonObject *request, GError **erro
    if (!active_mount(store,FALSE,error) || !sync_store(store,error)) return FALSE;
    gboolean ok=save_run(store,boolean(request,"save"),error);
    if (ok) ok=prepare_restore(store,id,request_id,error);
+   if (ok)
+   {
+      int folder=store_fd(store); ok=mark_resume(folder,error); if (folder>=0) close(folder);
+      if (!ok)
+      {
+         GError *cleanup=NULL;
+         if (!cancel_restore(&cleanup))
+         { g_prefix_error(error,"The restore request could not be cancelled: %s. ",cleanup->message); g_clear_error(&cleanup); }
+      }
+   }
    if (!ok)
    {
       GError *rollback=NULL;
@@ -906,6 +979,7 @@ static gboolean prepare_restart(Store *store, JsonObject *request, GError **erro
    }
    return ok;
 }
+
 
 /* Mutations share one worker lock; requests never provide privileged filesystem paths. */
 static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **error)
@@ -924,6 +998,7 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       return json_object_new();
    }
    if (restart_request) { fail(error,EBUSY,"Slax is preparing to restart."); return NULL; }
+   if (!strcmp(op,"storage.prepare")) return prepare_setup(request,error) ? json_object_new() : NULL;
    if (!strcmp(op,"restart.prepare"))
    {
       return prepare_restart(store,request,error) ? json_object_new() : NULL;

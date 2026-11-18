@@ -39,6 +39,10 @@ Linux Live Kit
 Slax
 ----
 
+- Add a RAM guide to Slax Status with mounted-drive setup and restart, preserving
+  existing saved changes and explaining that the current RAM run is discarded.
+  Setup and confirmed restores select the drive for automatic resume using the
+  same durable marker as boot, with timestamps newer than mounted selections.
 - Prepare the status bubble's current size before opening it, avoiding a narrow
   first frame and a later width or height jump.
 - Reject malformed status-service replies while retaining confirmed saved-state

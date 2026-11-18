@@ -155,11 +155,14 @@ BOOT AND PERSISTENCE
   Sizes beside deletable states show space reusable for new changes after deletion.
   These sizes are not additive: deleting several states can free more space than
   their individual sizes suggest. The storage files reuse space rather than shrinking.
-  In RAM, the introduction explains persistence and recovery with an example tree.
-  At the next boot, use Choose a saved state, select a writable drive and
-  Fresh start to begin saving changes. This starts with the original Slax;
-  changes from the current RAM run are not copied. Disk selection belongs only
-  in the boot menu; the application does not manage other drives.
+  In a RAM run, this window offers mounted drives. Select a writable drive and
+  Set up and restart to enable saved changes there and select it for automatic
+  resume. Existing files and saved changes are kept. A new store starts
+  with the original Slax; an existing store continues its saved changes.
+  The current RAM run cannot be transferred: copy important files to a drive first.
+  A drive or saved state selected at boot also selects that drive for future
+  automatic resume. Resume continues its latest kept changes rather than
+  repeatedly restoring the originally selected saved state.
 - Save current state saves a named state. Restore asks for confirmation
   and restarts Slax into the selected saved state. Save open documents first.
   The confirmation's Save this run switch chooses whether to keep installed
