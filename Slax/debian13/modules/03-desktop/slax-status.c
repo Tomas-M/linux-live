@@ -1139,7 +1139,8 @@ static void update_ui(void)
     if (!feedback) feedback=*operation ? operation : history_error;
     set_label(popup_status,status);set_label(manager_status,feedback);
     gtk_stack_set_visible_child(GTK_STACK(manager_feedback),feedback ? manager_status : manager_space);
-    if (gtk_widget_get_visible(popup.window)) position_bubble(&popup);
+    /* Prepare hidden popups too, so mapping never exposes their previous size. */
+    position_bubble(&popup);
     char *tooltip=g_strdup_printf("Slax Status · %s · %s available",mode,size);
     if (tray) {gtk_widget_set_tooltip_text(tray,tooltip);gtk_widget_set_has_tooltip(tray,!gtk_widget_get_visible(popup.window));}
     g_free(tooltip);g_free(size);if (tray_icon) gtk_widget_queue_draw(tray_icon);
