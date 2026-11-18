@@ -15,6 +15,10 @@ reporting progress.
   user knowledge base for Slax Assistant: prioritize working graphical workflows
   and Slax-specific commands, verify facts against the shipped sources, and keep
   limitations brief. Exclude development/VM details, credentials and build internals.
+  Include only information that helps users perform a task, understand a consequential
+  default or limitation, or diagnose a problem. Do not turn this file into a changelog:
+  omit bug-fix history, pixel dimensions, interaction polish and assurances that normal
+  controls behave correctly. Keep those details in CHANGES.txt or developer notes.
 - Slax is distributed to many users on different systems. Tomas's local VM
   is a reproduction environment for a reported bug, not the target environment
   that a product fix may assume. Every Slax fix must work generally.
