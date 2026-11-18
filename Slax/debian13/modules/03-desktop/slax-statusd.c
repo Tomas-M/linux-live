@@ -285,8 +285,12 @@ static int store_fd(Store *store)
 /* All store metadata updates remain relative to the validated directory descriptor. */
 static gboolean write_store(Store *store, const char *name, const char *text, GError **error)
 {
-   int fd=store_fd(store); gboolean ok=text ? atomic_at(fd,name,text,error) : remove_at(fd,name,error);
-   if (fd>=0) close(fd);
+   int fd=store_fd(store);
+   if (fd<0) return fail(error,errno,g_strerror(errno));
+   char *value=text ? g_strchomp(g_strdup(text)) : NULL;
+   const char *argv[]={DYN,"--metadata","/proc/self/fd/198/.persistence",text ? "write" : "clear",name,value,NULL};
+   char *output=command_at(argv,fd,error); gboolean ok=output!=NULL;
+   g_free(output); g_free(value); close(fd);
    return ok;
 }
 
@@ -477,9 +481,10 @@ static JsonObject *report(Store *store, gboolean history, GError **error)
 static char *store_file(Store *store, const char *name)
 {
    int fd=store_fd(store);
-   char *text=fd>=0 ? read_fd(openat(fd,name,O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_NOFOLLOW),NULL) : NULL;
+   const char *argv[]={DYN,"--metadata","/proc/self/fd/198/.persistence","read",name,NULL};
+   char *text=fd>=0 ? command_at(argv,fd,NULL) : NULL;
    if (fd>=0) close(fd);
-   if (text) g_strchomp(text);
+   if (text) { g_strchomp(text); if (!*text) g_clear_pointer(&text,g_free); }
    return text;
 }
 

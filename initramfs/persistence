@@ -18,7 +18,7 @@ policy_id()
 policy_read()
 {
    if [ ! -f "$1" ] || [ -L "$1" ]; then echo '* Invalid storage policy file.' >&2; return 1; fi
-   cat "$1"
+   @mount.dynfilefs --metadata "${1%/*}/.persistence" read "${1##*/}"
 }
 
 # Publish complete metadata before acknowledging a change to the desktop or boot.
@@ -26,15 +26,17 @@ policy_read()
 # $2.. = text lines to write atomically
 policy_write()
 {
-   local FILE TEMP
+   local FILE
    FILE="$1"
    shift
-   TEMP=$(mktemp "${FILE%/*}/.policy.XXXXXX") || return 1
-   if ! printf '%s\n' "$@" > "$TEMP" || ! chmod 644 "$TEMP" || ! mv -f "$TEMP" "$FILE"; then
-      rm -f "$TEMP"
-      return 1
-   fi
-   sync
+   @mount.dynfilefs --metadata "${FILE%/*}/.persistence" write "${FILE##*/}" "$@"
+}
+
+# Record removal before releasing the old inode, so interrupted cleanup is replayable.
+# $1 = metadata file to remove
+policy_clear()
+{
+   @mount.dynfilefs --metadata "${1%/*}/.persistence" clear "${1##*/}"
 }
 
 # The empty marker remembers the selected drive; its time orders choices across devices.
@@ -42,7 +44,7 @@ policy_write()
 # $2 = optional marker time in Unix seconds; defaults to the current time
 policy_mark()
 {
-   local FILE TEMP NOW PREVIOUS
+   local FILE NOW PREVIOUS
    FILE="$1/resume.txt"
    NOW=${2:-$(date +%s)}
    if ! printf '%s\n' "$NOW" | grep -qE '^[0-9]+$'; then return 1; fi
@@ -52,9 +54,7 @@ policy_mark()
       PREVIOUS=$(date -r "$FILE" +%s) || return 1
       if [ "$PREVIOUS" -gt "$NOW" ]; then NOW=$PREVIOUS; fi
    fi
-   TEMP=$(mktemp "$1/.resume.XXXXXX") || return 1
-   if ! chmod 644 "$TEMP" || ! touch -d "@$NOW" "$TEMP" || ! mv -f "$TEMP" "$FILE"; then rm -f "$TEMP"; return 1; fi
-   sync
+   @mount.dynfilefs --metadata "$1/.persistence" mark resume.txt "$NOW"
 }
 
 # A run owns one durable starting point and one independent save/discard choice.
@@ -129,7 +129,7 @@ policy_cleanup()
       ')
       # A crash before creation can leave this reserved ID to a different immutable point.
       if [ "$SAVED" = "" -o "$SAVED" != "$NAME" ]; then
-         rm -f "$FILE" || return 1
+         policy_clear "$FILE" || return 1
          continue
       fi
       if [ "$LIVE" != "" ]; then
@@ -241,12 +241,17 @@ policy_create()
    for FILE in "$STAGE"/changes.dat.* "$STAGE"/guard.*; do
       if [ ! -e "$FILE" ]; then continue; fi
       NAME=${FILE##*/}
+      if [ "$NAME" = changes.dat.txn -o "$NAME" = changes.dat.txn.lock ]; then continue; fi
       if ! mv -n "$FILE" "$STORAGE/$NAME" || [ -e "$FILE" ]; then return 1; fi
    done
    sync
-   if ! mv -n "$STAGE/changes.dat" "$STORAGE/changes.dat" || [ -e "$STAGE/changes.dat" ]; then return 1; fi
-   sync
-   rmdir "$STAGE"
+   @mount.dynfilefs --metadata "$STORAGE/changes.dat" copy changes.dat "$STAGE/changes.dat" || return 1
+   # No stage name is reused; cleanup is also ordered before freeing its allocation.
+   for FILE in "$STAGE"/* "$STAGE"/.[!.]*; do
+      if [ ! -f "$FILE" ]; then continue; fi
+      @mount.dynfilefs --metadata "$STAGE/changes.dat" unlink "${FILE##*/}" || return 1
+   done
+   @mount.dynfilefs --metadata "$STORAGE/changes.dat" rmdir "${STAGE##*/}"
 }
 
 # A user-selected point changes the next start without overriding the run's save policy.
@@ -257,14 +262,14 @@ policy_select()
    local STORAGE ID FILE
    STORAGE="$1"; ID="$2"
    if [ "$ID" = current ]; then
-      rm -f "$STORAGE/restore.txt" || return 1
+      policy_clear "$STORAGE/restore.txt" || return 1
    else
       policy_id "$ID" || return 1
       policy_name "$STORAGE" "$ID" "" >/dev/null || return 1
       policy_write "$STORAGE/restore.txt" "$ID" || return 1
    fi
    for FILE in "$STORAGE"/keep-current.*; do
-      if [ "${FILE##*.}" != "$ID" ] && { [ -e "$FILE" ] || [ -L "$FILE" ]; }; then rm -f "$FILE" || return 1; fi
+      if [ "${FILE##*.}" != "$ID" ] && { [ -e "$FILE" ] || [ -L "$FILE" ]; }; then policy_clear "$FILE" || return 1; fi
    done
    sync
 }
@@ -336,9 +341,9 @@ policy_start()
    INITIAL=$(policy_initial "$1" "$2") || return 1
    ID=$(policy_guard "$1" "$2") || return 1
    policy_write "$1/run.txt" "$ID" save || return 1
-   rm -f "$1/restore.txt" || return 1
+   policy_clear "$1/restore.txt" || return 1
    for FILE in "$1"/keep-current.*; do
-      if [ -e "$FILE" ] || [ -L "$FILE" ]; then rm -f "$FILE" || return 1; fi
+      if [ -e "$FILE" ] || [ -L "$FILE" ]; then policy_clear "$FILE" || return 1; fi
    done
    sync
    if [ "$PREVIOUS" != "" -a "$PREVIOUS" != "$INITIAL" ]; then
@@ -347,6 +352,11 @@ policy_start()
    policy_cleanup "$1" "$2" || return 1
    printf '%s\n' "$ID"
 }
+
+if [ "$#" -lt 2 ] || ! printf '%s\n' "$1" | grep -qE '^(create|initial|closed|detach|select|mark|initialize|target|run|start|prepare|save)$'; then exit 1; fi
+if [ "$1" != closed -a "$1" != detach ]; then
+   @mount.dynfilefs --metadata "$2/.persistence" recover || exit 1
+fi
 
 if [ "$1" = create ]; then policy_create "$2" "$3"
 elif [ "$1" = initial ]; then policy_initial "$2" "${3:-}"
