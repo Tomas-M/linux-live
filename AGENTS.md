@@ -391,10 +391,11 @@ must follow the general Slax repair rules above.
   Slax itself uses Fluxbox; these are separate environments.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
-- Slax boot test uses `VM/virtualbox/Slax boot test/Slax boot test_1.vdi`, a dynamic 20 GiB
-  GPT disk with a 256 MiB FAT32 ESP (`SLAXEFI`) and the remaining FAT32 data
-  partition (`SLAXDATA`). It currently runs persistently using this disk; preserve
-  the active desktop and its save/next-start policy during UI-only testing.
+- Slax boot test uses `VM/virtualbox/Slax boot test/slax-persistence-qa.vdi`, a
+  dedicated dynamic 20 GiB GPT disk with two equal 10,736,369,664-byte partitions:
+  FAT32 (`SLAX-FAT`) and ext4 (`SLAX-EXT`). Both hold persistence test histories.
+  Preserve the active desktop, histories and save/next-start policy during UI-only
+  testing. The older `Slax boot test_1.vdi` is inactive and remains unattached.
 - This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
   freeze its filesystem, save its state, then use `zerofree` from a temporary
   RAM-only maintenance VM with host I/O caching enabled and the work filesystem
@@ -1869,6 +1870,12 @@ must follow the general Slax repair rules above.
   a single current-run loss warning and mounted drives. Use the manager's plain
   background and inspector divider between columns; retain the highlighted loss
   warning and RAM chip badge. Stack the divider horizontally in narrow layouts.
+  Align the Saved changes, Saved states and Choose a drive headings with their
+  descriptions. Keep explanatory text free of decorative drive icons; reserve
+  device icons for the actual drive choices. Put Refresh beside Mounted drives.
+  Scope saving and saved states explicitly to runs after the next restart. Never
+  imply that enabling saving preserves the current RAM run. Keep existing-store
+  resume details out of this introduction and its confirmation.
   Reuse Partition Manager's Font Awesome disk, USB and virtual-storage artwork.
   Confirm setup
   with Cancel as the keyboard default, then create /slax/changes and publish

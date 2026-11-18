@@ -156,10 +156,9 @@ BOOT AND PERSISTENCE
   These sizes are not additive: deleting several states can free more space than
   their individual sizes suggest. The storage files reuse space rather than shrinking.
   In a RAM run, this window offers mounted drives. Select a writable drive and
-  Set up and restart to enable saved changes there and select it for automatic
-  resume. Existing files and saved changes are kept. A new store starts
-  with the original Slax; an existing store continues its saved changes.
-  The current RAM run cannot be transferred: copy important files to a drive first.
+  Enable and restart to start saving changes from the next Slax run. Future runs
+  can keep apps, settings and files and create saved states. The current RAM run
+  cannot be saved or transferred; copy important files to a drive before restarting.
   A drive or saved state selected at boot also selects that drive for future
   automatic resume. Resume continues its latest kept changes rather than
   repeatedly restoring the originally selected saved state.

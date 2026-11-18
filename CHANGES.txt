@@ -44,6 +44,11 @@ Slax
   Match the saved-state manager's plain split layout while keeping the loss warning highlighted.
   Setup and confirmed restores select the drive for automatic resume using the
   same durable marker as boot, with timestamps newer than mounted selections.
+  Show a RAM chip beside RAM source and changes locations in the tray and manager.
+  Simplify the RAM guide's text hierarchy, align its columns and keep drive icons
+  on actual drive choices. Place Refresh beside the mounted-drive heading.
+  Scope saving and saved states explicitly to future runs, including the restart
+  confirmation, and explain that the current RAM run cannot be transferred.
 - Prepare the status bubble's current size before opening it, avoiding a narrow
   first frame and a later width or height jump.
 - Reject malformed status-service replies while retaining confirmed saved-state
