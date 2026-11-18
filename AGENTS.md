@@ -432,6 +432,10 @@ must follow the general Slax repair rules above.
   `VM/slax-build-trixie/slax-amd64.iso`. Replace this file for subsequent builds
   instead of retaining differently named copies, and keep the test VM attached
   to this path. Remove superseded ISO files, preserving kernel packages and disks.
+  Never truncate or overwrite the ISO in place while a VM may be reading it.
+  Download to a sibling temporary file, verify its SHA256, then replace the image
+  atomically. If replacement is blocked, retain the active image until guest
+  shutdown. Changes in RAM do not imply that the boot medium is no longer used.
 - Always include the resulting ISO size in MiB when reporting a build or ISO update.
 - Save requested Slax releases in the Git-ignored repository directory `releases`,
   named `slax-YYYY.MM-64bit-n.iso`, with a four-digit year, two-digit month
@@ -1862,8 +1866,11 @@ must follow the general Slax repair rules above.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
   saved-state rows are selectable and carry point IDs.
   In RAM, use the approved Clear guide layout with a memory-chip badge, benefits,
-  a single current-run loss warning and mounted drive cards. Reuse Partition
-  Manager's Font Awesome disk, USB and virtual-storage artwork. Confirm setup
+  a single current-run loss warning and mounted drives. Use the manager's plain
+  background and inspector divider between columns; retain the highlighted loss
+  warning and RAM chip badge. Stack the divider horizontally in narrow layouts.
+  Reuse Partition Manager's Font Awesome disk, USB and virtual-storage artwork.
+  Confirm setup
   with Cancel as the keyboard default, then create /slax/changes and publish
   its newest resume.txt marker through the shared persistence helper before an
   ordinary reboot. Preserve existing saved changes and restore/save policies;

@@ -111,12 +111,12 @@ static GtkWidget *make_ram_intro(void)
 {
     GtkWidget *scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
     intro=box(GTK_ORIENTATION_VERTICAL,20);gtk_container_set_border_width(GTK_CONTAINER(intro),28);
-    gtk_widget_set_valign(intro,GTK_ALIGN_START);gtk_container_add(GTK_CONTAINER(scroll),intro);
+    gtk_widget_set_valign(intro,GTK_ALIGN_FILL);gtk_container_add(GTK_CONTAINER(scroll),intro);
     GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,15);pack(heading,setup_icon("memory",28,TRUE),FALSE);
     intro_title=label("Loading storage…","heading");pack(heading,intro_title,TRUE);pack(intro,heading,FALSE);
-    intro_columns=box(GTK_ORIENTATION_HORIZONTAL,23);pack(intro,intro_columns,FALSE);
+    intro_columns=box(GTK_ORIENTATION_HORIZONTAL,18);pack(intro,intro_columns,TRUE);
     GtkWidget *left=box(GTK_ORIENTATION_VERTICAL,16);pack(intro_columns,left,TRUE);
-    GtkWidget *benefits=box(GTK_ORIENTATION_VERTICAL,15);gtk_style_context_add_class(gtk_widget_get_style_context(benefits),"ram-benefits");pack(left,benefits,FALSE);
+    GtkWidget *benefits=box(GTK_ORIENTATION_VERTICAL,15);pack(left,benefits,FALSE);
     pack(benefits,label("For future runs","title"),FALSE);
     const char *items[][3]={{"hard-drive","Saved changes","Keep installed apps, settings and files between restarts."},{"clock-rotate-left","Saved states","Return to a working state or recover saved files. Open windows and unsaved work are not included."}};
     for (guint i=0;i<G_N_ELEMENTS(items);i++)
@@ -131,8 +131,9 @@ static GtkWidget *make_ram_intro(void)
     pack(warning,setup_paragraph("Restart discards this run’s apps, settings and files. Copy important files to a drive first."),FALSE);
     pack(loss,warning,TRUE);pack(left,loss,FALSE);
     intro_example=box(GTK_ORIENTATION_VERTICAL,12);gtk_widget_set_size_request(intro_example,420,-1);
-    gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"ram-setup");pack(intro_columns,intro_example,TRUE);
-    heading=box(GTK_ORIENTATION_HORIZONTAL,11);pack(heading,setup_icon("hard-drive",21,TRUE),FALSE);pack(heading,label("Choose a drive","title"),TRUE);pack(intro_example,heading,FALSE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"ram-setup");
+    gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"inspector-panel");pack(intro_columns,intro_example,TRUE);
+    heading=box(GTK_ORIENTATION_HORIZONTAL,11);pack(heading,setup_icon("hard-drive",21,FALSE),FALSE);pack(heading,label("Choose a drive","title"),TRUE);pack(intro_example,heading,FALSE);
     pack(intro_example,setup_paragraph("Existing saved changes will be resumed. Other files on the drive will be kept."),FALSE);
     pack(intro_example,label("Mounted drives","muted"),FALSE);
     setup_none=gtk_radio_button_new(NULL);gtk_widget_set_no_show_all(setup_none,TRUE);pack(intro_example,setup_none,FALSE);
