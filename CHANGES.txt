@@ -39,6 +39,8 @@ Linux Live Kit
 Slax
 ----
 
+- Prepare the status bubble's current size before opening it, avoiding a narrow
+  first frame and a later width or height jump.
 - Reject malformed status-service replies while retaining confirmed saved-state
   history. Traverse long histories without recursion and avoid timestamp-sort overflow.
 - Automatically restart a failed Picom compositor while the desktop is running,
