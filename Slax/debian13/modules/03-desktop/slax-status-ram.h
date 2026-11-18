@@ -1,5 +1,5 @@
 /* The RAM introduction shares the confirmed Clear guide layout and native GTK controls. */
-static GtkWidget *setup_drives,*setup_button,*setup_refresh,*setup_empty,*setup_none,*intro_title,*intro_footer;
+static GtkWidget *setup_drives,*setup_button,*setup_refresh,*setup_empty,*setup_none,*intro_title;
 static char *setup_rows_signature;
 
 /* Installed symbolic SVGs use GTK's foreground and the same artwork as Partition Manager. */
@@ -100,10 +100,10 @@ static void render_setup_drives(void)
     gtk_widget_set_visible(setup_empty,!count(items));
     gtk_widget_set_sensitive(setup_refresh,!mutating && !restart_request);
     gtk_widget_set_sensitive(setup_button,flag(setup_selected(),"canSetup") && !mutating && !restart_request);
-    const char *caption="Set up and restart…";
+    const char *caption="Enable and restart…";
     if (restart_request) caption=mutating ? "Preparing…" : "Restarting…";
     if (strcmp(gtk_button_get_label(GTK_BUTTON(setup_button)),caption)) gtk_button_set_label(GTK_BUTTON(setup_button),caption);
-    set_label(intro_title,!state ? "Loading storage…" : !strcmp(str(run(),"source"),"RAM") ? "This Slax is running in RAM" : "This run keeps changes in RAM");
+    set_label(intro_title,state ? "This run keeps changes in RAM" : "Loading storage…");
 }
 
 /* Build the RAM page once; drive discovery and preparation remain in the broker's worker. */
@@ -116,48 +116,57 @@ static GtkWidget *make_ram_intro(void)
     intro_title=label("Loading storage…","heading");pack(heading,intro_title,TRUE);pack(intro,heading,FALSE);
     intro_columns=box(GTK_ORIENTATION_HORIZONTAL,18);pack(intro,intro_columns,TRUE);
     GtkWidget *left=box(GTK_ORIENTATION_VERTICAL,16);pack(intro_columns,left,TRUE);
-    GtkWidget *benefits=box(GTK_ORIENTATION_VERTICAL,15);pack(left,benefits,FALSE);
-    pack(benefits,label("For future runs","title"),FALSE);
-    const char *items[][3]={{"hard-drive","Saved changes","Keep installed apps, settings and files between restarts."},{"clock-rotate-left","Saved states","Return to a working state or recover saved files. Open windows and unsaved work are not included."}};
+    GtkWidget *benefits=box(GTK_ORIENTATION_VERTICAL,24);pack(left,benefits,FALSE);
+    const char *items[][3]={{"Saving starts with your next run","Enable saving on a drive, then restart Slax. Your next run can keep apps, settings and files between restarts.",""},{"Saved states","In those future runs, you can also save a working state and return to it later.","Open windows and unsaved work are not included."}};
     for (guint i=0;i<G_N_ELEMENTS(items);i++)
     {
-        GtkWidget *row=box(GTK_ORIENTATION_HORIZONTAL,11),*text=box(GTK_ORIENTATION_VERTICAL,4);
-        pack(row,setup_icon(items[i][0],21,FALSE),FALSE);pack(text,label(items[i][1],"strong"),FALSE);
-        pack(text,setup_paragraph(items[i][2]),FALSE);pack(row,text,TRUE);pack(benefits,row,FALSE);
+        GtkWidget *text=box(GTK_ORIENTATION_VERTICAL,8);pack(text,label(items[i][0],"title"),FALSE);
+        pack(text,setup_paragraph(items[i][1]),FALSE);pack(benefits,text,FALSE);
+        if (*items[i][2])
+        {
+            GtkWidget *note=setup_paragraph(items[i][2]);gtk_style_context_add_class(gtk_widget_get_style_context(note),"muted");pack(text,note,FALSE);
+        }
     }
-    GtkWidget *loss=box(GTK_ORIENTATION_HORIZONTAL,10),*warning=box(GTK_ORIENTATION_VERTICAL,5);
-    gtk_style_context_add_class(gtk_widget_get_style_context(loss),"ram-loss");pack(loss,setup_icon("circle-info",18,FALSE),FALSE);
-    pack(warning,label("This run cannot be saved.","strong"),FALSE);
-    pack(warning,setup_paragraph("Restart discards this run’s apps, settings and files. Copy important files to a drive first."),FALSE);
+    GtkWidget *loss=box(GTK_ORIENTATION_HORIZONTAL,0),*warning=box(GTK_ORIENTATION_VERTICAL,5);
+    gtk_style_context_add_class(gtk_widget_get_style_context(loss),"ram-loss");
+    pack(warning,label("This RAM run cannot be saved.","strong"),FALSE);
+    pack(warning,setup_paragraph("Its changes will not be transferred to the selected drive. Copy important files to a drive before restarting."),FALSE);
     pack(loss,warning,TRUE);pack(left,loss,FALSE);
     intro_example=box(GTK_ORIENTATION_VERTICAL,12);gtk_widget_set_size_request(intro_example,420,-1);
     gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"ram-setup");
     gtk_style_context_add_class(gtk_widget_get_style_context(intro_example),"inspector-panel");pack(intro_columns,intro_example,TRUE);
-    heading=box(GTK_ORIENTATION_HORIZONTAL,11);pack(heading,setup_icon("hard-drive",21,FALSE),FALSE);pack(heading,label("Choose a drive","title"),TRUE);pack(intro_example,heading,FALSE);
-    pack(intro_example,setup_paragraph("Existing saved changes will be resumed. Other files on the drive will be kept."),FALSE);
-    pack(intro_example,label("Mounted drives","muted"),FALSE);
+    pack(intro_example,label("Choose a drive","title"),FALSE);
+    pack(intro_example,setup_paragraph("The selected drive will store changes from future Slax runs."),FALSE);
+    GtkWidget *inventory=box(GTK_ORIENTATION_HORIZONTAL,12);pack(inventory,label("Mounted drives","muted"),TRUE);
+    setup_refresh=link_button("Refresh","storage.refresh");pack(inventory,setup_refresh,FALSE);pack(intro_example,inventory,FALSE);
     setup_none=gtk_radio_button_new(NULL);gtk_widget_set_no_show_all(setup_none,TRUE);pack(intro_example,setup_none,FALSE);
     setup_drives=gtk_list_box_new();gtk_list_box_set_selection_mode(GTK_LIST_BOX(setup_drives),GTK_SELECTION_SINGLE);
     gtk_style_context_add_class(gtk_widget_get_style_context(setup_drives),"setup-drives");pack(intro_example,setup_drives,FALSE);
     g_signal_connect(setup_drives,"row-selected",G_CALLBACK(setup_selection),NULL);
     setup_empty=setup_paragraph("Loading mounted drives…");pack(intro_example,setup_empty,FALSE);
-    setup_refresh=link_button("Refresh","storage.refresh");gtk_widget_set_halign(setup_refresh,GTK_ALIGN_END);pack(intro_example,setup_refresh,FALSE);
     pack(intro_example,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    setup_button=primary_button("Set up and restart…","storage.setup");gtk_widget_set_sensitive(setup_button,FALSE);pack(intro_example,setup_button,FALSE);
+    setup_button=primary_button("Enable and restart…","storage.setup");gtk_widget_set_sensitive(setup_button,FALSE);pack(intro_example,setup_button,FALSE);
     return scroll;
 }
 
-/* Confirm the captured drive identity; Cancel is the native keyboard default. */
+/* Confirm future-run activation on the captured drive; Cancel is the native keyboard default. */
 static void setup_restart(void)
 {
     JsonObject *drive=setup_selected();if (!drive || !flag(drive,"canSetup")) return;
     char *id=g_strdup(str(drive,"id"));
-    char *question=g_strdup_printf("Set up %s and restart?",*str(drive,"label") ? str(drive,"label") : str(drive,"device"));
-    GtkWidget *dialog=gtk_message_dialog_new(GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",question);g_free(question);
-    gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),"Set up saved changes");
-    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"Enable saved changes on %s. Existing saved changes and other files will be kept. Automatic resume will use this drive until you select another one.\n\nThis RAM run will be discarded. Current apps, settings and files will not be transferred. Copy files you need to a drive before continuing.",str(drive,"device"));
-    gtk_dialog_add_buttons(GTK_DIALOG(dialog),"Set up and restart",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
+    GtkWidget *dialog=gtk_dialog_new_with_buttons("Enable saving",GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,"Enable and restart",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
+    gtk_style_context_add_class(gtk_widget_get_style_context(gtk_dialog_get_widget_for_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT)),"primary-action");
+    gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_default_size(GTK_WINDOW(dialog),560,-1);
+    GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),24);gtk_box_set_spacing(GTK_BOX(content),14);
+    pack(content,label("Enable saving for future runs?","title"),FALSE);
+    char *name=*str(drive,"label") ? g_strdup_printf("%s (%s)",str(drive,"device"),str(drive,"label")) : g_strdup(str(drive,"device"));
+    char *text=g_markup_printf_escaped("After restarting, Slax will save changes on <b>%s</b>.",name);g_free(name);
+    GtkWidget *description=setup_paragraph("");gtk_label_set_markup(GTK_LABEL(description),text);g_free(text);pack(content,description,FALSE);
+    GtkWidget *warning=box(GTK_ORIENTATION_VERTICAL,5);gtk_style_context_add_class(gtk_widget_get_style_context(warning),"ram-loss");gtk_widget_set_margin_top(warning,6);
+    pack(warning,label("This RAM run will be discarded.","strong"),FALSE);
+    pack(warning,setup_paragraph("It will not be saved or transferred. Copy important files to a drive before restarting."),FALSE);pack(content,warning,FALSE);
     gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);
+    gtk_widget_show_all(content);
     gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;gtk_widget_destroy(dialog);
     if (accepted && !mutating && !restart_request)
     {

@@ -17,6 +17,7 @@ typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
 typedef struct { GtkWidget *choice, *help; } RestoreChoice;
+typedef struct { GtkWidget *text, *memory; } Location;
 static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
@@ -30,15 +31,16 @@ static char *restart_error;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
-static GtkWidget *manager_source, *manager_storage, *manager_space, *manager_status;
-static GtkWidget *popup_title, *popup_source, *popup_storage, *popup_space, *popup_meter, *popup_save, *popup_choice;
+static Location manager_source, manager_storage, popup_source, popup_storage;
+static GtkWidget *manager_space, *manager_status;
+static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
 static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
 static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
-static GtkWidget *context_separator;
+static GtkWidget *context_separator, *manager_footer;
 static Bubble popup, notice;
 static GtkStyleContext *bubble_style;
 static GPtrArray *rows;
@@ -441,11 +443,20 @@ static GtkWidget *primary_button(const char *text, const char *op)
 }
 
 /* Hold a stable width and reserve a single line for changing descriptions. */
-static GtkWidget *location_row(const char *heading, GtkWidget **value)
+static GtkWidget *location_row(const char *heading, Location *value)
 {
     GtkWidget *row=box(GTK_ORIENTATION_HORIZONTAL,12),*name=label(heading,"muted");
     gtk_widget_set_size_request(name,98,-1);pack(row,name,FALSE);
-    *value=label("Loading…",NULL);pack(row,*value,TRUE);return row;
+    GtkWidget *content=box(GTK_ORIENTATION_HORIZONTAL,6);
+    value->memory=gtk_image_new_from_icon_name("slax-status-memory-symbolic",GTK_ICON_SIZE_MENU);
+    gtk_image_set_pixel_size(GTK_IMAGE(value->memory),16);gtk_widget_set_no_show_all(value->memory,TRUE);
+    pack(content,value->memory,FALSE);value->text=label("Loading…",NULL);pack(content,value->text,TRUE);pack(row,content,TRUE);return row;
+}
+
+/* Share the RAM chip beside source and changes values in both views. */
+static void set_location(Location *location, const char *text)
+{
+    set_label(location->text,text);gtk_widget_set_visible(location->memory,!strcmp(text,"RAM"));
 }
 
 /* Let GTK's requested position wait for the asynchronous, durable policy update. */
@@ -603,6 +614,7 @@ static void make_popups(void)
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
     pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
+    gtk_widget_set_margin_top(popup_source.memory,1);gtk_widget_set_margin_top(popup_storage.memory,1);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_halign(capacity,GTK_ALIGN_END);
     GtkWidget *available_label=label("available",NULL);gtk_widget_set_valign(available_label,GTK_ALIGN_END);gtk_widget_set_margin_bottom(available_label,4);pack(capacity,available_label,FALSE);
@@ -1033,11 +1045,9 @@ static void make_manager(void)
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
     gtk_style_context_add_class(gtk_widget_get_style_context(inspector_scroll),"inspector-panel");
     gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(history_layout,inspector_scroll,FALSE);
-    pack(manager_body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
+    manager_footer=box(GTK_ORIENTATION_VERTICAL,0);pack(manager_footer,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,18);gtk_style_context_add_class(gtk_widget_get_style_context(footer),"storage-footer");
     pack(footer,history_footer,TRUE);
-    intro_footer=paragraph("Automatic resume uses the drive most recently selected in Slax or at boot.");
-    gtk_style_context_add_class(gtk_widget_get_style_context(intro_footer),"muted");pack(footer,intro_footer,TRUE);
     /* Capacity and operation feedback share one fixed footer slot, without moving the history. */
     manager_feedback=gtk_stack_new();manager_space=label("","muted");manager_status=label("","muted");
     gtk_stack_add_named(GTK_STACK(manager_feedback),manager_space,"capacity");gtk_stack_add_named(GTK_STACK(manager_feedback),manager_status,"status");
@@ -1046,7 +1056,7 @@ static void make_manager(void)
     inspector_width=gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL);
     gtk_size_group_add_widget(inspector_width,inspector_scroll);gtk_size_group_add_widget(inspector_width,manager_feedback);
     gtk_widget_set_halign(manager_feedback,GTK_ALIGN_END);gtk_box_pack_end(GTK_BOX(footer),manager_feedback,FALSE,FALSE,0);
-    pack(manager_body,footer,FALSE);
+    pack(manager_footer,footer,FALSE);pack(manager_body,manager_footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
     gtk_widget_show_all(manager_body);
 }
@@ -1081,8 +1091,8 @@ static void update_ui(void)
     JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
     const char *mode=state ? "Temporary run" : "Slax Status";
     if (active) mode=flag(run(),"save") ? "Saving changes" : "Changes will be discarded";
-    set_label(popup_title,"Slax Status");set_label(popup_source,str(run(),"source"));set_label(popup_storage,str(run(),"storage"));
-    set_label(manager_source,str(run(),"source"));set_label(manager_storage,str(run(),"storage"));
+    set_label(popup_title,"Slax Status");set_location(&popup_source,str(run(),"source"));set_location(&popup_storage,str(run(),"storage"));
+    set_location(&manager_source,str(run(),"source"));set_location(&manager_storage,str(run(),"storage"));
     gint64 available=number(run(),"freeBytes")+number(run(),"reusableBytes");
     char *size=size_text(available);
     set_label(popup_space,state ? size : "Loading…");
@@ -1091,7 +1101,7 @@ static void update_ui(void)
     render_inspector();
     JsonObject *item=store();
     gtk_widget_set_visible(context_box,item!=NULL);gtk_widget_set_visible(context_separator,item!=NULL);
-    gtk_widget_set_visible(intro_footer,item==NULL);gtk_widget_set_visible(manager_feedback,item!=NULL);
+    gtk_widget_set_visible(manager_footer,item!=NULL);
     if (!item) render_setup_drives();
     gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
     if (item)
@@ -1201,7 +1211,7 @@ static void restart_failed(const char *detail)
     }
     else
     {
-        char *text=g_strdup_printf("%s\n\nThis run is still in RAM. Any completed drive setup remains selected for automatic resume.",detail);
+        char *text=g_strdup_printf("%s\n\nThis run is still in RAM. Any completed drive setup will take effect at the next start. This run will not be transferred.",detail);
         g_clear_pointer(&restart_request,json_object_unref);update_ui();message("Cannot restart Slax",text);g_free(text);
     }
 }
