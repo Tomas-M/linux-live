@@ -29,14 +29,38 @@ detach_free_loops()
    losetup -a | cut -d : -f 1 | xargs -r -n 1 losetup -d
 }
 
-# $1=dir
+# Try child mounts first, retaining the changes backing mount until its daemon finishes.
+# $1 = mount subtree to unmount
 umount_all()
 {
-   tac /proc/mounts | cut -d " " -f 2 | grep ^$1 | while read LINE; do
-      umount $LINE 2>/dev/null
+   tac /proc/mounts | awk -v root="$1" '$2==root || index($2,root "/")==1 {print $2}' | while IFS= read -r LINE; do
+      LINE=$(printf '%b' "$LINE")
+      if [ "$LINE" = "$BACKING_MOUNT" ]; then continue; fi
+      umount "$LINE" 2>/dev/null
       detach_free_loops
    done
 }
+
+# Failed storage must remain accessible instead of being powered off underneath recovery.
+# $1 = reason shutdown cannot safely continue
+shutdown_recovery()
+{
+   fbmenu --disable 2>/dev/null
+   echo "$1" >/dev/console
+   echo 'Storage has not been safely closed. Exit this shell to retry shutdown.' >/dev/console
+   setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
+}
+
+# These runtime facts belong to the initramfs; remove the live-root path prefix.
+CLOSING_STORAGE=""
+BACKING_MOUNT=""
+if [ "$(cat /memory/storage/kind 2>/dev/null)" = container ]; then
+   CLOSING_STORAGE=$(cat /memory/storage/storage) || exit 1
+   CLOSING_STORAGE=${CLOSING_STORAGE#/run/initramfs}
+   CLOSING_FUSE=$(cat /memory/storage/dynfilefs) || exit 1
+   CLOSING_FUSE=${CLOSING_FUSE#/run/initramfs}
+   BACKING_MOUNT=$(mounted_dir "$CLOSING_STORAGE") || exit 1
+fi
 
 # Update devs so we are aware of all active /dev/loop* files.
 # Detach loop devices which are no longer used
@@ -58,10 +82,11 @@ umount_all /oldroot
 # Lets move it somewhere so we can unmount it cleanly
 debug_log "- Moving mounts outside of union if necessry"
 NR=100
-tac /proc/mounts | cut -d " " -f 2 | grep ^/oldroot/. | while read LINE; do
+tac /proc/mounts | cut -d " " -f 2 | grep ^/oldroot/. | while IFS= read -r LINE; do
+   LINE=$(printf '%b' "$LINE")
    NR=$(($NR+1))
    mkdir -p /move/$NR
-   mount --move $LINE /move/$NR 2>/dev/null
+   mount --move "$LINE" "/move/$NR" 2>/dev/null
    umount /oldroot 2>/dev/null
 done
 
@@ -83,7 +108,31 @@ for i in 1 2 3 4; do
    done
 done
 
-umount_all /memory
+# FUSE detaches before its final checkpoint and close; never abandon a busy parent.
+RETRIES=0
+while true; do
+   umount_all /oldroot
+   umount_all /move
+   umount_all /memory
+
+   if [ "$CLOSING_STORAGE" != "" ] && ! mountpoint -q "$CLOSING_FUSE"; then
+      if persistence closed "$CLOSING_STORAGE"; then
+         CLOSING_STORAGE=""
+         BACKING_MOUNT=""
+         continue
+      fi
+      shutdown_recovery 'Saved changes could not finish closing.'
+      continue
+   fi
+
+   if ! awk '$2 ~ /^\/(oldroot|move|memory)(\/|$)/ {found=1} END {exit !found}' /proc/mounts; then break; fi
+   RETRIES=$((RETRIES + 1))
+   if [ "$RETRIES" -ge 300 ]; then
+      shutdown_recovery 'A filesystem is still busy or could not be unmounted.'
+      RETRIES=0
+   fi
+   sleep 0.1
+done
 
 # eject cdrom device if we were running from it
 for i in $(cat /proc/sys/dev/cdrom/info | grep name); do

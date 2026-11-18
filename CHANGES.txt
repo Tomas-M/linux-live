@@ -15,7 +15,9 @@ Linux Live Kit
   cannot be found, with a complete diagnostic report retained in RAM.
 - Automatically size persistence containers from their backing filesystem and grow
   existing containers without shrinking them; remove the perchsize boot parameter.
-- Update DynFileFS to 6.02 with incremental checkpoints and automatic format-500 conversion.
+- Update DynFileFS to 6.03 with incremental checkpoints and automatic format-500 conversion.
+- Safely publish DynFileFS metadata and saving-policy updates, and wait for persistent
+  storage and its backing filesystem to finish closing before powering off.
 - Report reusable capacity released by deleting individual DynFileFS saved states,
   using cached block ownership instead of scanning saved filesystem contents.
 - Allow disabling DynFileFS automatic end-of-run points without disabling explicit
@@ -39,6 +41,8 @@ Linux Live Kit
 Slax
 ----
 
+- Keep Slax Status saving and restore choices consistent with boot recovery after
+  an interrupted policy update.
 - Add a RAM guide to Slax Status with mounted-drive setup and restart, preserving
   existing saved changes and explaining that the current RAM run is discarded.
   Match the saved-state manager's plain split layout while keeping the loss warning highlighted.

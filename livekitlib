@@ -1042,7 +1042,7 @@ perch_directory()
 # $2 = resume for automatic selection, or ask for the drive and saved-state menus
 select_perch_storage()
 {
-   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW FAILURE
 
    while true; do
       SCAN=$(mktemp -d "$MEMORY/storage-disks.XXXXXX") || return 1
@@ -1075,6 +1075,7 @@ select_perch_storage()
       CHOICE=""
       if [ "$2" = resume ]; then CHOICE=$(sort -nr "$SCAN/resume.txt" | head -n 1 | cut -f 2-); fi
       SELECTED=""
+      FAILURE=0
       while true; do
          if [ "$2" != resume ]; then
             TITLE='Select drive for saved changes'
@@ -1082,6 +1083,14 @@ select_perch_storage()
             CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel --refresh) || break
          fi
          if [ "$CHOICE" = "" -o "$CHOICE" = refresh ]; then break; fi
+         if [ -d "$CHOICE" ]; then
+            # Recover only the chosen drive, before using its policy or saved-state catalog.
+            if ! @mount.dynfilefs --metadata "$CHOICE/.persistence" recover ||
+               ! @mount.dynfilefs --metadata "$CHOICE/changes.dat" recover; then
+               FAILURE=2
+               break
+            fi
+         fi
          if [ "$2" != resume ] && ! perch_choose_restore "$CHOICE"; then continue; fi
          # A manual disk/state choice means "boot this from now on", not a one-time override.
          # Later automatic boots continue this drive's kept changes instead of restoring the same point again.
@@ -1108,6 +1117,7 @@ select_perch_storage()
       done
       rm -f "$SCAN/disks.txt" "$SCAN/resume.txt"
       rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
+      if [ "$FAILURE" = 2 ]; then return 2; fi
       if [ "$ERROR" != 0 -a "$CHOICE" = refresh ]; then return 1; fi
       if [ "$CHOICE" != refresh ]; then break; fi
    done
@@ -1120,7 +1130,7 @@ select_perch_storage()
 # $1 = explicit /dev/DEVICE/path to the changes directory
 perch_device_storage()
 {
-   local DEVICE DIR ROOT FS TIMEOUT
+   local DEVICE DIR ROOT FS TIMEOUT ERROR
    DEVICE=$(printf '%s\n' "$1" | cut -d / -f 1-3)
    DIR=$(printf '%s\n' "$1" | cut -d / -f 4-)
    if printf '%s\n' "$DIR" | grep -qE '(^|/)\.\.?(/|$)'; then return 1; fi
@@ -1130,13 +1140,18 @@ perch_device_storage()
       refresh_devs
       FS=$(device_bestfs "$DEVICE")
       if [ "$FS" != "" ] && mount_device "$DEVICE" "$ROOT" "$FS"; then
-         if awk -v dir="$ROOT" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
-            if perch_directory "$ROOT/$DIR" && perch_choose_restore "$ROOT/$DIR"; then
+         ERROR=0
+         perch_directory "$ROOT/$DIR" || ERROR=$?
+         if [ "$ERROR" = 0 ]; then
+            if ! @mount.dynfilefs --metadata "$ROOT/$DIR/.persistence" recover ||
+               ! @mount.dynfilefs --metadata "$ROOT/$DIR/changes.dat" recover; then ERROR=2; fi
+            if [ "$ERROR" = 0 ] && perch_choose_restore "$ROOT/$DIR"; then
                printf '%s\n' "$ROOT/$DIR"
                return 0
             fi
          fi
          umount "$ROOT" >&2
+         if [ "$ERROR" = 2 ]; then return 2; fi
          return 1
       fi
       sleep 1
@@ -1152,8 +1167,12 @@ persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
-   local CHANGES MODE T1 PERCHSIZE DYNMNT RESTORE TARGET RESTORE_ID START_ID INITIAL RUN
+   local CHANGES MODE T1 PERCHSIZE DYNMNT RESTORE TARGET RESTORE_ID START_ID INITIAL RUN ERROR
    CHANGES="$1/$(basename "$2")"
+   if mountpoint -q "$2" || mountpoint -q "$2.dfs"; then
+      echo '* Persistent storage is still mounted; unmount it before retrying.' >&2
+      return 1
+   fi
    mkdir -p "$2" "$MEMORY/storage"
    chmod 700 "$MEMORY/storage"
    printf 'ram\n' > "$MEMORY/storage/kind"
@@ -1170,13 +1189,22 @@ persistent_changes()
          return 1
       fi
       if [ "$MODE" = resume ]; then
-         T1=$(select_perch_storage "$CHANGES" resume) || T1=""
+         ERROR=0
+         T1=$(select_perch_storage "$CHANGES" resume) || ERROR=$?
+         if [ "$ERROR" = 2 ]; then return 1; fi
+         if [ "$ERROR" != 0 ]; then T1=""; fi
          if [ "$T1" != "" ]; then CHANGES="$T1"
          elif ! perch_directory "$CHANGES" 2>/dev/null; then CHANGES=""; fi
       elif [ "$MODE" = ask ]; then
-         CHANGES=$(select_perch_storage "$CHANGES" ask) || CHANGES=""
+         ERROR=0
+         CHANGES=$(select_perch_storage "$CHANGES" ask) || ERROR=$?
+         if [ "$ERROR" = 2 ]; then return 1; fi
+         if [ "$ERROR" != 0 ]; then CHANGES=""; fi
       elif [ "${MODE#/dev/}" != "$MODE" ]; then
-         CHANGES=$(perch_device_storage "$MODE") || CHANGES=""
+         ERROR=0
+         CHANGES=$(perch_device_storage "$MODE") || ERROR=$?
+         if [ "$ERROR" = 2 ]; then return 1; fi
+         if [ "$ERROR" != 0 ]; then CHANGES=""; fi
       elif ! perch_directory "$CHANGES" 2>/dev/null; then
          CHANGES=""
       fi
@@ -1186,6 +1214,8 @@ persistent_changes()
       return 0
    fi
    PERSISTENT_STORAGE="$CHANGES"
+   @mount.dynfilefs --metadata "$CHANGES/.persistence" recover || return 1
+   @mount.dynfilefs --metadata "$CHANGES/changes.dat" recover || return 1
 
    # Round backing capacity up to GiB; mkfs.xfs.custom needs at least 16000 MiB.
    PERCHSIZE=$(df -Pk "$CHANGES" | awk 'END {

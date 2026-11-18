@@ -1729,9 +1729,15 @@ must follow the general Slax repair rules above.
 - Update `initramfs/static/mount.dynfilefs` from the published precompiled
   `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
   then synchronize the work VM and repack Slax's initramfs when the binary changes. Keep the static
-  32-bit x86 build. The current binary is DynFileFS 6.02, storage format 600;
-  it automatically converts format 500 on first mount. Converted containers
-  cannot be opened with DynFileFS 5. Keep graphical saved state controls in Slax.
+  32-bit x86 build. The current binary is DynFileFS 6.03, storage payload
+  format 600; it automatically converts format 500 on first mount. Its permanent
+  checksummed `.txn` and `.txn.lock` companions implement redo recovery before
+  in-place metadata updates. Retain the redo file with backups; published metadata
+  keeps its allocation, including padded deleted-state records. Older 6.02 binaries
+  cannot safely reopen these stores. Keep graphical saved state controls in Slax.
+  Finish the DynFileFS daemon before unmounting its backing filesystem, and finish
+  all unmounts before poweroff. Do not add filesystem-specific dirty probes or repair
+  prompts; recovery of a backing filesystem damaged by a hard reset is outside this flow.
   The published binary at commit `72389fb` includes the DynFileFS source fix for
   `pivot_root`: backing files and the FUSE parent use retained directory handles,
   preserving writes, saved states, automatic freezing and clean unmount across
