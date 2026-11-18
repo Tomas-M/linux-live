@@ -443,8 +443,8 @@ must follow the general Slax repair rules above.
   and sequential release number. Honor an explicitly requested number;
   otherwise use the next available number for that year and month.
   Keep earlier releases. Create a release only when Tomas asks, and size it to
-  exactly 512 MiB minimum by enlarging the USB-SPACE FAT16 filesystem, not by appending
-  bytes outside the image's partition layout.
+  exactly 512 MiB by enlarging the EFI FAT16 filesystem, preserving the size of
+  USB-SPACE. Never append bytes outside the image's partition layout.
 
 ## Slax build and signed boot
 
@@ -1410,7 +1410,8 @@ must follow the general Slax repair rules above.
   success alone is not enough. For changes unrelated to boot, such as cursor
   themes or desktop configuration, one VM startup is sufficient.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
-  or `-Firmware uefi`. Stop it and allow VirtualBox to release its session
+  or `-Firmware uefi`. Reuse this VM for release checks too; do not create an
+  extra VM for ordinary Slax boot tests. Stop it and allow VirtualBox to release its session
   before changing firmware. Tomas authorizes overwriting the canonical Slax ISO,
   normal shutdowns, restarts and VirtualBox resets of this Slax test VM as needed,
   without asking again. Prefer a normal shutdown when it responds. Leave its GUI window
