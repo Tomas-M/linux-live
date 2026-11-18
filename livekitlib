@@ -20,6 +20,7 @@ splash_listen()
 }
 
 # Stop the renderer before an interactive console, or preserve pixels at handoff.
+# $1 = optional keep to preserve splash pixels during handoff; otherwise stop the renderer
 splash_stop()
 {
    [ "$SPLASH_LOG" ] || return 0
@@ -66,6 +67,8 @@ debug_start()
    fi
 }
 
+# Write a debug message to the log and, when enabled, to stderr.
+# $1.. = message text
 debug_log()
 {
    if [ "$DEBUG_IS_ENABLED" ]; then
@@ -91,11 +94,14 @@ echo_green_star()
 }
 
 # log - store given text in /var/log/livedbg
+# $1.. = text to append to the debug log
 log()
 {
    echo "$@" 2>/dev/null >>/var/log/livedbg
 }
 
+# Print a message and append it to the debug log.
+# $1.. = message text
 echolog()
 {
    echo "$@"
@@ -126,6 +132,9 @@ debug_shell()
    fi
 }
 
+# Show a fatal error and open the recovery shell.
+# $1 = error message
+# $2 = optional report file to display instead of the generic explanation
 fatal()
 {
    splash_stop
@@ -381,6 +390,7 @@ device_tag()
 
 
 # Identify boot-only EFI partitions by their GPT or MBR type, not their filesystem.
+# $1 = block device to check
 device_is_efi()
 {
    local TYPE
@@ -416,7 +426,7 @@ device_bestfs()
 
 
 # Filesystem options for initial mount
-# $1.. = filesystem
+# $1 = filesystem
 #
 fs_options()
 {
@@ -437,7 +447,7 @@ fs_options()
 
 
 # Mount command for given filesystem
-# $1.. = filesystem
+# $1 = filesystem
 #
 mount_command()
 {
@@ -464,7 +474,9 @@ ntfs_hibernation_inactive()
 
 
 # Mount normally, allowing NTFS writes only after a read-only hibernation check.
-# $1 = device, $2 = mount directory, $3 = filesystem
+# $1 = block device
+# $2 = mount directory
+# $3 = filesystem
 # $4 = optional file for initial mount errors
 mount_device()
 {
@@ -929,6 +941,8 @@ check_data_found()
 
 
 # Format KiB as a size or free/total pair, sharing the total's unit up to TB.
+# $1 = size in KiB, or free space in KiB when $2 is supplied
+# $2 = optional total size in KiB for free/total output
 perch_size()
 {
    awk 'BEGIN {
@@ -942,6 +956,8 @@ perch_size()
 
 
 # Read live saved states as timestamp, stable ID, UTF-8 name and automatic flag.
+# $1 = changes directory containing changes.dat
+# $2 = optional mounted DynFileFS directory from which to read snapshots.json
 perch_restore_points()
 {
    local CATALOG
@@ -966,6 +982,7 @@ perch_restore_points()
 
 
 # Inspect one drive's history; Esc returns without changing its queued request.
+# $1 = changes directory whose history is shown and restore request is updated
 perch_choose_restore()
 {
    local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD INITIAL
@@ -1003,6 +1020,7 @@ perch_choose_restore()
 
 
 # Reject linked storage paths before creating directories on writable media.
+# $1 = changes directory to create if missing and test for writable access
 perch_directory()
 {
    local DIR TEMP
@@ -1020,6 +1038,8 @@ perch_directory()
 
 # Choose a writable drive first, then a saved state; automatic resume uses the newest marker.
 # Assume all persistence media are available at boot; users of special setups supply early access themselves.
+# $1 = default changes directory on the filesystem containing the live data
+# $2 = resume for automatic selection, or ask for the drive and saved-state menus
 select_perch_storage()
 {
    local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW
@@ -1097,6 +1117,7 @@ select_perch_storage()
 
 
 # Explicit perchdir=/dev/DEVICE/path remains scoped to that writable filesystem.
+# $1 = explicit /dev/DEVICE/path to the changes directory
 perch_device_storage()
 {
    local DEVICE DIR ROOT FS TIMEOUT
@@ -1125,7 +1146,8 @@ perch_device_storage()
 
 
 # Activate one DynFileFS store on every backing filesystem, including native Linux filesystems.
-# $1 = data directory; $2 = writable union target
+# $1 = live data directory
+# $2 = writable union changes directory
 persistent_changes()
 {
    debug_log "persistent_changes" "$*"

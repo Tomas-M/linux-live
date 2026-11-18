@@ -7,12 +7,14 @@ PATH="$BASE/bin:$BASE/usr/bin:$BASE/sbin:$PATH"
 if [ "$(id -u)" != 0 ]; then exit 1; fi
 
 # Validate identities without converting their full 64-bit value to floating point.
+# $1 = saved-state identity to validate (16 hexadecimal digits)
 policy_id()
 {
    test "${#1}" = 16 && printf '%s\n' "$1" | grep -qE '^[0-9a-f]+$'
 }
 
 # Reject links and special files before reading policy from writable media.
+# $1 = regular metadata file to read
 policy_read()
 {
    if [ ! -f "$1" ] || [ -L "$1" ]; then echo '* Invalid storage policy file.' >&2; return 1; fi
@@ -20,6 +22,8 @@ policy_read()
 }
 
 # Publish complete metadata before acknowledging a change to the desktop or boot.
+# $1 = destination metadata file
+# $2.. = text lines to write atomically
 policy_write()
 {
    local FILE TEMP
@@ -34,6 +38,8 @@ policy_write()
 }
 
 # The empty marker remembers the selected drive; its time orders choices across devices.
+# $1 = changes directory containing the resume marker
+# $2 = optional marker time in Unix seconds; defaults to the current time
 policy_mark()
 {
    local FILE TEMP NOW PREVIOUS
@@ -52,6 +58,7 @@ policy_mark()
 }
 
 # A run owns one durable starting point and one independent save/discard choice.
+# $1 = changes directory containing run.txt
 policy_run()
 {
    local TEXT ID MODE
@@ -65,6 +72,7 @@ policy_run()
 }
 
 # Explicit restore selection takes precedence over the previous run's discard policy.
+# $1 = changes directory containing restore.txt and the previous run policy
 policy_target()
 {
    local ID RUN
@@ -79,12 +87,16 @@ policy_target()
 }
 
 # Resolve a live node by identity; names are only the command argument after validation.
+# $1 = changes directory containing changes.dat
+# $2 = saved-state identity to resolve
+# $3 = optional mounted DynFileFS directory from which to read the catalog
 policy_name()
 {
    perch_restore_points "$1" "$3" | awk -F '\t' -v id="$2" '"x" $2=="x" id {print $3; found=1} END {exit !found}'
 }
 
 # Reserve the next exact ID before creating an owned point, closing the crash-recording gap.
+# $1 = mounted DynFileFS directory containing snapshots.json
 policy_next_id()
 {
    cat "$1/snapshots.json" | awk 'BEGIN {RS="\"id\":"; FS="\""} /^"/ {print $2}' | sort | tail -n 1 | awk '
@@ -95,6 +107,8 @@ policy_next_id()
 }
 
 # Only exact ID/name pairs recorded by this lifecycle may be removed automatically.
+# $1 = changes directory containing owned guard records
+# $2 = mounted DynFileFS directory whose obsolete guards may be deleted
 policy_cleanup()
 {
    local PROFILE MOUNT RUN TARGET FILE ID NAME LIVE SAVED CATALOG
@@ -127,6 +141,8 @@ policy_cleanup()
 }
 
 # Hide the unformatted disk and retain a named, formatted starting state for the user.
+# $1 = changes directory in which to record ownership of the unformatted state
+# $2 = mounted DynFileFS directory on which to create Initial state
 policy_initialize()
 {
    local POINTS CREATED ID NAME AUTOMATIC
@@ -139,6 +155,8 @@ policy_initialize()
 }
 
 # Identify the formatted initial state through its owned unformatted parent.
+# $1 = changes directory containing changes.dat and its guard records
+# $2 = optional mounted DynFileFS directory from which to read the catalog
 policy_initial()
 {
    local CATALOG ROOT ID NAME OWNER
@@ -158,6 +176,7 @@ policy_initial()
 }
 
 # FUSE unmount returns before the daemon finishes its final metadata checkpoint.
+# $1 = changes directory whose changes.dat.lock must disappear
 policy_closed()
 {
    local RETRY
@@ -170,6 +189,7 @@ policy_closed()
 }
 
 # Loop teardown can outlive umount; wait before snapshotting or closing its FUSE provider.
+# $1 = mounted inner filesystem directory to unmount and release from its loop device
 policy_detach()
 {
    local DEVICE FILE BACKING RETRY
@@ -186,6 +206,8 @@ policy_detach()
 }
 
 # Publish only a complete formatted store; old directories and incomplete root files are untouched.
+# $1 = changes directory in which to publish the new store
+# $2 = initial virtual filesystem size in MiB
 policy_create()
 {
    local STORAGE SIZE STAGE MOUNT INNER FILE NAME INITIAL OK
@@ -228,6 +250,8 @@ policy_create()
 }
 
 # A user-selected point changes the next start without overriding the run's save policy.
+# $1 = changes directory whose restore request is updated
+# $2 = saved-state identity to restore, or current to clear an explicit restore
 policy_select()
 {
    local STORAGE ID FILE
@@ -246,6 +270,8 @@ policy_select()
 }
 
 # A manual point survives automatic retention; the record proves ownership on recovery.
+# $1 = changes directory in which to record ownership of the starting state
+# $2 = mounted DynFileFS directory on which to create the starting state
 policy_guard()
 {
    local PROFILE MOUNT NAME ID LIVE
@@ -261,6 +287,8 @@ policy_guard()
 }
 
 # Preserve recovered current data before restoration; the caller holds --protect ID.
+# $1 = changes directory containing the restore request and previous run policy
+# $2 = mounted DynFileFS directory whose current data may need to be preserved
 policy_prepare()
 {
    local PROFILE MOUNT ID INTENT LABEL SAVED LIVE RUN COUNT POINTS
@@ -299,6 +327,8 @@ policy_prepare()
 }
 
 # Start policy is published before consuming the request or releasing previous guards.
+# $1 = changes directory in which to publish the new run policy
+# $2 = mounted DynFileFS directory containing the activated filesystem
 policy_start()
 {
    local ID FILE PREVIOUS INITIAL
