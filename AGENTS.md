@@ -1702,7 +1702,14 @@ must follow the general Slax repair rules above.
   Automatic resume selects the newest valid marker across writable drives,
   falling back to creating storage on a writable boot medium. Never read or
   update legacy last_session.txt. Explicit disk/point selections and successful
-  setup update the marker atomically. Do not format or repartition a backing drive.
+  setup update the marker atomically. Assume all persistence media are available
+  early at boot; users of special storage setups arrange that access themselves.
+  Manual disk/state selection is persistent intent, not a one-time override:
+  subsequent automatic resume continues the resulting saved changes on that disk.
+  Slax Status setup and confirmed restores use the same persistence mark helper,
+  with a timestamp newer than visible mounted markers, including FAT resolution.
+  Do not add UUID boot-selection preferences, redirects or expiring requests.
+  Do not format or repartition a backing drive.
 - Fresh start restores the protected, formatted Initial state. It never erases
   a store or its history. Before restoring a point, retain the previous current
   state as a manual point only if run.txt does not request discard. An explicit
@@ -1772,7 +1779,8 @@ must follow the general Slax repair rules above.
   styled surfaces so backgrounds and separators reach their section edges.
   Background startup and polling inspect mounted drives without mounting others.
   Discover only the active store published by initramfs; never mount other drives
-  for the application. Storage selection and preparation belong only in boot.
+  for the application. List mounted eligible disks so their resume markers can
+  be compared without mounting additional disks or inspecting inactive histories.
   Show the current drive's saved-state tree and inspector without a drive
   selector, profile sidebar or profile creation/rename/delete controls. Draw
   square branch connectors and highlight the corresponding node when its row
@@ -1853,9 +1861,15 @@ must follow the general Slax repair rules above.
   Keep the single capacity estimate directly in the UI without a Details dialog.
   Use GtkListBox placeholders for empty, loading and error messages. Only actual
   saved-state rows are selectable and carry point IDs.
-  In RAM, explain why to save changes on a drive and show the static saved-state
-  example. Direct the user to Choose a saved state, a drive and Fresh start at
-  the next boot. This RAM run is not copied. Do not offer storage setup in the app.
+  In RAM, use the approved Clear guide layout with a memory-chip badge, benefits,
+  a single current-run loss warning and mounted drive cards. Reuse Partition
+  Manager's Font Awesome disk, USB and virtual-storage artwork. Confirm setup
+  with Cancel as the keyboard default, then create /slax/changes and publish
+  its newest resume.txt marker through the shared persistence helper before an
+  ordinary reboot. Preserve existing saved changes and restore/save policies;
+  do not restore Initial state, copy the current RAM run or create redirects.
+  Explain that automatic resume uses the selected drive and existing changes.
+  Reject stale/replaced media, read-only targets and linked setup paths.
   Ignore numeric legacy directories.
   Show removed states controls deleted rows while full ancestry determines tree lanes.
   Center its indicator and text. Put Show removed states at the left of the shared

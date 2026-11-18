@@ -41,7 +41,8 @@ policy_mark()
    NOW=${2:-$(date +%s)}
    if ! printf '%s\n' "$NOW" | grep -qE '^[0-9]+$'; then return 1; fi
    if [ -e "$FILE" ] || [ -L "$FILE" ]; then
-      policy_read "$FILE" >/dev/null || return 1
+      # Only the timestamp matters; never read marker contents from writable media.
+      if [ ! -f "$FILE" ] || [ -L "$FILE" ]; then return 1; fi
       PREVIOUS=$(date -r "$FILE" +%s) || return 1
       if [ "$PREVIOUS" -gt "$NOW" ]; then NOW=$PREVIOUS; fi
    fi

@@ -1018,7 +1018,8 @@ perch_directory()
 }
 
 
-# Choose a writable drive first, then a saved state; automatic resume uses only the new marker.
+# Choose a writable drive first, then a saved state; automatic resume uses the newest marker.
+# Assume all persistence media are available at boot; users of special setups supply early access themselves.
 select_perch_storage()
 {
    local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW
@@ -1062,6 +1063,8 @@ select_perch_storage()
          fi
          if [ "$CHOICE" = "" -o "$CHOICE" = refresh ]; then break; fi
          if [ "$2" != resume ] && ! perch_choose_restore "$CHOICE"; then continue; fi
+         # A manual disk/state choice means "boot this from now on", not a one-time override.
+         # Later automatic boots continue this drive's kept changes instead of restoring the same point again.
          if perch_directory "$CHOICE"; then
             NOW=$(date +%s)
             # FAT timestamps have two-second resolution; keep this choice strictly newer.
