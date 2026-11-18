@@ -41,6 +41,7 @@ Slax
 
 - Add a RAM guide to Slax Status with mounted-drive setup and restart, preserving
   existing saved changes and explaining that the current RAM run is discarded.
+  Match the saved-state manager's plain split layout while keeping the loss warning highlighted.
   Setup and confirmed restores select the drive for automatic resume using the
   same durable marker as boot, with timestamps newer than mounted selections.
 - Prepare the status bubble's current size before opening it, avoiding a narrow
