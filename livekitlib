@@ -1036,6 +1036,26 @@ perch_directory()
 }
 
 
+# Refuse an interrupted run before opening its container; only explicit setup clears the marker.
+# $1 = changes directory to inspect, returning 3 when this boot must use RAM
+perch_clean()
+{
+   local NOTICE ERROR
+   if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then
+      if [ -d "$1" ]; then @mount.dynfilefs --metadata "$1/.persistence" recover || return 2; fi
+      if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then return 0; fi
+   fi
+   NOTICE=$(mktemp /tmp/unclean-changes.XXXXXX) || return 2
+   printf 'ram\tContinue in RAM\tCheck the drive before re-enabling saved changes\n' > "$NOTICE"
+   ERROR=0
+   fbmenu --menu "Saved changes on $(mounted_device "$1") were not closed properly" "$NOTICE" >/dev/null || ERROR=$?
+   rm -f "$NOTICE"
+   if [ "$ERROR" != 0 ]; then return 2; fi
+   echo '* Saved changes were not closed properly; using RAM for changes' >&2
+   return 3
+}
+
+
 # Choose a writable drive first, then a saved state; automatic resume uses the newest marker.
 # Assume all persistence media are available at boot; users of special setups supply early access themselves.
 # $1 = default changes directory on the filesystem containing the live data
@@ -1083,10 +1103,10 @@ select_perch_storage()
             CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel --refresh) || break
          fi
          if [ "$CHOICE" = "" -o "$CHOICE" = refresh ]; then break; fi
+         perch_clean "$CHOICE" || { FAILURE=$?; break; }
          if [ -d "$CHOICE" ]; then
             # Recover only the chosen drive, before using its policy or saved-state catalog.
-            if ! @mount.dynfilefs --metadata "$CHOICE/.persistence" recover ||
-               ! @mount.dynfilefs --metadata "$CHOICE/changes.dat" recover; then
+            if ! @mount.dynfilefs --metadata "$CHOICE/changes.dat" recover; then
                FAILURE=2
                break
             fi
@@ -1117,7 +1137,7 @@ select_perch_storage()
       done
       rm -f "$SCAN/disks.txt" "$SCAN/resume.txt"
       rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
-      if [ "$FAILURE" = 2 ]; then return 2; fi
+      if [ "$FAILURE" != 0 ]; then return "$FAILURE"; fi
       if [ "$ERROR" != 0 -a "$CHOICE" = refresh ]; then return 1; fi
       if [ "$CHOICE" != refresh ]; then break; fi
    done
@@ -1143,15 +1163,15 @@ perch_device_storage()
          ERROR=0
          perch_directory "$ROOT/$DIR" || ERROR=$?
          if [ "$ERROR" = 0 ]; then
-            if ! @mount.dynfilefs --metadata "$ROOT/$DIR/.persistence" recover ||
-               ! @mount.dynfilefs --metadata "$ROOT/$DIR/changes.dat" recover; then ERROR=2; fi
+            perch_clean "$ROOT/$DIR" || ERROR=$?
+            if [ "$ERROR" = 0 ] && ! @mount.dynfilefs --metadata "$ROOT/$DIR/changes.dat" recover; then ERROR=2; fi
             if [ "$ERROR" = 0 ] && perch_choose_restore "$ROOT/$DIR"; then
                printf '%s\n' "$ROOT/$DIR"
                return 0
             fi
          fi
          umount "$ROOT" >&2
-         if [ "$ERROR" = 2 ]; then return 2; fi
+         if [ "$ERROR" = 2 -o "$ERROR" = 3 ]; then return "$ERROR"; fi
          return 1
       fi
       sleep 1
@@ -1193,7 +1213,8 @@ persistent_changes()
          T1=$(select_perch_storage "$CHANGES" resume) || ERROR=$?
          if [ "$ERROR" = 2 ]; then return 1; fi
          if [ "$ERROR" != 0 ]; then T1=""; fi
-         if [ "$T1" != "" ]; then CHANGES="$T1"
+         if [ "$ERROR" = 3 ]; then CHANGES=""
+         elif [ "$T1" != "" ]; then CHANGES="$T1"
          elif ! perch_directory "$CHANGES" 2>/dev/null; then CHANGES=""; fi
       elif [ "$MODE" = ask ]; then
          ERROR=0
@@ -1213,8 +1234,15 @@ persistent_changes()
       echo '* Persistent changes disabled; using RAM for changes'
       return 0
    fi
-   PERSISTENT_STORAGE="$CHANGES"
-   @mount.dynfilefs --metadata "$CHANGES/.persistence" recover || return 1
+   # Recovery-shell retries own this boot's marker; only a new activation checks for an old one.
+   if [ "${PERSISTENT_STORAGE:-}" = "" ]; then
+      ERROR=0
+      perch_clean "$CHANGES" || ERROR=$?
+      if [ "$ERROR" = 3 ]; then return 0; fi
+      if [ "$ERROR" != 0 ]; then return 1; fi
+      persistence open "$CHANGES" || return 1
+      PERSISTENT_STORAGE="$CHANGES"
+   fi
    @mount.dynfilefs --metadata "$CHANGES/changes.dat" recover || return 1
 
    # Round backing capacity up to GiB; mkfs.xfs.custom needs at least 16000 MiB.

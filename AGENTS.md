@@ -1726,6 +1726,14 @@ must follow the general Slax repair rules above.
   with a timestamp newer than visible mounted markers, including FAT resolution.
   Do not add UUID boot-selection preferences, redirects or expiring requests.
   Do not format or repartition a backing drive.
+- Create active.txt durably before activating saved changes and retain it until
+  XFS and DynFileFS finish closing during normal shutdown. An existing marker
+  blocks the selected store before container recovery or saved-state selection:
+  acknowledge the boot warning with Enter and continue in RAM without changing
+  the marker or falling back to another store. Slax Status's confirmed drive
+  setup clears it durably through the shared helper, keeping its current UI.
+  Re-enablement is the user's explicit decision after checking the drive;
+  mounting alone neither proves repair nor clears the marker.
 - Fresh start restores the protected, formatted Initial state. It never erases
   a store or its history. Before restoring a point, retain the previous current
   state as a manual point only if run.txt does not request discard. An explicit
@@ -1775,7 +1783,8 @@ must follow the general Slax repair rules above.
   Never remove a user point merely by its name prefix.
   Deferred keep-current intent is tied to the target ID and processed only at the
   next activation, after recovering and cleanly unmounting the old XFS, before
-  actually restoring. There is no storage-specific shutdown hook.
+  actually restoring. Saved-state restore/discard policy remains independent of
+  shutdown hooks.
   Mount both restore preparation and restoration with `--no-auto-snapshots`;
   enable automatic points only after publishing the new run's durable starting guard.
   After recovery, `currentMatchesParent` permits reusing an identical manual point

@@ -94,6 +94,11 @@ static gboolean prepare_setup(JsonObject *request, GError **error)
    if (ok && fsync(folder)) ok=fail(error,errno,g_strerror(errno));
    if (ok && fsync(root)) ok=fail(error,errno,g_strerror(errno));
    if (ok) ok=mark_resume(folder,error);
+   if (ok)
+   {
+      const char *argv[]={"/run/initramfs/persistence","enable","/proc/self/fd/198",NULL};
+      char *output=command_at(argv,folder,error); ok=output!=NULL; g_free(output);
+   }
    if (folder>=0) close(folder);
    close(root); return ok;
 }
