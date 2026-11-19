@@ -6,6 +6,7 @@
  *     -Wl,--gc-sections,--build-id=none -o ../initramfs/static/fbmenu fbmenu.c
  * Regenerate the embedded font with: python3 fbmenu-font.py DejaVuSansMono.ttf
  * Menu files contain: value<TAB>title<TAB>detail (or a plain value per line).
+ * Optional fourth/fifth fields add a compact tree lane and parent value.
  * Add --cancel to a menu request to return an empty selection when Esc is pressed.
  * Add --refresh to return refresh on F5, including when the menu is empty.
  * --pause/--continue bracket driver loading; overlapping pauses are counted.
@@ -40,7 +41,7 @@
 static const char *socket_path="/run/fbmenu.sock";
 static const char *disabled_path="/run/bootsplash.disabled";
 struct request { char operation, cancel, refresh; char title[128]; char file[1024]; };
-struct item { char *value, *title, *detail; };
+struct item { char *value, *title, *detail, *parent; int depth, ancestor; };
 /* Keep navigation keys outside the Unicode range. */
 enum { KEY_UP=0x110000, KEY_DOWN, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F5 };
 enum phase { BOOT, HANDOFF, SHUTDOWN };
@@ -206,6 +207,12 @@ static void branding(const char *directory)
    fclose(file);
 }
 
+/* Index stable values once, so drawing a large tree never searches its ancestry. */
+static int compare_items(const void *left, const void *right)
+{
+   return strcmp((*(const struct item *const *)left)->value,(*(const struct item *const *)right)->value);
+}
+
 /* Reload a changing device list while preserving selection by its value. */
 static int load_menu(void)
 {
@@ -230,11 +237,58 @@ static int load_menu(void)
       if (item->title) *item->title++=0; else item->title=item->value;
       item->detail=strchr(item->title,'\t');
       if (item->detail) *item->detail++=0; else item->detail="";
+      item->parent=strchr(item->detail,'\t'); item->depth=0; item->ancestor=-1;
+      if (item->parent) {
+         char *level=item->parent; *level++=0;
+         item->parent=strchr(level,'\t');
+         if (item->parent) *item->parent++=0;
+         item->depth=atoi(level);
+      }
       if (previous && !strcmp(previous,item->value)) selected=count-1;
+   }
+   struct item **index=count?malloc(count*sizeof(*index)):NULL;
+   if (index) {
+      for (int i=0;i<count;i++) index[i]=&items[i];
+      qsort(index,count,sizeof(*index),compare_items);
+      for (int i=0;i<count;i++) if (items[i].parent && *items[i].parent) {
+         struct item key={.value=items[i].parent}, *needle=&key;
+         struct item **parent=bsearch(&needle,index,count,sizeof(*index),compare_items);
+         if (parent) items[i].ancestor=*parent-items;
+      }
+      free(index);
    }
    free(previous); free(line); fclose(file);
    menu_time=status.st_mtim;
    return 1;
+}
+
+/* Reserve tree space while keeping a readable label even for deeply nested branches. */
+static int tree_inset(const struct item *item, int width)
+{
+   if (!item->parent) return 0;
+   int inset=(item->depth+1)*18;
+   if (inset>width-56) inset=width-56;
+   return inset>18?inset:18;
+}
+
+/* Draw full parent/child edges across scrolled rows, clipped to the visible list. */
+static void draw_tree(int x, int y, int first, int rows, int width)
+{
+   int top=y-4, bottom=y+rows*28-8;
+   for (int i=0;i<count;i++) {
+      int parent=items[i].ancestor;
+      if (parent<0) continue;
+      int px=x+tree_inset(&items[parent],width)-14, cx=x+tree_inset(&items[i],width)-14;
+      int from=y+(parent-first)*28+6, to=y+(i-first)*28+6;
+      int start=from<top?top:from, end=to>bottom?bottom:to;
+      for (int row=start;row<=end;row++) pixel(px,row,0x777777);
+      if (to>=top && to<=bottom) for (int column=px;column<=cx;column++) pixel(column,to,0x777777);
+   }
+   for (int i=first;i<first+rows;i++) if (items[i].parent) {
+      int cx=x+tree_inset(&items[i],width)-14, cy=y+(i-first)*28+6;
+      for (int dy=-2;dy<=2;dy++) for (int dx=-2;dx<=2;dx++)
+         if (dx*dx+dy*dy<=4) pixel(cx+dx,cy+dy,i==selected?0xffffff:accent);
+   }
 }
 
 /* Center logo and menu together; scroll the list within the available height. */
@@ -247,8 +301,10 @@ static void draw_menu(void)
    if (!graphics) {
       dprintf(tty,"\033[2J\033[H%s\r\n\r\n\r\n",menu.title);
       int first=selected>8?selected-8:0;
-      for (int i=first;i<count && i<first+12;i++)
-         dprintf(tty,"%s%s   %s\033[K\033[0m\r\n",i==selected?"\033[7m":"",items[i].title,items[i].detail);
+      for (int i=first;i<count && i<first+12;i++) {
+         int indent=items[i].depth*2; if (indent>40) indent=40;
+         dprintf(tty,"%s%*s%s%s   %s\033[K\033[0m\r\n",i==selected?"\033[7m":"",indent,"",items[i].parent?"o ":"",items[i].title,items[i].detail);
+      }
       if (strlen(hint)>78) dprintf(tty,"\r\n%s\r\n%s",navigation,actions);
       else dprintf(tty,"\r\n%s",hint);
       return;
@@ -271,7 +327,7 @@ static void draw_menu(void)
    if (first<0) first=0;
    int title_width=0, detail_width=0;
    for (int i=0;i<count;i++) {
-      int width=text_width(items[i].title);
+      int width=text_width(items[i].title)+(items[i].parent?(items[i].depth+1)*18:0);
       if (width>title_width) title_width=width;
       width=text_width(items[i].detail);
       if (width>detail_width) detail_width=width;
@@ -284,13 +340,14 @@ static void draw_menu(void)
    if (detail_width>width/2) detail_width=width/2;
    title_width=width-32-(detail_width?24+detail_width:0);
    int x=((int)screen.xres-width)/2;
+   unsigned highlight=((accent&0xff0000)/3&0xff0000)|((accent&0xff00)/3&0xff00)|((accent&255)/3);
+   if (count) for (int row=-4;row<20;row++) for (int column=0;column<width;column++)
+      pixel(x+column,y+(selected-first)*28+row,highlight);
+   draw_tree(x+16,y,first,rows,title_width);
    for (int i=first;i<first+rows;i++) {
-      unsigned background=0;
-      if (i==selected) {
-         background=((accent&0xff0000)/3&0xff0000)|((accent&0xff00)/3&0xff00)|((accent&255)/3);
-         for (int row=-4;row<20;row++) for (int column=0;column<width;column++) pixel(x+column,y+row,background);
-      }
-      text(x+16,y,items[i].title,0xffffff,background,title_width);
+      unsigned background=i==selected?highlight:0;
+      int inset=tree_inset(&items[i],title_width);
+      text(x+16+inset,y,items[i].title,0xffffff,background,title_width-inset);
       text(x+width-16-detail_width,y,items[i].detail,i==selected?0xffffff:0x999999,background,detail_width);
       y+=28;
    }
@@ -600,8 +657,8 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
          else if (menu_client>=0 && pressed==KEY_F5 && menu.refresh) finish_menu("refresh",frame);
          else if (menu_client>=0 && count) {
             int previous=selected;
-            if (pressed=='j' || pressed==KEY_DOWN) selected=(selected+1)%count;
-            if (pressed=='k' || pressed==KEY_UP) selected=(selected+count-1)%count;
+            if ((pressed=='j' || pressed==KEY_DOWN) && selected+1<count) selected++;
+            if ((pressed=='k' || pressed==KEY_UP) && selected>0) selected--;
             if (pressed=='g' || pressed==KEY_HOME) selected=0;
             if (pressed=='G' || pressed==KEY_END) selected=count-1;
             if (pressed=='u' || pressed==KEY_PAGEUP) selected=selected<5?0:selected-5;

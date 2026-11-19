@@ -42,11 +42,14 @@ Linux Live Kit
   Name newly retained states after the restore target, without repeated timestamps.
 - Give new containers a permanent Initial state saved state after
   formatting and filesystem growth; hide the unusable pre-formatting point.
+- Show saved-state branches in the boot picker using DynFileFS's ordered tree rows.
+  Keep menu navigation at the first or last row instead of wrapping around.
 
 Slax
 ----
 
 - Re-enable interrupted saved changes through Slax Status's existing drive setup.
+- Label automatic saved states as Saved on restart in the manager and boot menu.
 - Keep selected desktop icon captions equally padded on both sides.
 - Sharpen the Slax Status application icon and bring its drive symbols closer together.
 - Keep Slax Status saving and restore choices consistent with boot recovery after

@@ -13,16 +13,14 @@ Git blob: 3074708112575a4418145902aa3459092bd85e2c
 Binary SHA256: f213870b9708c024063ad019dcd3d5f58d78d8d929d5ea14a45bb6e6ac3aee2a
 This is the upstream UPX-packed static i686 binary, including its terminal data.
 
-mount.dynfilefs: DynFileFS 6.03, https://github.com/Tomas-M/dynfilefs (GNU GPL).
-Local development static/dynfilefs based on published commit
-534dce40291a65b9dda11a82ba0b30ec9e503bf6, release dynfilefs-v6.03,
-with current-parent equality reporting and optional suppression of startup/end points.
+mount.dynfilefs: DynFileFS 6.05, https://github.com/Tomas-M/dynfilefs (GNU GPL).
+Published static/dynfilefs at commit 08b9ad5894b3bb760e9d9b49d27e71146b90d379,
+release dynfilefs-v6.05. Git blob: 6319b648e7ba4990af9382ba4c5dd945822fe10c
 Includes checksummed metadata redo, ordered cleanup and conversion publication,
-with the pivot-root, snapshot and stable-ID fixes retained.
+with the pivot-root, snapshot, stable-ID and restore-deduplication fixes retained.
+Adds ordered TSV snapshot-tree rows and exact identity/name display filters.
 Use the project's static/build.sh: musl i686, -Os, stripped and UPX-packed.
-Compiled source manifest SHA256: cd22154c775bbcf65c9ecc920139a659d501a0bc1d3c9a007821c2305cc4c97d
+Compiled source manifest SHA256: a6f15c57a626b3a0aab1bbe651c9a4e09797bee8b01744db83fb04fc2da2ddce
 Manifest: sorted tracked .c/.h/.in/.ac files, Makefile.am and static/build.sh;
 concatenate each UTF-8 path, NUL, exact file bytes and NUL before hashing.
-Binary SHA256: 260e732ee2caf9a3a9b32499e728aea0a6b31472e1804b3ed03657622d62e142
-The same functionality is included in DynFileFS 6.04 at commit
-8cdac32b82731d8980d4a86aee6cf4e3d407b1f6. This is the tested 6.03 development build.
+Binary SHA256: dedd8048c25646add3df48a5c9a372294fe9a7366abf4a00c39c4577d4ecd530

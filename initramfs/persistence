@@ -353,7 +353,7 @@ policy_prepare()
    if [ "$ORIGINAL" != "" -a "${ORIGINAL#auto-}" = "$ORIGINAL" -a "$OWNER" != "$ORIGINAL" ]; then
       LABEL="$ORIGINAL"
    else
-      if [ "${TARGET#auto-}" != "$TARGET" ]; then TARGET='Automatically saved state'; fi
+      if [ "${TARGET#auto-}" != "$TARGET" ]; then TARGET='Saved on restart'; fi
       LABEL=$(policy_label "Before restoring $TARGET") || return 1
       POINTS=$(cat "$MOUNT/snapshot") || return 1
       COUNT=1

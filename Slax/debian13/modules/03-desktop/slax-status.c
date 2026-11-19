@@ -106,7 +106,7 @@ static gboolean changing(const char *op)
     return !pending_request || !strcmp(str(pending_request,"op"),op);
 }
 
-static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Automatically saved state" : str(item,"name"); }
+static const char *point_name(JsonObject *item) { return flag(item,"automatic") ? "Saved on restart" : str(item,"name"); }
 static char *size_text(gint64 bytes) { return g_format_size_full(MAX((gint64)0,bytes),G_FORMAT_SIZE_DEFAULT); }
 /* Temporary file views do not hide the engine's reported reusable capacity. */
 static char *reclaimable_text(JsonObject *item)
