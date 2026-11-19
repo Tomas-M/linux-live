@@ -978,7 +978,7 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
         compact=narrow;
         gtk_orientable_set_orientation(GTK_ORIENTABLE(context_box),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
         gtk_orientable_set_orientation(GTK_ORIENTABLE(intro_columns),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
-        gtk_container_set_border_width(GTK_CONTAINER(intro),compact ? 12 : 28);
+        gtk_box_set_spacing(GTK_BOX(intro_columns),compact ? 18 : 32);
         gtk_widget_set_size_request(intro_example,compact ? -1 : 420,-1);
         GtkStyleContext *style=gtk_widget_get_style_context(intro_example);
         if (compact) gtk_style_context_add_class(style,"stacked");else gtk_style_context_remove_class(style,"stacked");
@@ -1463,7 +1463,7 @@ static void load_style(void)
         "#slax-status-manager .focus-control.focus-outline { outline-style: dashed; }"
         ".title { font-size: 20px; font-weight: 600; } .heading { font-size: 24px; font-weight: 400; } .metric { font-size: 32px; }"
         ".notice-title { font-size: 16px; font-weight: 600; }"
-        ".ram-setup { padding-left: 18px; } .ram-setup.stacked { padding: 18px 0 0; }"
+        ".ram-setup { padding-left: 32px; } .ram-setup.stacked { padding: 18px 0 0; }"
         ".ram-loss { background: #f6f0e5; border: 1px solid #e5d9c3; border-radius: 7px; padding: 11px 14px; color: #756142; }"
         ".setup-icon { padding: 8px; background: #edf3e7; border-radius: 7px; color: #6b8c58; }"
         ".ram-setup button.primary-action:disabled { background: #e5e9e2; color: #899184; border-color: #d8ddd3; box-shadow: none; }"

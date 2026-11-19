@@ -41,6 +41,7 @@ Linux Live Kit
 Slax
 ----
 
+- Sharpen the Slax Status application icon and bring its drive symbols closer together.
 - Keep Slax Status saving and restore choices consistent with boot recovery after
   an interrupted policy update.
 - Add a RAM guide to Slax Status with mounted-drive setup and restart, preserving
@@ -51,6 +52,8 @@ Slax
   Show a RAM chip beside RAM source and changes locations in the tray and manager.
   Simplify the RAM guide's text hierarchy, align its columns and keep drive icons
   on actual drive choices. Place Refresh beside the mounted-drive heading.
+  Give both columns more space around the center divider.
+  Retain comfortable outer padding when the guide stacks in a narrow window.
   Scope saving and saved states explicitly to future runs, including the restart
   confirmation, and explain that the current RAM run cannot be transferred.
 - Prepare the status bubble's current size before opening it, avoiding a narrow
