@@ -125,7 +125,7 @@ BOOT AND PERSISTENCE
   Each drive has one history; there are no separate profiles or sessions to manage.
 - Normal startup continues saved changes from the most recently selected writable
   drive. On a writable boot medium, storage can be prepared automatically.
-- Choose a saved state opens a drive list, then that drive's history. Choose
+- Choose a saved state opens a drive list, then that drive's saved-state tree. Choose
   Last saved state to continue, a saved state to return to it, or Fresh start
   to return to the original Slax. Fresh start keeps the existing history.
   On a drive without saved changes, Fresh start prepares storage there.
@@ -176,7 +176,8 @@ BOOT AND PERSISTENCE
   Rename gives a saved state a new name. Naming an automatic state keeps it until
   explicitly deleted. Initial state cannot be renamed.
   DynFileFS also creates automatic states at storage startup and clean shutdown
-  when the state changed. Slax keeps ten recent automatic states; states still
+  when the state changed. History labels them Saved on restart.
+  Slax keeps ten recent automatic states; states still
   in use may be kept longer.
   Named states remain until explicitly deleted. Normal startup continues the
   saved current state unless a restore or discard was requested.

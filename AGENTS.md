@@ -1747,7 +1747,7 @@ must follow the general Slax repair rules above.
 - Update `initramfs/static/mount.dynfilefs` from the published precompiled
   `static/dynfilefs` in `Tomas-M/dynfilefs`, verify its provenance and `-i` output,
   then synchronize the work VM and repack Slax's initramfs when the binary changes. Keep the static
-  32-bit x86 build. The current binary is DynFileFS 6.03, storage payload
+  32-bit x86 build. The current binary is DynFileFS 6.05, storage payload
   format 600; it automatically converts format 500 on first mount. Its permanent
   checksummed `.txn` and `.txn.lock` companions implement redo recovery before
   in-place metadata updates. Retain the redo file with backups; published metadata
@@ -1763,10 +1763,12 @@ must follow the general Slax repair rules above.
   tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
   and full persistent Slax boots before replacing it; do not overwrite it with an
   older published binary that lacks this fix. The storage format is unchanged.
-  The restore-deduplication development build adds `currentMatchesParent`
-  and `--no-auto-snapshots`; its source manifest and binary hashes are recorded in
-  `initramfs/static/README`. Upstream publication is separate from a requested
-  local Slax release; keep the development provenance explicit until it is published.
+  The boot picker uses DynFileFS's read-only `--snapshots --tsv` rows: stable ID,
+  name, UTC date, compact lane and visible parent ID. `--hide ID:NAME` collapses
+  exact owned guards and deleted ancestry without changing storage. Keep ordinary
+  text/JSON reports complete. fbmenu's optional fourth/fifth columns carry the
+  lane and parent value; Up/Down stop at menu boundaries. Binary provenance is
+  recorded in `initramfs/static/README`.
 - A saved-changes store can request one saved state for its next activation through
   `restore.txt`, beside `changes.dat`, containing its stable
   16-digit lowercase hexadecimal ID. Never source metadata as shell code or

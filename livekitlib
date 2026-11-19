@@ -981,26 +981,44 @@ perch_restore_points()
 }
 
 
+# Ask DynFileFS for selectable tree rows, collapsing only exact owned guard identities.
+# $1 = changes directory whose saved-state history is inspected
+perch_restore_menu()
+{
+   local PROFILE FILE ID NAME
+   PROFILE="$1"
+   set -- -f "$PROFILE/changes.dat" --snapshots --tsv
+   for FILE in "$PROFILE"/guard.*; do
+      if [ ! -f "$FILE" ] || [ -L "$FILE" ]; then continue; fi
+      ID=${FILE##*.}
+      if ! printf '%s\n' "$ID" | grep -qE '^[0-9a-f]{16}$'; then continue; fi
+      NAME=$(cat "$FILE") || return 1
+      if [ "$NAME" = "" ]; then continue; fi
+      set -- "$@" --hide "$ID:$NAME"
+   done
+   @mount.dynfilefs "$@"
+}
+
+
 # Inspect one drive's history; Esc returns without changing its queued request.
 # $1 = changes directory whose history is shown and restore request is updated
 perch_choose_restore()
 {
-   local ROWS POINTS CHOICE TITLE CREATED ID NAME AUTOMATIC GUARD INITIAL
+   local ROWS POINTS CHOICE TITLE DETAIL ID NAME DEPTH PARENT INITIAL
 
    ROWS=$(mktemp /tmp/saved-states.XXXXXX) || return 1
    POINTS=""
    INITIAL=""
    TITLE='Start Slax from'
    if [ -e "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then
-      if POINTS=$(perch_restore_points "$1") && INITIAL=$(persistence initial "$1"); then
+      if POINTS=$(perch_restore_menu "$1") && INITIAL=$(persistence initial "$1"); then
          if [ -f "$1/run.txt" ]; then printf 'current\tLast saved state\tContinue saved changes\n' > "$ROWS"; fi
-         printf 'fresh\tFresh start\tClean Slax; keep history\n' >> "$ROWS"
-         printf '%s\n' "$POINTS" | sort -rn | while IFS="$(printf '\t')" read -r CREATED ID NAME AUTOMATIC; do
-            if [ "$ID" = "" -o "$ID" = "$INITIAL" ]; then continue; fi
-            GUARD="$1/guard.$ID"
-            if [ -f "$GUARD" ] && [ ! -L "$GUARD" ] && [ "$(cat "$GUARD" 2>/dev/null)" = "$NAME" ]; then continue; fi
-            if [ "$AUTOMATIC" = 1 ]; then NAME='Automatically saved state'; fi
-            printf '%s\t%s\t%s\n' "$ID" "$NAME" "$(date -u -d "@$CREATED" '+%Y-%m-%d %H:%M:%S UTC')"
+         printf '%s\n' "$POINTS" | while IFS="$(printf '\t')" read -r ID NAME DETAIL DEPTH PARENT; do
+            if [ "$ID" = "" ]; then continue; fi
+            if [ "$ID" = "$INITIAL" ]; then
+               NAME='Fresh start'; DETAIL='Clean Slax; keep history'
+            elif [ "${NAME#auto-}" != "$NAME" ]; then NAME='Saved on restart'; fi
+            printf '%s\t%s\t%s\t%s\t%s\n' "$ID" "$NAME" "$DETAIL" "$DEPTH" "$PARENT"
          done >> "$ROWS"
       else
          TITLE='Saved changes could not be read'
