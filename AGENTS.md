@@ -341,6 +341,8 @@ reporting progress.
 - For a small change in an existing module, update the source and repack only
   that module in tmpfs, then recreate the ISO. Do not rebuild Debian and every
   application merely to change one configuration file.
+  After repacking, give every `.sb` in the media's modules directory the same
+  modification time, including unchanged modules, before recreating the ISO.
   Incremental rootcopy replacements must retain the copy phase's permissions:
   install helper commands with mode 755 and verify their packed executable bits.
 - `03-desktop` includes minimal VirtualBox and VMware integration: text
@@ -445,6 +447,8 @@ must follow the general Slax repair rules above.
   Keep earlier releases. Create a release only when Tomas asks, and size it to
   exactly 512 MiB by enlarging the EFI FAT16 filesystem, preserving the size of
   USB-SPACE. Never append bytes outside the image's partition layout.
+  References to `release` or `releases` mean this local directory. Remote publishing
+  is a separate explicit request; never infer a release server from this wording.
 
 ## Slax build and signed boot
 
@@ -1428,6 +1432,11 @@ must follow the general Slax repair rules above.
   Slax preview helper uses root, port 2222 and the local `VM/id_ed25519` key.
   Discover the current guest address through VirtualBox guest properties. Keep this
   development access in the running VM, separate from shipped Slax configuration.
+- Capture live UI with full-screen `scrot`, cropping the saved image locally when
+  needed. Avoid its window-capture modes during QA: `scrot -u -b` raises the
+  decoration frame directly, bypassing Fluxbox's logical stack and leaving
+  later applications underneath it. Do not treat this test-induced state as an
+  application layer bug.
 - During requested live icon comparisons, add each finished variant to xlunch
   immediately as a numbered preview entry. Keep these comparison entries in the
   running test VM until Tomas selects a design for the distribution.

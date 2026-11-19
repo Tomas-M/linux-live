@@ -114,7 +114,7 @@ static GtkWidget *make_ram_intro(void)
     gtk_widget_set_valign(intro,GTK_ALIGN_FILL);gtk_container_add(GTK_CONTAINER(scroll),intro);
     GtkWidget *heading=box(GTK_ORIENTATION_HORIZONTAL,15);pack(heading,setup_icon("memory",28,TRUE),FALSE);
     intro_title=label("Loading storage…","heading");pack(heading,intro_title,TRUE);pack(intro,heading,FALSE);
-    intro_columns=box(GTK_ORIENTATION_HORIZONTAL,18);pack(intro,intro_columns,TRUE);
+    intro_columns=box(GTK_ORIENTATION_HORIZONTAL,32);pack(intro,intro_columns,TRUE);
     GtkWidget *left=box(GTK_ORIENTATION_VERTICAL,16);pack(intro_columns,left,TRUE);
     GtkWidget *benefits=box(GTK_ORIENTATION_VERTICAL,24);pack(left,benefits,FALSE);
     const char *items[][3]={{"Saving starts with your next run","Enable saving on a drive, then restart Slax. Your next run can keep apps, settings and files between restarts.",""},{"Saved states","In those future runs, you can also save a working state and return to it later.","Open windows and unsaved work are not included."}};
