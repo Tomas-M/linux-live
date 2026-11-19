@@ -626,6 +626,13 @@ static const char *setup_reason(Drive *drive)
    return root ? "" : "Mount the filesystem root to use this drive";
 }
 
+/* A pending restore preserves its clean recovered state at activation, without intermediate points. */
+static gboolean automatic_for(Store *store, gboolean save)
+{
+   gboolean restoring=restart_request && !g_strcmp0(string(restart_request,"storeId"),store->id);
+   return save && !restoring;
+}
+
 /* Compose a cheap status model. Offline allocator reports are cached until an explicit refresh. */
 static JsonObject *state(GError **error)
 {
@@ -678,7 +685,8 @@ static JsonObject *state(GError **error)
                {
                   automatic=json_node_get_boolean(mode);
                   /* A restarted broker reconciles the engine with the durable policy before reporting it. */
-                  if (automatic!=save && save_run(store,save,&local)) automatic=save;
+                  gboolean expected=automatic_for(store,save);
+                  if (automatic!=expected && save_run(store,save,&local)) automatic=expected;
                }
             }
             json_object_unref(stats); if (store->active && !local) g_clear_pointer(&run_error,g_free);
@@ -879,16 +887,17 @@ static void recover_mounts(void)
    if (dir) g_dir_close(dir);
 }
 
-/* Disable engine snapshots before discard; enable them only after durable save policy. */
+/* Enable automatic points only after durable saving, outside a pending restore. */
 static gboolean save_run(Store *store, gboolean save, GError **error)
 {
    if (!active_mount(store,TRUE,error)) return FALSE;
    if (!store->active || !identity(run_start)) return fail(error,ENOTSUP,"This run cannot change its save setting.");
    store->stats_at=0;
-   if (!save && !snapshot_command(store,"autosnapshot","off",error)) return FALSE;
+   gboolean automatic=automatic_for(store,save);
+   if (!automatic && !snapshot_command(store,"autosnapshot","off",error)) return FALSE;
    char *text=g_strdup_printf("%s\n%s\n",run_start,save ? "save" : "discard");
    gboolean ok=write_store(store,"run.txt",text,error); g_free(text);
-   if (ok && save) ok=snapshot_command(store,"autosnapshot","on",error);
+   if (ok && automatic) ok=snapshot_command(store,"autosnapshot","on",error);
    /* A failed fsync may follow a successful rename: never guess that enabling is safe. */
    if (!ok) snapshot_command(store,"autosnapshot","off",NULL);
    return ok;
@@ -900,12 +909,17 @@ static gboolean cancel_restore(GError **error)
    if (!restart_request) return TRUE;
    Store *store=find_store(string(restart_request,"storeId"));
    if (!validate(store,TRUE,error)) return FALSE;
+   char *policy=store_file(store,"run.txt"),*keep=g_strdup_printf("%s\nsave",run_start ? run_start : ""),*discard=g_strdup_printf("%s\ndiscard",run_start ? run_start : "");
+   gboolean save=!g_strcmp0(policy,keep),valid=save || !g_strcmp0(policy,discard);
+   g_free(policy); g_free(keep); g_free(discard);
+   if (!valid) return fail(error,EIO,"The current run save policy could not be read.");
    const char *id=string(restart_request,"pointId");
    char *target=store_file(store,"restore.txt"); gboolean own=!g_strcmp0(target,id); g_free(target);
    if (own && !write_store(store,"restore.txt",NULL,error)) return FALSE;
    if (!boolean(restart_request,"wasProtected") && !snapshot_command(store,"unprotect",id,error)) return FALSE;
    if (!remove_file(RUNTIME,"restart.json",error)) return FALSE;
-   json_object_unref(restart_request); restart_request=NULL; return TRUE;
+   json_object_unref(restart_request); restart_request=NULL; store->stats_at=0;
+   return snapshot_command(store,"autosnapshot",save ? "on" : "off",error);
 }
 
 /* Journal one confirmed restore before pinning and publishing its durable boot target. */
@@ -923,6 +937,7 @@ static gboolean prepare_restore(Store *store, const char *id, const char *reques
    gboolean ok=snapshot_command(store,"protect",id,error);
    char *line=g_strconcat(id,"\n",NULL);
    if (ok) ok=write_store(store,"restore.txt",line,error);
+   if (ok) ok=snapshot_command(store,"autosnapshot","off",error);
    g_free(line);
    if (!ok)
    {

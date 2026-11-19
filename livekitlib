@@ -1230,14 +1230,9 @@ persistent_changes()
    if [ ! -f "$CHANGES/changes.dat" ] || [ -L "$CHANGES/changes.dat" ]; then return 1; fi
    INITIAL=$(persistence initial "$CHANGES") || return 1
    RESTORE_ID=$(persistence target "$CHANGES") || return 1
-   RESTORE=""
-   if [ "$RESTORE_ID" != "" ]; then
-      T1=$(perch_restore_points "$CHANGES") || return 1
-      RESTORE=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $3; found=1} END {exit !found}') || return 1
-   fi
    T1=$(@mount.dynfilefs -i -f "$CHANGES/changes.dat") || return 1
    T1=$(printf '%s\n' "$T1" | sed -n 's/^sizeMiB://p')
-   if [ "$RESTORE" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
+   if [ "$RESTORE_ID" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
 
    TARGET="$2"
    DYNMNT="$2.dfs"
@@ -1249,7 +1244,7 @@ persistent_changes()
    RUN=$(persistence run "$CHANGES") || return 1
    if [ -f "$CHANGES/restore.txt" ] && [ "$RUN" != "" ] && [ "${RUN#* }" != discard ]; then
       # Recover the previous XFS before preserving saved work, without any union writers.
-      @mount.dynfilefs -f "$CHANGES/changes.dat" -m "$DYNMNT" --protect "$INITIAL" --protect "$RESTORE_ID" || return 1
+      @mount.dynfilefs -f "$CHANGES/changes.dat" -m "$DYNMNT" --no-auto-snapshots --protect "$INITIAL" --protect "$RESTORE_ID" || return 1
       if ! mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then umount "$DYNMNT"; return 1; fi
       if ! persistence detach "$TARGET"; then return 1; fi
       if ! persistence prepare "$CHANGES" "$DYNMNT"; then umount "$DYNMNT"; return 1; fi
@@ -1257,9 +1252,12 @@ persistent_changes()
       persistence closed "$CHANGES" || return 1
    fi
    set -- -f "$CHANGES/changes.dat" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000 --protect "$INITIAL"
-   if [ "$RESTORE" != "" ]; then
+   if [ "$RESTORE_ID" != "" ]; then
+      # Preparation can promote the selected automatic point without changing its identity.
+      T1=$(perch_restore_points "$CHANGES") || return 1
+      RESTORE=$(printf '%s\n' "$T1" | awk -F '\t' -v id="$RESTORE_ID" '"x" $2=="x" id {print $3; found=1} END {exit !found}') || return 1
       echo "* Restoring saved changes from: $RESTORE"
-      set -- "$@" --restore "$RESTORE" --protect "$RESTORE_ID"
+      set -- "$@" --no-auto-snapshots --restore "$RESTORE" --protect "$RESTORE_ID"
    fi
    @mount.dynfilefs "$@" || return 1
    if mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then
@@ -1274,6 +1272,8 @@ persistent_changes()
       fi
       if ! persistence detach "$TARGET"; then return 1; fi
    fi
+   # Failed activation keeps durable working data without adding an intermediate history point.
+   printf 'autosnapshot off\n' > "$DYNMNT/snapshot" || return 1
    umount "$DYNMNT"
    return 1
 }

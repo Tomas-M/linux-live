@@ -35,6 +35,9 @@ Linux Live Kit
 - Preserve the starting state before persistent writes and apply save/discard
   policy at the next activation; protect restore targets during recovery.
   Recover interrupted creation of the starting state without losing unrelated points.
+- Reuse an identical saved state before restoring instead of duplicating it;
+  promote matching automatic points and suppress intermediate restore snapshots.
+  Name newly retained states after the restore target, without repeated timestamps.
 - Give new containers a permanent Initial state saved state after
   formatting and filesystem growth; hide the unusable pre-formatting point.
 
