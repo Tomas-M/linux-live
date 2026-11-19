@@ -1071,7 +1071,8 @@ must follow the general Slax repair rules above.
   info and model row, while moving in or out still adds or removes the entry.
   PCManFM keeps the icon's position across a rename and saves it under the new
   name. Its selected desktop captions have a 3 px corner radius and 4 px padding
-  on both the left and right.
+  on both the left and right, measured from Pango's rendered glyph bounds.
+  Keep the background aligned with centered, wrapped and right-to-left names.
 - File-manager windows default to 790 by 500 pixels, with icon view, 64 px icons
   and a 180 px sidebar.
   `pcmanfm-browser.diff` orders compact symbolic navigation as Back, Forward,

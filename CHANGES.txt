@@ -41,6 +41,7 @@ Linux Live Kit
 Slax
 ----
 
+- Keep selected desktop icon captions equally padded on both sides.
 - Sharpen the Slax Status application icon and bring its drive symbols closer together.
 - Keep Slax Status saving and restore choices consistent with boot recovery after
   an interrupted policy update.

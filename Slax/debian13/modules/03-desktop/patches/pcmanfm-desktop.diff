@@ -24,15 +24,27 @@
      if(item->fi)
          fm_file_info_unref(item->fi);
      g_slice_free(FmDesktopItem, item);
-@@ -253,9 +256,9 @@
+@@ -227,7 +230,7 @@
+ static void calc_item_size(FmDesktop* desktop, FmDesktopItem* item, GdkPixbuf* icon)
+ {
+-    PangoRectangle rc2;
++    PangoRectangle ink_rect, rc2;
+
+     /* icon rect */
+     if(icon)
+     {
+@@ -252,10 +255,10 @@
+-    pango_layout_get_pixel_extents(desktop->pl, NULL, &rc2);
++    pango_layout_get_pixel_extents(desktop->pl, &ink_rect, &rc2);
      pango_layout_set_text(desktop->pl, NULL, 0);
  
-     /* FIXME: RTL */
+-    /* FIXME: RTL */
++    /* Use the rendered layout origin and glyph bounds for symmetric padding. */
 -    item->text_rect.x = item->area.x + (desktop->cell_w - rc2.width - 4) / 2;
-+    item->text_rect.x = item->area.x + (desktop->cell_w - rc2.width - 8) / 2;
++    item->text_rect.x = item->area.x + (desktop->cell_w - desktop->pango_text_w / PANGO_SCALE) / 2 + ink_rect.x - 4;
      item->text_rect.y = item->area.y + desktop->ypad + fm_config->big_icon_size + desktop->spacing;
 -    item->text_rect.width = rc2.width + 4;
-+    item->text_rect.width = rc2.width + 8;
++    item->text_rect.width = ink_rect.width + 8;
      item->text_rect.height = rc2.y + rc2.height + 4;
      item->area.width = (desktop->cell_w + MAX(item->icon_rect.width, item->text_rect.width)) / 2;
      item->area.height = item->text_rect.y + item->text_rect.height - item->area.y;
@@ -49,7 +61,7 @@
  
      /* FIXME: do we need to cache this? */
 -    text_x = item->area.x + (self->cell_w - self->text_w)/2 + 2;
-+    text_x = item->area.x + (self->cell_w - self->text_w)/2;
++    text_x = item->area.x + (self->cell_w - self->pango_text_w / PANGO_SCALE) / 2;
      text_y = item->text_rect.y + 2;
  
      if(item->is_selected || item == self->drop_hilight) /* draw background for text label */
