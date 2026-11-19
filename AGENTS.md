@@ -1755,6 +1755,10 @@ must follow the general Slax repair rules above.
   tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
   and full persistent Slax boots before replacing it; do not overwrite it with an
   older published binary that lacks this fix. The storage format is unchanged.
+  The restore-deduplication development build adds `currentMatchesParent`
+  and `--no-auto-snapshots`; its source manifest and binary hashes are recorded in
+  `initramfs/static/README`. Upstream publication is separate from a requested
+  local Slax release; keep the development provenance explicit until it is published.
 - A saved-changes store can request one saved state for its next activation through
   `restore.txt`, beside `changes.dat`, containing its stable
   16-digit lowercase hexadecimal ID. Never source metadata as shell code or
@@ -1772,6 +1776,14 @@ must follow the general Slax repair rules above.
   Deferred keep-current intent is tied to the target ID and processed only at the
   next activation, after recovering and cleanly unmounting the old XFS, before
   actually restoring. There is no storage-specific shutdown hook.
+  Mount both restore preparation and restoration with `--no-auto-snapshots`;
+  enable automatic points only after publishing the new run's durable starting guard.
+  After recovery, `currentMatchesParent` permits reusing an identical manual point
+  without changing its label, or promoting an automatic/owned guard by stable ID.
+  Otherwise create one `Before restoring <target name>` point, using a numeric
+  collision suffix and UTF-8-safe truncation to 250 bytes. Journal the final name,
+  planned ID and original name in `keep-current.ID` before create/rename; a reserved
+  new ID alone is not proof that a later point belongs to the interrupted operation.
   DynFileFS's `protect ID` / `unprotect ID` controls keep restore targets safe through
   final automatic pruning, independent of the desktop service's lifetime. Protect
   the confirmed target before publishing its durable request.
@@ -1917,9 +1929,11 @@ must follow the general Slax repair rules above.
   enable the container's switch only with a verified durable starting guard.
   Don't save also disables DynFileFS automatic snapshots for that run. Disable
   the engine before publishing discard; publish save durably before enabling it.
-  Reconcile the runtime automaticSnapshots setting from run.txt after broker
-  restart. Boot restores the selected point or discard guard before DynFileFS
-  can create a startup point. Explicit manual points remain intentional saves.
+  Reconcile the runtime automaticSnapshots setting from run.txt and the pending
+  restore after broker restart. A confirmed restore disables automatic end points;
+  cancelling it reinstates the confirmed run's save policy. Boot restores the
+  selected point or discard guard before DynFileFS can create a startup point.
+  Explicit manual points remain intentional saves.
   Keep this independent of shutdown hooks; an interrupted run must also discard.
   Keep immutable file views read-only with XFS norecovery/nouuid or ext4 noload.
   Open saved filesystem roots through a separate slax-status --open-files helper

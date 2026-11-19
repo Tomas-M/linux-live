@@ -177,8 +177,11 @@ BOOT AND PERSISTENCE
   in use may be kept longer.
   Named states remain until explicitly deleted. Normal startup continues the
   saved current state unless a restore or discard was requested.
-  Before restoring, Slax retains the previous state as a saved state
-  when saving is enabled. With Don't save selected, it does not retain that run
+  Before restoring with saving enabled, Slax retains the recovered previous state
+  as Before restoring <target name>. An identical existing state is reused;
+  automatic states become permanent, and manually named states keep their names.
+  This restore does not add an intermediate automatic state.
+  With Don't save selected, it does not retain that run
   as an automatic state. Existing saved history stays available.
   Fresh start at boot and restoring Initial state return to the original Slax
   while keeping existing saved states.

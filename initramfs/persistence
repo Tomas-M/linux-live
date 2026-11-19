@@ -291,44 +291,85 @@ policy_guard()
    printf '%s\n' "$ID"
 }
 
-# Preserve recovered current data before restoration; the caller holds --protect ID.
+# Fit generated labels in DynFileFS's byte limit without splitting a UTF-8 character.
+# $1 = full label, $2 = optional collision suffix
+policy_label()
+{
+   printf '%s\n' "$1" | LC_ALL=C awk -v suffix="${2:-}" '
+      BEGIN {for (i=128;i<192;i++) continuation=continuation sprintf("%c",i)}
+      {name=$0; limit=250-length(suffix)
+       if (length(name)>limit) {
+          limit-=3; while (index(continuation,substr(name,limit+1,1))) limit--
+          name=substr(name,1,limit); sub(/[ .]+$/,"",name); name=name "…"
+       }
+       print name suffix}
+   '
+}
+
+# Preserve one recovered state, reusing identical history and journaling rename ownership.
 # $1 = changes directory containing the restore request and previous run policy
 # $2 = mounted DynFileFS directory whose current data may need to be preserved
 policy_prepare()
 {
-   local PROFILE MOUNT ID INTENT LABEL SAVED LIVE RUN COUNT POINTS
+   local PROFILE MOUNT ID INTENT LABEL SAVED LIVE RUN COUNT POINTS TARGET ORIGINAL STATS MATCH OWNER
    PROFILE="$1"; MOUNT="$2"
    RUN=$(policy_run "$PROFILE") || return 1
    if [ "$RUN" = "" -o "${RUN#* }" = discard ]; then return 0; fi
    if [ ! -e "$PROFILE/restore.txt" ] && [ ! -L "$PROFILE/restore.txt" ]; then return 0; fi
    ID=$(policy_read "$PROFILE/restore.txt") || return 1
    policy_id "$ID" || return 1
-   policy_name "$PROFILE" "$ID" "$MOUNT" >/dev/null || return 1
+   TARGET=$(policy_name "$PROFILE" "$ID" "$MOUNT") || return 1
    INTENT="$PROFILE/keep-current.$ID"
-   if [ ! -e "$INTENT" ] && [ ! -L "$INTENT" ]; then
-      LABEL="Before restore $(date -u '+%Y-%m-%d %H-%M-%S')"
+   ORIGINAL=""; SAVED=""; LIVE=""
+   if [ -e "$INTENT" ] || [ -L "$INTENT" ]; then
+      LABEL=$(policy_read "$INTENT") || return 1
+      SAVED=$(printf '%s\n' "$LABEL" | sed -n 2p)
+      ORIGINAL=$(printf '%s\n' "$LABEL" | sed -n 3p)
+      LABEL=$(printf '%s\n' "$LABEL" | sed -n 1p)
+      if policy_id "$SAVED"; then LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || LIVE=""; fi
+      if [ "$LABEL" != "" -a "$LIVE" = "$LABEL" ]; then return 0; fi
+   fi
+
+   # A recorded source name distinguishes a pending promotion from a consumed new-ID reservation.
+   if [ "$ORIGINAL" = "" -o "$LIVE" != "$ORIGINAL" ]; then
+      ORIGINAL=""
+      STATS=$(cat "$MOUNT/stats") || return 1
+      MATCH=$(printf '%s\n' "$STATS" | sed -n 's/.*"currentMatchesParent":\(true\|false\).*/\1/p')
+      if [ "$MATCH" = true ]; then
+         SAVED=$(printf '%s\n' "$STATS" | sed -n 's/.*"currentParent":"\([0-9a-f]*\)".*/\1/p')
+         policy_id "$SAVED" || return 1
+         ORIGINAL=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || return 1
+      elif [ "$MATCH" = false ]; then
+         SAVED=$(policy_next_id "$MOUNT") || return 1
+      else
+         echo '* Changes storage does not report snapshot equality.' >&2
+         return 1
+      fi
+   fi
+
+   OWNER=""
+   if [ -e "$PROFILE/guard.$SAVED" ] || [ -L "$PROFILE/guard.$SAVED" ]; then OWNER=$(policy_read "$PROFILE/guard.$SAVED") || return 1; fi
+   # Preserve user labels; only automatic points and our own starting guards are promoted.
+   if [ "$ORIGINAL" != "" -a "${ORIGINAL#auto-}" = "$ORIGINAL" -a "$OWNER" != "$ORIGINAL" ]; then
+      LABEL="$ORIGINAL"
+   else
+      if [ "${TARGET#auto-}" != "$TARGET" ]; then TARGET='Automatically saved state'; fi
+      LABEL=$(policy_label "Before restoring $TARGET") || return 1
       POINTS=$(cat "$MOUNT/snapshot") || return 1
       COUNT=1
       while printf '%s\n' "$POINTS" | grep -qFx "$LABEL"; do
          COUNT=$((COUNT + 1))
-         LABEL="Before restore $(date -u '+%Y-%m-%d %H-%M-%S') ($COUNT)"
+         LABEL=$(policy_label "Before restoring $TARGET" " ($COUNT)") || return 1
       done
-      policy_write "$INTENT" "$LABEL" || return 1
    fi
-   if [ -e "$INTENT" ] || [ -L "$INTENT" ]; then
-      LABEL=$(policy_read "$INTENT") || return 1
-      SAVED=$(printf '%s\n' "$LABEL" | sed -n 2p)
-      LABEL=$(printf '%s\n' "$LABEL" | sed -n 1p)
-      LIVE=""
-      if policy_id "$SAVED"; then LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || LIVE=""; fi
-      if [ "$LIVE" != "$LABEL" -o "$LABEL" = "" ]; then
-         SAVED=$(policy_next_id "$MOUNT") || return 1
-         policy_write "$INTENT" "$LABEL" "$SAVED" || return 1
-         if ! printf 'create %s\n' "$LABEL" > "$MOUNT/snapshot"; then return 1; fi
-         LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || return 1
-         if [ "$LIVE" != "$LABEL" ]; then return 1; fi
-      fi
+   policy_write "$INTENT" "$LABEL" "$SAVED" "$ORIGINAL" || return 1
+   if [ "$ORIGINAL" = "" ]; then
+      if ! printf 'create %s\n' "$LABEL" > "$MOUNT/snapshot"; then return 1; fi
+   elif [ "$ORIGINAL" != "$LABEL" ]; then
+      if ! printf 'rename %s %s\n' "$SAVED" "$LABEL" > "$MOUNT/snapshot"; then return 1; fi
    fi
+   LIVE=$(policy_name "$PROFILE" "$SAVED" "$MOUNT") || return 1
+   if [ "$LIVE" != "$LABEL" ]; then return 1; fi
 }
 
 # Start policy is published before consuming the request or releasing previous guards.
@@ -341,6 +382,7 @@ policy_start()
    INITIAL=$(policy_initial "$1" "$2") || return 1
    ID=$(policy_guard "$1" "$2") || return 1
    policy_write "$1/run.txt" "$ID" save || return 1
+   printf 'autosnapshot on\n' > "$2/snapshot" || return 1
    policy_clear "$1/restore.txt" || return 1
    for FILE in "$1"/keep-current.*; do
       if [ -e "$FILE" ] || [ -L "$FILE" ]; then policy_clear "$FILE" || return 1; fi
