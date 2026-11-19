@@ -395,7 +395,7 @@ policy_start()
    printf '%s\n' "$ID"
 }
 
-if [ "$#" -lt 2 ] || ! printf '%s\n' "$1" | grep -qE '^(create|initial|closed|detach|select|mark|initialize|target|run|start|prepare|save)$'; then exit 1; fi
+if [ "$#" -lt 2 ] || ! printf '%s\n' "$1" | grep -qE '^(create|initial|closed|detach|select|mark|initialize|target|run|start|prepare|save|open|close|enable)$'; then exit 1; fi
 if [ "$1" != closed -a "$1" != detach ]; then
    @mount.dynfilefs --metadata "$2/.persistence" recover || exit 1
 fi
@@ -403,6 +403,9 @@ fi
 if [ "$1" = create ]; then policy_create "$2" "$3"
 elif [ "$1" = initial ]; then policy_initial "$2" "${3:-}"
 elif [ "$1" = closed ]; then policy_closed "$2"
+elif [ "$1" = open ]; then policy_write "$2/active.txt" 'Saved changes have not been closed.'
+elif [ "$1" = close ]; then policy_closed "$2" && policy_clear "$2/active.txt"
+elif [ "$1" = enable ]; then policy_clear "$2/active.txt"
 elif [ "$1" = detach ]; then policy_detach "$2"
 elif [ "$1" = select ]; then policy_select "$2" "$3"
 elif [ "$1" = mark ]; then policy_mark "$2" "${3:-}"

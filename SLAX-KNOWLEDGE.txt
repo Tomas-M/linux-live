@@ -143,6 +143,9 @@ BOOT AND PERSISTENCE
   session. Slax Status also works as guest; other administrative tasks require root.
   Text mode retains nomodeset for emergency graphics; when only a firmware
   framebuffer is available, startx uses it and the resolution may be fixed.
+- If saved changes were not closed properly, acknowledge the boot warning to
+  continue with changes in RAM. Check the drive, then select it in Slax Status
+  and choose Enable and restart to re-enable its saved changes.
 - Saved changes use slax/changes/changes.dat directly on the selected drive,
   including on Linux filesystems. DynFileFS grows its data parts as needed;
   all files beside changes.dat and its snapshots directory belong together.

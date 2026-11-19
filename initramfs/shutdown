@@ -116,7 +116,7 @@ while true; do
    umount_all /memory
 
    if [ "$CLOSING_STORAGE" != "" ] && ! mountpoint -q "$CLOSING_FUSE"; then
-      if persistence closed "$CLOSING_STORAGE"; then
+      if persistence close "$CLOSING_STORAGE"; then
          CLOSING_STORAGE=""
          BACKING_MOUNT=""
          continue

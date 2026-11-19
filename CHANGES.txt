@@ -5,6 +5,8 @@ Linux Live Kit
 --------------
 
 - Increase the generated fstab device timeout from 10 to 30 seconds.
+- Mark active saved changes durably and use RAM after an interrupted shutdown,
+  retaining the marker until clean closure or explicit re-enablement.
 - Link every available BusyBox applet in initramfs, including strings, using
   the complete applet list instead of parsing formatted help output.
 - Include common vendor HID keyboard drivers and Apple SPI keyboards with their
@@ -44,6 +46,7 @@ Linux Live Kit
 Slax
 ----
 
+- Re-enable interrupted saved changes through Slax Status's existing drive setup.
 - Keep selected desktop icon captions equally padded on both sides.
 - Sharpen the Slax Status application icon and bring its drive symbols closer together.
 - Keep Slax Status saving and restore choices consistent with boot recovery after
