@@ -1054,21 +1054,21 @@ perch_directory()
 }
 
 
-# Refuse an interrupted run before opening its container; only explicit setup clears the marker.
+# Record an interrupted run for desktop recovery without opening its container or stopping boot.
 # $1 = changes directory to inspect, returning 3 when this boot must use RAM
 perch_clean()
 {
-   local NOTICE ERROR
+   local DIR
    if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then
       if [ -d "$1" ]; then @mount.dynfilefs --metadata "$1/.persistence" recover || return 2; fi
       if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then return 0; fi
    fi
-   NOTICE=$(mktemp /tmp/unclean-changes.XXXXXX) || return 2
-   printf 'ram\tContinue in RAM\tCheck the drive before re-enabling saved changes\n' > "$NOTICE"
-   ERROR=0
-   fbmenu --menu "Saved changes on $(mounted_device "$1") were not closed properly" "$NOTICE" >/dev/null || ERROR=$?
-   rm -f "$NOTICE"
-   if [ "$ERROR" != 0 ]; then return 2; fi
+   DIR=$(mounted_dir "$1")
+   mkdir -p "$MEMORY/storage/unclean" || return 2
+   printf '%s' "${1#"$DIR/"}" > "$MEMORY/storage/unclean/path"
+   blkid -s UUID -o value "$(mounted_device "$1")" > "$MEMORY/storage/unclean/uuid"
+   device_bestfs "$(mounted_device "$1")" > "$MEMORY/storage/unclean/filesystem"
+   mounted_device "$1" > "$MEMORY/storage/unclean/device"
    echo '* Saved changes were not closed properly; using RAM for changes' >&2
    return 3
 }
@@ -1368,23 +1368,46 @@ copy_to_ram()
 {
    debug_log "copy_to_ram" "$*"
 
-   local MDIR MDEV RAM CHANGES LOOP
+   local MDIR MDEV RAM CHANGES LOOP DEVICE ITEM REQUIRED AVAILABLE AUTO
 
-   if grep -vq toram /proc/cmdline; then
+   MDIR="$(mounted_dir "$1")"
+   LOOP="$(mounted_device "$1")"
+   MDEV="$(losetup "$LOOP" 2>/dev/null | sed 's/^[^ ]* [^ ]* //')"
+   AUTO=false
+   CHANGES=""
+   if [ -f "$MEMORY/storage/unclean/device" ]; then
+      if perch_device_blocked "$LOOP" || { [ "$MDEV" != "" ] && perch_device_blocked "$(mounted_device "$MDEV")"; }; then
+         AUTO=true
+         CHANGES="$MDIR/$(cat "$MEMORY/storage/unclean/path")"
+      fi
+   fi
+   if grep -vq toram /proc/cmdline && [ "$AUTO" = false ]; then
       echo "$1"
       return
    fi
 
+   # Free the affected boot filesystem for offline repair; never copy its saved changes.
+   if [ "$AUTO" = true ]; then
+      REQUIRED=0
+      for ITEM in "$1"/*; do
+         if [ "$ITEM" != "$CHANGES" ]; then REQUIRED=$((REQUIRED + $(du -sk "$ITEM" | cut -f 1))); fi
+      done
+      AVAILABLE=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+      if [ "$AVAILABLE" -lt "$((REQUIRED + 262144))" ]; then echo "$1"; return; fi
+   fi
    echo "* Copying $LIVEKITNAME data to RAM..." >&2
    RAM="$(dirname "$2")"/toram
    mkdir  -p "$RAM"
-   cp -a "$1"/* "$RAM"
+   for ITEM in "$1"/*; do
+      if [ "$ITEM" = "$CHANGES" ]; then continue; fi
+      if ! cp -a "$ITEM" "$RAM"; then
+         rm -r "$RAM"
+         echo "$1"
+         return
+      fi
+   done
    echo "$RAM"
 
-   MDIR="$(mounted_dir "$1")"
-   LOOP="$(mounted_device "$1")"
-   # BusyBox prints the backing filename after the device and offset fields.
-   MDEV="$(losetup "$LOOP" 2>/dev/null | sed 's/^[^ ]* [^ ]* //')"
    if umount "$MDIR" 2>/dev/null; then
       if [ "$MDEV" ]; then
          losetup -d "$LOOP" 2>/dev/null
@@ -1392,6 +1415,24 @@ copy_to_ram()
          umount "$MDIR" 2>/dev/null
       fi
    fi
+}
+
+
+# Keep all members of an interrupted Btrfs filesystem out of automatic mounts.
+# $1 = block device
+#
+perch_device_blocked()
+{
+   local RECORD UUID
+
+   for RECORD in device checked-device; do
+      if [ -f "$MEMORY/storage/unclean/$RECORD" ] && [ "$(cat "$MEMORY/storage/unclean/$RECORD")" = "$1" ]; then return 0; fi
+   done
+   if [ -f "$MEMORY/storage/unclean/filesystem" ] && [ "$(cat "$MEMORY/storage/unclean/filesystem")" = btrfs ]; then
+      UUID=$(cat "$MEMORY/storage/unclean/uuid")
+      if [ "$UUID" != "" ] && [ "$(blkid -p -s UUID -o value "$1" 2>/dev/null)" = "$UUID" ]; then return 0; fi
+   fi
+   return 1
 }
 
 
@@ -1497,6 +1538,7 @@ fstab_create()
 
    blkid | grep -v "^/dev/loop" | grep -v "^/dev/zram" | cut -d: -f 1 | while read DEVICE; do
       if device_is_efi "$DEVICE"; then continue; fi
+      if perch_device_blocked "$DEVICE"; then continue; fi
       LABEL="$(basename $DEVICE)"
       # A hybrid image also exposes its partition's filesystem on the whole disk.
       if ls "/sys/class/block/$LABEL"/*/partition >/dev/null 2>&1; then

@@ -13,6 +13,8 @@
 # $SUBSYSTEM (eg: block)
 
 PATH=$PATH:/usr/bin:/usr/sbin:/bin:/sbin
+. /run/initramfs/lib/livekitlib
+MEMORY=/run/initramfs/memory
 
 # A transient systemd service receives the device event from the udev rule.
 ACTION=$1
@@ -52,6 +54,8 @@ fi
 
 
 if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
+   # Keep the checked filesystem unmounted until the user chooses to restart.
+   if perch_device_blocked "$DEVNAME"; then exit; fi
    if [ ! -b "$DEVNAME" ]; then
       exit
    fi
@@ -68,6 +72,8 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
    if [ ! -b "$DEVNAME" ]; then
       exit
    fi
+
+   if perch_device_blocked "$DEVNAME"; then exit; fi
 
    # Mount the partitions, not a whole disk with a duplicate filesystem signature.
    if ls "/sys/class/block/$BAS"/*/partition >/dev/null 2>&1; then

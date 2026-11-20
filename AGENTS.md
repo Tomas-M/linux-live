@@ -394,8 +394,9 @@ must follow the general Slax repair rules above.
 - Active disk: `VM/virtualbox/debian-work.vdi`. Never remove it when cleaning
   test files. Shut the work VM down normally before host restart.
 - Slax boot test uses `VM/virtualbox/Slax boot test/slax-persistence-qa.vdi`, a
-  dedicated dynamic 20 GiB GPT disk with two equal 10,736,369,664-byte partitions:
-  FAT32 (`SLAX-FAT`) and ext4 (`SLAX-EXT`). Both hold persistence test histories.
+  dedicated dynamic 20 GiB disk. Tomas may repartition it during installer tests;
+  inspect its actual partition table and filesystems instead of assuming the old
+  FAT32/ext4 layout. It currently has two FAT32 partitions and saved changes on the first.
   Preserve the active desktop, histories and save/next-start policy during UI-only
   testing. The older `Slax boot test_1.vdi` is inactive and remains unattached.
 - This is a dynamic 64 GB VDI. For compaction, preserve the work VM's tmpfs:
@@ -1729,11 +1730,31 @@ must follow the general Slax repair rules above.
 - Create active.txt durably before activating saved changes and retain it until
   XFS and DynFileFS finish closing during normal shutdown. An existing marker
   blocks the selected store before container recovery or saved-state selection:
-  acknowledge the boot warning with Enter and continue in RAM without changing
-  the marker or falling back to another store. Slax Status's confirmed drive
-  setup clears it durably through the shared helper, keeping its current UI.
-  Re-enablement is the user's explicit decision after checking the drive;
-  mounting alone neither proves repair nor clears the marker.
+  continue in RAM without waiting for input, changing the marker or falling back
+  to another store. Record device, UUID, filesystem and relative changes path
+  under `/memory/storage/unclean`, available at `/run/initramfs` after pivot.
+  Slax Status notifies after docking and offers a confirmed offline repair.
+  Lock and revalidate the original device, unmount normally, use native FAT,
+  exFAT, ext2/3/4 or XFS tools and require a successful final read-only check.
+  Only then clear active.txt durably, finish unmounting and offer a normal reboot.
+  Keep merged stdout and stderr in `/run/slax-status/fsck.log` and show it live
+  in a scrolling, resizable GTK window, retained after completion. Publish a new
+  log inode per job so the viewer never shows an earlier job's report. Recovery
+  buttons in both bubbles use the ordinary theme, without the green action class.
+  Failures retain the block.
+  After success rename the runtime device record to checked-device so automount
+  leaves the drive unmounted until reboot, without reopening a file manager over
+  the restart offer.
+  Do not substitute ntfsfix, fsck.xfs or fsck.btrfs for a real completed check,
+  force unmounts or discard XFS logs. Use `btrfs check --readonly --progress`
+  first; offer `--repair` only after the failed check, log review and a separate
+  destructive confirmation with Cancel as default. Require a clean final check.
+  Lock and revalidate every Btrfs member and reject missing or ambiguous members.
+  NTFS only explains repair in Windows; do not run partial Linux NTFS repairs.
+  Skip automounting the interrupted device and every member sharing its Btrfs
+  UUID, including after successful repair. If it also backs live data, copy
+  the source to RAM when memory allows, excluding its changes directory;
+  otherwise report a busy filesystem instead of repairing a mounted boot source.
 - Fresh start restores the protected, formatted Initial state. It never erases
   a store or its history. Before restoring a point, retain the previous current
   state as a manual point only if run.txt does not request discard. An explicit
@@ -1754,8 +1775,9 @@ must follow the general Slax repair rules above.
   keeps its allocation, including padded deleted-state records. Older 6.02 binaries
   cannot safely reopen these stores. Keep graphical saved state controls in Slax.
   Finish the DynFileFS daemon before unmounting its backing filesystem, and finish
-  all unmounts before poweroff. Do not add filesystem-specific dirty probes or repair
-  prompts; recovery of a backing filesystem damaged by a hard reset is outside this flow.
+  all unmounts before poweroff. Detect interrupted runs through Slax's active.txt,
+  not filesystem-specific dirty probes; backing-filesystem repair belongs to the
+  confirmed Slax Status flow above, not DynFileFS recovery.
   The published binary at commit `72389fb` includes the DynFileFS source fix for
   `pivot_root`: backing files and the FUSE parent use retained directory handles,
   preserving writes, saved states, automatic freezing and clean unmount across

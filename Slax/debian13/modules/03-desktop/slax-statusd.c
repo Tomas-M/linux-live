@@ -42,6 +42,7 @@ static char *active_path,*run_start,*run_error;
 static gboolean recovered;
 static gboolean save_run(Store *store, gboolean save, GError **error);
 static void recover_mounts(void);
+static JsonObject *repair_state(void);
 
 /* Use structured errors throughout IPC; command stderr remains ordinary text. */
 static gboolean fail(GError **error, int code, const char *message)
@@ -559,46 +560,56 @@ static char *device_text(const char *device, const char *label)
 }
 
 /* The discovery report also contains optical labels, without probing devices on each tray poll. */
-static const char *device_label(JsonArray *items, const char *device)
+static const char *device_value(JsonArray *items, const char *device, const char *field)
 {
    for (guint i=0;items && i<json_array_get_length(items);i++)
    {
       JsonObject *item=json_array_get_object_element(items,i);
-      if (!g_strcmp0(string(item,"name"),device)) return string(item,"label");
+      if (!g_strcmp0(string(item,"name"),device)) return string(item,field);
       JsonArray *children=json_object_has_member(item,"children") ? json_object_get_array_member(item,"children") : NULL;
-      const char *label=device_label(children,device); if (label) return label;
+      const char *value=device_value(children,device,field); if (value) return value;
    }
    return NULL;
 }
 
 /* Determine current source from the mounted module backing, never from the original boot device. */
-static char *source(void)
+static char *source(const char **icon)
 {
+   *icon="";
    char *path=read_file(BOOT "/source",NULL);
    if (!path) return g_strdup("Live system");
    g_strchomp(path);
-   if (strstr(path,"/memory/toram")) { g_free(path); return g_strdup("RAM"); }
-   FILE *table=setmntent("/proc/self/mounts","r"); struct mntent *entry; char *device=NULL; size_t best=0;
+   if (strstr(path,"/memory/toram")) { *icon="memory"; g_free(path); return g_strdup("RAM"); }
+   FILE *table=setmntent("/proc/self/mounts","r"); struct mntent *entry; char *device=NULL; size_t best=0; gboolean image=FALSE;
    while (table && (entry=getmntent(table)))
    {
       size_t length=strlen(entry->mnt_dir);
       if (length>best && g_str_has_prefix(path,entry->mnt_dir) && (!path[length] || path[length]=='/'))
-      { g_free(device); device=g_strdup(entry->mnt_fsname); best=length; }
+      { g_free(device); device=g_strdup(entry->mnt_fsname); best=length; *icon="hard-drive"; image=!strcmp(entry->mnt_type,"iso9660") || !strcmp(entry->mnt_type,"udf"); }
    }
    if (table) endmntent(table);
-   if (device && g_str_has_prefix(device,"/dev/loop"))
+   if (image && device && g_str_has_prefix(device,"/dev/loop"))
    {
+      *icon="compact-disc";
       char *name=g_path_get_basename(device),*sys=g_build_filename("/sys/class/block",name,"loop/backing_file",NULL),*backing=NULL;
       if (g_file_get_contents(sys,&backing,NULL,NULL)) { g_strchomp(backing); g_free(path); path=g_strdup_printf("ISO · %s",backing); }
       g_free(backing); g_free(sys); g_free(name);
    }
-   else if (device) { g_free(path); path=device_text(device,device_label(block_devices,device)); }
+   else if (device)
+   {
+      if (!g_strcmp0(device_value(block_devices,device,"type"),"rom")) *icon="compact-disc";
+      g_free(path); path=device_text(device,device_value(block_devices,device,"label"));
+   }
    g_free(device); return path;
 }
 
 /* New stores must be reachable at normal early boot, without mounting or unlocking extra devices. */
 static const char *setup_reason(Drive *drive)
 {
+   JsonObject *repair=repair_state();
+   gboolean interrupted=repair && !g_strcmp0(string(repair,"device"),drive->device);
+   if (repair) json_object_unref(repair);
+   if (interrupted) return "Check this filesystem before enabling saved changes";
    if (!drive->writable) return "Read-only drive";
    if (!drive->uuid || !*drive->uuid) return "This filesystem has no stable UUID";
    const char *supported[]={"vfat","exfat","ntfs","ntfs3","ext2","ext3","ext4","xfs","btrfs"};
@@ -701,7 +712,9 @@ static JsonObject *state(GError **error)
       json_object_set_int_member(object,"freeBytes",store->drive->free); json_object_set_int_member(object,"totalBytes",store->drive->total); json_object_set_int_member(object,"reusableBytes",store->reusable);
       json_array_add_object_element(ps,object);
    }
-   char *where=source(); json_object_set_string_member(run,"source",where); g_free(where);
+   const char *source_icon=NULL; char *where=source(&source_icon); json_object_set_string_member(run,"source",where); g_free(where);
+   json_object_set_string_member(run,"sourceIcon",source_icon);
+   json_object_set_string_member(run,"storageIcon",active ? active->drive->icon : "memory");
    nullable(run,"storeId",active ? active->id : NULL); json_object_set_string_member(run,"kind",active ? "container" : "ram");
    char *storage=active ? device_text(active->drive->device,active->drive->label) : g_strdup("RAM");
    json_object_set_string_member(run,"storage",storage); g_free(storage); nullable(run,"startId",run_start);
@@ -723,6 +736,8 @@ static JsonObject *state(GError **error)
       json_object_set_string_member(object,"id",view->id); json_object_set_string_member(object,"storeId",view->store); json_object_set_string_member(object,"pointId",view->point); json_object_set_string_member(object,"path",view->path); json_array_add_object_element(vs,object);
    }
    json_object_set_array_member(result,"drives",ds); json_object_set_array_member(result,"stores",ps); json_object_set_array_member(result,"views",vs); json_object_set_object_member(result,"run",run);
+   JsonObject *repair=repair_state();
+   if (repair) json_object_set_object_member(result,"recovery",repair);
    return result;
 }
 
@@ -1001,6 +1016,8 @@ static gboolean prepare_restart(Store *store, JsonObject *request, GError **erro
 }
 
 
+#include "slax-status-repair.h"
+
 /* Mutations share one worker lock; requests never provide privileged filesystem paths. */
 static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **error)
 {
@@ -1018,6 +1035,7 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       return json_object_new();
    }
    if (restart_request) { fail(error,EBUSY,"Slax is preparing to restart."); return NULL; }
+   if (!strcmp(op,"storage.repair")) return repair_filesystem(boolean(request,"repair"),error);
    if (!strcmp(op,"storage.prepare")) return prepare_setup(request,error) ? json_object_new() : NULL;
    if (!strcmp(op,"restart.prepare"))
    {

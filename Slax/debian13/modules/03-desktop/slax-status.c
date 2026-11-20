@@ -8,6 +8,7 @@
 #include <X11/Xatom.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <math.h>
 #include <string.h>
@@ -17,7 +18,7 @@ typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
 typedef struct { GtkWidget *choice, *help; } RestoreChoice;
-typedef struct { GtkWidget *text, *memory; } Location;
+typedef struct { GtkWidget *text, *icon; } Location;
 static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
 static char *selected, *selected_point, *history_store, *history_signature;
@@ -35,6 +36,7 @@ static Location manager_source, manager_storage, popup_source, popup_storage;
 static GtkWidget *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_status, *notice_title, *notice_message, *show_removed;
+static GtkWidget *popup_recovery,*popup_repair,*notice_repair,*notice_review,*notice_snooze;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
 static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
@@ -64,6 +66,10 @@ static void action(GtkButton *button, gpointer data);
 static void name_dialog(gboolean rename);
 static void restart_done(GObject *source, GAsyncResult *result, gpointer data);
 static void restart_failed(const char *detail);
+static void start_restart(void);
+static void repair_completed(JsonObject *result);
+static void repair_failed(const char *detail);
+static gboolean confirm(const char *title, const char *question, const char *text, const char *accept);
 
 /* Optional JSON values stay absent instead of acquiring guessed UI state. */
 static const char *str(JsonObject *object, const char *key)
@@ -181,6 +187,7 @@ static void message(const char *title, const char *text)
     GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,
         GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_ERROR,GTK_BUTTONS_CLOSE,"%s",title);
     gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),title);
+    if (!gtk_widget_get_visible(manager)) gtk_window_set_position(GTK_WINDOW(dialog),GTK_WIN_POS_CENTER);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s",text);
     gtk_dialog_run(GTK_DIALOG(dialog));gtk_widget_destroy(dialog);
 }
@@ -215,6 +222,11 @@ static gboolean valid_reply(JsonObject *reply, const char *op, GError **error)
     {
         JsonArray *stores=array(value,"stores"),*drives=array(value,"drives");
         if (!object(value,"run") || !stores || !drives) goto invalid;
+        const char *location_icons[]={"","memory","compact-disc","hard-drive","usb","layer-group","server",NULL};
+        JsonObject *current=object(value,"run"),*recovery=object(value,"recovery");
+        if (!status_text(current,"sourceIcon") || !g_strv_contains(location_icons,str(current,"sourceIcon"))) goto invalid;
+        if (!status_text(current,"storageIcon") || !g_strv_contains(location_icons,str(current,"storageIcon"))) goto invalid;
+        if (recovery && (!status_text(recovery,"device") || !status_text(recovery,"filesystem") || !status_text(recovery,"error") || !status_value(recovery,"canRepair",G_TYPE_BOOLEAN))) goto invalid;
         for (guint i=0;i<count(stores);i++)
             if (!JSON_NODE_HOLDS_OBJECT(json_array_get_element(stores,i))) goto invalid;
         const char *fields[]={"id","device","label","path","filesystem","icon","setupError"};
@@ -246,7 +258,7 @@ static void request_worker(GTask *task, gpointer source, gpointer task_data, GCa
     Request *request=task_data;
     GError *error=NULL;
     GSocketClient *client=g_socket_client_new();
-    g_socket_client_set_timeout(client,120);
+    g_socket_client_set_timeout(client,!strcmp(request->op,"storage.repair") ? 0 : 120);
     GSocketAddress *address=g_unix_socket_address_new("/run/slax-status/socket");
     GSocketConnection *connection=g_socket_client_connect(client,G_SOCKET_CONNECTABLE(address),cancel,&error);
     g_object_unref(address);g_object_unref(client);
@@ -324,7 +336,8 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     else if (failed)
     {
         const char *detail=error ? error->message : str(object(reply,"error"),"message");
-        if (request->mutation) message("The action could not be completed",detail);
+        if (!strcmp(request->op,"storage.repair")) repair_failed(detail);
+        else if (request->mutation) message("The action could not be completed",detail);
         else if (!strcmp(request->op,"state")) {g_free(connection_error);connection_error=g_strdup(detail);}
         else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
         {
@@ -364,11 +377,9 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
         {
             if (!strcmp(request->op,"restart.prepare") || !strcmp(request->op,"storage.prepare"))
             {
-                GError *launch_error=NULL;
-                restart_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&launch_error,"systemctl","reboot",NULL);
-                if (restart_process) g_subprocess_communicate_utf8_async(restart_process,NULL,NULL,restart_done,NULL);
-                else {restart_failed(launch_error->message);g_clear_error(&launch_error);}
+                start_restart();
             }
+            if (!strcmp(request->op,"storage.repair")) repair_completed(value);
             if (!strcmp(request->op,"point.create")) {g_free(selected_point);selected_point=g_strdup(str(value,"pointId"));}
             if (!strcmp(request->op,"point.delete")) g_clear_pointer(&selected_point,g_free);
             if (!strcmp(request->op,"run.save")) json_object_set_boolean_member(run(),"save",flag(request->request,"save"));
@@ -448,15 +459,18 @@ static GtkWidget *location_row(const char *heading, Location *value)
     GtkWidget *row=box(GTK_ORIENTATION_HORIZONTAL,12),*name=label(heading,"muted");
     gtk_widget_set_size_request(name,98,-1);pack(row,name,FALSE);
     GtkWidget *content=box(GTK_ORIENTATION_HORIZONTAL,6);
-    value->memory=gtk_image_new_from_icon_name("slax-status-memory-symbolic",GTK_ICON_SIZE_MENU);
-    gtk_image_set_pixel_size(GTK_IMAGE(value->memory),16);gtk_widget_set_no_show_all(value->memory,TRUE);
-    pack(content,value->memory,FALSE);value->text=label("Loading…",NULL);pack(content,value->text,TRUE);pack(row,content,TRUE);return row;
+    value->icon=gtk_image_new_from_icon_name("slax-status-memory-symbolic",GTK_ICON_SIZE_MENU);gtk_image_set_pixel_size(GTK_IMAGE(value->icon),16);gtk_widget_set_no_show_all(value->icon,TRUE);
+    pack(content,value->icon,FALSE);value->text=label("Loading…",NULL);pack(content,value->text,TRUE);pack(row,content,TRUE);return row;
 }
 
-/* Share the RAM chip beside source and changes values in both views. */
-static void set_location(Location *location, const char *text)
+/* Source and changes locations share the same device artwork in both views. */
+static void set_location(Location *location, const char *text, const char *icon)
 {
-    set_label(location->text,text);gtk_widget_set_visible(location->memory,!strcmp(text,"RAM"));
+    set_label(location->text,text);
+    char *name=g_strdup_printf("slax-status-%s-symbolic",icon);
+    const char *current=NULL;gtk_image_get_icon_name(GTK_IMAGE(location->icon),&current,NULL);
+    if (g_strcmp0(current,name)) gtk_image_set_from_icon_name(GTK_IMAGE(location->icon),name,GTK_ICON_SIZE_MENU);
+    gtk_widget_set_visible(location->icon,*icon!=0);g_free(name);
 }
 
 /* Let GTK's requested position wait for the asynchronous, durable policy update. */
@@ -614,7 +628,9 @@ static void make_popups(void)
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
     pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
-    gtk_widget_set_margin_top(popup_source.memory,1);gtk_widget_set_margin_top(popup_storage.memory,1);
+    gtk_widget_set_margin_top(popup_source.icon,1);gtk_widget_set_margin_top(popup_storage.icon,1);
+    popup_recovery=box(GTK_ORIENTATION_VERTICAL,8);pack(popup_recovery,paragraph("The previous run was not shut down properly. Changes are in RAM."),FALSE);
+    popup_repair=button("Check and repair…",NULL,"repair");pack(popup_recovery,popup_repair,FALSE);pack(popup.body,popup_recovery,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_halign(capacity,GTK_ALIGN_END);
     GtkWidget *available_label=label("available",NULL);gtk_widget_set_valign(available_label,GTK_ALIGN_END);gtk_widget_set_margin_bottom(available_label,4);pack(capacity,available_label,FALSE);
@@ -636,9 +652,14 @@ static void make_popups(void)
     notice_message=gtk_label_new("");gtk_label_set_xalign(GTK_LABEL(notice_message),0);gtk_label_set_line_wrap(GTK_LABEL(notice_message),TRUE);
     gtk_label_set_line_wrap_mode(GTK_LABEL(notice_message),PANGO_WRAP_WORD_CHAR);gtk_label_set_lines(GTK_LABEL(notice_message),3);
     gtk_label_set_ellipsize(GTK_LABEL(notice_message),PANGO_ELLIPSIZE_END);gtk_widget_set_size_request(notice_message,400,42);pack(notice.body,notice_message,FALSE);
-    footer=box(GTK_ORIENTATION_HORIZONTAL,10);pack(footer,button("Review storage",NULL,"review"),FALSE);pack(footer,button("Remind in 15 min",NULL,"snooze"),FALSE);pack(notice.body,footer,FALSE);
+    footer=box(GTK_ORIENTATION_HORIZONTAL,10);
+    notice_repair=button("Check and repair…",NULL,"repair");pack(footer,notice_repair,FALSE);
+    notice_review=button("Review storage",NULL,"review");pack(footer,notice_review,FALSE);
+    notice_snooze=button("Remind in 15 min",NULL,"snooze");pack(footer,notice_snooze,FALSE);pack(notice.body,footer,FALSE);
     gtk_widget_show_all(popup.body);gtk_widget_show_all(notice.body);
 }
+
+#include "slax-status-repair-ui.h"
 
 /* Group side subtrees before the green continuation, with timestamp/ID ordering among siblings. */
 static gint compare_points(gconstpointer first, gconstpointer second, gpointer data)
@@ -1074,6 +1095,7 @@ static void show_manager(void)
 static const char *warning_kind(void)
 {
     if (connection_error) return "service";
+    if (object(state,"recovery")) return "unclean";
     if (*str(run(),"error")) return "error";
     JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
     if (active && !flag(active,"writable")) return "readonly";
@@ -1091,8 +1113,15 @@ static void update_ui(void)
     JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
     const char *mode=state ? "Temporary run" : "Slax Status";
     if (active) mode=flag(run(),"save") ? "Saving changes" : "Changes will be discarded";
-    set_label(popup_title,"Slax Status");set_location(&popup_source,str(run(),"source"));set_location(&popup_storage,str(run(),"storage"));
-    set_location(&manager_source,str(run(),"source"));set_location(&manager_storage,str(run(),"storage"));
+    set_label(popup_title,"Slax Status");set_location(&popup_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&popup_storage,str(run(),"storage"),str(run(),"storageIcon"));
+    set_location(&manager_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&manager_storage,str(run(),"storage"),str(run(),"storageIcon"));
+    JsonObject *recovery=object(state,"recovery");
+    gtk_widget_set_visible(popup_recovery,recovery!=NULL);
+    char *repair_caption=g_strdup_printf("%s %s…",flag(recovery,"canRepair") ? "Check and repair" : "How to check",str(recovery,"device"));
+    gtk_button_set_label(GTK_BUTTON(popup_repair),repair_caption);g_free(repair_caption);
+    gtk_button_set_label(GTK_BUTTON(notice_repair),flag(recovery,"canRepair") ? "Check and repair…" : "How to check…");
+    gtk_widget_set_sensitive(popup_repair,recovery && !mutating && !restart_request);
+    gtk_widget_set_sensitive(notice_repair,recovery && !mutating && !restart_request);
     gint64 available=number(run(),"freeBytes")+number(run(),"reusableBytes");
     char *size=size_text(available);
     set_label(popup_space,state ? size : "Loading…");
@@ -1116,8 +1145,9 @@ static void update_ui(void)
     if (*warning) gtk_style_context_add_class(meter_style,"capacity-warning");
     else if (!flag(run(),"save")) gtk_style_context_add_class(meter_style,"capacity-temporary");
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
+    if (changing("storage.repair")) status="Checking filesystem…";
     const char *operation="";
-    if (mutating) operation="Working…";
+    if (mutating) operation=changing("storage.repair") ? "Checking filesystem…" : "Working…";
     if (restart_request) operation=mutating ? "Preparing restart…" : "Restarting…";
     const char *feedback=connection_error;
     if (!feedback) feedback=*operation ? operation : history_error;
@@ -1133,7 +1163,12 @@ static void update_ui(void)
     if (anchored && *warning && g_strcmp0(warning,last_warning) && snooze_until<=g_get_monotonic_time() && !gtk_widget_get_visible(popup.window))
     {
         char *free=size_text(available),*text=NULL;const char *title="Space is running low";
-        if (!strcmp(warning,"ram")) {title="Available memory is low";text=g_strdup_printf("About %s of RAM is available. Save important files to a drive and close unused applications.",free);}
+        if (!strcmp(warning,"unclean"))
+        {
+            title="The previous run ended unexpectedly";
+            text=g_strdup_printf("Saved changes on %s%s%s%s were not closed properly. This run keeps changes in RAM. %s",str(recovery,"device"),*str(recovery,"label") ? " (" : "",str(recovery,"label"),*str(recovery,"label") ? ")" : "",*str(recovery,"error") ? str(recovery,"error") : "Check and repair the filesystem before restarting.");
+        }
+        else if (!strcmp(warning,"ram")) {title="Available memory is low";text=g_strdup_printf("About %s of RAM is available. Save important files to a drive and close unused applications.",free);}
         else if (!strcmp(warning,"readonly")) {title="Changes cannot be saved";text=g_strdup("The changes drive became read-only. Save important files to another writable drive and check the storage device.");}
         else if (!strcmp(warning,"service")) {title="Storage status is unavailable";text=g_strdup("The storage service could not be reached. Open Slax Status to review the error.");}
         else if (!strcmp(warning,"error")) {title="Storage needs attention";text=g_strdup(str(run(),"error"));}
@@ -1145,6 +1180,8 @@ static void update_ui(void)
             gunichar character=g_utf8_get_char(cursor);g_string_append_unichar(preview,g_unichar_isspace(character) ? ' ' : character);
         }
         set_label(notice_title,title);gtk_label_set_text(GTK_LABEL(notice_message),preview->str);gtk_widget_set_tooltip_text(notice_message,text);
+        gtk_widget_set_visible(notice_repair,!strcmp(warning,"unclean"));
+        gtk_widget_set_visible(notice_review,strcmp(warning,"unclean")!=0);gtk_widget_set_visible(notice_snooze,strcmp(warning,"unclean")!=0);
         g_string_free(preview,TRUE);g_free(text);g_free(free);
         gtk_widget_show(notice.window);position_bubble(&notice);
     }
@@ -1158,6 +1195,7 @@ static gboolean confirm(const char *title, const char *question, const char *tex
     hide_popup();GtkWidget *dialog=gtk_message_dialog_new(gtk_widget_get_visible(manager) ? GTK_WINDOW(manager) : NULL,
         GTK_DIALOG_DESTROY_WITH_PARENT,GTK_MESSAGE_QUESTION,GTK_BUTTONS_NONE,"%s",question);
     gtk_window_set_titlebar(GTK_WINDOW(dialog),NULL);gtk_window_set_title(GTK_WINDOW(dialog),title);
+    if (!gtk_widget_get_visible(manager)) gtk_window_set_position(GTK_WINDOW(dialog),GTK_WIN_POS_CENTER);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog),"%s",text);
     GtkWidget *area=gtk_widget_get_parent(gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog)));
     gtk_widget_set_margin_start(area,0);gtk_widget_set_margin_end(area,0);
@@ -1211,7 +1249,8 @@ static void restart_failed(const char *detail)
     }
     else
     {
-        char *text=g_strdup_printf("%s\n\nThis run is still in RAM. Any completed drive setup will take effect at the next start. This run will not be transferred.",detail);
+        const char *effect=!strcmp(str(restart_request,"op"),"storage.repair") ? "The filesystem check completed. Restart Slax from the desktop menu when ready." : "Any completed drive setup will take effect at the next start.";
+        char *text=g_strdup_printf("%s\n\nThis run is still in RAM. %s This run will not be transferred.",detail,effect);
         g_clear_pointer(&restart_request,json_object_unref);update_ui();message("Cannot restart Slax",text);g_free(text);
     }
 }
@@ -1226,6 +1265,15 @@ static void restart_done(GObject *source, GAsyncResult *result, gpointer data)
     if (!completed) restart_failed(error->message);
     else if (!successful) restart_failed(details && *details ? details : "Save your open documents and try Restart from the desktop menu.");
     g_clear_error(&error);g_free(details);
+}
+
+/* Use the logged-in user's ordinary reboot authorization for every confirmed restart. */
+static void start_restart(void)
+{
+    GError *error=NULL;
+    restart_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error,"systemctl","reboot",NULL);
+    if (restart_process) g_subprocess_communicate_utf8_async(restart_process,NULL,NULL,restart_done,NULL);
+    else {restart_failed(error->message);g_clear_error(&error);}
 }
 
 /* Reflect DynFileFS's UTF-8 name rules before making an expensive freeze/create request. */
@@ -1340,6 +1388,20 @@ static void action(GtkButton *button_widget, gpointer data)
     }
     if (mutating || restart_request) return;
     if (!state) return;
+    if (!strcmp(op,"repair"))
+    {
+        JsonObject *recovery=object(state,"recovery");if (!recovery) return;
+        if (!flag(recovery,"canRepair")) {message("Filesystem check",str(recovery,"error"));return;}
+        gtk_widget_hide(notice.window);
+        char *question=g_strdup_printf("Check and repair %s?",str(recovery,"device"));
+        gboolean btrfs=!strcmp(str(recovery,"filesystem"),"btrfs");
+        const char *text=btrfs
+            ? "Close files and terminals using this drive. Slax will unmount the filesystem and run a read-only Btrfs check. If it reports errors, you can review the log before deciding whether to attempt repair. Your current run stays in RAM."
+            : "Close files and terminals using this drive. Slax will unmount its filesystem, check it and repair errors it can fix safely. Repairs may recover or truncate damaged files. Saved changes will be re-enabled only after a successful final check. Your current run stays in RAM.";
+        gboolean accepted=confirm("Check and repair filesystem",question,text,"Check and repair");g_free(question);
+        if (accepted && !mutating && !restart_request) repair_start(FALSE);
+        return;
+    }
     if (!strcmp(op,"storage.setup")) {setup_restart();return;}
     JsonObject *item=store(),*saved=point();if (!item) return;
     g_autofree char *target=g_strdup(selected);
