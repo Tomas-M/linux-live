@@ -5,8 +5,10 @@ Linux Live Kit
 --------------
 
 - Increase the generated fstab device timeout from 10 to 30 seconds.
-- Mark active saved changes durably and use RAM after an interrupted shutdown,
-  retaining the marker until clean closure or explicit re-enablement.
+- Mark active saved changes durably and continue in RAM after an interrupted
+  shutdown without waiting for boot-menu input. Retain the interrupted device,
+  filesystem identity and changes path for desktop recovery. Copy an affected
+  boot source to RAM when memory allows so its filesystem can be checked offline.
 - Link every available BusyBox applet in initramfs, including strings, using
   the complete applet list instead of parsing formatted help output.
 - Include common vendor HID keyboard drivers and Apple SPI keyboards with their
@@ -48,7 +50,13 @@ Linux Live Kit
 Slax
 ----
 
-- Re-enable interrupted saved changes through Slax Status's existing drive setup.
+- Notify about interrupted saved changes after desktop startup and offer an
+  offline filesystem check and repair, followed by a restart. Use native FAT,
+  exFAT, ext2/3/4 and XFS tools, verify the final result and retain the active
+  marker on failure. Check Btrfs read-only first and offer repair after a separate
+  confirmation. Show live, scrolling checker output and ordinary recovery buttons.
+  Direct NTFS users to Windows drive repair.
+  Show CD, disk and RAM icons beside running-source and changes locations.
 - Label automatic saved states as Saved on restart in the manager and boot menu.
 - Keep selected desktop icon captions equally padded on both sides.
 - Sharpen the Slax Status application icon and bring its drive symbols closer together.
