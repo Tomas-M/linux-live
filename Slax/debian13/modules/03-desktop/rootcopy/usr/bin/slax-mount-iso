@@ -13,5 +13,4 @@ if ! mountpoint -q "$TARGET"; then
    fi
 fi
 exec 9>&-
-gtk-bookmarks-update
 exec pcmanfm -n "$TARGET"

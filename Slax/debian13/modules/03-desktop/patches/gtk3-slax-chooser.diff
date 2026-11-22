@@ -1,0 +1,433 @@
+--- a/gtk/gtkplacessidebar.c
++++ b/gtk/gtkplacessidebar.c
+@@ -34,6 +34,7 @@
+ #include "gtksidebarrowprivate.h"
+ #include "gdk/gdkkeysyms.h"
+ #include "gtkbookmarksmanager.h"
++#include <unistd.h>
+ #include "gtkcelllayout.h"
+ #include "gtkcellrenderertext.h"
+ #include "gtkcellrendererpixbuf.h"
+@@ -124,6 +125,10 @@
+ 
+   GtkWidget *list_box;
+   GtkWidget *new_bookmark_row;
++  GSubprocess *slax_process;
++  GDataInputStream *slax_stream;
++  GCancellable *slax_cancel;
++  GVariant *slax_snapshot;
+ 
+   GtkBookmarksManager     *bookmarks_manager;
+ 
+@@ -289,6 +294,9 @@
+ static GParamSpec *properties[NUM_PROPERTIES] = { NULL, };
+ 
+ static gboolean eject_or_unmount_bookmark  (GtkSidebarRow *row);
++static gboolean slax_places_duplicate (GtkPlacesSidebar *sidebar, GFile *file);
++static void update_places (GtkPlacesSidebar *sidebar);
++static gchar *get_home_directory_uri (void);
+ static gboolean eject_or_unmount_selection (GtkPlacesSidebar *sidebar);
+ static void  check_unmount_and_eject       (GMount   *mount,
+                                             GVolume  *volume,
+@@ -444,6 +452,25 @@
+   GtkPlacesSidebarSectionType before_section_type;
+   GtkWidget *separator;
+ 
++  GtkPlacesSidebar *sidebar=user_data;
++  if (sidebar->slax_process)
++    {
++      g_object_get(row,"section-type",&row_section_type,NULL);
++      before_section_type=SECTION_INVALID;
++      if (before) g_object_get(before,"section-type",&before_section_type,NULL);
++      gtk_list_box_row_set_header(row,NULL);
++      if (row_section_type!=before_section_type)
++        {
++          const char *names[N_SECTIONS]={NULL,"Places","Devices","Cloud storage","Bookmarks","Other locations","Shared folders","Disk images"};
++          GtkWidget *label=gtk_label_new(names[row_section_type]);
++          gtk_widget_set_halign(label,GTK_ALIGN_FILL);gtk_label_set_xalign(GTK_LABEL(label),0);
++          gtk_style_context_add_class(gtk_widget_get_style_context(label),"slax-places-heading");
++          if (row_section_type==SECTION_COMPUTER) gtk_style_context_add_class(gtk_widget_get_style_context(label),"first");
++          gtk_widget_show(label);gtk_list_box_row_set_header(row,label);
++        }
++      return;
++    }
++
+   gtk_list_box_row_set_header (row, NULL);
+ 
+   g_object_get (row, "section-type", &row_section_type, NULL);
+@@ -490,6 +517,35 @@
+   GtkWidget *row;
+   GtkWidget *eject_button;
+   GtkWidget *event_box;
++  gint order_index=index;
++
++  if (sidebar->slax_process)
++    {
++      /* Native filesystems come from Slax; retain independent GIO network providers. */
++      if (volume)
++        {
++          char *device=g_volume_get_identifier(volume,G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE);
++          gboolean native=device!=NULL;
++          g_free(device);
++          if (native) return NULL;
++        }
++      if (mount)
++        {
++          GFile *root=g_mount_get_root(mount);
++          gboolean native=g_file_is_native(root);
++          g_object_unref(root);
++          if (native) return NULL;
++        }
++      if (section_type==SECTION_COMPUTER)
++        {
++          order_index+=3;
++          if (uri && !strcmp(uri,"file:///")) order_index=1;
++          if (uri && !strcmp(uri,"recent:///")) order_index=2;
++          char *home=get_home_directory_uri();
++          if (uri && !strcmp(uri,home)) { order_index=0; name=_("Home Folder"); }
++          g_free(home);
++        }
++    }
+ 
+   check_unmount_and_eject (mount, volume, drive,
+                            &show_unmount, &show_eject);
+@@ -506,7 +562,7 @@
+                       "label", name,
+                       "tooltip", tooltip,
+                       "ejectable", show_eject_button,
+-                      "order-index", index,
++                      "order-index", order_index,
+                       "section-type", section_type,
+                       "place-type", place_type,
+                       "uri", uri,
+@@ -528,11 +584,14 @@
+   g_signal_connect (event_box, "button-release-event",
+                     G_CALLBACK (on_button_release_event), row);
+ 
++  if (sidebar->slax_process) gtk_sidebar_row_set_slax(GTK_SIDEBAR_ROW(row),NULL,NULL);
+   gtk_container_add (GTK_CONTAINER (sidebar->list_box), GTK_WIDGET (row));
+   gtk_widget_show_all (row);
+ 
+   return row;
+ }
++
++#include "slax-places.h"
+ 
+ static GIcon *
+ special_directory_get_gicon (GUserDirectory directory)
+@@ -784,7 +843,7 @@
+       int pos = 0;
+ 
+       name = g_file_info_get_display_name (info);
+-      start_icon = g_file_info_get_symbolic_icon (info);
++      start_icon = sidebar->slax_process ? g_file_info_get_icon (info) : g_file_info_get_symbolic_icon (info);
+       uri = g_file_get_uri (file);
+       tooltip = g_file_get_parse_name (file);
+ 
+@@ -825,7 +884,7 @@
+         continue;
+ 
+       g_file_query_info_async (file,
+-                               "standard::display-name,standard::symbolic-icon",
++                               "standard::display-name,standard::symbolic-icon,standard::icon,standard::type",
+                                G_FILE_QUERY_INFO_NONE,
+                                G_PRIORITY_DEFAULT,
+                                sidebar->cancellable,
+@@ -876,8 +935,10 @@
+         }
+     }
+ 
++  if (sidebar->slax_process && slax_places_duplicate(sidebar,root))
++    { g_free(bookmark_name); goto out; }
+   if (info)
+-    start_icon = g_object_ref (g_file_info_get_symbolic_icon (info));
++    start_icon = g_object_ref (sidebar->slax_process ? g_file_info_get_icon (info) : g_file_info_get_symbolic_icon (info));
+   else
+     start_icon = g_themed_icon_new_with_default_fallbacks (clos->is_native ? ICON_NAME_FOLDER : ICON_NAME_FOLDER_NETWORK);
+ 
+@@ -1058,13 +1119,13 @@
+    * ending a drag */
+   stop_drop_feedback (sidebar);
+   gtk_container_foreach (GTK_CONTAINER (sidebar->list_box),
+-                         (GtkCallback) gtk_widget_destroy,
++                         sidebar->slax_process?slax_places_clear:(GtkCallback)gtk_widget_destroy,
+                          NULL);
+ 
+   network_mounts = network_volumes = NULL;
+ 
+   /* add built-in places */
+-  if (should_show_recent (sidebar))
++  if (should_show_recent (sidebar) && !sidebar->slax_process)
+     {
+       mount_uri = "recent:///";
+       start_icon = g_themed_icon_new_with_default_fallbacks ("document-open-recent-symbolic");
+@@ -1091,7 +1152,7 @@
+ 
+   /* home folder */
+   home_uri = get_home_directory_uri ();
+-  start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_HOME);
++  start_icon = g_themed_icon_new_with_default_fallbacks (sidebar->slax_process?"user-home":ICON_NAME_HOME);
+   add_place (sidebar, PLACES_BUILT_IN,
+              SECTION_COMPUTER,
+              _("Home"), start_icon, NULL, home_uri,
+@@ -1099,9 +1160,15 @@
+              _("Open your personal folder"));
+   g_object_unref (start_icon);
+   g_free (home_uri);
++  if (sidebar->slax_process)
++    {
++      start_icon=g_themed_icon_new("slax-places-system");
++      add_place(sidebar,PLACES_BUILT_IN,SECTION_COMPUTER,_("File System (/)"),start_icon,NULL,"file:///",NULL,NULL,NULL,NULL,1,NULL);
++      g_object_unref(start_icon);
++    }
+ 
+   /* desktop */
+-  if (sidebar->show_desktop)
++  if (sidebar->show_desktop && !sidebar->slax_process)
+     {
+       mount_uri = get_desktop_directory_uri ();
+       if (mount_uri)
+@@ -1118,7 +1185,7 @@
+     }
+ 
+   /* XDG directories */
+-  add_special_dirs (sidebar);
++  if (!sidebar->slax_process) add_special_dirs (sidebar);
+ 
+   if (sidebar->show_enter_location)
+     {
+@@ -1146,7 +1213,7 @@
+     }
+ 
+   /* Application-side shortcuts */
+-  add_application_shortcuts (sidebar);
++  if (!sidebar->slax_process) add_application_shortcuts (sidebar);
+ 
+   /* Cloud providers */
+ #ifdef HAVE_CLOUDPROVIDERS
+@@ -1363,7 +1430,7 @@
+   g_list_free (volumes);
+ 
+   /* file system root */
+-  if (!sidebar->show_other_locations)
++  if (!sidebar->show_other_locations && !sidebar->slax_process)
+     {
+       mount_uri = "file:///"; /* No need to strdup */
+       start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_FILESYSTEM);
+@@ -1430,7 +1497,7 @@
+       root = sl->data;
+       is_native = g_file_is_native (root);
+ 
+-      if (_gtk_bookmarks_manager_get_is_builtin (sidebar->bookmarks_manager, root))
++      if (!sidebar->slax_process && _gtk_bookmarks_manager_get_is_builtin (sidebar->bookmarks_manager, root))
+         continue;
+ 
+       if (sidebar->local_only && !is_native)
+@@ -1441,7 +1508,7 @@
+       clos->index = index;
+       clos->is_native = is_native;
+       g_file_query_info_async (root,
+-                               "standard::display-name,standard::symbolic-icon",
++                               "standard::display-name,standard::symbolic-icon,standard::icon,standard::type",
+                                G_FILE_QUERY_INFO_NONE,
+                                G_PRIORITY_DEFAULT,
+                                sidebar->cancellable,
+@@ -1528,7 +1595,7 @@
+   g_list_free_full (network_mounts, g_object_unref);
+ 
+   /* Other locations */
+-  if (sidebar->show_other_locations)
++  if (sidebar->show_other_locations && !sidebar->slax_process)
+     {
+       start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_OTHER_LOCATIONS);
+ 
+@@ -1540,6 +1607,7 @@
+       g_object_unref (start_icon);
+     }
+ 
++  if (sidebar->slax_process) slax_places_reconcile(sidebar);
+   gtk_widget_show_all (GTK_WIDGET (sidebar));
+   /* We want this hidden by default, but need to do it after the show_all call */
+   gtk_sidebar_row_hide (GTK_SIDEBAR_ROW (sidebar->new_bookmark_row), TRUE);
+@@ -2531,6 +2599,8 @@
+ open_row (GtkSidebarRow      *row,
+           GtkPlacesOpenFlags  open_flags)
+ {
++  if (g_object_get_data(G_OBJECT(row),"slax-location"))
++    { slax_places_activate(row,open_flags,FALSE); return; }
+   gchar *uri;
+   GDrive *drive;
+   GVolume *volume;
+@@ -3277,6 +3347,8 @@
+ static gboolean
+ eject_or_unmount_bookmark (GtkSidebarRow *row)
+ {
++  if (g_object_get_data(G_OBJECT(row),"slax-location"))
++    { slax_places_activate(row,GTK_PLACES_OPEN_NORMAL,TRUE); return TRUE; }
+   gboolean can_unmount, can_eject;
+   GMount *mount;
+   GVolume *volume;
+@@ -3896,6 +3968,19 @@
+                 "order-index", &index_2,
+                 NULL);
+ 
++  if (GTK_PLACES_SIDEBAR(user_data)->slax_process)
++    {
++      const int rank[N_SECTIONS]={0,1,3,6,2,7,4,5};
++      if (section_type_1!=section_type_2) retval=rank[section_type_1]-rank[section_type_2];
++      else if (place_type_1==PLACES_SLAX_LOCATION && place_type_2==PLACES_SLAX_LOCATION) retval=index_1-index_2;
++      else if (place_type_1==PLACES_SLAX_LOCATION) retval=-1;
++      else if (place_type_2==PLACES_SLAX_LOCATION) retval=1;
++      else if (section_type_1==SECTION_COMPUTER) retval=index_1-index_2;
++      else goto native_sort;
++      g_free(label_1);g_free(label_2);
++      return retval;
++    }
++native_sort:
+   /* Always last position for "connect to server" */
+   if (place_type_1 == PLACES_CONNECT_TO_SERVER)
+     {
+@@ -4109,7 +4194,7 @@
+   gtk_list_box_set_header_func (GTK_LIST_BOX (sidebar->list_box),
+                                 list_box_header_func, sidebar, NULL);
+   gtk_list_box_set_sort_func (GTK_LIST_BOX (sidebar->list_box),
+-                              list_box_sort_func, NULL, NULL);
++                              list_box_sort_func, sidebar, NULL);
+   gtk_list_box_set_selection_mode (GTK_LIST_BOX (sidebar->list_box), GTK_SELECTION_SINGLE);
+   gtk_list_box_set_activate_on_single_click (GTK_LIST_BOX (sidebar->list_box), TRUE);
+ 
+@@ -4331,6 +4416,10 @@
+ #endif
+ 
+   sidebar = GTK_PLACES_SIDEBAR (object);
++  if (sidebar->slax_cancel) g_cancellable_cancel(sidebar->slax_cancel);
++  if (sidebar->slax_process) g_subprocess_force_exit(sidebar->slax_process);
++  g_clear_object(&sidebar->slax_cancel);g_clear_object(&sidebar->slax_stream);g_clear_object(&sidebar->slax_process);
++  g_clear_pointer(&sidebar->slax_snapshot,g_variant_unref);
+ 
+   if (sidebar->cancellable)
+     {
+@@ -5091,6 +5180,7 @@
+ {
+   g_return_if_fail (GTK_IS_PLACES_SIDEBAR (sidebar));
+ 
++  if (sidebar->slax_process) show_recent=FALSE;
+   sidebar->show_recent_set = TRUE;
+ 
+   show_recent = !!show_recent;
+--- a/gtk/gtkplacessidebarprivate.h
++++ b/gtk/gtkplacessidebarprivate.h
+@@ -34,6 +34,8 @@
+   SECTION_CLOUD,
+   SECTION_BOOKMARKS,
+   SECTION_OTHER_LOCATIONS,
++  SECTION_SLAX_SHARED,
++  SECTION_SLAX_IMAGES,
+   N_SECTIONS
+ } GtkPlacesSidebarSectionType;
+ 
+@@ -50,11 +52,14 @@
+   PLACES_BOOKMARK_PLACEHOLDER,
+   PLACES_OTHER_LOCATIONS,
+   PLACES_STARRED_LOCATION,
++  PLACES_SLAX_LOCATION,
+   N_PLACES
+ } GtkPlacesSidebarPlaceType;
+ 
+ gchar *gtk_places_sidebar_get_location_title (GtkPlacesSidebar *sidebar);
+ 
++void gtk_places_sidebar_enable_slax (GtkPlacesSidebar *sidebar);
++
+ G_END_DECLS
+ 
+ #endif /* __GTK_PLACES_SIDEBAR_PRIVATE_H__ */
+--- a/gtk/gtksidebarrow.c
++++ b/gtk/gtksidebarrow.c
+@@ -85,6 +85,7 @@
+ };
+ 
+ static GParamSpec *properties [LAST_PROP];
++#include "slax-places-row.h"
+ 
+ #ifdef HAVE_CLOUDPROVIDERS
+ 
+@@ -565,7 +566,7 @@
+                          "Uri",
+                          NULL,
+                          (G_PARAM_READWRITE |
+-                          G_PARAM_CONSTRUCT_ONLY |
++                          G_PARAM_CONSTRUCT |
+                           G_PARAM_STATIC_STRINGS));
+ 
+   properties [PROP_DRIVE] =
+--- a/gtk/gtksidebarrowprivate.h
++++ b/gtk/gtksidebarrowprivate.h
+@@ -57,6 +57,8 @@
+ void           gtk_sidebar_row_set_busy         (GtkSidebarRow *row,
+                                                  gboolean       is_busy);
+ 
++void gtk_sidebar_row_set_slax (GtkSidebarRow *row, GVariant *location, const char *operation);
++
+ G_END_DECLS
+ 
+ #endif /* GTK_SIDEBAR_ROW_PRIVATE_H */
+--- a/gtk/gtkfilechooserwidget.c
++++ b/gtk/gtkfilechooserwidget.c
+@@ -925,6 +925,8 @@
+   return result;
+ }
+ 
++#include "slax-chooser-navigation.h"
++
+ static void
+ emit_default_size_changed (GtkFileChooserWidget *impl)
+ {
+@@ -2885,6 +2887,14 @@
+ location_toggle_popup_handler (GtkFileChooserWidget *impl)
+ {
+   GtkFileChooserWidgetPrivate *priv = impl->priv;
++  SlaxChooserNavigation *navigation=g_object_get_data(G_OBJECT(impl),"slax-navigation");
++  if (navigation)
++    {
++      if (priv->operation_mode!=OPERATION_MODE_BROWSE) operation_mode_set(impl,OPERATION_MODE_BROWSE);
++      gtk_widget_grab_focus(navigation->entry);
++      gtk_editable_select_region(GTK_EDITABLE(navigation->entry),0,-1);
++      return;
++    }
+ 
+   if ((priv->operation_mode == OPERATION_MODE_RECENT ||
+        priv->operation_mode == OPERATION_MODE_SEARCH) &&
+@@ -3752,14 +3762,10 @@
+ change_icon_theme (GtkFileChooserWidget *impl)
+ {
+   GtkFileChooserWidgetPrivate *priv = impl->priv;
+-  gint width, height;
+ 
+   profile_start ("start", NULL);
+ 
+-  if (gtk_icon_size_lookup (GTK_ICON_SIZE_MENU, &width, &height))
+-    priv->icon_size = MAX (width, height);
+-  else
+-    priv->icon_size = FALLBACK_ICON_SIZE;
++  priv->icon_size=24;
+ 
+   /* the first cell in the first column is the icon column, and we have a fixed size there */
+   set_icon_cell_renderer_fixed_size (impl);
+@@ -8846,7 +8852,7 @@
+   priv->show_size_column = TRUE;
+   priv->show_type_column = TRUE;
+   priv->type_format = TYPE_FORMAT_MIME;
+-  priv->icon_size = FALLBACK_ICON_SIZE;
++  priv->icon_size = 24;
+   priv->load_state = LOAD_EMPTY;
+   priv->reload_state = RELOAD_EMPTY;
+   priv->pending_select_files = NULL;
+@@ -8881,6 +8887,8 @@
+    * which cannot be done with GtkBuilder.
+    */
+   post_process_ui (impl);
++  gtk_places_sidebar_enable_slax(GTK_PLACES_SIDEBAR(priv->places_sidebar));
++  slax_chooser_navigation_init(impl);
+ 
+   profile_end ("end", NULL);
+ }

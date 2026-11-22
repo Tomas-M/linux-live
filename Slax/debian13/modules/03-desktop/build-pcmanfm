@@ -16,5 +16,7 @@ patch -p1 < "$CWD/patches/pcmanfm-desktop.diff"
 patch -p1 < "$CWD/patches/pcmanfm-browser.diff"
 # Disposable saved-state browsers end independently of the desktop manager.
 patch -p1 < "$CWD/patches/pcmanfm-standalone.diff"
+# Explain successfully empty folders without covering native file-view input.
+patch -p1 < "$CWD/patches/pcmanfm-empty-folder.diff"
 dpkg-buildpackage -b -us -uc
 cp ../pcmanfm_*.deb "$OUTPUT/"

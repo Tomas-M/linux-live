@@ -1,5 +1,5 @@
 #!/bin/bash
-# Recreate fstab entries in /etc/fstab and make /media directories
+# Mount new filesystems using the same validation and options as the native sidebar.
 # This script is called by udev rules, see /lib/udev/rules.d/
 #
 # Author: Tomas M <http://slax.linux-live.org/>
@@ -48,7 +48,6 @@ fi
 # Initramfs already owns boot and session disks; expose them without a second mount
 if [ -L "$MNT" ] && readlink "$MNT" | grep -q '^/run/initramfs/'; then
    if [ "$ACTION" = "remove" ]; then rm "$MNT"; fi
-   gtk-bookmarks-update
    exit
 fi
 
@@ -86,14 +85,15 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
       exit
    fi
    if mountpoint -q "$MNT"; then
-      gtk-bookmarks-update
       exit
    fi
-   ID_FS_TYPE=$(blkid -p -s TYPE -o value "$DEVNAME")
+   ID_FS_TYPE=$(device_bestfs "$DEVNAME" "")
 
    if [ "$ID_FS_TYPE" != "" -a "$(cat /proc/filesystems | grep "$ID_FS_TYPE")" != "" ]; then
 
       mkdir -p /run/systemd/system "$MNT"
+
+      if ! /usr/libexec/slax-places-mount "$DEVNAME" "$MNT"; then exit 1; fi
 
       echo "# Slax skip savechanges" >"$TARGET.new"
       echo "[Unit]" >>"$TARGET.new"
@@ -110,7 +110,6 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
          exit 1
       fi
 
-      gtk-bookmarks-update
       # A file-manager process can outlive this event; it must not retain either lock.
       exec 8<&- 9>&-
       XDG_RUNTIME_DIR="/run/user/$(id -u)" DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
@@ -128,5 +127,4 @@ if [ "$ACTION" = "remove" ]; then
    if [ -d "$MNT" ]; then
       rmdir "$MNT"
    fi
-   gtk-bookmarks-update
 fi

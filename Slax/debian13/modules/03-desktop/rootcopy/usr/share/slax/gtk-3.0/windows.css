@@ -1,3 +1,5 @@
+@import url("filechooser.css");
+
 /* Match Chromium's frames while preserving each application's content theme. */
 /* GtkWindow subclasses share .background even when their CSS node has another name. */
 .background.csd, .background.csd decoration { border-radius: 8px 8px 0 0; }
@@ -14,3 +16,7 @@
 .background .titlebar button.titlebutton:backdrop { color: #adb1b7; }
 .background .titlebar button.titlebutton:hover { background: rgba(95, 99, 104, 0.12); }
 .background .titlebar button.titlebutton:active { background: rgba(95, 99, 104, 0.24); }
+
+/* Tooltips are rounded on all four corners, independently of normal window frames. */
+tooltip.background, tooltip.background.csd { border-radius: 8px; }
+tooltip.background decoration { border: 0; border-radius: 8px; background: transparent; box-shadow: none; }

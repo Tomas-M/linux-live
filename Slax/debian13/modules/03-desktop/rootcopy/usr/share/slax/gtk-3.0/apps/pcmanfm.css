@@ -7,17 +7,22 @@ toolbar button:disabled { color: #b8b8b8; }
 
 /* Round the custom icon captions without changing list-row selection. */
 .slax-icon-label:selected { border-radius: 3px; }
+.slax-icon-label:hover { border-radius: 3px; background-color: #eaf4fc; color: #111; }
 
 /* Show the whole destination item independently from keyboard focus outlines. */
 .slax-drop-target { box-shadow: none; border: 1px solid @theme_selected_bg_color; border-radius: 3px; background-color: alpha(@theme_selected_bg_color, 0.08); }
 
 /* Add two pixels at each row edge and use a light selection in Places. */
-treeview.slax-places { -GtkTreeView-vertical-separator: 6; }
+treeview.slax-places { -GtkTreeView-vertical-separator: 6; color: #303437; }
+notebook paned treeview.view.slax-places { -GtkTreeView-horizontal-separator: 0; }
 treeview.slax-places:selected { background-color: #cce8ff; color: #202020; }
 
 /* Keep mount actions recognizable before the native hover highlight appears. */
-button.sidebar-button:not(:hover):not(:active) { border-color: alpha(currentColor, 0.15); }
-button.sidebar-button.selected-place { background: #fff; }
+button.sidebar-button { border: 1px solid #dde0e3; border-radius: 13px; background: #fff; color: #6b7277; box-shadow: none; padding: 0; min-width: 0; min-height: 0; }
+button.sidebar-button.mount-place { color: #447aa8; }
+button.sidebar-button:hover { border-color: #a4acb4; background: #f7f8f9; color: #353b40; }
+button.sidebar-button.protected-place { color: #858d94; }
+button.sidebar-button.busy-place { color: #a5a9ad; }
 
 /* Separate path components and keep their buttons compact. */
 toolbar viewport button { margin: 2px 3px; padding: 2px 6px; min-height: 20px; }

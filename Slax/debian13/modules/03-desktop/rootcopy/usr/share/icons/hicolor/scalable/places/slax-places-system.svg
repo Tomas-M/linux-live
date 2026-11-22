@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>File system</title>
+  <rect x="2" y="3" width="20" height="14" rx="2" fill="#438de6"/>
+  <rect x="3" y="4" width="18" height="11" rx="1" fill="#a4caee"/>
+  <path fill="#438de6" d="M5 6h10v1H5Zm0 3h7v1H5Zm5 8h4v3h-4Z"/>
+  <rect x="7" y="20" width="10" height="2" rx="1" fill="#438de6"/>
+</svg>

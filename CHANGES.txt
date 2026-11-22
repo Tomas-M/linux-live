@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Expose required boot and saved-changes mounts under /media even with
+  noautomount, while leaving other filesystems unmounted.
 - Increase the generated fstab device timeout from 10 to 30 seconds.
 - Mark active saved changes durably and continue in RAM after an interrupted
   shutdown without waiting for boot-menu input. Retain the interrupted device,
@@ -50,6 +52,33 @@ Linux Live Kit
 Slax
 ----
 
+- Replace generated file-manager bookmarks with native Home, File System,
+  device and shared-folder rows. Discover unmounted filesystems independently
+  of automount, including VirtualBox shares, and support manual mount/unmount
+  with busy feedback and protected live storage. Match the approved sidebar's
+  icons, spacing, circular controls and continuous hover highlight.
+  Highlight file captions on hover; hide file and sidebar item tooltips while
+  retaining hints on buttons and other controls.
+  Match every sidebar device icon, including USB drives and disk images, to
+  the existing blue folder palette.
+  Give 24 px device icons dedicated artwork with one-pixel blue drive/USB outlines
+  and native-size exports that avoid additional resampling.
+  Keep mount/unmount feedback readable and preserve the current row selection
+  when clicking another location's action button.
+- Group personal bookmarks between Places and Devices under a Bookmarks heading,
+  shown only when bookmarks exist, instead of a dividing line.
+- Match the native GTK 3 file chooser to File Manager, with the shared drive
+  catalogue, manual mount/unmount, grouped bookmarks and blue sidebar icons.
+  Use a full-width editable path with Back, Forward, History and Up controls;
+  omit Recent, application shortcuts and Other Locations from its sidebar.
+  Show normal mounted status instead of Used by Slax, retaining live-storage locks.
+- Hide Desktop Preferences from the application launcher through a persistent
+  desktop-entry override, including after package updates and cache refreshes.
+- Keep the shared GTK styling module loaded while its signal hooks are registered,
+  fixing Chromium crashes when opening native file dialogs.
+- Round tooltip corners consistently in GTK 2, GTK 3 and GTK 4 applications.
+- Show a centered message after successfully loading an empty folder, including
+  when hidden items or filtering leave no visible files.
 - Notify about interrupted saved changes after desktop startup and offer an
   offline filesystem check and repair, followed by a restart. Use native FAT,
   exFAT, ext2/3/4 and XFS tools, verify the final result and retain the active

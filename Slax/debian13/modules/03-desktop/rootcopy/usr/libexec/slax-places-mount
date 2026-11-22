@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+. /run/initramfs/lib/livekitlib
+MEMORY=/run/initramfs/memory
+
+# The native helper has already revalidated the device and holds its disk lock.
+if perch_device_blocked "$1"; then
+   echo 'This filesystem requires a check before it can be mounted.' >&2
+   exit 1
+fi
+
+FS=$(device_bestfs "$1" "")
+OPTIONS=nodev,nosuid
+if [ "$FS" = vfat -o "$FS" = exfat -o "$FS" = ntfs3 ]; then
+   GROUP=$(getent group users | cut -d: -f3)
+   OPTIONS="$OPTIONS,uid=${PKEXEC_UID:-0},gid=$GROUP,umask=0002"
+fi
+mount_device "$1" "$2" "$FS" /dev/stderr "$OPTIONS"

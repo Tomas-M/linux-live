@@ -1,0 +1,11 @@
+[Unit]
+Description=Slax shared-folder automount
+ConditionVirtualization=|oracle
+ConditionVirtualization=|vmware
+After=slax-vbox.service slax-vmware.service
+
+[Service]
+ExecStart=/usr/libexec/slax-places --automount-shares
+
+[Install]
+WantedBy=multi-user.target

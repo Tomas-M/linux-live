@@ -44,6 +44,7 @@ done
 chmod 755 /root/.xinitrc /root/.fluxbox/startup
 chmod 755 /etc/X11/xinit/xserverrc
 chmod 755 /usr/libexec/slax-fbcon-palette /usr/libexec/fbmenu-driver
+chmod 755 /usr/libexec/slax-places-mount
 chmod 644 /usr/lib/systemd/system/xorg.service /etc/systemd/system/getty@tty1.service.d/xorg.conf /etc/systemd/system/getty@.service.d/framebuffer.conf
 chmod 644 /usr/lib/systemd/system/slax-shutdown-splash.service
 systemctl enable slax-shutdown-splash.service
@@ -85,7 +86,7 @@ chmod 644 /usr/lib/systemd/system/slax-vbox.service /usr/lib/systemd/system/slax
 chmod 644 /etc/default/spice-vdagentd
 groupadd -f -r vboxsf
 usermod -a -G vboxsf guest
-systemctl enable slax-vbox.service slax-vmware.service slax-vmware-shares.service
+systemctl enable slax-vbox.service slax-vmware.service slax-shared-folders.service
 
 # Register native tray and folder sizes instead of enlarging Adwaita's 16 px icons.
 while read CONTEXT NAME; do

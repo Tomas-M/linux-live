@@ -16,3 +16,6 @@ windowcontrols > button, windowcontrols > button:hover, windowcontrols > button:
 windowcontrols > button > image { min-width: 16px; min-height: 16px; padding: 6px; border-radius: 50%; background: transparent; }
 windowcontrols > button:hover > image { background: rgba(95, 99, 104, 0.12); }
 windowcontrols > button:active > image { background: rgba(95, 99, 104, 0.24); }
+
+/* Keep tooltip corners consistent with the shared GTK 3 style. */
+tooltip, tooltip.background { border-radius: 8px; }

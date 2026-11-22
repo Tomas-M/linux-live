@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>Drive</title>
+  <path d="M6.5 4.5h11a1.5 1.5 0 0 1 1.4 1L21.5 14v5.5a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1V14l2.6-8.5a1.5 1.5 0 0 1 1.4-1Z" fill="#a4caee" stroke="#438de6" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M3 13.5h18" fill="none" stroke="#438de6" stroke-width="1"/>
+  <path fill="#438de6" d="M5 17h1v1H5Zm11 0h3v1h-3Z"/>
+</svg>

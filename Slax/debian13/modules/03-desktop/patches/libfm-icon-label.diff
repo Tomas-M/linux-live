@@ -13,20 +13,37 @@
          else
 --- a/src/gtk/fm-cell-renderer-text.c
 +++ b/src/gtk/fm-cell-renderer-text.c
-@@ -333,16 +333,15 @@
-     if(flags & GTK_CELL_RENDERER_SELECTED) /* item is selected */
+@@ -314,7 +314,7 @@
+     _get_size(cell, widget, layout, text, cell_area, &text_width, &text_height,
+               &xpad, &ypad, &x_offset, &y_offset, &x_align_offset);
+ 
+-    if(flags & (GTK_CELL_RENDERER_SELECTED|GTK_CELL_RENDERER_FOCUSED))
++    if(flags & (GTK_CELL_RENDERER_SELECTED|GTK_CELL_RENDERER_FOCUSED|GTK_CELL_RENDERER_PRELIT))
      {
- #if GTK_CHECK_VERSION(3, 0, 0)
+         rect.x = cell_area->x + x_offset;
+         rect.y = cell_area->y + y_offset;
+@@ -330,19 +330,18 @@
+ #else
+     style = gtk_widget_get_style(widget);
+ #endif
+-    if(flags & GTK_CELL_RENDERER_SELECTED) /* item is selected */
+-    {
+-#if GTK_CHECK_VERSION(3, 0, 0)
 -        GdkRGBA clr;
 -
++    if(flags & (GTK_CELL_RENDERER_SELECTED|GTK_CELL_RENDERER_PRELIT)) /* selected or hovered caption */
++    {
++#if GTK_CHECK_VERSION(3, 0, 0)
          if(flags & GTK_CELL_RENDERER_INSENSITIVE) /* insensitive */
              state = GTK_STATE_FLAG_INSENSITIVE;
          else
-             state = GTK_STATE_FLAG_SELECTED;
-
+-            state = GTK_STATE_FLAG_SELECTED;
+-
 -        gtk_style_context_get_background_color(style, state, &clr);
 -        gdk_cairo_rectangle(cr, &rect);
 -        gdk_cairo_set_source_rgba(cr, &clr);
++            state = flags & GTK_CELL_RENDERER_SELECTED ? GTK_STATE_FLAG_SELECTED : GTK_STATE_FLAG_PRELIGHT;
++
 +        /* Let the application theme round only the caption's selection box. */
 +        gtk_style_context_add_class(style, "slax-icon-label");
 +        gtk_style_context_set_state(style, state);
@@ -34,9 +51,18 @@
  #else
          cairo_t *cr = gdk_cairo_create (window);
          GdkColor clr;
+@@ -350,7 +349,7 @@
+         if(flags & GTK_CELL_RENDERER_INSENSITIVE) /* insensitive */
+             state = GTK_STATE_INSENSITIVE;
+         else
+-            state = GTK_STATE_SELECTED;
++            state = flags & GTK_CELL_RENDERER_SELECTED ? GTK_STATE_SELECTED : GTK_STATE_PRELIGHT;
+ 
+         clr = style->bg[state];
+ 
 @@ -363,10 +362,7 @@
          gdk_cairo_rectangle(cr, &rect);
-
+ 
          cairo_set_source_rgb(cr, clr.red / 65535., clr.green / 65535., clr.blue / 65535.);
 -#endif
          cairo_fill (cr);
@@ -51,7 +77,7 @@
  {
 -    gint wrap_width;
 +    gint wrap_width, xpad;
-
+ 
      g_object_get(G_OBJECT(cell), "wrap-width", &wrap_width, NULL);
      if(wrap_width > 0)
      {
@@ -67,13 +93,13 @@
      char *text;
 -    gint height;
 +    gint height, ypad;
-
+ 
      g_object_get(G_OBJECT(cell), "text", &text, NULL);
 -    _get_size(cell, widget, NULL, text, NULL, NULL, &height, NULL, NULL, NULL, NULL, NULL);
 +    _get_size(cell, widget, NULL, text, NULL, NULL, &height, NULL, &ypad, NULL, NULL, NULL);
      g_free(text);
 +    /* Include the caption padding in the allocated row height. */
 +    height += 2 * ypad;
-
+ 
      if(natural_size)
          *natural_size = height;

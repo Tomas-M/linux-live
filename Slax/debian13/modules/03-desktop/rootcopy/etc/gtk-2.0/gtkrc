@@ -1,6 +1,10 @@
 gtk-cursor-theme-name="Windows-Modern-Light"
 gtk-cursor-theme-size=32
 
+# GTK 2 paints and shapes rounded tooltips natively, including without compositing.
+style "slax-tooltips" { GtkWidget::tooltip-radius = 8 }
+widget "gtk-tooltip*" style "slax-tooltips"
+
 # Use GTK's list popup and a scrollbar without steppers for long dropdowns.
 style "slax-combo-list" { GtkComboBox::appears-as-list = 1 GtkComboBox::popup-max-rows = 10 }
 class "GtkComboBox" style "slax-combo-list"

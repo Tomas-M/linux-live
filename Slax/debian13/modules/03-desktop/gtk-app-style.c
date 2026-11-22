@@ -2,6 +2,23 @@
 #include <gtk/gtk.h>
 #include <gmodule.h>
 
+/* Let GTK paint transparent tooltip corners instead of an opaque rectangular window. */
+static gboolean configure_tooltip_visual(GSignalInvocationHint *hint, guint count, const GValue *values, gpointer data)
+{
+    GList *windows=gtk_window_list_toplevels();
+    for (GList *item=windows; item; item=item->next)
+    {
+        GtkWidget *widget=item->data;
+        if (gtk_widget_get_realized(widget)) continue;
+        if (gtk_window_get_type_hint(GTK_WINDOW(widget))!=GDK_WINDOW_TYPE_HINT_TOOLTIP) continue;
+        GdkScreen *screen=gtk_widget_get_screen(widget);
+        GdkVisual *visual=gdk_screen_get_rgba_visual(screen);
+        if (visual && gdk_screen_is_composited(screen)) gtk_widget_set_visual(widget, visual);
+    }
+    g_list_free(windows);
+    return TRUE;
+}
+
 /* Remove GTK's heading emphasis, including when live secondary text reapplies it. */
 static void normal_message_font(GtkLabel *label, GParamSpec *property, gpointer data)
 {
@@ -52,7 +69,13 @@ static void begin_file_drag(GtkWidget *widget, GdkDragContext *context, gpointer
     g_signal_connect(context, "action-changed", G_CALLBACK(keep_drag_pointer), NULL);
 }
 
-/* Scope drag styling to the file-manager panes, leaving desktop and other apps alone. */
+/* Suppress item hints even when a renderer updates its tooltip while hovering. */
+static void disable_item_tooltips(GtkWidget *widget, GParamSpec *property, gpointer data)
+{
+    if (gtk_widget_get_has_tooltip(widget)) gtk_widget_set_has_tooltip(widget, FALSE);
+}
+
+/* Scope item hints and drag styling to file-manager panes, preserving control tooltips. */
 static gboolean configure_file_drag(GSignalInvocationHint *hint, guint count, const GValue *values, gpointer data)
 {
     GtkWidget *widget=g_value_get_object(values);
@@ -62,7 +85,12 @@ static gboolean configure_file_drag(GSignalInvocationHint *hint, guint count, co
     if (!places && !icon_view && !GTK_IS_TREE_VIEW(widget)) return TRUE;
     GtkWidget *parent=widget;
     while (parent && g_strcmp0(G_OBJECT_TYPE_NAME(parent), "FmStandardView")) parent=gtk_widget_get_parent(parent);
-    if (!places && !parent) return TRUE;
+    gboolean directory_tree=g_strcmp0(G_OBJECT_TYPE_NAME(widget), "FmDirTreeView")==0;
+    if (!places && !directory_tree && !parent) return TRUE;
+    disable_item_tooltips(widget, NULL, NULL);
+    if (!g_signal_handler_find(widget, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(disable_item_tooltips), NULL))
+        g_signal_connect(widget, "notify::has-tooltip", G_CALLBACK(disable_item_tooltips), NULL);
+    if (directory_tree) return TRUE;
     if (!g_signal_handler_find(widget, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(begin_file_drag), NULL))
         g_signal_connect_after(widget, "drag-begin", G_CALLBACK(begin_file_drag), NULL);
     return TRUE;
@@ -95,12 +123,20 @@ static gboolean hide_root_warning(GSignalInvocationHint *hint, guint count, cons
     return TRUE;
 }
 
+/* Signal hooks remain registered after a host releases its GTK module handle. */
+G_MODULE_EXPORT const gchar *g_module_check_init(GModule *module)
+{
+    g_module_make_resident(module);
+    return NULL;
+}
+
 /* Apply shared message-dialog spacing and optional application styles. */
 G_MODULE_EXPORT void gtk_module_init(int *argc, char ***argv)
 {
     /* GTK may load modules before GtkWidget has registered its signals. */
     gpointer widget_class=g_type_class_ref(GTK_TYPE_WIDGET);
     g_signal_add_emission_hook(g_signal_lookup("show", GTK_TYPE_WIDGET), 0, configure_message_dialog, NULL, NULL);
+    g_signal_add_emission_hook(g_signal_lookup("query-tooltip", GTK_TYPE_WIDGET), 0, configure_tooltip_visual, NULL, NULL);
     if (g_strcmp0(g_get_prgname(), "pcmanfm")==0)
     {
         g_signal_add_emission_hook(g_signal_lookup("realize", GTK_TYPE_WIDGET), 0, hide_root_warning, NULL, NULL);

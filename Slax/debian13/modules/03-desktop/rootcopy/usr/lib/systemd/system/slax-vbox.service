@@ -6,7 +6,7 @@ After=systemd-modules-load.service
 [Service]
 # Coldplug may still be loading the driver when this service starts.
 ExecStartPre=/usr/sbin/modprobe vboxguest
-ExecStart=/usr/sbin/VBoxService --foreground --only-automount --enable-vminfo
+ExecStart=/usr/sbin/VBoxService --foreground --only-vminfo
 
 [Install]
 WantedBy=multi-user.target

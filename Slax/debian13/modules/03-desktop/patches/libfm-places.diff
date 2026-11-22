@@ -9,15 +9,228 @@
  
  #include "fm-config.h"
  #include "fm-monitor.h"
-@@ -95,7 +97,6 @@
+@@ -62,6 +64,9 @@
+ struct _FmPlacesItem
+ {
+     FmPlacesType type;
++    char *native_id;
++    GVariant *location;
++    const char *pending;
+     gboolean mounted : 1; /* used if type == FM_PLACES_ITEM_VOLUME */
+     FmPlacesOrder id : 4; /* used if type == FM_PLACES_ITEM_PATH */
+     FmIcon* icon;
+@@ -95,8 +100,11 @@
      guint places_applications_change_handler;
      guint places_network_change_handler;
      guint places_unmounted_change_handler;
 -    GdkPixbuf* eject_icon;
- 
+-
++
++    GSubprocess *native_process;
++    GDataInputStream *native_stream;
++    GCancellable *native_cancel;
++    GVariant *native_snapshot;
      GSList* jobs;
  };
-@@ -711,16 +712,7 @@
+ 
+@@ -107,6 +115,7 @@
+ 
+ 
+ static void create_trash_item(FmPlacesModel* model);
++static GdkPixbuf *native_pixbuf(FmPlacesItem *item);
+ 
+ static void place_item_free(FmPlacesItem* item)
+ {
+@@ -122,6 +131,7 @@
+         if(item->bm_item)
+             fm_bookmark_item_unref(item->bm_item);
+         break;
++    case FM_PLACES_ITEM_LOCATION:
+     case FM_PLACES_ITEM_NONE:
+         ;
+     }
+@@ -129,6 +139,8 @@
+         g_object_unref(item->icon);
+     if(G_LIKELY(item->fi))
+         fm_file_info_unref(item->fi);
++    g_free(item->native_id);
++    g_clear_pointer(&item->location,g_variant_unref);
+     g_slice_free(FmPlacesItem, item);
+ }
+ 
+@@ -183,7 +195,7 @@
+                         fm_file_info_unref(item->fi);
+                         item->fi = fm_file_info_ref(fi);
+                         /* only update the icon if the item is not a volume or mount. */
+-                        if(item->type == FM_PLACES_ITEM_PATH)
++                        if(item->type == FM_PLACES_ITEM_PATH && item->id != FM_PLACES_ID_ROOT)
+                         {
+                             icon = fm_file_info_get_icon(fi);
+                             /* replace the icon with updated data */
+@@ -280,7 +292,7 @@
+         }
+     }
+ 
+-    pix = fm_pixbuf_from_icon(item->icon, fm_config->pane_icon_size);
++    pix = native_pixbuf(item);
+     gtk_list_store_set(GTK_LIST_STORE(model), it, FM_PLACES_MODEL_COL_ICON, pix, FM_PLACES_MODEL_COL_LABEL, name, -1);
+     g_object_unref(pix);
+     g_free(name);
+@@ -323,6 +335,7 @@
+     {
+         tst = NULL;
+         gtk_tree_model_get(GTK_TREE_MODEL(model), &next_it, FM_PLACES_MODEL_COL_INFO, &tst, -1);
++        if(tst && tst->type==FM_PLACES_ITEM_NONE) continue;
+         if(!tst || tst->type != FM_PLACES_ITEM_PATH || tst->id > id)
+         {
+             gtk_list_store_insert_before(model, it, &next_it);
+@@ -338,7 +351,7 @@
+     } while(gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &next_it));
+     gtk_list_store_append(model, it);
+ _added:
+-    pix = fm_pixbuf_from_icon(item->icon, fm_config->pane_icon_size);
++    pix = native_pixbuf(item);
+     gtk_list_store_set(model, it,
+                        FM_PLACES_MODEL_COL_INFO, item,
+                        FM_PLACES_MODEL_COL_LABEL, label,
+@@ -386,6 +399,22 @@
+ 
+ static void add_volume_or_mount(FmPlacesModel* model, GObject* volume_or_mount, FmFileInfoJob* job)
+ {
++    /* Native filesystems come from the event-driven Slax catalogue, without duplicate GIO rows. */
++    if(G_IS_VOLUME(volume_or_mount))
++    {
++        char *device=g_volume_get_identifier(G_VOLUME(volume_or_mount),G_VOLUME_IDENTIFIER_KIND_UNIX_DEVICE);
++        gboolean native=device!=NULL;
++        g_free(device);
++        if(native) return;
++    }
++    else
++    {
++        GFile *root=g_mount_get_root(G_MOUNT(volume_or_mount));
++        gboolean native=g_file_is_native(root);
++        g_object_unref(root);
++        if(native) return;
++    }
++
+     FmPlacesItem* item;
+     GtkTreePath* tp;
+     GtkTreeIter it;
+@@ -591,6 +620,23 @@
+     FmIcon* remote_icon = NULL;
+     GdkPixbuf* folder_pix = fm_pixbuf_from_icon(icon, fm_config->pane_icon_size);
+     GdkPixbuf* remote_pix = NULL;
++    /* Keep the bookmark boundary between built-in places and native device groups. */
++    GtkTreeIter heading,previous,first;
++    GtkTreePath *boundary=gtk_tree_row_reference_get_path(model->separator);
++    gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&heading,boundary);
++    gtk_tree_path_free(boundary);
++    if (gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model),&first)) do
++    {
++        FmPlacesItem *entry=NULL;
++        gtk_tree_model_get(GTK_TREE_MODEL(model),&first,FM_PLACES_MODEL_COL_INFO,&entry,-1);
++        if (entry && entry->native_id && strcmp(entry->native_id,"header:Places"))
++        {
++            gtk_list_store_move_before(GTK_LIST_STORE(model),&heading,&first);
++            break;
++        }
++    } while (gtk_tree_model_iter_next(GTK_TREE_MODEL(model),&first));
++    previous=heading;
++    gboolean has_bookmarks=FALSE;
+     bms = fm_bookmarks_get_all(model->bookmarks);
+     for(l=bms;l;l=l->next)
+     {
+@@ -598,8 +644,29 @@
+         GtkTreeIter it;
+         GdkPixbuf* pix;
+         FmPath* path = bm->path;
++        gboolean duplicate=fm_path_equal(path,fm_path_get_root()) || fm_path_equal(path,fm_path_get_home());
++        GtkTreeIter existing;
++        if(!duplicate && gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model),&existing)) do
++        {
++            FmPlacesItem *native=NULL;
++            gtk_tree_model_get(GTK_TREE_MODEL(model),&existing,FM_PLACES_MODEL_COL_INFO,&native,-1);
++            if(native && native->location)
++            {
++                const char *mount,*target;
++                g_variant_get_child(native->location,6,"&s",&mount);
++                g_variant_get_child(native->location,7,"&s",&target);
++                char *name=fm_path_to_str(path);
++                duplicate=(*mount && !strcmp(name,mount)) || (*target && !strcmp(name,target));
++                g_free(name);
++                if(duplicate) break;
++            }
++        } while(gtk_tree_model_iter_next(GTK_TREE_MODEL(model),&existing));
++        if(duplicate) { fm_bookmark_item_unref(bm); continue; }
+ 
+         item = add_new_item(GTK_LIST_STORE(model), FM_PLACES_ITEM_PATH, &it, NULL);
++        gtk_list_store_move_after(GTK_LIST_STORE(model),&it,&previous);
++        previous=it;
++        has_bookmarks=TRUE;
+         fm_file_info_set_path(item->fi, path);
+         fm_file_info_job_add(job, path);
+         if(fm_path_is_native(path))
+@@ -623,6 +690,18 @@
+                            FM_PLACES_MODEL_COL_ICON, pix,
+                            FM_PLACES_MODEL_COL_LABEL, bm->name, -1);
+     }
++    /* The boundary becomes a regular heading only when a visible bookmark exists. */
++    FmPlacesItem *header=NULL;
++    gtk_tree_model_get(GTK_TREE_MODEL(model),&heading,FM_PLACES_MODEL_COL_INFO,&header,-1);
++    if (has_bookmarks && !header) header=g_slice_new0(FmPlacesItem);
++    if (!has_bookmarks)
++    {
++        if (header) place_item_free(header);
++        header=NULL;
++        gtk_list_store_move_before(GTK_LIST_STORE(model),&heading,NULL);
++    }
++    gtk_list_store_set(GTK_LIST_STORE(model),&heading,FM_PLACES_MODEL_COL_INFO,header,
++                       FM_PLACES_MODEL_COL_LABEL,has_bookmarks?_("Bookmarks"):NULL,-1);
+     g_list_free(bms);
+     g_object_unref(folder_pix);
+     g_object_unref(icon);
+@@ -638,18 +717,21 @@
+ {
+     FmPlacesModel* model = FM_PLACES_MODEL(user_data);
+     FmFileInfoJob* job = fm_file_info_job_new(NULL, FM_FILE_INFO_JOB_FOLLOW_SYMLINK);
+-    GtkTreePath* tp = gtk_tree_row_reference_get_path(model->separator);
+-    GtkTreeIter it;
+-
+-    gtk_tree_model_get_iter(GTK_TREE_MODEL(model), &it, tp);
+-    gtk_tree_path_free(tp);
+-    /* remove all old bookmarks */
+-    if(gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &it))
+-    {
+-        while(gtk_list_store_remove(GTK_LIST_STORE(model), &it))
+-            continue;
++    GtkTreeIter it;
++    gboolean valid=gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model),&it);
++    /* Device groups now follow bookmarks; remove only actual bookmark rows. */
++    while (valid)
++    {
++        FmPlacesItem *item=NULL;
++        gtk_tree_model_get(GTK_TREE_MODEL(model),&it,FM_PLACES_MODEL_COL_INFO,&item,-1);
++        if (item && item->type==FM_PLACES_ITEM_PATH && item->bm_item)
++        {
++            valid=gtk_list_store_remove(GTK_LIST_STORE(model),&it);
++        }
++        else valid=gtk_tree_model_iter_next(GTK_TREE_MODEL(model),&it);
+     }
+     add_bookmarks(model, job);
++    g_signal_emit_by_name(model,"locations-changed");
+ 
+     g_signal_connect(job, "finished", G_CALLBACK(on_file_info_job_finished), model);
+     model->jobs = g_slist_prepend(model->jobs, job);
+@@ -690,7 +772,7 @@
+                 g_object_unref(item->icon);
+             item->icon = icon;
+             /* update the icon */
+-            pix = fm_pixbuf_from_icon(item->icon, fm_config->pane_icon_size);
++            pix = native_pixbuf(item);
+             gtk_list_store_set(GTK_LIST_STORE(model), &it, FM_PLACES_MODEL_COL_ICON, pix, -1);
+             g_object_unref(pix);
+             gtk_tree_path_free(tp);
+@@ -711,25 +793,16 @@
  static void update_icons(FmPlacesModel* model)
  {
      GtkTreeIter it;
@@ -34,22 +247,32 @@
  
      /* reload icon for every item */
      gtk_tree_model_get_iter_first(GTK_TREE_MODEL(model), &it);
-@@ -946,18 +938,36 @@
+     do{
+         FmPlacesItem* item = NULL;
+         gtk_tree_model_get(GTK_TREE_MODEL(model), &it, FM_PLACES_MODEL_COL_INFO, &item, -1);
+-        if(item) /* separator item has all columns NULL */
+-        {
+-            pix = fm_pixbuf_from_icon(item->icon, fm_config->pane_icon_size);
++        if(item && item->icon) /* headers and separators have no icon */
++        {
++            pix = native_pixbuf(item);
+             gtk_list_store_set(GTK_LIST_STORE(model), &it, FM_PLACES_MODEL_COL_ICON, pix, -1);
+             g_object_unref(pix);
+         }
+@@ -828,7 +901,7 @@
+     if(cfg->places_root)
+     {
+         new_path_item(model, &it, fm_path_get_root(), FM_PLACES_ID_ROOT,
+-                      _("Filesystem Root"), "drive-harddisk", NULL);
++                      _("File System (/)"), "slax-places-system", NULL);
+     }
+     else
+     {
+@@ -946,12 +1019,13 @@
      g_list_free(vols);
  }
-
-+/* Refresh generated media bookmarks outside GTK when any mount changes. */
-+static void on_unix_mounts_changed(GUnixMountMonitor* monitor, gpointer user_data)
-+{
-+    if(geteuid() != 0) return;
-+    char* argv[] = {"/usr/sbin/gtk-bookmarks-update", NULL};
-+    GError* error = NULL;
-+    if(!g_spawn_async(NULL, argv, NULL, 0, NULL, NULL, NULL, &error))
-+    {
-+        g_warning("Cannot refresh media bookmarks: %s", error->message);
-+        g_error_free(error);
-+    }
-+}
+ 
++#include "slax-places-model.h"
 +
  static void fm_places_model_init(FmPlacesModel *self)
  {
@@ -60,29 +283,107 @@
      FmFileInfoJob* job = fm_file_info_job_new(NULL, FM_FILE_INFO_JOB_FOLLOW_SYMLINK);
      GtkListStore* model = &self->parent;
      FmPath *path;
-     GtkTreePath* tp;
-
-     gtk_list_store_set_column_types(&self->parent, FM_PLACES_MODEL_N_COLS, types);
-+
-+    /* The Places model is shared by every sidebar in this process. */
-+    GUnixMountMonitor* monitor = g_unix_mount_monitor_get();
-+    g_signal_connect_object(monitor, "mounts-changed", G_CALLBACK(on_unix_mounts_changed), self, 0);
-+    g_object_set_data_full(G_OBJECT(self), "unix-mount-monitor", monitor, g_object_unref);
-+    on_unix_mounts_changed(monitor, self);
-
-     self->theme_change_handler = g_signal_connect_swapped(gtk_icon_theme_get_default(), "changed",
-                                             G_CALLBACK(update_icons), self);
-@@ -984,9 +994,6 @@
+@@ -984,11 +1058,8 @@
  
      self->pane_icon_size_change_handler = g_signal_connect(fm_config, "changed::pane_icon_size",
                                               G_CALLBACK(on_pane_icon_size_changed), self);
 -    icon = fm_icon_from_name("media-eject");
 -    self->eject_icon = fm_pixbuf_from_icon(icon, fm_config->pane_icon_size);
 -    g_object_unref(icon);
- 
-     if(fm_config->places_home)
+-
+-    if(fm_config->places_home)
++
++    /* The two built-in locations are independent of generated bookmarks and old visibility settings. */
      {
-@@ -1371,10 +1378,6 @@
+         path = fm_path_get_home();
+         new_path_item(model, &it, path, FM_PLACES_ID_HOME,
+@@ -1003,10 +1074,9 @@
+                       _("Desktop"), "user-desktop", job);
+     }
+ 
+-    if(fm_config->places_root)
+     {
+         new_path_item(model, &it, fm_path_get_root(), FM_PLACES_ID_ROOT,
+-                      _("Filesystem Root"), "drive-harddisk", job);
++                      _("File System (/)"), "slax-places-system", job);
+     }
+ 
+     if(fm_config->places_computer)
+@@ -1097,6 +1167,15 @@
+         g_object_unref(job);
+         g_critical("fm_job_run_async() failed on places view init");
+     }
++    GError *error=NULL;
++    self->native_cancel=g_cancellable_new();
++    self->native_process=g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_PIPE,&error,"/usr/libexec/slax-places","--watch",NULL);
++    if(self->native_process)
++    {
++        self->native_stream=g_data_input_stream_new(g_subprocess_get_stdout_pipe(self->native_process));
++        native_read(self);
++    }
++    else { g_warning("Cannot start filesystem discovery: %s",error->message); g_error_free(error); }
+ }
+ 
+ /**
+@@ -1190,16 +1269,11 @@
+  */
+ gboolean fm_places_model_path_is_bookmark(FmPlacesModel* model, GtkTreePath* tp)
+ {
+-    GtkTreePath* sep_tp;
+-    gboolean ret = FALSE;
+-
+-    if(tp)
+-    {
+-        sep_tp = gtk_tree_row_reference_get_path(model->separator);
+-        ret = gtk_tree_path_compare(sep_tp, tp) < 0;
+-        gtk_tree_path_free(sep_tp);
+-    }
+-    return ret;
++    GtkTreeIter iter;
++    FmPlacesItem *item=NULL;
++    if (!tp || !gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&iter,tp)) return FALSE;
++    gtk_tree_model_get(GTK_TREE_MODEL(model),&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
++    return item && fm_places_item_get_bookmark_item(item)!=NULL;
+ }
+ 
+ /**
+@@ -1215,16 +1289,11 @@
+  */
+ gboolean fm_places_model_path_is_places(FmPlacesModel* model, GtkTreePath* tp)
+ {
+-    GtkTreePath* sep_tp;
+-    gboolean ret = FALSE;
+-
+-    if(tp)
+-    {
+-        sep_tp = gtk_tree_row_reference_get_path(model->separator);
+-        ret = gtk_tree_path_compare(sep_tp, tp) > 0;
+-        gtk_tree_path_free(sep_tp);
+-    }
+-    return ret;
++    GtkTreeIter iter;
++    FmPlacesItem *item=NULL;
++    if (!tp || !gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&iter,tp)) return FALSE;
++    gtk_tree_model_get(GTK_TREE_MODEL(model),&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
++    return item && item->type!=FM_PLACES_ITEM_NONE && !fm_places_item_get_bookmark_item(item);
+ }
+ 
+ static gboolean row_draggable(GtkTreeDragSource* drag_source, GtkTreePath* tp)
+@@ -1252,6 +1321,13 @@
+     g_return_if_fail(object != NULL);
+     g_return_if_fail(FM_IS_PLACES_MODEL(object));
+     self = (FmPlacesModel*)object;
++    if(self->native_cancel) g_cancellable_cancel(self->native_cancel);
++    if(self->native_process) g_subprocess_force_exit(self->native_process);
++    g_clear_object(&self->native_cancel);
++    g_clear_object(&self->native_stream);
++    g_clear_object(&self->native_process);
++    g_clear_pointer(&self->native_snapshot,g_variant_unref);
++
+ 
+     if(self->jobs)
+     {
+@@ -1371,15 +1447,12 @@
          self->trash_idle_handler = 0;
      }
  
@@ -93,7 +394,13 @@
      G_OBJECT_CLASS(fm_places_model_parent_class)->dispose(object);
  }
  
-@@ -1420,12 +1423,11 @@
+ static void fm_places_model_class_init(FmPlacesModelClass *klass)
+ {
++    g_signal_new("locations-changed",G_TYPE_FROM_CLASS(klass),G_SIGNAL_RUN_LAST,0,NULL,NULL,NULL,G_TYPE_NONE,0);
+     GObjectClass *g_object_class;
+ 
+     g_object_class = G_OBJECT_CLASS(klass);
+@@ -1420,12 +1493,19 @@
                                             gpointer user_data)
  {
      FmPlacesItem* item = NULL;
@@ -104,51 +411,83 @@
 -        pix = ((FmPlacesModel*)tree_model)->eject_icon;
 -    g_object_set(render, "pixbuf", pix, NULL);
 +    /* Let GTK size and recolor the symbolic action for the current theme. */
-+    const char* icon = item && fm_places_item_is_mounted(item) ? "media-eject-symbolic" : NULL;
++    const char* icon = item && fm_places_item_is_mounted(item) ? "slax-places-unmount-symbolic" : NULL;
++    if(item && item->location)
++    {
++        const char *reason;
++        g_variant_get_child(item->location,8,"&s",&reason);
++        icon=item->mounted?"slax-places-unmount-symbolic":"slax-places-mount-symbolic";
++        if(*reason) icon="slax-places-lock-symbolic";
++        if(item->pending) icon="slax-places-working-symbolic";
++    }
 +    g_object_set(render, "icon-name", icon, "stock-size", GTK_ICON_SIZE_MENU, "visible", icon != NULL, NULL);
  }
  
  /**
-@@ -1489,6 +1491,18 @@
+@@ -1451,7 +1531,7 @@
+         do{
+             item = NULL;
+             gtk_tree_model_get(model_, &it, FM_PLACES_MODEL_COL_INFO, &item, -1);
+-            if(item && item->fi && fm_path_equal(fm_file_info_get_path(item->fi), path))
++            if(item && item->fi && fm_file_info_get_path(item->fi) && fm_path_equal(fm_file_info_get_path(item->fi), path))
+             {
+                 *iter = it;
+                 return TRUE;
+@@ -1521,6 +1601,7 @@
   */
- gboolean fm_places_item_is_mounted(FmPlacesItem* item)
+ FmFileInfo* fm_places_item_get_info(FmPlacesItem* item)
  {
-+    /* Bookmarks only offer unmount for an exact, non-system mount point. */
-+    if(item->type == FM_PLACES_ITEM_PATH && item->bm_item)
-+    {
-+        FmPath* path = fm_file_info_get_path(item->fi);
-+        if(!fm_path_is_native(path)) return FALSE;
-+        char* filename = fm_path_to_str(path);
-+        GUnixMountEntry* mount = g_unix_mount_at(filename, NULL);
-+        gboolean mounted = mount && !g_unix_is_mount_path_system_internal(filename);
-+        if(mount) g_unix_mount_free(mount);
-+        g_free(filename);
-+        return mounted;
-+    }
-     return item->mounted ? TRUE : FALSE;
++    if(item->location && !item->mounted) return NULL;
+     return item->fi;
  }
  
+--- a/src/gtk/fm-places-model.h
++++ b/src/gtk/fm-places-model.h
+@@ -76,7 +76,8 @@
+     FM_PLACES_ITEM_NONE,
+     FM_PLACES_ITEM_PATH,
+     FM_PLACES_ITEM_VOLUME,
+-    FM_PLACES_ITEM_MOUNT
++    FM_PLACES_ITEM_MOUNT,
++    FM_PLACES_ITEM_LOCATION
+ } FmPlacesType;
+ 
+ typedef struct _FmPlacesItem FmPlacesItem;
+@@ -119,6 +120,11 @@
+ 
+ FmBookmarkItem* fm_places_item_get_bookmark_item(FmPlacesItem* item);
+ 
++/* Slax native filesystem rows keep immutable provider metadata and transient operations. */
++GVariant *fm_places_item_get_native(FmPlacesItem *item);
++const char *fm_places_item_get_operation(FmPlacesItem *item);
++void fm_places_model_set_busy(FmPlacesModel *model,const char *id,const char *operation);
++
+ G_END_DECLS
+ 
+ #endif /* __FM_PLACES_MODEL_H__ */
 --- a/src/gtk/fm-places-view.c
 +++ b/src/gtk/fm-places-view.c
 @@ -40,6 +40,7 @@
  #define FM_DISABLE_SEAL
  
  #include <glib/gi18n-lib.h>
-+#include <gio/gunixmounts.h>
++#include <unistd.h>
  #include "fm-places-view.h"
  #include "fm-config.h"
  #include "fm-utils.h"
-@@ -98,6 +99,84 @@
+@@ -98,6 +99,115 @@
  static FmPlacesModel* model = NULL;
  
  static guint signals[N_SIGNALS];
++static void on_selection_done(GtkMenu *menu,gpointer unused);
++#include "slax-places-view.h"
 +
 +/* A themed sidebar button inside the tree cell keeps the native Places model. */
 +typedef GtkCellRendererPixbuf FmMountIndicator;
 +typedef GtkCellRendererPixbufClass FmMountIndicatorClass;
 +G_DEFINE_TYPE(FmMountIndicator, _fm_mount_indicator, GTK_TYPE_CELL_RENDERER_PIXBUF);
 +
-+enum { MOUNT_BUTTON_SIZE = 26, MOUNT_BUTTON_MARGIN = 3 };
++enum { MOUNT_BUTTON_SIZE=26, MOUNT_BUTTON_LEFT=3, MOUNT_BUTTON_RIGHT=8 };
 +
 +/* Draw the same circular sidebar button used by GTK's file chooser. */
 +static void mount_indicator_render(GtkCellRenderer* cell, cairo_t* cr, GtkWidget* widget,
@@ -158,10 +497,12 @@
 +    char* icon = NULL;
 +    g_object_get(cell, "icon-name", &icon, NULL);
 +    if(!icon) return;
++    gboolean spinning=!strcmp(icon,"slax-places-working-symbolic");
++    gboolean locked=!strcmp(icon,"slax-places-lock-symbolic");
 +    GtkWidget* button = g_object_get_data(G_OBJECT(cell), "sidebar-button");
 +    GtkStyleContext* style = gtk_widget_get_style_context(button);
-+    int x = area->x+(area->width-MOUNT_BUTTON_SIZE)/2;
-+    int y = area->y+(area->height-MOUNT_BUTTON_SIZE)/2;
++    double x=area->x+MOUNT_BUTTON_LEFT;
++    double y=area->y+(area->height-MOUNT_BUTTON_SIZE)/2.0;
 +    int pointer_x, pointer_y;
 +    GdkModifierType modifiers;
 +    GdkDevice* pointer = gdk_seat_get_pointer(gdk_display_get_default_seat(gtk_widget_get_display(widget)));
@@ -170,27 +511,48 @@
 +    gboolean hover = pointer_x >= x && pointer_x < x+MOUNT_BUTTON_SIZE;
 +    hover = hover && pointer_y >= y && pointer_y < y+MOUNT_BUTTON_SIZE;
 +    GtkStateFlags state = GTK_STATE_FLAG_NORMAL;
-+    if(hover) state = modifiers & GDK_BUTTON1_MASK ? GTK_STATE_FLAG_ACTIVE : GTK_STATE_FLAG_PRELIGHT;
++    if(hover && !locked && !spinning) state = modifiers & GDK_BUTTON1_MASK ? GTK_STATE_FLAG_ACTIVE : GTK_STATE_FLAG_PRELIGHT;
 +    if(flags & GTK_CELL_RENDERER_SELECTED) gtk_style_context_add_class(style, "selected-place");
 +    else gtk_style_context_remove_class(style, "selected-place");
++    if(!strcmp(icon,"slax-places-mount-symbolic")) gtk_style_context_add_class(style,"mount-place");
++    else gtk_style_context_remove_class(style,"mount-place");
++    if(locked) gtk_style_context_add_class(style,"protected-place");
++    else gtk_style_context_remove_class(style,"protected-place");
++    if(spinning) gtk_style_context_add_class(style,"busy-place");
++    else gtk_style_context_remove_class(style,"busy-place");
 +    gtk_style_context_set_state(style, state);
-+    gtk_render_background(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
-+    gtk_render_frame(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
++    if(!locked)
++    {
++        gtk_render_background(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
++        gtk_render_frame(style, cr, x, y, MOUNT_BUTTON_SIZE, MOUNT_BUTTON_SIZE);
++    }
 +    /* Resolve symbolic colors against the button, independently of row selection. */
 +    int scale = gtk_widget_get_scale_factor(widget);
 +    GtkIconTheme* theme = gtk_icon_theme_get_for_screen(gtk_widget_get_screen(widget));
-+    GtkIconInfo* info = gtk_icon_theme_lookup_icon_for_scale(theme, icon, 16, scale, 0);
++    GtkIconInfo* info = gtk_icon_theme_lookup_icon_for_scale(theme, icon, locked?13:14, scale, GTK_ICON_LOOKUP_FORCE_SIZE);
 +    g_free(icon);
 +    if(!info) return;
-+    GdkPixbuf* symbol = gtk_icon_info_load_symbolic_for_context(info, style, NULL, NULL);
++    GdkPixbuf* symbol = gtk_icon_info_load_icon(info,NULL);
 +    g_object_unref(info);
 +    if(!symbol) return;
 +    cairo_surface_t* image = gdk_cairo_surface_create_from_pixbuf(symbol, scale, gtk_widget_get_window(widget));
 +    cairo_push_group(cr);
-+    gtk_render_icon_surface(style, cr, image, x+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_width(symbol)/scale)/2,
-+                             y+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_height(symbol)/scale)/2);
++    cairo_save(cr);
++    if(spinning)
++    {
++        cairo_translate(cr,x+MOUNT_BUTTON_SIZE/2.0,y+MOUNT_BUTTON_SIZE/2.0);
++        cairo_rotate(cr,(g_get_monotonic_time()%1000000)/1000000.0*2*G_PI);
++        x=-MOUNT_BUTTON_SIZE/2; y=-MOUNT_BUTTON_SIZE/2;
++    }
++    /* Recolor stroke-based SVGs through their alpha mask, just like filled symbolic icons. */
++    GdkRGBA color;
++    gtk_style_context_get_color(style,state,&color);
++    gdk_cairo_set_source_rgba(cr,&color);
++    cairo_mask_surface(cr,image,x+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_width(symbol)/scale)/2,
++                       y+(MOUNT_BUTTON_SIZE-gdk_pixbuf_get_height(symbol)/scale)/2);
++    cairo_restore(cr);
 +    cairo_pop_group_to_source(cr);
-+    cairo_paint_with_alpha(cr, hover ? 1.0 : 0.7);
++    cairo_paint(cr);
 +    cairo_surface_destroy(image);
 +    g_object_unref(symbol);
 +}
@@ -203,8 +565,8 @@
 +    gtk_style_context_add_class(style, "image-button");
 +    gtk_style_context_add_class(style, "sidebar-button");
 +    g_object_set_data_full(G_OBJECT(self), "sidebar-button", g_object_ref_sink(button), g_object_unref);
-+    gtk_cell_renderer_set_fixed_size(GTK_CELL_RENDERER(self), MOUNT_BUTTON_SIZE+2*MOUNT_BUTTON_MARGIN,
-+                                     MOUNT_BUTTON_SIZE+2*MOUNT_BUTTON_MARGIN);
++    gtk_cell_renderer_set_fixed_size(GTK_CELL_RENDERER(self), MOUNT_BUTTON_SIZE+MOUNT_BUTTON_LEFT+MOUNT_BUTTON_RIGHT,
++                                     MOUNT_BUTTON_SIZE+6);
 +}
 +
 +/* Use GTK's icon renderer for the symbol and add the native button frame. */
@@ -216,6 +578,12 @@
 +/* Redraw when the pointer moves between the row label and its action button. */
 +static gboolean on_mount_pointer(GtkWidget* widget, GdkEvent* event, gpointer user_data)
 +{
++    GtkTreePath *path=NULL;
++    if(event->type==GDK_MOTION_NOTIFY)
++        gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(widget),event->motion.x,event->motion.y,&path,NULL,NULL,NULL);
++    GtkTreeRowReference *reference=path?gtk_tree_row_reference_new(GTK_TREE_MODEL(model),path):NULL;
++    g_object_set_data_full(G_OBJECT(widget),"slax-hover-row",reference,(GDestroyNotify)gtk_tree_row_reference_free);
++    if(path) gtk_tree_path_free(path);
 +    gtk_widget_queue_draw(widget);
 +    return FALSE;
 +}
@@ -223,90 +591,281 @@
  
  #define PLACES_MENU_XML \
  "<popup>" \
-@@ -496,6 +575,14 @@
+@@ -179,15 +289,10 @@
+ 
+ static GdkAtom tree_model_row_atom;
+ 
+-static gboolean sep_func( GtkTreeModel* model, GtkTreeIter* it, gpointer data )
+-{
+-    return fm_places_model_iter_is_separator(FM_PLACES_MODEL(model), it);
+-}
+-
+ static void on_renderer_icon_size_changed(FmConfig* cfg, gpointer user_data)
+ {
+     FmCellRendererPixbuf* render = FM_CELL_RENDERER_PIXBUF(user_data);
+-    fm_cell_renderer_pixbuf_set_fixed_size(render, fm_config->pane_icon_size, fm_config->pane_icon_size);
++    fm_cell_renderer_pixbuf_set_fixed_size(render, fm_config->pane_icon_size+PLACE_ICON_PADDING, fm_config->pane_icon_size);
+ }
+ 
+ static void on_cell_renderer_pixbuf_destroy(gpointer user_data, GObject* render)
+@@ -207,38 +312,24 @@
+  * for the bookmark item and modified the tree path @tp passed into this function. */
+ static gboolean get_bookmark_drag_dest(FmPlacesView* view, GtkTreePath** tp, GtkTreeViewDropPosition* pos)
+ {
+-    gboolean ret = TRUE;
+-    if(*tp)
+-    {
+-        /* if the drop site is below the separator (in the bookmark area) */
+-        if(fm_places_model_path_is_bookmark(model, *tp))
+-        {
+-            /* we cannot drop into a item */
+-            if(*pos == GTK_TREE_VIEW_DROP_INTO_OR_BEFORE ||
+-               *pos == GTK_TREE_VIEW_DROP_INTO_OR_AFTER)
+-                ret = FALSE;
+-            else
+-                ret = TRUE;
+-        }
+-        else /* the drop site is above the separator (in the places area containing volumes) */
+-        {
+-            GtkTreePath* sep = fm_places_model_get_separator_path(model);
+-            /* set drop site at the first bookmark item */
+-            gtk_tree_path_get_indices(*tp)[0] = gtk_tree_path_get_indices(sep)[0] + 1;
+-            gtk_tree_path_free(sep);
+-            *pos = GTK_TREE_VIEW_DROP_BEFORE;
+-            ret = TRUE;
+-        }
+-    }
+-    else
+-    {
+-        /* drop at end of the bookmarks list instead */
+-        *tp = gtk_tree_path_new_from_indices(gtk_tree_model_iter_n_children(GTK_TREE_MODEL(model), NULL) - 1, -1);
+-        *pos = GTK_TREE_VIEW_DROP_AFTER;
+-        ret = TRUE;
+-    }
+-    /* g_debug("path: %s, pos: %d, ret: %d", gtk_tree_path_to_string(*tp), *pos, ret); */
+-    return ret;
++    if (*tp && fm_places_model_path_is_bookmark(model,*tp))
++        return *pos==GTK_TREE_VIEW_DROP_BEFORE || *pos==GTK_TREE_VIEW_DROP_AFTER;
++    /* Clamp other drops to the beginning or end of the bookmark section. */
++    GtkTreePath *first=fm_places_model_get_separator_path(model);
++    GtkTreePath *last=gtk_tree_path_copy(first);
++    GtkTreeIter iter;
++    gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&iter,first);
++    while (gtk_tree_model_iter_next(GTK_TREE_MODEL(model),&iter) && native_bookmark_at(model,&iter))
++    {
++        gtk_tree_path_free(last);
++        last=gtk_tree_model_get_path(GTK_TREE_MODEL(model),&iter);
++    }
++    gboolean before=*tp && gtk_tree_path_compare(*tp,first)<=0;
++    if (*tp) gtk_tree_path_free(*tp);
++    *tp=before?first:last;
++    gtk_tree_path_free(before?last:first);
++    *pos=GTK_TREE_VIEW_DROP_AFTER;
++    return TRUE;
+ }
+ 
+ static gboolean on_drag_motion (GtkWidget *dest_widget,
+@@ -376,7 +467,9 @@
+                                 gtk_list_store_move_before(GTK_LIST_STORE(model), &src_it, &dest_it);
+                             else
+                                 gtk_list_store_move_after(GTK_LIST_STORE(model), &src_it, &dest_it);
+-                            new_pos = gtk_tree_path_get_indices(dest_tp)[0] - sep_pos - 1;
++                            GtkTreePath *moved=gtk_tree_model_get_path(GTK_TREE_MODEL(model),&src_it);
++                            new_pos=gtk_tree_path_get_indices(moved)[0]-sep_pos-1;
++                            gtk_tree_path_free(moved);
+                             /* reorder the bookmark item */
+                             fm_bookmarks_reorder(fm_places_model_get_bookmarks(model), fm_places_item_get_bookmark_item(item), new_pos);
+                             gtk_tree_path_free(sep_tp);
+@@ -496,26 +589,31 @@
      gtk_tree_view_set_model(GTK_TREE_VIEW(self), GTK_TREE_MODEL(model));
      g_object_unref(model);
  
 +    gtk_widget_add_events(GTK_WIDGET(self), GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK);
 +    g_signal_connect(self, "motion-notify-event", G_CALLBACK(on_mount_pointer), NULL);
 +    g_signal_connect(self, "leave-notify-event", G_CALLBACK(on_mount_pointer), NULL);
-+    /* Refresh bookmark buttons when mounts change outside this file manager. */
-+    GUnixMountMonitor* monitor = g_unix_mount_monitor_get();
-+    g_signal_connect_object(monitor, "mounts-changed", G_CALLBACK(gtk_widget_queue_draw), self, G_CONNECT_SWAPPED);
-+    g_object_set_data_full(G_OBJECT(self), "unix-mount-monitor", monitor, g_object_unref);
++    gtk_tree_selection_set_select_function(gtk_tree_view_get_selection(GTK_TREE_VIEW(self)),native_select,NULL,NULL);
++    g_signal_connect_object(model,"locations-changed",G_CALLBACK(native_selection_changed),self,0);
 +
      gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(self), FALSE);
-     gtk_tree_view_set_row_separator_func(GTK_TREE_VIEW(self), sep_func, NULL, NULL);
+-    gtk_tree_view_set_row_separator_func(GTK_TREE_VIEW(self), sep_func, NULL, NULL);
+-
+-    col = gtk_tree_view_column_new();
++
++    col = gtk_tree_view_column_new_with_area(g_object_new(_fm_places_area_get_type(),NULL));
++    gtk_tree_view_column_set_spacing(col,2);
+     renderer = (GtkCellRenderer*)fm_cell_renderer_pixbuf_new();
++    g_object_set(renderer,"xalign",10.0/PLACE_ICON_PADDING,"xpad",0,"ypad",0,NULL);
+     handler = g_signal_connect(fm_config, "changed::pane_icon_size", G_CALLBACK(on_renderer_icon_size_changed), renderer);
+     g_object_weak_ref(G_OBJECT(renderer), on_cell_renderer_pixbuf_destroy, GUINT_TO_POINTER(handler));
+-    fm_cell_renderer_pixbuf_set_fixed_size((FmCellRendererPixbuf*)renderer, fm_config->pane_icon_size, fm_config->pane_icon_size);
++    fm_cell_renderer_pixbuf_set_fixed_size((FmCellRendererPixbuf*)renderer, fm_config->pane_icon_size+PLACE_ICON_PADDING, fm_config->pane_icon_size);
  
-@@ -515,7 +602,7 @@
-     gtk_tree_view_column_set_attributes( col, renderer,
-                                          "text", FM_PLACES_MODEL_COL_LABEL, NULL );
+     gtk_tree_view_column_pack_start( col, renderer, FALSE );
+-    gtk_tree_view_column_set_attributes( col, renderer,
+-                                         "pixbuf", FM_PLACES_MODEL_COL_ICON, NULL );
++    gtk_tree_view_column_set_cell_data_func(col,renderer,native_icon,self,NULL);
  
+     renderer = gtk_cell_renderer_text_new();
+     gtk_tree_view_column_pack_start( col, renderer, TRUE );
+     g_object_set(renderer, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+-    gtk_tree_view_column_set_attributes( col, renderer,
+-                                         "text", FM_PLACES_MODEL_COL_LABEL, NULL );
+-
 -    renderer = gtk_cell_renderer_pixbuf_new();
++    gtk_tree_view_column_set_cell_data_func(col,renderer,native_label,self,NULL);
++
 +    renderer = g_object_new(_fm_mount_indicator_get_type(), NULL);
      self->mount_indicator_renderer = GTK_CELL_RENDERER_PIXBUF(renderer);
      gtk_tree_view_column_pack_start( col, renderer, FALSE );
      gtk_cell_layout_set_cell_data_func(GTK_CELL_LAYOUT(col), renderer,
-@@ -642,6 +729,23 @@
+@@ -565,6 +663,13 @@
+             return;
+         switch(fm_places_item_get_type(item))
+         {
++        case FM_PLACES_ITEM_LOCATION:
++        {
++            if(fm_places_item_get_operation(item)) return;
++            if(!fm_places_item_is_mounted(item)) { native_mount(view,item,FALSE,button); return; }
++            path=fm_path_ref(fm_places_item_get_path(item));
++            break;
++        }
+         case FM_PLACES_ITEM_PATH:
+         case FM_PLACES_ITEM_MOUNT:
+             path = fm_places_item_get_path(item);
+@@ -631,6 +736,9 @@
+  */
+ void fm_places_view_chdir(FmPlacesView* pv, FmPath* path)
+ {
++    /* Retain a reference before replacing the same stored path during reconciliation. */
++    if(path) fm_path_ref(path);
++    g_object_set_data_full(G_OBJECT(pv),"slax-current-path",path,(GDestroyNotify)fm_path_unref);
+     GtkTreeIter it;
+     GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(pv));
+     GtkTreeSelection* ts = gtk_tree_view_get_selection(GTK_TREE_VIEW(pv));
+@@ -642,10 +750,40 @@
          gtk_tree_selection_unselect_all(ts);
  }
  
-+/* Complete an ordinary unmount without blocking GTK or hiding a failed mount. */
-+static void on_bookmark_unmounted(GObject* source, GAsyncResult* result, gpointer user_data)
++/* Use identical button bounds on press and release, before GTK can select the row. */
++static gboolean mount_indicator_hit(FmPlacesView *view,GdkEventButton *event,GtkTreePath *path,GtkTreeViewColumn *column,int cell_x)
 +{
-+    GtkWidget* view = user_data;
-+    GtkWidget* parent = gtk_widget_get_toplevel(view);
-+    GError* error = NULL;
-+    char* message = NULL;
-+    gboolean completed = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(source), result, NULL, &message, &error);
-+    if(!completed || !g_subprocess_get_successful(G_SUBPROCESS(source)))
-+        fm_show_error(GTK_IS_WINDOW(parent) ? GTK_WINDOW(parent) : NULL, NULL,
-+                      error ? error->message : message);
-+    g_clear_error(&error);
-+    g_free(message);
-+    gtk_widget_queue_draw(view);
-+    g_object_unref(view);
++    GtkTreeIter iter;
++    FmPlacesItem *item=NULL;
++    if(!gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&iter,path)) return FALSE;
++    gtk_tree_model_get(GTK_TREE_MODEL(model),&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
++    if(!item || (!fm_places_item_get_native(item) && !fm_places_item_is_mounted(item))) return FALSE;
++    gtk_tree_view_column_cell_set_cell_data(column,GTK_TREE_MODEL(model),&iter,FALSE,FALSE);
++    int start,width;
++    gtk_tree_view_column_cell_get_position(column,GTK_CELL_RENDERER(view->mount_indicator_renderer),&start,&width);
++    GdkRectangle area;
++    gtk_tree_view_get_cell_area(GTK_TREE_VIEW(view),path,column,&area);
++    double top=area.y+(area.height-MOUNT_BUTTON_SIZE)/2.0;
++    gboolean inside_x=cell_x>=start+MOUNT_BUTTON_LEFT && cell_x<start+MOUNT_BUTTON_LEFT+MOUNT_BUTTON_SIZE;
++    gboolean inside_y=event->y>=top && event->y<top+MOUNT_BUTTON_SIZE;
++    return inside_x && inside_y;
 +}
 +
  static gboolean on_button_release(GtkWidget* widget, GdkEventButton* evt)
  {
      FmPlacesView* view = FM_PLACES_VIEW(widget);
-@@ -661,7 +765,10 @@
+-    gboolean ret = GTK_WIDGET_CLASS(fm_places_view_parent_class)->button_release_event(widget, evt);
++    /* A row inserted under the pointer must not receive another row's pending click. */
++    GtkTreeRowReference *pressed=g_object_get_data(G_OBJECT(widget),"slax-pressed-row");
++    if(pressed && view->clicked_row)
++    {
++        gtk_tree_path_free(view->clicked_row);
++        view->clicked_row=gtk_tree_row_reference_get_path(pressed);
++    }
++    g_object_set_data(G_OBJECT(widget),"slax-pressed-row",NULL);
++    gboolean action=GPOINTER_TO_INT(g_object_get_data(G_OBJECT(widget),"slax-action-press"));
++    g_object_set_data(G_OBJECT(widget),"slax-action-press",NULL);
++    gboolean ret=action?TRUE:GTK_WIDGET_CLASS(fm_places_view_parent_class)->button_release_event(widget,evt);
++    if(action) gtk_widget_queue_draw(widget);
+ 
+     /* we should finish the event before we do our work, otherwise gtk may
+        activate already removed row in default handler */
+@@ -661,11 +799,7 @@
                  /* check if we release the button on the row we previously clicked. */
                  if(gtk_tree_path_compare(tp, view->clicked_row) == 0)
                  {
 -                    /* check if we click on the "eject" icon. */
-+                    /* Resolve this row's visible cells before testing its action button. */
-+                    GtkTreeIter row;
-+                    gtk_tree_model_get_iter(GTK_TREE_MODEL(model), &row, tp);
-+                    gtk_tree_view_column_cell_set_cell_data(col, GTK_TREE_MODEL(model), &row, FALSE, FALSE);
-                     int start, cell_w;
-                     gtk_tree_view_column_cell_get_position(col, GTK_CELL_RENDERER(view->mount_indicator_renderer),
-                                                            &start, &cell_w);
-@@ -684,6 +791,26 @@
-                                 gtk_tree_path_free(tp);
-                                 switch(fm_places_item_get_type(item))
-                                 {
-+                                case FM_PLACES_ITEM_PATH:
-+                                {
-+                                    /* Pass the mount point as one argument, including spaces and Unicode. */
-+                                    char* path = fm_path_to_str(fm_places_item_get_path(item));
-+                                    GError* error = NULL;
-+                                    GSubprocess* process = g_subprocess_new(G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_PIPE,
-+                                                                          &error, "umount", "--", path, NULL);
-+                                    g_free(path);
-+                                    if(process)
-+                                    {
-+                                        g_subprocess_communicate_utf8_async(process, NULL, NULL, on_bookmark_unmounted, g_object_ref(view));
-+                                        g_object_unref(process);
-+                                    }
-+                                    else
-+                                    {
-+                                        fm_show_error(toplevel, NULL, error->message);
-+                                        g_error_free(error);
-+                                    }
-+                                    break;
-+                                }
-                                 case FM_PLACES_ITEM_VOLUME:
-                                     volume = fm_places_item_get_volume(item);
-                                     /* eject the volume */
+-                    int start, cell_w;
+-                    gtk_tree_view_column_cell_get_position(col, GTK_CELL_RENDERER(view->mount_indicator_renderer),
+-                                                           &start, &cell_w);
+-                    if(cell_x > start && cell_x < (start + cell_w)) /* click on eject icon */
++                    if(action && mount_indicator_hit(view,evt,tp,col,cell_x))
+                     {
+                         GtkTreeIter it;
+                         /* do eject if needed */
+@@ -673,6 +807,15 @@
+                         {
+                             FmPlacesItem* item;
+                             gtk_tree_model_get(GTK_TREE_MODEL(model), &it, FM_PLACES_MODEL_COL_INFO, &item, -1);
++                            if(item && fm_places_item_get_native(item))
++                            {
++                                gtk_tree_path_free(view->clicked_row); view->clicked_row=NULL;
++                                gtk_tree_path_free(tp);
++                                const char *reason;
++                                g_variant_get_child(fm_places_item_get_native(item),8,"&s",&reason);
++                                if(!*reason) native_mount(view,item,fm_places_item_is_mounted(item),0);
++                                goto _out;
++                            }
+                             if(item && fm_places_item_is_mounted(item))
+                             {
+                                 GtkWindow* toplevel = GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+@@ -715,7 +858,7 @@
+                         }
+                     }
+                     /* activate the clicked row. */
+-                    gtk_tree_view_row_activated(&view->parent, view->clicked_row, col);
++                    if(!action) gtk_tree_view_row_activated(&view->parent, view->clicked_row, col);
+                 }
+                 gtk_tree_path_free(tp);
+             }
+@@ -745,6 +888,8 @@
+ 
+ static GtkWidget* place_item_get_menu(FmPlacesItem* item, GtkWidget *widget)
+ {
++    if(fm_places_item_get_type(item)==FM_PLACES_ITEM_NONE) return NULL;
++    if(fm_places_item_get_native(item)) return native_menu(FM_PLACES_VIEW(widget),item);
+     GtkWidget* menu = NULL;
+     GtkUIManager* ui = gtk_ui_manager_new();
+     GtkActionGroup* act_grp = gtk_action_group_new("Popup");
+@@ -776,7 +921,7 @@
+                     act = gtk_action_group_get_action(act_grp, "MoveBmUp");
+                     gtk_action_set_sensitive(act, FALSE);
+                 }
+-                if(!gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &src_it))
++                if(!gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &src_it) || !native_bookmark_at(model,&src_it))
+                 {
+                     act = gtk_action_group_get_action(act_grp, "MoveBmDown");
+                     gtk_action_set_sensitive(act, FALSE);
+@@ -978,12 +1123,16 @@
+     GtkTreePath* tp;
+     GtkTreeViewColumn* col;
+     GtkTreeIter it;
+-    gboolean ret = GTK_WIDGET_CLASS(fm_places_view_parent_class)->button_press_event(widget, evt);
+-
+-    gtk_tree_view_get_path_at_pos(&view->parent, evt->x, evt->y, &tp, &col, NULL, NULL);
++    int cell_x;
++    gtk_tree_view_get_path_at_pos(&view->parent,evt->x,evt->y,&tp,&col,&cell_x,NULL);
++    gboolean action=evt->button==1 && tp && mount_indicator_hit(view,evt,tp,col,cell_x);
++    g_object_set_data(G_OBJECT(widget),"slax-action-press",GINT_TO_POINTER(action));
++    gboolean ret=action?TRUE:GTK_WIDGET_CLASS(fm_places_view_parent_class)->button_press_event(widget,evt);
++    if(action) gtk_widget_queue_draw(widget);
+     if(view->clicked_row) /* what? more than one botton clicked? */
+         gtk_tree_path_free(view->clicked_row);
+     view->clicked_row = tp;
++    g_object_set_data_full(G_OBJECT(widget),"slax-pressed-row",tp?gtk_tree_row_reference_new(GTK_TREE_MODEL(model),tp):NULL,(GDestroyNotify)gtk_tree_row_reference_free);
+     if(tp)
+     {
+         switch(evt->button) /* middle click */
+@@ -1177,7 +1326,7 @@
+     sep_tp = fm_places_model_get_separator_path(model);
+     sep_pos = gtk_tree_path_get_indices(sep_tp)[0];
+     dest_it = src_it;
+-    if(!gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &dest_it))
++    if(!gtk_tree_model_iter_next(GTK_TREE_MODEL(model), &dest_it) || !native_bookmark_at(model,&dest_it))
+         goto _end; /* cannot move it down */
+     gtk_list_store_move_after(GTK_LIST_STORE(model), &src_it, &dest_it);
+     /* reorder the bookmark item */

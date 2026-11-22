@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>USB drive</title>
+  <rect x="8.5" y="2.5" width="7" height="6" rx=".5" fill="#a4caee" stroke="#438de6" stroke-width="1"/>
+  <path fill="#438de6" d="M10 4h1v2h-1Zm3 0h1v2h-1Z"/>
+  <rect x="6.5" y="8.5" width="11" height="13" rx="1.5" fill="#a4caee" stroke="#438de6" stroke-width="1"/>
+  <path fill="#438de6" d="M11 17h2v1h-2Z"/>
+</svg>

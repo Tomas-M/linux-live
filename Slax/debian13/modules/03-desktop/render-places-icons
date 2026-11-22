@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+cd "$(dirname "$0")"
+
+# Export the dedicated 24 px artwork directly, without resizing a raster master.
+DIRECTORY=rootcopy/usr/share/icons/hicolor/24x24/places
+mkdir -p "$DIRECTORY"
+for ICON in system drive usb disc; do
+   rsvg-convert "places-icons/24x24/slax-places-$ICON.svg" -o "$DIRECTORY/slax-places-$ICON.png"
+done

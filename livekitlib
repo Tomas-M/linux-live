@@ -478,9 +478,13 @@ ntfs_hibernation_inactive()
 # $2 = mount directory
 # $3 = filesystem
 # $4 = optional file for initial mount errors
+# $5 = optional additional mount options
 mount_device()
 {
-   local NUMBER EXISTING
+   local NUMBER EXISTING EXTRA
+
+   EXTRA="${5:-}"
+   if [ "$EXTRA" != "" ]; then EXTRA="-o $EXTRA"; fi
 
    if device_is_efi "$1"; then
       echo "EFI system partition skipped" >"${4:-/dev/null}"
@@ -497,7 +501,7 @@ mount_device()
       fi
    fi
 
-   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") 2>"${4:-/dev/null}"; then return 1; fi
+   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") $EXTRA 2>"${4:-/dev/null}"; then return 1; fi
    if [ "$3" != ntfs -a "$3" != ntfs3 ]; then return 0; fi
 
    if ! ntfs_hibernation_inactive "$2" 2>/dev/null; then
@@ -1513,7 +1517,7 @@ fstab_create()
 {
    debug_log "fstab_create" "$*"
 
-   local FSTAB DEVICE FS LABEL MOUNTPOINT OPTS
+   local FSTAB DEVICE FS LABEL MOUNTPOINT OPTS AUTOMOUNT
 
    FSTAB="$1/etc/fstab"
    if aufs_is_supported >/dev/null; then
@@ -1530,9 +1534,8 @@ fstab_create()
    mkdir -p "$1/media"
    mount -t tmpfs -o mode=755 tmpfs "$1/media"
 
-   if grep -qw noautomount /proc/cmdline || ! grep -qw automount /proc/cmdline; then
-      return
-   fi
+   AUTOMOUNT=yes
+   if grep -qw noautomount /proc/cmdline || ! grep -qw automount /proc/cmdline; then AUTOMOUNT=no; fi
 
    echo >> $FSTAB
 
@@ -1554,7 +1557,7 @@ fstab_create()
          if [ "$MOUNTPOINT" != "" ]; then
             # Keep boot and session storage mounted until initramfs shutdown.
             ln -s "/run/initramfs$MOUNTPOINT" "$1/media/$LABEL"
-         else
+         elif [ "$AUTOMOUNT" = yes ]; then
             mkdir -p "$1/media/$LABEL"
             echo "$DEVICE" "/media/$LABEL" $FS $OPTS 0 0 >> $FSTAB
          fi

@@ -40,8 +40,17 @@ DESKTOP
 
 FILES AND DRIVES
 - Open File Manager from the launcher. Double-click files/folders to open them.
-  The sidebar shows Home Folder, mounted drives and bookmarks. Ctrl+L focuses
+  The sidebar shows Home Folder, File System (/), available drives, shared folders
+  and personal bookmarks. Ctrl+L focuses
   the editable path bar; enter a path and press Enter or click Go.
+- Save the current folder with Bookmarks > Add to Bookmarks. Personal bookmarks
+  appear under Bookmarks between Places and Devices; the section appears only
+  when it contains bookmarks. Right-click a bookmark to rename or remove it.
+- Native GTK 3 Open and Save dialogs use the same available drives, shared folders
+  and personal bookmarks as File Manager. Mount or unmount a filesystem directly
+  from their sidebar, including when Slax starts with noautomount. Use the path
+  field or Ctrl+L to enter a folder or file path; Back, Forward, History and Up
+  navigate within the dialog. Alt+Left, Alt+Right and Alt+Up are the shortcuts.
 - Toolbar: Back, Forward, History, Up. Right-click files or empty space for actions
   such as Create New, Rename and Properties. Ctrl+C/Ctrl+V copies, Ctrl+X/Ctrl+V
   moves, Ctrl+H toggles hidden files, F2 renames the selection.
@@ -51,10 +60,16 @@ FILES AND DRIVES
   Chromium launched from root runs as guest with a separate browser profile and
   saves downloads to /root/Downloads by default. Chromium in the guest desktop
   uses /home/guest/Downloads. Other standard document folders follow the same rule.
-- With automount enabled, attached filesystems appear in File Manager and under
-  /media, normally /media/DEVICE (e.g. /media/sdb1). Click the circular unmount button
-  beside an ordinary mounted drive before unplugging it. Boot/profile disks remain
-  mounted while Slax uses them.
+- Available filesystems appear in File Manager even with noautomount. Click an
+  unmounted entry to mount and open it, or its circular + button to mount it without
+  changing folders. The circular unmount button disconnects an ordinary mounted
+  filesystem; the entry remains available for mounting again. A busy filesystem
+  stays mounted until its files and terminals are closed. Unmounting the current
+  folder returns to Home Folder.
+  With automount enabled, attached filesystems mount under /media, normally
+  /media/DEVICE (e.g. /media/sdb1). Boot and saved-changes storage show a lock
+  while Slax uses them. VirtualBox shares are offered even when unmounted;
+  manual unmounting prevents their automatic remount for the rest of this boot.
   EFI System Partitions are skipped by automatic mounting and by boot/profile discovery.
   The installer reserves them for EFI boot files; choose a separate data partition for Slax.
 - Right-click a local .iso > Mount to browse it read-only under /media/ISO-...;
@@ -114,8 +129,15 @@ APPLICATIONS AND PACKAGES
   arrow keys and Enter to choose and confirm answers.
 - Launch Chromium through Web Browser or fbliveapp chromium; it runs as guest
   with its browser sandbox. Video Player also runs as guest.
-- Slax Assistant (slax-ai) starts linux-assistant and opens its local interface
+- Slax Assistant is installed but does not start automatically. It does not run
+  or perform any tasks until the user launches it. Open Slax Assistant from the
+  launcher (slax-ai); this starts linux-assistant and opens its local interface
   in a dedicated browser app.
+- Run linux-assistant --cli for a terminal-only interface in a text console,
+  including when the desktop cannot start, to help diagnose and fix the problem.
+  Both interfaces require internet access. If Wi-Fi or another connection is
+  broken, temporarily connect through another route, such as Ethernet or USB
+  tethering from a phone, then ask the assistant to fix the original problem.
 
 BOOT AND PERSISTENCE
 - Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's

@@ -1,0 +1,228 @@
+--- a/src/tab-page.c
++++ b/src/tab-page.c
+@@ -72,6 +72,7 @@
+ };
+ 
+ static guint signals[N_SIGNALS];
++static void update_empty_message(FmTabPage *page);
+ 
+ static void fm_tab_page_finalize(GObject *object);
+ static void fm_tab_page_chdir_without_history(FmTabPage* page, FmPath* path);
+@@ -292,20 +293,23 @@
+         /* tab page may be inactive now and there is a chance it does not contain
+            own view therefore we have to destroy own folder view widget manually */
+         GtkWidget *fv = GTK_WIDGET(page->folder_view);
+-        GtkWidget *parent = gtk_widget_get_parent(fv);
++        GtkWidget *pane=gtk_widget_get_parent(fv);
++        GtkWidget *parent=gtk_widget_get_parent(pane);
++        g_object_ref(pane);
+         GList *panes, *l;
+ 
+         if (parent)
+         {
+             panes = gtk_container_get_children(GTK_CONTAINER(page->views));
+             for (l = panes; l; l = l->next)
+-                if ((GtkWidget*)l->data == fv)
++                if ((GtkWidget*)l->data == pane)
+                     break;
+             if (l == NULL)
+-                gtk_container_remove(GTK_CONTAINER(parent), fv);
++                gtk_container_remove(GTK_CONTAINER(parent),pane);
+             g_list_free(panes);
+         }
+ 
++        g_signal_handlers_disconnect_by_func(page->folder_view,update_empty_message,page);
+         g_signal_handlers_disconnect_by_func(page->folder_view, on_folder_view_sel_changed, page);
+ #if FM_CHECK_VERSION(1, 2, 0)
+         g_signal_handlers_disconnect_by_func(page->folder_view, on_folder_view_columns_changed, page);
+@@ -316,6 +320,7 @@
+         _disconnect_focus_in(page->folder_view, page);
+         g_object_unref(page->folder_view);
+         page->folder_view = NULL;
++        g_object_unref(pane);
+     }
+ #if FM_CHECK_VERSION(1, 0, 2)
+     g_strfreev(page->columns);
+@@ -344,8 +349,26 @@
+ #endif
+ }
+ 
++/* Distinguish a successfully empty folder from hidden items, loading and read failures. */
++static void update_empty_message(FmTabPage *page)
++{
++    FmFolderModel *model=fm_folder_view_get_model(page->folder_view);
++    gboolean visible=FALSE;
++    if (page->folder && model && !page->busy)
++    {
++        gboolean loaded=fm_folder_is_loaded(page->folder) && fm_folder_is_valid(page->folder);
++        gboolean failed=g_object_get_data(G_OBJECT(page->folder),"slax-load-error")!=NULL;
++        gboolean empty=gtk_tree_model_iter_n_children(GTK_TREE_MODEL(model),NULL)==0;
++        visible=loaded && !failed && empty;
++        if (visible) gtk_label_set_text(GTK_LABEL(page->empty_message),
++            fm_folder_is_empty(page->folder)?_("This folder is empty"):_("No visible items"));
++    }
++    gtk_widget_set_visible(page->empty_message,visible);
++}
++
+ static void on_folder_content_changed(FmFolder* folder, FmTabPage* page)
+ {
++    update_empty_message(page);
+     /* update status text */
+     g_free(page->status_text[FM_STATUS_TEXT_NORMAL]);
+     page->status_text[FM_STATUS_TEXT_NORMAL] = format_status_text(page);
+@@ -524,6 +547,9 @@
+                 return FM_JOB_RETRY;
+         }
+     }
++    /* Keep the failure on the shared folder so cached tabs cannot mistake it for emptiness. */
++    g_object_set_data(G_OBJECT(folder),"slax-load-error",GINT_TO_POINTER(TRUE));
++    gtk_widget_hide(page->empty_message);
+     if(severity >= FM_JOB_ERROR_MODERATE)
+     {
+         /* Only show more severe errors to the users and
+@@ -587,9 +613,11 @@
+ }
+ #endif
+ 
+-static void on_folder_start_loading(FmFolder* folder, FmTabPage* page)
++/* Preparing a cached view must preserve the result of its previous enumeration. */
++static void prepare_folder_view(FmFolder* folder, FmTabPage* page)
+ {
+     FmFolderView* fv = page->folder_view;
++    gtk_widget_hide(page->empty_message);
+     /* g_debug("start-loading"); */
+     /* FIXME: this should be set on toplevel parent */
+     _tab_set_busy_cursor(page);
+@@ -615,6 +643,13 @@
+         fm_folder_view_set_model(fv, NULL);
+ }
+ 
++/* Only an actual new directory listing clears its previous error. */
++static void on_folder_start_loading(FmFolder* folder, FmTabPage* page)
++{
++    g_object_set_data(G_OBJECT(folder),"slax-load-error",NULL);
++    prepare_folder_view(folder,page);
++}
++
+ static gboolean update_scroll(gpointer data)
+ {
+     FmTabPage* page = data;
+@@ -691,6 +726,7 @@
+                   page->status_text[FM_STATUS_TEXT_NORMAL]);
+ 
+     _tab_unset_busy_cursor(page);
++    update_empty_message(page);
+     /* g_debug("finish-loading"); */
+     g_signal_emit(page, signals[LOADED], 0);
+ }
+@@ -950,7 +986,19 @@
+     fm_folder_view_set_selection_mode(folder_view, GTK_SELECTION_MULTIPLE);
+     page->nav_history = fm_nav_history_new();
+     page->views = GTK_BOX(gtk_hbox_new(TRUE, 4));
+-    gtk_box_pack_start(page->views, GTK_WIDGET(folder_view), TRUE, TRUE, 0);
++    /* The message passes pointer events through to the native file view. */
++    GtkWidget *overlay=gtk_overlay_new();
++    gtk_container_add(GTK_CONTAINER(overlay),GTK_WIDGET(folder_view));
++    page->empty_message=gtk_label_new(NULL);
++    gtk_widget_set_name(page->empty_message,"slax-empty-folder");
++    gtk_style_context_add_class(gtk_widget_get_style_context(page->empty_message),"dim-label");
++    gtk_widget_set_halign(page->empty_message,GTK_ALIGN_CENTER);
++    gtk_widget_set_valign(page->empty_message,GTK_ALIGN_CENTER);
++    gtk_widget_set_no_show_all(page->empty_message,TRUE);
++    gtk_overlay_add_overlay(GTK_OVERLAY(overlay),page->empty_message);
++    gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(overlay),page->empty_message,TRUE);
++    gtk_box_pack_start(page->views,overlay,TRUE,TRUE,0);
++    g_signal_connect_swapped(folder_view,"filter-changed",G_CALLBACK(update_empty_message),page);
+     gtk_paned_add2(paned, GTK_WIDGET(page->views));
+     focus_chain = g_list_prepend(focus_chain, page->views);
+ 
+@@ -1077,7 +1125,7 @@
+        show_hidden is different: we have to apply folder to the view first */
+     g_signal_handlers_block_matched(page->folder_view, G_SIGNAL_MATCH_DETAIL, 0,
+                                     g_quark_try_string("filter-changed"), NULL, NULL, NULL);
+-    on_folder_start_loading(page->folder, page);
++    prepare_folder_view(page->folder, page);
+     fm_folder_view_set_show_hidden(page->folder_view, show_hidden);
+ #if FM_CHECK_VERSION(1, 2, 0)
+     fm_side_pane_set_show_hidden(page->side_pane, show_hidden);
+@@ -1309,19 +1357,21 @@
+ {
+     GList *panes, *l;
+     GtkWidget *folder_view = GTK_WIDGET(page->folder_view);
++    GtkWidget *pane=gtk_widget_get_parent(folder_view);
+ 
+     gtk_widget_set_state(folder_view, GTK_STATE_NORMAL);
+     panes = gtk_container_get_children(GTK_CONTAINER(page->views));
+     for (l = panes; l; l = l->next)
+-        if ((GtkWidget*)l->data == folder_view)
++        if ((GtkWidget*)l->data == pane)
+             break;
+     g_list_free(panes);
+     if (l)
+         return FALSE;
+-    /* we already keep the reference, no need to do it again */
+-    gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(folder_view)),
+-                         folder_view);
+-    gtk_box_pack_start(page->views, folder_view, TRUE, TRUE, 0);
++    /* Move each file view together with its own message, including between split panes. */
++    g_object_ref(pane);
++    gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(pane)),pane);
++    gtk_box_pack_start(page->views,pane,TRUE,TRUE,0);
++    g_object_unref(pane);
+     return TRUE;
+ }
+ 
+@@ -1350,26 +1400,15 @@
+     GtkWidget *pane;
+ 
+     g_return_val_if_fail(page != NULL && view != NULL, FALSE);
+-    if (!fm_tab_page_take_view_back(page))
+-    {
+-#if !FM_CHECK_VERSION(1, 2, 0)
+-        /* workaround on ExoIconView bug - it doesn't follow state change
+-           so we re-add the folder view into our container to force change */
+-        GtkWidget *fv = GTK_WIDGET(page->folder_view);
+-
+-        /* we already keep the reference, no need to do it again */
+-        gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(fv)), fv);
+-        gtk_box_pack_start(page->views, fv, TRUE, TRUE, 0);
+-#endif
+-    }
+-    pane = GTK_WIDGET(view);
+-    gtk_widget_set_state(pane, GTK_STATE_ACTIVE);
+-    g_object_ref(view);
++    fm_tab_page_take_view_back(page);
++    gtk_widget_set_state(GTK_WIDGET(view),GTK_STATE_ACTIVE);
++    pane=gtk_widget_get_parent(GTK_WIDGET(view));
++    g_object_ref(pane);
+     /* gtk_widget_reparent() is buggy so we do it manually */
+     if (gtk_widget_get_parent(pane))
+         gtk_container_remove(GTK_CONTAINER(gtk_widget_get_parent(pane)), pane);
+     gtk_box_pack_start(page->views, pane, TRUE, TRUE, 0);
+-    g_object_unref(view);
++    g_object_unref(pane);
+     if (!on_right)
+         gtk_box_reorder_child(page->views, pane, 0);
+     return TRUE;
+@@ -1391,9 +1430,9 @@
+ 
+     panes = gtk_container_get_children(GTK_CONTAINER(page->views));
+     for (l = panes; l; l = l->next)
+-        if ((FmFolderView*)l->data != page->folder_view)
++        if ((GtkWidget*)l->data != gtk_widget_get_parent(GTK_WIDGET(page->folder_view)))
+             break;
+-    view = l ? l->data : NULL;
++    view = l ? FM_FOLDER_VIEW(gtk_bin_get_child(GTK_BIN(l->data))) : NULL;
+     g_list_free(panes);
+     return view;
+ }
+--- a/src/tab-page.h
++++ b/src/tab-page.h
+@@ -80,6 +80,7 @@
+     gboolean own_config : 1;
+     gboolean busy : 1;
+     guint update_scroll_id;
++    GtkWidget *empty_message;
+ };
+ 
+ struct _FmTabPageClass

@@ -987,7 +987,7 @@ must follow the general Slax repair rules above.
   dialogs retain the same header style. No XSettings daemon is needed.
 - `03-desktop/build-gtk` rebuilds GTK 3's runtime library with
   `gtk-chromium-file-activation.diff`, `gtk3-combo-list.diff` and
-  `gtk3-switch-track.diff`. Switch tracks follow the actual native thumb geometry
+  `gtk3-switch-track.diff` and `gtk3-slax-chooser.diff`. Switch tracks follow the actual native thumb geometry
   during animation and dragging; retain GTK's input, accessibility and theme colors.
   Backend state updates must preserve a newer animation when active already matches
   the confirmed value.
@@ -1021,6 +1021,18 @@ must follow the general Slax repair rules above.
   this does not move the dialog. Compile schemas in `03-desktop/copy` after rootcopy. Keep this a system default;
   users can resize dialogs and GTK remembers their choice. Do not ship a binary
   user dconf database with unrelated preferences.
+  GTK 3's native chooser shares PCManFM's unprivileged Slax filesystem catalogue
+  and fixed polkit mount interface through `gtk-places.h` and `gtk-places-row.h`.
+  Keep its Open, Save, folder selection, multiple selection and file filters native.
+  Places contains only Home Folder and File System; omit Recent, application-added
+  shortcuts and Other Locations. Group personal bookmarks before devices and shares.
+  `gtk-chooser-navigation.h` moves navigation above both panes, with an editable
+  path and Back, Forward, History and Up. History follows successful folder changes
+  and remains local to the dialog. Preserve the save filename during navigation.
+  Keep path completion explicit and filesystem queries asynchronous; closed dialogs
+  must not be retained by catalogue watchers or pending requests.
+  Share escaped device details through `places-labels.h`; show ordinary Mounted
+  status for protected live storage and retain its lock and backend protection.
 - Application CSS belongs to `03-desktop/rootcopy/usr/share/slax/gtk-3.0/apps`.
   The small `03-desktop/gtk-app-style.c` GTK module loads only the stylesheet named
   for the running program. Compile it in the disposable build branch, install
@@ -1034,6 +1046,16 @@ must follow the general Slax repair rules above.
   live secondary-text updates. Preserve caller-added labels and explicit markup.
   Initialize GtkWidget's class before looking up the module's signal hooks.
   Preserve larger application margins, custom button layouts, order and defaults.
+  In PCManFM, disable item-view tooltips for files, folders, Places and directory
+  trees, including renderer updates after realization. Preserve toolbar, button,
+  panel and dialog-control tooltips. Shared GTK 3/4 window CSS rounds tooltip
+  bodies and decorations to 8 px on all corners; GTK 2 uses its native
+  GtkWidget::tooltip-radius in `/etc/gtk-2.0/gtkrc`, without compositor clipping.
+  GTK 3's query-tooltip hook selects the screen's RGBA visual before the popup
+  is realized when compositing is available, avoiding opaque black corners.
+  Keep the module resident through `g_module_check_init`: its global signal hooks
+  outlive GTK's module handle. Chromium releases that handle during initialization;
+  unloading the callbacks crashes the browser when a native dialog is shown.
   Rebuilt Debian packages keep their original names and binary versions, including
   Debian's binary rebuild suffixes. Do not add Slax version suffixes. In
   `03-desktop/copy`, hold the patched GTK runtime, Fluxbox, Picom, Xfce panel and
@@ -1063,19 +1085,35 @@ must follow the general Slax repair rules above.
 - Rebuild `libfm4t64` with `03-desktop/build-libfm` and `libfm-rename.diff`,
   preserving Debian's version and holding the package.
   The same build also packages and holds `libfm-gtk3-4t64`, applying
-  `libfm-places.diff`. Places bookmarks for exact non-system mount points show
-  a circular, themed unmount button; ordinary directories and symlinks to boot/changes storage do
-  not. Watch the Unix mount table to refresh buttons after external changes.
-  Unmount asynchronously without a shell, force or lazy flags, and show errors
-  while retaining the button if the mount remains present.
+  `libfm-places.diff` and the two `libfm-places-*.h` implementation fragments.
+  Keep Home and File System native and always visible. `slax-places.c` supplies
+  an unprivileged catalogue from udev, mountinfo, configured remote fstab entries
+  and advertised hypervisor shares, independently of automount. Hide internal
+  Slax loops and ESPs while retaining ordinary filesystem images. Use native
+  VirtualBox mapping notifications through `/dev/vboxuser`; VMware's listing
+  tool needs a provider-only refresh. Virtiofs and 9p use their sysfs tags.
+  Mount/unmount asynchronously through the fixed polkit helper and opaque IDs,
+  revalidating current filesystem identity under the automount and parent-disk
+  locks. Share `slax-places-mount` with automount for quarantine, NTFS hibernation
+  checks and ownership options. Protect boot/changes storage, retain unmounted
+  device/share rows and surface busy failures without force or lazy unmounts.
+  `slax-shared-folders.service` respects noautomount and remembers manual share
+  unmounts for this boot. Keep VBox shares under /media/sf_* and VMware shares
+  under /mnt/hgfs, using vmhgfs-fuse directly. Do not generate media bookmarks.
+  Keep personal bookmarks and hide native duplicates without rewriting them.
   Monitor rename and move events explicitly; a rename retains the existing file
   info and model row, while moving in or out still adds or removes the entry.
   PCManFM keeps the icon's position across a rename and saves it under the new
   name. Its selected desktop captions have a 3 px corner radius and 4 px padding
   on both the left and right, measured from Pango's rendered glyph bounds.
   Keep the background aligned with centered, wrapped and right-to-left names.
-- File-manager windows default to 790 by 500 pixels, with icon view, 64 px icons
-  and a 180 px sidebar.
+- File-manager windows default to 790 by 560 pixels, with icon view, 64 px icons
+  and a 230 px sidebar. Return to Home after unmounting the current folder.
+  `pcmanfm-empty-folder.diff` centers a native dim label in each file pane only
+  after successful loading. Distinguish an empty folder from no visible items
+  after filtering. Keep failed enumeration on its shared folder until a real
+  reload, and keep each label with its view across tabs and split panes.
+  Its GtkOverlay passes pointer events through for context menus and drops.
   `pcmanfm-browser.diff` orders compact symbolic navigation as Back, Forward,
   History, Up and hides the sidebar mode selector through the public title-bar
   API. Default to the editable path entry and enable `toolbar=navigation;` so
@@ -1087,6 +1125,9 @@ must follow the general Slax repair rules above.
   the scoped 3 px rounded-caption CSS.
   Double the native horizontal caption padding and include it in the preferred
   width, so both rounded edges stay inside the allocated cell.
+  Highlight hovered file captions more lightly than selected captions, retaining
+  the same rounded bounds. Keep file and sidebar item tooltips disabled while
+  retaining tooltips on ordinary controls.
   Remove monochrome applications category icons at every size during cleanup,
   retaining ordinary blue-folder fallback and regenerating the final icon caches.
   The PCManFM-only GTK module keeps ordinary pointers for folder-view and Places
@@ -1096,26 +1137,40 @@ must follow the general Slax repair rules above.
   Center folder-view previews under the pointer at 60% opacity. Draw a themed
   frame around the complete drop target independently from keyboard focus outlines.
   Scope Places styling with the GTK module's `slax-places` class: use a light-blue
-  selection with dark text and a 6 px vertical separator, adding 2 px per row edge.
+  selection with dark text and a continuous full-row hover background. Match the
+  approved HTML mockup's 24 px icon slot, text inset and 26 px circular actions,
+  using bundled blue device artwork matching the folder palette (#438de6 and
+  #a4caee). Give system, drive, USB and disc/image icons dedicated 24 px artwork
+  in `03-desktop/places-icons/24x24`. Keep File System and disc/image artwork
+  exactly as in the first blue proposal. Drive and USB icons use visible 1 px
+  #438de6 outlines around #a4caee faces, with straight strokes centered on half
+  pixels at 24 px. Do not fade their rims into the fill or thicken them to 2 px.
+  Mount/unmount button gestures must bypass row selection and activation on both
+  press and release. Hold the operation text for 500 ms after its asynchronous
+  helper finishes so catalogue notifications settle without flashing stale text.
+  Export it with `sh render-places-icons` to hicolor's fixed 24x24 places
+  directory; retain the scalable SVGs for other sizes. Never downscale raster
+  masters or generate these files during an ISO build. Home and shared folders
+  retain their blue folder artwork. Show personal bookmarks under a matching
+  Bookmarks heading between Places and Devices, with no divider. Hide the
+  heading when no visible bookmarks remain. Classify bookmark rows by their
+  bookmark item and bound reordering to their section, excluding device rows.
+  Load the original stroke-based SVG alpha before applying the theme color:
+  GTK's symbolic recoloring can fill hollow outlines. Render at the requested
+  device-pixel size without scaling an already rasterized symbol.
   Preserve the selected drag action, drop validation and bookmark reordering.
 - PCManFM's ISO context action uses the matching `libfm-modules` package and
   the short rootcopy shell helper `slax-mount-iso`. Mount ISO/UDF read-only with
   nodev/nosuid under `/media/ISO-DEVICE-INODE`; serialize clicks and reuse this
-  mount point across symlinks and hard links. Refresh the existing media bookmarks
-  for the native sidebar unmount button. Keep optical images executable so their
-  native installer can run. Do not add a compiled helper or mount watcher daemon.
+  mount point across symlinks and hard links. The native mount catalogue discovers
+  these images and supplies their unmount button. Keep optical images executable
+  so their native installer can run.
   Match regular local `*.iso` files case-insensitively, including EFI ISO MIME
   subtypes. Use `Capabilities=Local;Readable;`: libfm 1.4.0's `Schemes` condition
   incorrectly treats file-info objects as paths and crashes.
-  The media bookmark updater reads GTK 3's current bookmarks when present and
-  mirrors the result to GTK 2, so PCManFM and both file chooser versions refresh.
-  Validate HOME and XDG paths before any writes; skip missing/relative homes and
-  paths resolving to `/` or root-level dotfiles, including through symlinks.
-  The shared Places model refreshes bookmarks asynchronously when opened and
-  on Unix mount changes, including terminal unmounts. The updater removes only empty, unmounted
-  `/media/ISO-DEVICE-INODE` directories. Use the same flock for mounting, cleanup
-  and bookmark writes; release the mount helper's ISO lock before invoking the
-  updater. Do not retain a second mkdir lock. Failed unmounts keep their link.
+  Mount-table notifications update the shared Places model, including after
+  terminal unmounts. Successful native unmounts remove empty managed mount
+  directories; failed unmounts retain the mounted entry and its controls.
 - Desktop labels default to `Sans 10`. Desktop Preferences uses an aligned form
   on its Appearance tab and a normal window layer; do not make it transient for
   the desktop window. Keep its lifetime linked to that desktop without inheriting
@@ -1134,7 +1189,11 @@ must follow the general Slax repair rules above.
   Fluxbox startup launches `pcmanfm --desktop` after the panel's initial redraw.
   Its default profile uses Slax's stretched wallpaper, white labels with black
   shadows, and the standard desktop context menu with Desktop Preferences.
-  Keep Desktop Preferences out of xlunch. Do not restore wallpaper with feh;
+  Keep Desktop Preferences out of xlunch through the higher-priority
+  `/usr/local/share/applications/pcmanfm-desktop-pref.desktop` with `Hidden=true`.
+  Retain the package's desktop file; its NotShowIn list does not exclude Fluxbox.
+  Refresh both users' launcher caches in the desktop and final Chromium layers.
+  Do not restore wallpaper with feh;
   PCManFM owns it and adapts it to resolution changes.
 - Use Docklike Taskbar for grouped application icons and hover previews.
   `docklike-drag-reorder.diff` reorders pinned and running groups with an ordinary

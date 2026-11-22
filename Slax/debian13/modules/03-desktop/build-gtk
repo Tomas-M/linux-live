@@ -12,6 +12,12 @@ cd gtk+3.0-*/
 patch -p1 < "$CWD/patches/gtk-chromium-file-activation.diff"
 patch -p1 < "$CWD/patches/gtk3-combo-list.diff"
 patch -p1 < "$CWD/patches/gtk3-switch-track.diff"
+# Share native filesystem discovery and sidebar presentation with the file manager.
+patch -p1 < "$CWD/patches/gtk3-slax-chooser.diff"
+cp "$CWD/gtk-places.h" gtk/slax-places.h
+cp "$CWD/gtk-places-row.h" gtk/slax-places-row.h
+cp "$CWD/places-labels.h" gtk/slax-places-labels.h
+cp "$CWD/gtk-chooser-navigation.h" gtk/slax-chooser-navigation.h
 
 # Rebuild only the runtime library, retaining Debian's features and hardening.
 export DEB_BUILD_MAINT_OPTIONS=hardening=+all

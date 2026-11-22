@@ -1,0 +1,21 @@
+/* Keep native Open/Save controls and match the file manager's sidebar and artwork. */
+filechooser placessidebar.slax-places { background: #fff; color: #303437; }
+filechooser placessidebar.slax-places list { background: #fff; }
+filechooser placessidebar.slax-places row.sidebar-row { margin: 0; padding: 0 8px 0 12px; min-height: 36px; border: 0; border-radius: 0; background: transparent; }
+filechooser placessidebar.slax-places row.sidebar-row:hover { background: #f2f6f9; }
+filechooser placessidebar.slax-places row.sidebar-row:selected { background: #cce8ff; color: #202020; }
+filechooser placessidebar.slax-places row.sidebar-row > revealer { padding: 0; }
+filechooser placessidebar.slax-places .sidebar-icon { padding: 0; margin: 0; opacity: 1; -gtk-icon-style: regular; }
+filechooser placessidebar.slax-places .sidebar-label { padding: 0; margin: 0; }
+filechooser .slax-places-heading { color: #74797d; font-size: 13px; font-weight: normal; min-height: 38px; padding: 0 12px; }
+filechooser .slax-places-heading.first { min-height: 34px; }
+filechooser placessidebar.slax-places button.sidebar-button { min-width: 24px; min-height: 24px; padding: 0; margin: 0; border: 1px solid #dde0e3; border-radius: 13px; background: #fff; color: #6b7277; box-shadow: none; }
+filechooser placessidebar.slax-places button.sidebar-button.mount-place { color: #447aa8; }
+filechooser placessidebar.slax-places button.sidebar-button:hover { background: #f7f8f9; border-color: #a4acb4; color: #353b40; }
+filechooser placessidebar.slax-places button.sidebar-button.protected-place { background: transparent; border-color: transparent; color: #858d94; opacity: 1; }
+filechooser placessidebar.slax-places spinner { min-width: 26px; min-height: 26px; margin: 0 0 0 3px; color: #438de6; }
+filechooser .slax-chooser-navigation { margin-left: 6px; }
+filechooser .slax-chooser-navigation button { min-width: 16px; min-height: 16px; padding: 3px; margin: 0; color: #707070; }
+filechooser .slax-chooser-navigation button:disabled { color: #b8b8b8; }
+filechooser #slax_chooser_path { min-height: 28px; padding: 2px 8px; }
+filechooser treeview.view { -GtkTreeView-vertical-separator: 8; }
