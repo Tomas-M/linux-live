@@ -676,10 +676,11 @@
                              /* reorder the bookmark item */
                              fm_bookmarks_reorder(fm_places_model_get_bookmarks(model), fm_places_item_get_bookmark_item(item), new_pos);
                              gtk_tree_path_free(sep_tp);
-@@ -496,26 +589,31 @@
+@@ -496,26 +589,32 @@
      gtk_tree_view_set_model(GTK_TREE_VIEW(self), GTK_TREE_MODEL(model));
      g_object_unref(model);
  
++    gtk_widget_set_has_tooltip(GTK_WIDGET(self),TRUE);
 +    gtk_widget_add_events(GTK_WIDGET(self), GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK);
 +    g_signal_connect(self, "motion-notify-event", G_CALLBACK(on_mount_pointer), NULL);
 +    g_signal_connect(self, "leave-notify-event", G_CALLBACK(on_mount_pointer), NULL);
@@ -718,7 +719,7 @@
      self->mount_indicator_renderer = GTK_CELL_RENDERER_PIXBUF(renderer);
      gtk_tree_view_column_pack_start( col, renderer, FALSE );
      gtk_cell_layout_set_cell_data_func(GTK_CELL_LAYOUT(col), renderer,
-@@ -565,6 +663,13 @@
+@@ -565,6 +664,13 @@
              return;
          switch(fm_places_item_get_type(item))
          {
@@ -732,7 +733,7 @@
          case FM_PLACES_ITEM_PATH:
          case FM_PLACES_ITEM_MOUNT:
              path = fm_places_item_get_path(item);
-@@ -631,6 +736,9 @@
+@@ -631,6 +737,9 @@
   */
  void fm_places_view_chdir(FmPlacesView* pv, FmPath* path)
  {
@@ -742,12 +743,12 @@
      GtkTreeIter it;
      GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(pv));
      GtkTreeSelection* ts = gtk_tree_view_get_selection(GTK_TREE_VIEW(pv));
-@@ -642,10 +750,40 @@
+@@ -642,10 +751,71 @@
          gtk_tree_selection_unselect_all(ts);
  }
  
 +/* Use identical button bounds on press and release, before GTK can select the row. */
-+static gboolean mount_indicator_hit(FmPlacesView *view,GdkEventButton *event,GtkTreePath *path,GtkTreeViewColumn *column,int cell_x)
++static gboolean mount_indicator_hit(FmPlacesView *view,double pointer_y,GtkTreePath *path,GtkTreeViewColumn *column,int cell_x)
 +{
 +    GtkTreeIter iter;
 +    FmPlacesItem *item=NULL;
@@ -761,8 +762,39 @@
 +    gtk_tree_view_get_cell_area(GTK_TREE_VIEW(view),path,column,&area);
 +    double top=area.y+(area.height-MOUNT_BUTTON_SIZE)/2.0;
 +    gboolean inside_x=cell_x>=start+MOUNT_BUTTON_LEFT && cell_x<start+MOUNT_BUTTON_LEFT+MOUNT_BUTTON_SIZE;
-+    gboolean inside_y=event->y>=top && event->y<top+MOUNT_BUTTON_SIZE;
++    gboolean inside_y=pointer_y>=top && pointer_y<top+MOUNT_BUTTON_SIZE;
 +    return inside_x && inside_y;
++}
++
++/* Explain only the action under the pointer; sidebar item names have no tooltip. */
++static gboolean on_mount_tooltip(GtkWidget *widget,int x,int y,gboolean keyboard,GtkTooltip *tooltip)
++{
++    if(keyboard) return FALSE;
++    FmPlacesView *view=FM_PLACES_VIEW(widget);
++    GtkTreePath *path;
++    GtkTreeViewColumn *column;
++    int cell_x;
++    gtk_tree_view_convert_widget_to_bin_window_coords(GTK_TREE_VIEW(view),x,y,&x,&y);
++    if(!gtk_tree_view_get_path_at_pos(GTK_TREE_VIEW(view),x,y,&path,&column,&cell_x,NULL)) return FALSE;
++    gboolean show=mount_indicator_hit(view,y,path,column,cell_x);
++    if(show)
++    {
++        GtkTreeIter iter;
++        FmPlacesItem *item;
++        gtk_tree_model_get_iter(GTK_TREE_MODEL(model),&iter,path);
++        gtk_tree_model_get(GTK_TREE_MODEL(model),&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
++        GVariant *location=fm_places_item_get_native(item);
++        show=location && !fm_places_item_get_operation(item);
++        if(show)
++        {
++            const char *reason;
++            g_variant_get_child(location,8,"&s",&reason);
++            gtk_tooltip_set_text(tooltip,*reason?reason:(fm_places_item_is_mounted(item)?"Unmount":"Mount"));
++            gtk_tree_view_set_tooltip_cell(GTK_TREE_VIEW(view),tooltip,path,column,GTK_CELL_RENDERER(view->mount_indicator_renderer));
++        }
++    }
++    gtk_tree_path_free(path);
++    return show;
 +}
 +
  static gboolean on_button_release(GtkWidget* widget, GdkEventButton* evt)
@@ -784,7 +816,7 @@
  
      /* we should finish the event before we do our work, otherwise gtk may
         activate already removed row in default handler */
-@@ -661,11 +799,7 @@
+@@ -661,11 +831,7 @@
                  /* check if we release the button on the row we previously clicked. */
                  if(gtk_tree_path_compare(tp, view->clicked_row) == 0)
                  {
@@ -793,11 +825,11 @@
 -                    gtk_tree_view_column_cell_get_position(col, GTK_CELL_RENDERER(view->mount_indicator_renderer),
 -                                                           &start, &cell_w);
 -                    if(cell_x > start && cell_x < (start + cell_w)) /* click on eject icon */
-+                    if(action && mount_indicator_hit(view,evt,tp,col,cell_x))
++                    if(action && mount_indicator_hit(view,evt->y,tp,col,cell_x))
                      {
                          GtkTreeIter it;
                          /* do eject if needed */
-@@ -673,6 +807,15 @@
+@@ -673,6 +839,15 @@
                          {
                              FmPlacesItem* item;
                              gtk_tree_model_get(GTK_TREE_MODEL(model), &it, FM_PLACES_MODEL_COL_INFO, &item, -1);
@@ -813,7 +845,7 @@
                              if(item && fm_places_item_is_mounted(item))
                              {
                                  GtkWindow* toplevel = GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view)));
-@@ -715,7 +858,7 @@
+@@ -715,7 +890,7 @@
                          }
                      }
                      /* activate the clicked row. */
@@ -822,7 +854,7 @@
                  }
                  gtk_tree_path_free(tp);
              }
-@@ -745,6 +888,8 @@
+@@ -745,6 +920,8 @@
  
  static GtkWidget* place_item_get_menu(FmPlacesItem* item, GtkWidget *widget)
  {
@@ -831,7 +863,7 @@
      GtkWidget* menu = NULL;
      GtkUIManager* ui = gtk_ui_manager_new();
      GtkActionGroup* act_grp = gtk_action_group_new("Popup");
-@@ -776,7 +921,7 @@
+@@ -776,7 +953,7 @@
                      act = gtk_action_group_get_action(act_grp, "MoveBmUp");
                      gtk_action_set_sensitive(act, FALSE);
                  }
@@ -840,7 +872,7 @@
                  {
                      act = gtk_action_group_get_action(act_grp, "MoveBmDown");
                      gtk_action_set_sensitive(act, FALSE);
-@@ -978,12 +1123,16 @@
+@@ -978,12 +1155,16 @@
      GtkTreePath* tp;
      GtkTreeViewColumn* col;
      GtkTreeIter it;
@@ -849,7 +881,7 @@
 -    gtk_tree_view_get_path_at_pos(&view->parent, evt->x, evt->y, &tp, &col, NULL, NULL);
 +    int cell_x;
 +    gtk_tree_view_get_path_at_pos(&view->parent,evt->x,evt->y,&tp,&col,&cell_x,NULL);
-+    gboolean action=evt->button==1 && tp && mount_indicator_hit(view,evt,tp,col,cell_x);
++    gboolean action=evt->button==1 && tp && mount_indicator_hit(view,evt->y,tp,col,cell_x);
 +    g_object_set_data(G_OBJECT(widget),"slax-action-press",GINT_TO_POINTER(action));
 +    gboolean ret=action?TRUE:GTK_WIDGET_CLASS(fm_places_view_parent_class)->button_press_event(widget,evt);
 +    if(action) gtk_widget_queue_draw(widget);
@@ -860,7 +892,7 @@
      if(tp)
      {
          switch(evt->button) /* middle click */
-@@ -1177,7 +1326,7 @@
+@@ -1177,7 +1358,7 @@
      sep_tp = fm_places_model_get_separator_path(model);
      sep_pos = gtk_tree_path_get_indices(sep_tp)[0];
      dest_it = src_it;
@@ -869,3 +901,11 @@
          goto _end; /* cannot move it down */
      gtk_list_store_move_after(GTK_LIST_STORE(model), &src_it, &dest_it);
      /* reorder the bookmark item */
+@@ -1259,6 +1440,7 @@
+     widget_class->key_press_event = on_key_press;
+     widget_class->button_press_event = on_button_press;
+     widget_class->button_release_event = on_button_release;
++    widget_class->query_tooltip = on_mount_tooltip;
+     widget_class->drag_motion = on_drag_motion;
+     widget_class->drag_leave = on_drag_leave;
+     widget_class->drag_drop = on_drag_drop;

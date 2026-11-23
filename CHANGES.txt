@@ -70,8 +70,11 @@ Slax
 - Match the native GTK 3 file chooser to File Manager, with the shared drive
   catalogue, manual mount/unmount, grouped bookmarks and blue sidebar icons.
   Use a full-width editable path with Back, Forward, History and Up controls;
-  omit Recent, application shortcuts and Other Locations from its sidebar.
+  omit Recent, application shortcuts, Trash and Other Locations from its sidebar.
   Show normal mounted status instead of Used by Slax, retaining live-storage locks.
+  Preserve sidebar selection through mount notifications and show only the progress
+  icon during operations. Clarify live-storage lock hints in both file browsers.
+  Keep the chooser's spinner rotating continuously across filesystem updates.
 - Hide Desktop Preferences from the application launcher through a persistent
   desktop-entry override, including after package updates and cache refreshes.
 - Keep the shared GTK styling module loaded while its signal hooks are registered,

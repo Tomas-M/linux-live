@@ -50,10 +50,31 @@ static gboolean slax_places_duplicate(GtkPlacesSidebar *sidebar,GFile *file)
   return duplicate;
 }
 
-/* Keep native rows alive during ordinary GTK bookmark and volume refreshes. */
+/* Retain current Places and bookmarks so volume refreshes never restart selection styling. */
 static void slax_places_clear(GtkWidget *row,gpointer data)
 {
-  if (!g_object_get_data(G_OBJECT(row),"slax-location")) gtk_widget_destroy(row);
+  if (g_object_get_data(G_OBJECT(row),"slax-location")) return;
+  GtkPlacesSidebar *sidebar=data;
+  GtkPlacesSidebarPlaceType type;
+  GtkPlacesSidebarSectionType section;
+  char *uri;
+  g_object_get(row,"place-type",&type,"section-type",&section,"uri",&uri,NULL);
+  gboolean keep=FALSE;
+  if (uri && type==PLACES_BUILT_IN && section==SECTION_COMPUTER)
+    {
+      char *home=get_home_directory_uri();
+      keep=!strcmp(uri,home) || !strcmp(uri,"file:///");
+      g_free(home);
+    }
+  if (uri && type==PLACES_BOOKMARK)
+    {
+      GFile *file=g_file_new_for_uri(uri);
+      keep=_gtk_bookmarks_manager_has_bookmark(sidebar->bookmarks_manager,file);
+      if (keep) keep=(!sidebar->local_only || g_file_is_native(file)) && !slax_places_duplicate(sidebar,file);
+      g_object_unref(file);
+    }
+  g_free(uri);
+  if (!keep) gtk_widget_destroy(row);
 }
 
 /* Reconcile only presentation metadata; discovery and all mount policy remain in Slax helpers. */

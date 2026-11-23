@@ -87,9 +87,12 @@ static gboolean configure_file_drag(GSignalInvocationHint *hint, guint count, co
     while (parent && g_strcmp0(G_OBJECT_TYPE_NAME(parent), "FmStandardView")) parent=gtk_widget_get_parent(parent);
     gboolean directory_tree=g_strcmp0(G_OBJECT_TYPE_NAME(widget), "FmDirTreeView")==0;
     if (!places && !directory_tree && !parent) return TRUE;
-    disable_item_tooltips(widget, NULL, NULL);
-    if (!g_signal_handler_find(widget, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(disable_item_tooltips), NULL))
-        g_signal_connect(widget, "notify::has-tooltip", G_CALLBACK(disable_item_tooltips), NULL);
+    if (!places)
+    {
+        disable_item_tooltips(widget, NULL, NULL);
+        if (!g_signal_handler_find(widget, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(disable_item_tooltips), NULL))
+            g_signal_connect(widget, "notify::has-tooltip", G_CALLBACK(disable_item_tooltips), NULL);
+    }
     if (directory_tree) return TRUE;
     if (!g_signal_handler_find(widget, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, G_CALLBACK(begin_file_drag), NULL))
         g_signal_connect_after(widget, "drag-begin", G_CALLBACK(begin_file_drag), NULL);

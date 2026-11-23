@@ -307,7 +307,7 @@ static void attach_mounts(GPtrArray *places,struct libmnt_table *mounts)
             if (system_mount(path))
             {
                 g_free(matched->reason);
-                matched->reason=g_strdup("Used by Slax");
+                matched->reason=g_strdup("In use by Slax; cannot unmount");
             }
             if (!matched->mount || g_str_has_prefix(path,"/media/"))
             {

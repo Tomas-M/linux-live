@@ -1025,7 +1025,7 @@ must follow the general Slax repair rules above.
   and fixed polkit mount interface through `gtk-places.h` and `gtk-places-row.h`.
   Keep its Open, Save, folder selection, multiple selection and file filters native.
   Places contains only Home Folder and File System; omit Recent, application-added
-  shortcuts and Other Locations. Group personal bookmarks before devices and shares.
+  shortcuts, Trash and Other Locations. Group personal bookmarks before devices and shares.
   `gtk-chooser-navigation.h` moves navigation above both panes, with an editable
   path and Back, Forward, History and Up. History follows successful folder changes
   and remains local to the dialog. Preserve the save filename during navigation.
@@ -1033,6 +1033,14 @@ must follow the general Slax repair rules above.
   must not be retained by catalogue watchers or pending requests.
   Share escaped device details through `places-labels.h`; show ordinary Mounted
   status for protected live storage and retain its lock and backend protection.
+  Retain Places and bookmark widgets across volume refreshes and select rows
+  directly without clearing an unchanged selection. Busy rows show only their
+  spinner in the action slot. Explain protected storage with
+  `In use by Slax; cannot unmount` in both applications.
+  PCManFM's Places query-tooltip handles only its action renderer; keep item
+  captions without hints while preserving mount controls and lock explanations.
+  Render the chooser's busy spinner with the shared working SVG and frame-clock phase,
+  preserving rotation across GTK CSS animation restarts during catalogue refreshes.
 - Application CSS belongs to `03-desktop/rootcopy/usr/share/slax/gtk-3.0/apps`.
   The small `03-desktop/gtk-app-style.c` GTK module loads only the stylesheet named
   for the running program. Compile it in the disposable build branch, install
