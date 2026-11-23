@@ -427,21 +427,22 @@ device_bestfs()
 
 # Filesystem options for initial mount
 # $1 = filesystem
+# $2 = optional read-only inspection without journal replay
 #
 fs_options()
 {
    debug_log "fs_options" "$*"
 
-   echo -n "-t $1 "
+   local MODE
+   MODE="${2:-rw}"
    # Probe NTFS read-only until Windows hibernation is checked; ISO9660 is never writable.
-   if [ "$1" = "iso9660" -o "$1" = "ntfs" -o "$1" = "ntfs3" ]; then
-      echo "-o ro"
-      return
-   fi
-   echo -n "-o rw"
+   if [ "$1" = iso9660 -o "$1" = ntfs -o "$1" = ntfs3 ]; then MODE=ro; fi
+   echo -n "-t $1 -o $MODE"
 
    if [ "$1" = "vfat" ]; then
       echo ",check=s,shortname=mixed,iocharset=utf8"
+   elif [ "$MODE" = ro ] && [ "$1" = ext3 -o "$1" = ext4 ]; then
+      echo ",noload"
    fi
 }
 
@@ -473,12 +474,22 @@ ntfs_hibernation_inactive()
 }
 
 
+# Capture mount errors, or keep the inherited stderr when it is a journal socket.
+mount_with_errors()
+(
+   if [ "$1" != /dev/stderr ]; then exec 2>"${1:-/dev/null}" || return 1; fi
+   shift
+   "$@"
+)
+
+
 # Mount normally, allowing NTFS writes only after a read-only hibernation check.
 # $1 = block device
 # $2 = mount directory
 # $3 = filesystem
 # $4 = optional file for initial mount errors
 # $5 = optional additional mount options
+# $6 = ro to inspect the device without making it writable
 mount_device()
 {
    local NUMBER EXISTING EXTRA
@@ -487,7 +498,8 @@ mount_device()
    if [ "$EXTRA" != "" ]; then EXTRA="-o $EXTRA"; fi
 
    if device_is_efi "$1"; then
-      echo "EFI system partition skipped" >"${4:-/dev/null}"
+      if [ "${4:-}" = /dev/stderr ]; then echo "EFI system partition skipped" >&2
+      else echo "EFI system partition skipped" >"${4:-/dev/null}"; fi
       return 1
    fi
 
@@ -496,12 +508,13 @@ mount_device()
       NUMBER=$(cat "/sys/class/block/$(basename "$(readlink -f "$1")")/dev") || return 1
       EXISTING=$(awk -v device="$NUMBER" '$3==device && $4=="/" {print $5; exit}' /proc/self/mountinfo)
       if [ "$EXISTING" != "" ]; then
-         $(mount_command "$3") --bind "$(printf '%b' "$EXISTING")" "$2" 2>"${4:-/dev/null}"
+         mount_with_errors "${4:-}" $(mount_command "$3") --bind "$(printf '%b' "$EXISTING")" "$2"
          return
       fi
    fi
 
-   if ! $(mount_command "$3") "$1" "$2" $(fs_options "$3") $EXTRA 2>"${4:-/dev/null}"; then return 1; fi
+   if ! mount_with_errors "${4:-}" $(mount_command "$3") "$1" "$2" $(fs_options "$3" "${6:-}") $EXTRA; then return 1; fi
+   if [ "${6:-}" = ro ]; then return 0; fi
    if [ "$3" != ntfs -a "$3" != ntfs3 ]; then return 0; fi
 
    if ! ntfs_hibernation_inactive "$2" 2>/dev/null; then
@@ -510,6 +523,71 @@ mount_device()
       echo "* Keeping $1 read-only: NTFS refused the read-write remount." >&2
    fi
    return 0
+}
+
+
+# Inspect native flags before mounting. An unreadable header also needs checking.
+# $1 = device
+# $2 = filesystem from blkid
+filesystem_needs_check()
+{
+   local DEVICE FS VERSION OFFSET FLAGS MASK
+   DEVICE="$1"
+   FS="$2"
+   if [ "$FS" = exfat ]; then
+      FLAGS=$(od -An -tu1 -j 106 -N 1 "$DEVICE" 2>/dev/null) || return 0
+      if [ "$FLAGS" = "" ]; then return 0; fi
+      test "$((FLAGS & 6))" -ne 0
+   elif [ "$FS" = ext2 -o "$FS" = ext3 -o "$FS" = ext4 ]; then
+      # s_state records errors; INCOMPAT_RECOVER indicates pending journal replay.
+      set -- $(od -An -v -tu1 -j 1082 -N 17 "$DEVICE" 2>/dev/null)
+      if [ "$#" -ne 17 ]; then return 0; fi
+      test "$1" -ne 1 || test "$2" -ne 0 || test "$(( ${17} & 4 ))" -ne 0
+   elif [ "$FS" = vfat ]; then
+      # Linux records dirty state in the boot sector; DOS/Windows use FAT entry 1.
+      VERSION=$(blkid -p -s VERSION -o value "$DEVICE" 2>/dev/null)
+      OFFSET=37
+      if [ "$VERSION" = FAT32 ]; then OFFSET=65; fi
+      FLAGS=$(od -An -tu1 -j "$OFFSET" -N 1 "$DEVICE" 2>/dev/null) || return 0
+      if [ "$FLAGS" = "" ]; then return 0; fi
+      if [ "$((FLAGS & 1))" -ne 0 ]; then return 0; fi
+      if [ "$VERSION" = FAT12 ]; then return 1; fi
+      set -- $(od -An -tu1 -j 11 -N 5 "$DEVICE" 2>/dev/null)
+      if [ "$#" -ne 5 ]; then return 0; fi
+      OFFSET=$((($1 + 256 * $2) * ($4 + 256 * $5)))
+      MASK=192
+      if [ "$VERSION" = FAT32 ]; then OFFSET=$((OFFSET + 7)); MASK=12
+      else OFFSET=$((OFFSET + 3)); fi
+      FLAGS=$(od -An -tu1 -j "$OFFSET" -N 1 "$DEVICE" 2>/dev/null) || return 0
+      if [ "$FLAGS" = "" ]; then return 0; fi
+      test "$((FLAGS & MASK))" -ne "$MASK"
+   else
+      return 1
+   fi
+}
+
+
+# Don't interpret flags changed by a live writable mount as evidence of damage.
+# $1 = device
+# $2 = filesystem
+unmounted_filesystem_needs_check()
+{
+   local NUMBER
+   NUMBER=$(cat "/sys/class/block/${1##*/}/dev" 2>/dev/null)
+   if [ "$NUMBER" = "" ] || awk -v dev="$NUMBER" '$3==dev {found=1} END {exit !found}' /proc/self/mountinfo; then return 1; fi
+   filesystem_needs_check "$1" "$2"
+}
+
+
+# Allow inspection of a suspect boot volume without changing its filesystem.
+# Same arguments as mount_device; status 3 means it mounted for inspection only.
+mount_boot_device()
+{
+   if unmounted_filesystem_needs_check "$1" "$3"; then
+      mount_device "$1" "$2" "$3" "$4" "" ro || return 1
+      return 3
+   fi
+   mount_device "$@"
 }
 
 
@@ -698,7 +776,7 @@ find_data_try()
 {
    debug_log "find_data_try" "$*"
 
-   local DEVICE FS FROM ISOMNT DEVICES BOOTDEVICE RESULT
+   local DEVICE FS FROM ISOMNT DEVICES BOOTDEVICE RESULT STATUS RELATIVE
 
    mkdir -p "$1"
    blkid >/var/log/live-data/blkid
@@ -729,7 +807,9 @@ find_data_try()
       RESULT=/var/log/live-data/$(echo "$DEVICE" | tr / _)
       printf '%s\t%s\t' "$DEVICE" "$FS" >"$RESULT.result"
       : >"$RESULT.error"
-      if ! mount_device "$DEVICE" "$1" "$FS" "$RESULT.error"; then
+      STATUS=0
+      mount_boot_device "$DEVICE" "$1" "$FS" "$RESULT.error" || STATUS=$?
+      if [ "$STATUS" != 0 -a "$STATUS" != 3 ]; then
          echo "Mount failed" >>"$RESULT.result"
          continue
       fi
@@ -746,18 +826,14 @@ find_data_try()
          FROM="../iso/$LIVEKITNAME"
       fi
 
-      # search for bundles in the mounted directory
-      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ]; then
-         # we found at least one bundle/module here
-         echo "System modules found" >>"$RESULT.result"
-         echo "$FROM" > /var/log/from.log
-         echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
-         return
-      fi
-
-      # search for bundles in modules directory
-      if [ "$(find "$1/$FROM/modules" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ]; then
-         # we found at least one bundle/module here
+      # Search the live directory and its modules subdirectory.
+      if [ "$(find "$1/$FROM" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ] ||
+         [ "$(find "$1/$FROM/modules" -maxdepth 1 -name "*.$BEXT" 2>>"$RESULT.error")" != "" ]; then
+         if [ "$STATUS" = 3 ]; then
+            RELATIVE=""
+            if [ "$ISOMNT" = "" ] && [ -d "$1/$FROM/changes" ]; then RELATIVE="$FROM/changes"; fi
+            perch_recovery "$DEVICE" "$FS" "$RELATIVE" dirty || STATUS=$?
+         fi
          echo "System modules found" >>"$RESULT.result"
          echo "$1/$FROM" | tr -s "/" | sed -r "s:/[^/]+/[.][.]/:/:g"
          echo "$FROM" > /var/log/from.log
@@ -1058,23 +1134,38 @@ perch_directory()
 }
 
 
-# Record an interrupted run for desktop recovery without opening its container or stopping boot.
+# Route a mount or filesystem problem to the existing desktop recovery flow.
+# $1 = device
+# $2 = filesystem
+# $3 = relative changes directory if known
+# $4 = issue
+perch_recovery()
+{
+   local RECORD
+   RECORD="$MEMORY/storage/unclean"
+   mkdir -p "$RECORD" && chmod 700 "$MEMORY/storage" || return 2
+   printf '%s' "$3" > "$RECORD/path" || return 2
+   blkid -p -s UUID -o value "$1" > "$RECORD/uuid"
+   printf '%s\n' "$2" > "$RECORD/filesystem" || return 2
+   printf '%s\n' "$4" > "$RECORD/issue" || return 2
+   printf '%s\n' "$1" > "$RECORD/device" || return 2
+   echo "* $1 requires a filesystem check; using RAM for changes" >&2
+   return 3
+}
+
+
+# Check for an interrupted run without opening its container or stopping boot.
 # $1 = changes directory to inspect, returning 3 when this boot must use RAM
 perch_clean()
 {
-   local DIR
+   local DIR DEVICE
    if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then
       if [ -d "$1" ]; then @mount.dynfilefs --metadata "$1/.persistence" recover || return 2; fi
       if [ ! -e "$1/active.txt" ] && [ ! -L "$1/active.txt" ]; then return 0; fi
    fi
    DIR=$(mounted_dir "$1")
-   mkdir -p "$MEMORY/storage/unclean" || return 2
-   printf '%s' "${1#"$DIR/"}" > "$MEMORY/storage/unclean/path"
-   blkid -s UUID -o value "$(mounted_device "$1")" > "$MEMORY/storage/unclean/uuid"
-   device_bestfs "$(mounted_device "$1")" > "$MEMORY/storage/unclean/filesystem"
-   mounted_device "$1" > "$MEMORY/storage/unclean/device"
-   echo '* Saved changes were not closed properly; using RAM for changes' >&2
-   return 3
+   DEVICE=$(mounted_device "$DIR")
+   perch_recovery "$DEVICE" "$(device_bestfs "$DEVICE")" "${1#"$DIR/"}" interrupted
 }
 
 
@@ -1084,7 +1175,7 @@ perch_clean()
 # $2 = resume for automatic selection, or ask for the drive and saved-state menus
 select_perch_storage()
 {
-   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW FAILURE
+   local SCAN BOOTDEVICE BOOTDIR DEVICE FS DIR CHANDIR LABEL FREE CHOICE TITLE SELECTED ERROR LATEST NOW FAILURE STATUS ISSUE
 
    while true; do
       SCAN=$(mktemp -d "$MEMORY/storage-disks.XXXXXX") || return 1
@@ -1096,8 +1187,17 @@ select_perch_storage()
          FS=$(device_bestfs "$DEVICE")
          if [ "$FS" = "" -o "$FS" = swap ]; then continue; fi
          DIR=$(mktemp -d "$SCAN/disk.XXXXXX") || exit 1
-         if ! mount_device "$DEVICE" "$DIR" "$FS"; then continue; fi
-         if ! awk -v dir="$DIR" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
+         if device_is_efi "$DEVICE"; then continue; fi
+         STATUS=0
+         mount_boot_device "$DEVICE" "$DIR" "$FS" || STATUS=$?
+         if [ "$STATUS" != 0 -a ! -s "$SCAN/failure" ] && printf '%s\n' "$FS" | grep -qxE 'vfat|exfat|ext[234]|xfs|btrfs|ntfs3?'; then
+            ISSUE=mount
+            if [ "$STATUS" = 3 ]; then ISSUE=dirty; fi
+            printf '%s %s %s\n' "$DEVICE" "$FS" "$ISSUE" > "$SCAN/failure"
+         fi
+         if [ "$STATUS" = 3 ]; then touch "$DIR.check"
+         elif [ "$STATUS" != 0 ]; then continue
+         elif ! awk -v dir="$DIR" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
             umount "$DIR" >&2
             continue
          fi
@@ -1107,6 +1207,10 @@ select_perch_storage()
          if [ -L "$DIR/$LIVEKITNAME" ] || [ -L "$CHANDIR" ]; then continue; fi
          if [ -f "$CHANDIR/resume.txt" ] && [ ! -L "$CHANDIR/resume.txt" ]; then
             printf '%s\t%s\n' "$(date -r "$CHANDIR/resume.txt" +%s)" "$CHANDIR" >> "$SCAN/resume.txt"
+         fi
+         if [ "$STATUS" = 3 ]; then
+            printf '%s\t%s\tNeeds filesystem check\n' "$CHANDIR" "$DEVICE" >> "$SCAN/disks.txt"
+            continue
          fi
          LABEL=$(blkid -s LABEL -o value "$DEVICE" | tr -d '\r\n' | tr '\000-\037\177' ' ')
          FREE=$(perch_size $(df -Pk "$DIR" | awk 'END {print $4, $2}'))
@@ -1125,6 +1229,14 @@ select_perch_storage()
             CHOICE=$(fbmenu --menu "$TITLE" "$SCAN/disks.txt" --cancel --refresh) || break
          fi
          if [ "$CHOICE" = "" -o "$CHOICE" = refresh ]; then break; fi
+         DIR=$(mounted_dir "$CHOICE")
+         if [ -f "$DIR.check" ]; then
+            DEVICE=$(mounted_device "$DIR")
+            CHANDIR=""
+            if [ -d "$CHOICE" ]; then CHANDIR="${CHOICE#"$DIR/"}"; fi
+            perch_recovery "$DEVICE" "$(device_bestfs "$DEVICE")" "$CHANDIR" dirty || FAILURE=$?
+            break
+         fi
          perch_clean "$CHOICE" || { FAILURE=$?; break; }
          if [ -d "$CHOICE" ]; then
             # Recover only the chosen drive, before using its policy or saved-state catalog.
@@ -1157,7 +1269,13 @@ select_perch_storage()
             if ! umount "$DIR" >&2; then ERROR=1; fi
          fi
       done
-      rm -f "$SCAN/disks.txt" "$SCAN/resume.txt"
+      # A filesystem that cannot be read cannot supply resume.txt. Report it
+      # when no usable automatic choice was found, without assuming its path.
+      if [ "$2" = resume -a "$FAILURE" = 0 -a "$SELECTED" = "" -a -s "$SCAN/failure" ]; then
+         read -r DEVICE FS ISSUE < "$SCAN/failure"
+         perch_recovery "$DEVICE" "$FS" "" "$ISSUE" || FAILURE=$?
+      fi
+      rm -f "$SCAN/disks.txt" "$SCAN/resume.txt" "$SCAN/failure" "$SCAN"/disk.*.check
       rmdir "$SCAN"/disk.* "$SCAN" 2>/dev/null
       if [ "$FAILURE" != 0 ]; then return "$FAILURE"; fi
       if [ "$ERROR" != 0 -a "$CHOICE" = refresh ]; then return 1; fi
@@ -1172,7 +1290,7 @@ select_perch_storage()
 # $1 = explicit /dev/DEVICE/path to the changes directory
 perch_device_storage()
 {
-   local DEVICE DIR ROOT FS TIMEOUT ERROR
+   local DEVICE DIR ROOT FS TIMEOUT ERROR STATUS
    DEVICE=$(printf '%s\n' "$1" | cut -d / -f 1-3)
    DIR=$(printf '%s\n' "$1" | cut -d / -f 4-)
    if printf '%s\n' "$DIR" | grep -qE '(^|/)\.\.?(/|$)'; then return 1; fi
@@ -1181,7 +1299,23 @@ perch_device_storage()
    for TIMEOUT in $(seq 1 20); do
       refresh_devs
       FS=$(device_bestfs "$DEVICE")
-      if [ "$FS" != "" ] && mount_device "$DEVICE" "$ROOT" "$FS"; then
+      STATUS=1
+      if [ "$FS" != "" ] && ! device_is_efi "$DEVICE"; then
+         STATUS=0
+         mount_boot_device "$DEVICE" "$ROOT" "$FS" || STATUS=$?
+      fi
+      if [ "$STATUS" = 3 ]; then
+         if [ ! -d "$ROOT/$DIR" ]; then DIR=""; fi
+         umount "$ROOT" >&2 || return 2
+         perch_recovery "$DEVICE" "$FS" "$DIR" dirty
+         return
+      fi
+      if [ "$STATUS" = 0 ]; then
+         if ! awk -v dir="$ROOT" '$2==dir {print $4}' /proc/mounts | grep -qE '(^|,)rw(,|$)'; then
+            umount "$ROOT" >&2 || return 2
+            perch_recovery "$DEVICE" "$FS" "" mount
+            return
+         fi
          ERROR=0
          perch_directory "$ROOT/$DIR" || ERROR=$?
          if [ "$ERROR" = 0 ]; then
@@ -1198,6 +1332,10 @@ perch_device_storage()
       fi
       sleep 1
    done
+   if [ -b "$DEVICE" ] && ! device_is_efi "$DEVICE"; then
+      perch_recovery "$DEVICE" "$FS" "" mount
+      return
+   fi
    return 1
 }
 
@@ -1219,6 +1357,7 @@ persistent_changes()
    chmod 700 "$MEMORY/storage"
    printf 'ram\n' > "$MEMORY/storage/kind"
    for T1 in storage changes dynfilefs start; do printf '\n' > "$MEMORY/storage/$T1"; done
+   if [ -f "$MEMORY/storage/unclean/device" ]; then return 0; fi
    if ! grep -qE '(^|[[:space:]])perch([[:space:]]|dir=|$)' /proc/cmdline; then return 0; fi
 
    # Retain the selected backing mount across recovery-shell activation retries.
@@ -1372,7 +1511,7 @@ copy_to_ram()
 {
    debug_log "copy_to_ram" "$*"
 
-   local MDIR MDEV RAM CHANGES LOOP DEVICE ITEM REQUIRED AVAILABLE AUTO
+   local MDIR MDEV RAM CHANGES LOOP DEVICE ITEM REQUIRED AVAILABLE AUTO RELATIVE
 
    MDIR="$(mounted_dir "$1")"
    LOOP="$(mounted_device "$1")"
@@ -1382,7 +1521,9 @@ copy_to_ram()
    if [ -f "$MEMORY/storage/unclean/device" ]; then
       if perch_device_blocked "$LOOP" || { [ "$MDEV" != "" ] && perch_device_blocked "$(mounted_device "$MDEV")"; }; then
          AUTO=true
-         CHANGES="$MDIR/$(cat "$MEMORY/storage/unclean/path")"
+         CHANGES="$1/changes"
+         RELATIVE=$(cat "$MEMORY/storage/unclean/path")
+         if [ "$RELATIVE" != "" ]; then CHANGES="$MDIR/$RELATIVE"; fi
       fi
    fi
    if grep -vq toram /proc/cmdline && [ "$AUTO" = false ]; then
@@ -1422,16 +1563,17 @@ copy_to_ram()
 }
 
 
-# Keep all members of an interrupted Btrfs filesystem out of automatic mounts.
+# Keep an interrupted filesystem and all its Btrfs members quarantined.
 # $1 = block device
-#
+# $2 = manual to allow explicit mounts after a successful repair
 perch_device_blocked()
 {
    local RECORD UUID
 
-   for RECORD in device checked-device; do
-      if [ -f "$MEMORY/storage/unclean/$RECORD" ] && [ "$(cat "$MEMORY/storage/unclean/$RECORD")" = "$1" ]; then return 0; fi
-   done
+   RECORD="$MEMORY/storage/unclean/device"
+   if [ ! -f "$RECORD" -a "${2:-}" != manual ]; then RECORD="$MEMORY/storage/unclean/checked-device"; fi
+   if [ ! -f "$RECORD" ]; then return 1; fi
+   if [ "$(cat "$RECORD")" = "$1" ]; then return 0; fi
    if [ -f "$MEMORY/storage/unclean/filesystem" ] && [ "$(cat "$MEMORY/storage/unclean/filesystem")" = btrfs ]; then
       UUID=$(cat "$MEMORY/storage/unclean/uuid")
       if [ "$UUID" != "" ] && [ "$(blkid -p -s UUID -o value "$1" 2>/dev/null)" = "$UUID" ]; then return 0; fi
@@ -1558,6 +1700,12 @@ fstab_create()
             # Keep boot and session storage mounted until initramfs shutdown.
             ln -s "/run/initramfs$MOUNTPOINT" "$1/media/$LABEL"
          elif [ "$AUTOMOUNT" = yes ]; then
+            if unmounted_filesystem_needs_check "$DEVICE" "$FS"; then continue; fi
+            # Use Slax's udev worker for the same NTFS hibernation check as manual mounts.
+            if [ "$FS" = ntfs3 ]; then
+               if [ -x "$1/usr/sbin/slax-automount" ] && [ -x "$1/usr/libexec/slax-places-mount" ]; then continue; fi
+               OPTS="$OPTS,ro"
+            fi
             mkdir -p "$1/media/$LABEL"
             echo "$DEVICE" "/media/$LABEL" $FS $OPTS 0 0 >> $FSTAB
          fi

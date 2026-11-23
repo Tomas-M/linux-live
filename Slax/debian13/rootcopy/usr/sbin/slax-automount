@@ -95,6 +95,8 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
 
       if ! /usr/libexec/slax-places-mount "$DEVNAME" "$MNT"; then exit 1; fi
 
+      OPTIONS=defaults
+      if [ "$ID_FS_TYPE" = ntfs3 ] && findmnt -nro VFS-OPTIONS --mountpoint "$MNT" | grep -qE '(^|,)ro(,|$)'; then OPTIONS=ro; fi
       echo "# Slax skip savechanges" >"$TARGET.new"
       echo "[Unit]" >>"$TARGET.new"
       echo "Description=Disk $BAS" >>"$TARGET.new"
@@ -103,7 +105,7 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
       echo "What=$DEVNAME" >>"$TARGET.new"
       echo "Where=$MNT" >>"$TARGET.new"
       echo "Type=$ID_FS_TYPE" >>"$TARGET.new"
-      echo "Options=defaults" >>"$TARGET.new"
+      echo "Options=$OPTIONS" >>"$TARGET.new"
       mv "$TARGET.new" "$TARGET"
       systemctl daemon-reload
       if ! systemctl start "$UNIT"; then

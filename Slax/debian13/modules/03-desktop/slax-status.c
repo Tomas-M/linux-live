@@ -36,7 +36,7 @@ static Location manager_source, manager_storage, popup_source, popup_storage;
 static GtkWidget *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save, *popup_choice;
 static GtkWidget *popup_help, *popup_status, *notice_title, *notice_message, *show_removed;
-static GtkWidget *popup_recovery,*popup_repair,*notice_repair,*notice_review,*notice_snooze;
+static GtkWidget *popup_recovery,*popup_recovery_message,*popup_repair,*notice_repair,*notice_review,*notice_snooze;
 static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
 static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
@@ -629,7 +629,7 @@ static void make_popups(void)
     GtkWidget *locations=box(GTK_ORIENTATION_VERTICAL,6);pack(locations,location_row("Running from",&popup_source),FALSE);
     pack(locations,location_row("Changes on",&popup_storage),FALSE);pack(popup.body,locations,FALSE);
     gtk_widget_set_margin_top(popup_source.icon,1);gtk_widget_set_margin_top(popup_storage.icon,1);
-    popup_recovery=box(GTK_ORIENTATION_VERTICAL,8);pack(popup_recovery,paragraph("The previous run was not shut down properly. Changes are in RAM."),FALSE);
+    popup_recovery=box(GTK_ORIENTATION_VERTICAL,8);popup_recovery_message=paragraph("");pack(popup_recovery,popup_recovery_message,FALSE);
     popup_repair=button("Check and repair…",NULL,"repair");pack(popup_recovery,popup_repair,FALSE);pack(popup.body,popup_recovery,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *capacity=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_halign(capacity,GTK_ALIGN_END);
@@ -1116,6 +1116,10 @@ static void update_ui(void)
     set_label(popup_title,"Slax Status");set_location(&popup_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&popup_storage,str(run(),"storage"),str(run(),"storageIcon"));
     set_location(&manager_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&manager_storage,str(run(),"storage"),str(run(),"storageIcon"));
     JsonObject *recovery=object(state,"recovery");
+    const char *issue=str(recovery,"issue"),*recovery_title="The previous run ended unexpectedly",*recovery_detail="Saved changes were not closed properly";
+    if (!strcmp(issue,"mount")) {recovery_title="A drive could not be mounted";recovery_detail="Slax could not mount the filesystem";}
+    else if (!strcmp(issue,"dirty")) {recovery_title="A filesystem needs checking";recovery_detail="The filesystem reports pending recovery or errors";}
+    set_label(popup_recovery_message,recovery_detail);
     gtk_widget_set_visible(popup_recovery,recovery!=NULL);
     char *repair_caption=g_strdup_printf("%s %s…",flag(recovery,"canRepair") ? "Check and repair" : "How to check",str(recovery,"device"));
     gtk_button_set_label(GTK_BUTTON(popup_repair),repair_caption);g_free(repair_caption);
@@ -1165,8 +1169,9 @@ static void update_ui(void)
         char *free=size_text(available),*text=NULL;const char *title="Space is running low";
         if (!strcmp(warning,"unclean"))
         {
-            title="The previous run ended unexpectedly";
-            text=g_strdup_printf("Saved changes on %s%s%s%s were not closed properly. This run keeps changes in RAM. %s",str(recovery,"device"),*str(recovery,"label") ? " (" : "",str(recovery,"label"),*str(recovery,"label") ? ")" : "",*str(recovery,"error") ? str(recovery,"error") : "Check and repair the filesystem before restarting.");
+            title=recovery_title;
+            const char *label=str(recovery,"label");
+            text=g_strdup_printf("%s (%s%s%s). Changes are in RAM. %s",recovery_detail,str(recovery,"device"),*label ? " · " : "",label,*str(recovery,"error") ? str(recovery,"error") : "Check and repair the filesystem before restarting.");
         }
         else if (!strcmp(warning,"ram")) {title="Available memory is low";text=g_strdup_printf("About %s of RAM is available. Save important files to a drive and close unused applications.",free);}
         else if (!strcmp(warning,"readonly")) {title="Changes cannot be saved";text=g_strdup("The changes drive became read-only. Save important files to another writable drive and check the storage device.");}

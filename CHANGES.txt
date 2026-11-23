@@ -4,6 +4,13 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Keep saved changes marked active until their backing filesystem is ready to
+  unmount, and restore the marker if the final unmount fails. Report failed
+  unmounts and continue shutdown without prompting for input.
+- Check native FAT, exFAT and ext2/3/4 recovery flags before boot mounts. Use RAM
+  and report suspect storage or a failed saved-changes mount for offline repair.
+- Keep generated NTFS mounts read-only when the hibernation-checking automounter
+  is unavailable.
 - Expose required boot and saved-changes mounts under /media even with
   noautomount, while leaving other filesystems unmounted.
 - Increase the generated fstab device timeout from 10 to 30 seconds.
@@ -52,6 +59,12 @@ Linux Live Kit
 Slax
 ----
 
+- Check NTFS hibernation during startup automount. Show drives that need checking
+  in PCManFM and GTK file dialogs, and offer manual mounting after repair.
+- Keep the open folder highlighted in PCManFM and GTK file dialogs during
+  mount attempts, and switch to the new drive only when its folder opens.
+- Show why a filesystem needs checking in Slax Status, replay recoverable XFS
+  logs and verify writes and unmount before offering a restart after repair.
 - Replace generated file-manager bookmarks with native Home, File System,
   device and shared-folder rows. Discover unmounted filesystems independently
   of automount, including VirtualBox shares, and support manual mount/unmount

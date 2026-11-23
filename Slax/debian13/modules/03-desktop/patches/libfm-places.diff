@@ -892,7 +892,24 @@
      if(tp)
      {
          switch(evt->button) /* middle click */
-@@ -1177,7 +1358,7 @@
+@@ -1013,8 +1194,14 @@
+     if((evt->keyval == GDK_KEY_Menu && !modifier) ||
+        (evt->keyval == GDK_KEY_F10 && modifier == GDK_SHIFT_MASK))
+     {
+-        sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(widget));
+-        if(gtk_tree_selection_get_selected(sel, &model, &it))
++        GtkTreeView *view = GTK_TREE_VIEW(widget);
++        GtkTreePath *cursor;
++        model = gtk_tree_view_get_model(view);
++        gtk_tree_view_get_cursor(view, &cursor, NULL);
++        gboolean focused = cursor && gtk_tree_model_get_iter(model, &it, cursor);
++        g_clear_pointer(&cursor, gtk_tree_path_free);
++        sel = gtk_tree_view_get_selection(view);
++        if(focused || gtk_tree_selection_get_selected(sel, &model, &it))
+         {
+             fm_places_item_popup(widget, &it, evt->time);
+             return TRUE;
+@@ -1177,7 +1364,7 @@
      sep_tp = fm_places_model_get_separator_path(model);
      sep_pos = gtk_tree_path_get_indices(sep_tp)[0];
      dest_it = src_it;
@@ -901,7 +918,7 @@
          goto _end; /* cannot move it down */
      gtk_list_store_move_after(GTK_LIST_STORE(model), &src_it, &dest_it);
      /* reorder the bookmark item */
-@@ -1259,6 +1440,7 @@
+@@ -1259,6 +1446,7 @@
      widget_class->key_press_event = on_key_press;
      widget_class->button_press_event = on_button_press;
      widget_class->button_release_event = on_button_release;

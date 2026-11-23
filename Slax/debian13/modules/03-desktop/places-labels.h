@@ -3,6 +3,7 @@ static char *slax_places_detail(GVariant *location,const char *operation)
 {
     const char *id,*name,*group,*icon,*type,*source,*path,*target,*reason;
     g_variant_get(location,"(&s&s&s&s&s&s&s&s&s)",&id,&name,&group,&icon,&type,&source,&path,&target,&reason);
+    if (!operation && !strcmp(reason,"Needs filesystem check")) return g_strdup("Check required");
     const char *state=*path?"Mounted":"Not mounted";
     if (*reason && strcmp(reason,"In use by Slax; cannot unmount")) state=reason;
     if (operation) state=!strcmp(operation,"mount")?"Mounting…":"Unmounting…";

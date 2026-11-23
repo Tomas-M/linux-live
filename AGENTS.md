@@ -898,6 +898,10 @@ must follow the general Slax repair rules above.
   the current filesystem after waiting; event metadata may already be stale.
   Wait for udev's event queue before reconciling add/change/remove events, so
   queued partition remove/add pairs cannot undo a newly completed mount.
+  Route NTFS startup mounts through this worker to check hibernation before
+  permitting writes. Generic Live Kit fstab entries mount NTFS read-only when
+  the worker is unavailable. Publish the read-only check result in the udev
+  catalogue even with noautomount.
   Launch PCManFM with the desktop user's standard `/run/user/UID` runtime
   directory; system services lack `XDG_RUNTIME_DIR` and otherwise create a
   second PCManFM instance with a different IPC socket.
@@ -1105,6 +1109,9 @@ must follow the general Slax repair rules above.
   locks. Share `slax-places-mount` with automount for quarantine, NTFS hibernation
   checks and ownership options. Protect boot/changes storage, retain unmounted
   device/share rows and surface busy failures without force or lazy unmounts.
+  In PCManFM and GTK file dialogs, activating an unmounted row keeps the open
+  folder selected until navigation succeeds. Keyboard actions use the focused
+  row even when the open folder stays selected.
   `slax-shared-folders.service` respects noautomount and remembers manual share
   unmounts for this boot. Keep VBox shares under /media/sf_* and VMware shares
   under /mnt/hgfs, using vmhgfs-fuse directly. Do not generate media bookmarks.
@@ -1482,6 +1489,10 @@ must follow the general Slax repair rules above.
   desktop without manually specifying kernel/initrd or starting X. Boot menu
   success alone is not enough. For changes unrelated to boot, such as cursor
   themes or desktop configuration, one VM startup is sufficient.
+  Every future VirtualBox UEFI test must have Secure Boot enabled. Use the
+  standard trusted keys and Slax's stock signed shim, GRUB and kernel; never
+  disable verification or enroll Slax-specific keys. Confirm that the guest's
+  SecureBoot EFI variable is enabled before reporting a UEFI test as passed.
 - Scratch VM: `Slax boot test`. The local launcher accepts `-Firmware bios`
   or `-Firmware uefi`. Reuse this VM for release checks too; do not create an
   extra VM for ordinary Slax boot tests. Stop it and allow VirtualBox to release its session
@@ -1794,24 +1805,33 @@ must follow the general Slax repair rules above.
   with a timestamp newer than visible mounted markers, including FAT resolution.
   Do not add UUID boot-selection preferences, redirects or expiring requests.
   Do not format or repartition a backing drive.
-- Create active.txt durably before activating saved changes and retain it until
-  XFS and DynFileFS finish closing during normal shutdown. An existing marker
-  blocks the selected store before container recovery or saved-state selection:
+- Create active.txt durably before activating saved changes. Close XFS,
+  DynFileFS and all other mounts before clearing it and immediately unmounting
+  the backing filesystem. Recreate the marker if that unmount fails. Report
+  incomplete unmounts and continue shutdown after bounded retries without
+  opening a recovery shell. An existing marker blocks the selected store
+  before container recovery or saved-state selection:
   continue in RAM without waiting for input, changing the marker or falling back
   to another store. Record device, UUID, filesystem and relative changes path
   under `/memory/storage/unclean`, available at `/run/initramfs` after pivot.
-  Slax Status notifies after docking and offers a confirmed offline repair.
+  Also inspect unmounted FAT, exFAT and ext2/3/4 for native dirty or error flags.
+  Inspect suspect media read-only, without replaying ext journals. Report failed
+  mounts of explicit saved-changes devices or otherwise unresolvable automatic
+  choices through the same recovery record. Preserve a usable resume choice on
+  another drive. Slax Status distinguishes these errors from an interrupted run.
   Lock and revalidate the original device, unmount normally, use native FAT,
   exFAT, ext2/3/4 or XFS tools and require a successful final read-only check.
-  Only then clear active.txt durably, finish unmounting and offer a normal reboot.
+  Replay a dirty XFS log only through a normal mount and unmount. Verify a
+  writable mount, writeback, normal unmount and native flags before offering a
+  reboot. Clear active.txt only in the recorded saved-changes directory.
   Keep merged stdout and stderr in `/run/slax-status/fsck.log` and show it live
   in a scrolling, resizable GTK window, retained after completion. Publish a new
   log inode per job so the viewer never shows an earlier job's report. Recovery
   buttons in both bubbles use the ordinary theme, without the green action class.
   Failures retain the block.
   After success rename the runtime device record to checked-device so automount
-  leaves the drive unmounted until reboot, without reopening a file manager over
-  the restart offer.
+  leaves the drive unmounted until reboot. Refresh the udev catalogue for all
+  repaired members and allow explicit mounts in the current session.
   Do not substitute ntfsfix, fsck.xfs or fsck.btrfs for a real completed check,
   force unmounts or discard XFS logs. Use `btrfs check --readonly --progress`
   first; offer `--repair` only after the failed check, log review and a separate
@@ -1841,10 +1861,10 @@ must follow the general Slax repair rules above.
   in-place metadata updates. Retain the redo file with backups; published metadata
   keeps its allocation, including padded deleted-state records. Older 6.02 binaries
   cannot safely reopen these stores. Keep graphical saved state controls in Slax.
-  Finish the DynFileFS daemon before unmounting its backing filesystem, and finish
-  all unmounts before poweroff. Detect interrupted runs through Slax's active.txt,
-  not filesystem-specific dirty probes; backing-filesystem repair belongs to the
-  confirmed Slax Status flow above, not DynFileFS recovery.
+  Wait for the DynFileFS daemon before unmounting its backing filesystem.
+  Attempt normal unmounts before poweroff. Keep the active.txt lifecycle
+  independent of the backing filesystem checks. Backing filesystem repair belongs
+  to the confirmed Slax Status flow above.
   The published binary at commit `72389fb` includes the DynFileFS source fix for
   `pivot_root`: backing files and the FUSE parent use retained directory handles,
   preserving writes, saved states, automatic freezing and clean unmount across

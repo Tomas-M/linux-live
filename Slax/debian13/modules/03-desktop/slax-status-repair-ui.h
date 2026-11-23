@@ -65,7 +65,7 @@ static void repair_confirm_attempt(GtkButton *button, gpointer data)
 static void repair_confirm_restart(GtkButton *button, gpointer data)
 {
     (void)button;(void)data;
-    char *text=g_strdup_printf("The filesystem on %s passed its final check. Saved changes can be used again after restarting.\n\nThis RAM run will not be saved. Copy important files to another drive before restarting.",str(repair_result,"device"));
+    char *text=g_strdup_printf("The filesystem on %s passed its final check. Slax can use the drive after restarting.\n\nThis RAM run will not be saved. Copy important files to another drive before restarting.",str(repair_result,"device"));
     if (!restart_request && confirm("Filesystem check completed","Restart Slax?",text,"Restart")) {restart_request=command("storage.repair",FALSE);start_restart();}
     g_free(text);
 }
@@ -131,7 +131,7 @@ static void repair_completed(JsonObject *result)
 {
     repair_finished();repair_result=json_object_ref(result);
     gboolean needs_repair=number(result,"checkExitCode")!=0;
-    set_label(repair_status,needs_repair ? "Read-only check did not finish cleanly. Review the report before attempting repair. Saved changes remain blocked." : "Final check passed. Saved changes are enabled for the next start.");
+    set_label(repair_status,needs_repair ? "Read-only check did not finish cleanly. Review the report before attempting repair. Saved changes remain blocked." : "Final check passed. You can mount the drive in File Manager.");
     gtk_widget_set_visible(repair_attempt,needs_repair);gtk_widget_set_visible(repair_restart,!needs_repair);
     if (!needs_repair) {json_object_remove_member(state,"recovery");gtk_widget_hide(notice.window);update_ui();}
 }

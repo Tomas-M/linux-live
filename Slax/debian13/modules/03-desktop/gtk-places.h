@@ -187,6 +187,14 @@ static void slax_places_mount_done(GObject *process,GAsyncResult *result,gpointe
   g_timeout_add(500,slax_places_finished,job);
 }
 
+/* Keyboard actions use the focused row even while a different folder is selected. */
+static GtkListBoxRow *slax_places_keyboard_row(GtkPlacesSidebar *sidebar)
+{
+  GtkWidget *focus=gtk_container_get_focus_child(GTK_CONTAINER(sidebar->list_box));
+  if (focus && g_object_get_data(G_OBJECT(focus),"slax-location")) return GTK_LIST_BOX_ROW(focus);
+  return gtk_list_box_get_selected_row(GTK_LIST_BOX(sidebar->list_box));
+}
+
 /* A row opens its location; its real child button mounts or unmounts without selecting it. */
 static void slax_places_activate(GtkSidebarRow *row,GtkPlacesOpenFlags flags,gboolean action)
 {
@@ -204,6 +212,12 @@ static void slax_places_activate(GtkSidebarRow *row,GtkPlacesOpenFlags flags,gbo
       GFile *file=g_file_new_for_path(path);
       emit_open_location(sidebar,file,flags);
       g_object_unref(file);g_object_unref(sidebar);
+      return;
+    }
+  if (*reason)
+    {
+      emit_show_error_message(sidebar,_("Unable to access the filesystem"),reason);
+      g_object_unref(sidebar);
       return;
     }
   const char *operation=action && *path?"unmount":"mount";

@@ -64,14 +64,16 @@ static gboolean native_bookmark_at(FmPlacesModel *model,GtkTreeIter *iter)
     return item && fm_places_item_get_bookmark_item(item)!=NULL;
 }
 
-/* A header is a non-location row, not a separator or bookmark. */
+/* Unmounted rows can be activated while the open folder stays selected. */
 static gboolean native_select(GtkTreeSelection *selection,GtkTreeModel *model,GtkTreePath *path,gboolean selected,gpointer unused)
 {
     GtkTreeIter iter;
     FmPlacesItem *item=NULL;
     if (!gtk_tree_model_get_iter(model,&iter,path)) return FALSE;
     gtk_tree_model_get(model,&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
-    return item && fm_places_item_get_type(item)!=FM_PLACES_ITEM_NONE;
+    if (!item || fm_places_item_get_type(item)==FM_PLACES_ITEM_NONE) return FALSE;
+    if (selected || !fm_places_item_get_native(item)) return TRUE;
+    return fm_places_item_is_mounted(item) && g_strcmp0(fm_places_item_get_operation(item),"mount");
 }
 
 /* Reuse the ordinary GTK label renderer and escape names before adding secondary text. */

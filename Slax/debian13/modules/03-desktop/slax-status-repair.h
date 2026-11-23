@@ -1,4 +1,4 @@
-/* Offline checks are restricted to the interrupted filesystem recorded by initramfs. */
+/* Offline checks are restricted to the filesystem recorded by initramfs. */
 #define UNCLEAN BOOT "/unclean"
 
 /* Do not mistake no-op fsck wrappers or partial NTFS fixes for a completed check. */
@@ -19,15 +19,19 @@ static JsonObject *repair_state(void)
    if (!device) return NULL;
    JsonObject *result=json_object_new(); g_strchomp(device);
    char *filesystem=read_file(UNCLEAN "/filesystem",NULL); if (filesystem) g_strchomp(filesystem);
+   char *uuid=read_file(UNCLEAN "/uuid",NULL);
    const char *reason="";
-   if (!g_strcmp0(filesystem,"ntfs") || !g_strcmp0(filesystem,"ntfs3")) reason="Connect this drive to Windows and use Windows drive error checking or chkdsk to repair it before using its saved changes.";
+   if (!uuid || !*g_strchomp(uuid)) reason="Slax could not identify the filesystem safely. Check the drive from another system.";
+   else if (!g_strcmp0(filesystem,"ntfs") || !g_strcmp0(filesystem,"ntfs3")) reason="Connect this drive to Windows and use Windows drive error checking or chkdsk to repair it before using its saved changes.";
    else if (!repair_tool(filesystem)) reason="Automatic repair is not available for this filesystem.";
    json_object_set_string_member(result,"device",device);
    json_object_set_string_member(result,"filesystem",filesystem ? filesystem : "");
+   char *issue=read_file(UNCLEAN "/issue",NULL);
+   json_object_set_string_member(result,"issue",issue ? g_strchomp(issue) : "interrupted"); g_free(issue);
    const char *label=device_value(block_devices,device,"label");
    json_object_set_string_member(result,"label",label ? label : "");
    json_object_set_string_member(result,"error",reason); json_object_set_boolean_member(result,"canRepair",!*reason);
-   g_free(filesystem); g_free(device); return result;
+   g_free(uuid); g_free(filesystem); g_free(device); return result;
 }
 
 /* Keep diagnostics in RAM and use the checker's numeric status, never translated output. */
@@ -132,11 +136,37 @@ static gboolean repair_members(GArray *devices, char **paths, const char *uuid, 
    return TRUE;
 }
 
-/* Repair only an inactive, normally unmounted filesystem; preserve both flags on failure. */
+/* Mount normally, allowing the kernel to replay a recoverable log. */
+static gboolean repair_attach(int fd, const char *filesystem)
+{
+   if (g_mkdir_with_parents(RUNTIME "/repair",0700)) return FALSE;
+   char source[32];g_snprintf(source,sizeof(source),"/proc/self/fd/%d",fd);
+   return mount(source,RUNTIME "/repair",filesystem,MS_NODEV|MS_NOSUID|MS_NOEXEC,NULL)==0;
+}
+
+/* Detect writeback errors before clearing the marker or accepting the mount. */
+static gboolean repair_flush(GError **error)
+{
+   int root=open(RUNTIME "/repair",O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+   struct statvfs status;
+   gboolean ok=root>=0 && !fstatvfs(root,&status);
+   if (ok) ok=!(status.f_flag&ST_RDONLY) && !syncfs(root);
+   if (root>=0) close(root);
+   return ok || fail(error,EIO,"The filesystem reported a writeback error. The drive remains blocked.");
+}
+
+/* Verify the native clean state of the pinned device after checking or closing it. */
+static gboolean repair_inspect(int fd, const char *filesystem, GError **error)
+{
+   const char *argv[]={"/run/initramfs/persistence","inspect","/proc/self/fd/198",filesystem,NULL};
+   char *output=command_at(argv,fd,error);gboolean ok=output!=NULL;g_free(output);return ok;
+}
+
+/* Repair only an inactive filesystem and keep it quarantined until the check succeeds. */
 static JsonObject *repair_filesystem(gboolean btrfs_repair, GError **error)
 {
    JsonObject *recovery=repair_state();
-   if (!recovery) { fail(error,ENOENT,"There is no interrupted saved-changes drive to check."); return NULL; }
+   if (!recovery) { fail(error,ENOENT,"There is no recorded drive to check."); return NULL; }
    if (!boolean(recovery,"canRepair")) { fail(error,ENOTSUP,string(recovery,"error")); json_object_unref(recovery); return NULL; }
    const char *device=string(recovery,"device"),*filesystem=string(recovery,"filesystem"),*tool=repair_tool(filesystem);
    char *uuid=read_file(UNCLEAN "/uuid",error),*relative=uuid ? read_file(UNCLEAN "/path",error) : NULL;
@@ -206,13 +236,26 @@ static JsonObject *repair_filesystem(gboolean btrfs_repair, GError **error)
    if (ok && !btrfs)
    {
       gboolean ext=!strcmp(tool,"/sbin/e2fsck");
-      int code=repair_check(tool,ext ? "-fp" : !strcmp(filesystem,"xfs") ? "-e" : "-p",fd,log,error);
+      gboolean xfs=!strcmp(filesystem,"xfs");
+      const char *mode=ext ? "-fp" : xfs ? "-e" : "-p";
+      int code=repair_check(tool,mode,fd,log,error);
+      if (xfs && code==2)
+      {
+         dprintf(log,"\nReplaying the XFS log through a normal mount and unmount.\n");
+         ok=repair_attach(fd,filesystem);
+         if (ok)
+         {
+            ok=repair_flush(error);
+            if (umount(RUNTIME "/repair")) ok=FALSE;
+         }
+         if (ok && repair_members(devices,paths,uuid,filesystem,error)) code=repair_check(tool,mode,fd,log,error);
+      }
       gboolean completed=code==0;
       if (ext && code>0 && code<4) completed=TRUE;
-      if (!strcmp(filesystem,"xfs") && code==4) completed=TRUE;
+      if (xfs && code==4) completed=TRUE;
       /* FAT/exFAT can report corrected errors as 1; the independent check must still return 0. */
       if ((!strcmp(filesystem,"vfat") || !strcmp(filesystem,"exfat")) && code==1) completed=TRUE;
-      ok=completed;
+      ok=ok && completed;
       if (ok && fsync(fd)) ok=fail(error,errno,g_strerror(errno));
       if (ok) ok=repair_check(tool,ext ? "-fn" : "-n",fd,log,error)==0;
       if (!ok && (!error || !*error)) fail(error,EIO,"The filesystem check did not finish cleanly. Saved changes remain blocked. See /run/slax-status/fsck.log for the checker report.");
@@ -221,12 +264,14 @@ static JsonObject *repair_filesystem(gboolean btrfs_repair, GError **error)
    if (ok) ok=repair_members(devices,paths,uuid,filesystem,error);
    if (ok && !needs_repair)
    {
-      g_mkdir_with_parents(RUNTIME "/repair",0700);
-      char *source=g_strdup_printf("/proc/self/fd/%d",fd);
-      mounted_here=!mount(source,RUNTIME "/repair",filesystem,MS_NODEV|MS_NOSUID|MS_NOEXEC,NULL); g_free(source);
-      if (!mounted_here) ok=fail(error,errno,"The checked filesystem could not be mounted. Saved changes remain blocked.");
+      ok=repair_inspect(fd,filesystem,error);
+      if (ok)
+      {
+         mounted_here=repair_attach(fd,filesystem);
+         ok=mounted_here ? repair_flush(error) : fail(error,errno,"The checked filesystem could not be mounted. The drive remains blocked.");
+      }
    }
-   if (ok && !needs_repair)
+   if (ok && !needs_repair && *relative)
    {
       folder=repair_directory(RUNTIME "/repair",relative,error); ok=folder>=0;
       if (ok)
@@ -249,19 +294,27 @@ static JsonObject *repair_filesystem(gboolean btrfs_repair, GError **error)
    }
    if (ok && !needs_repair)
    {
+      ok=repair_inspect(fd,filesystem,error);
       /* Keep automount from stealing the restart offer after the disk lock is released. */
-      if (rename(UNCLEAN "/device",UNCLEAN "/checked-device")) ok=fail(error,errno,g_strerror(errno));
+      if (ok && rename(UNCLEAN "/device",UNCLEAN "/checked-device")) ok=fail(error,errno,g_strerror(errno));
       scanned=0;
    }
+   for (guint i=0;i<devices->len;i++) close(g_array_index(devices,int,i));
+   for (guint i=0;i<locks->len;i++) close(g_array_index(locks,int,i));
+   /* Udev can recheck the repaired members only after the disk locks are released. */
+   if (ok && !needs_repair)
+      for (guint i=0;paths[i];i++)
+      {
+         const char *argv[]={"/usr/bin/udevadm","trigger","--action=change","--settle",paths[i],NULL};
+         g_free(command(argv,NULL));
+      }
    if (log>=0)
    {
-      const char *status="Final check passed. Saved changes are enabled for the next start.";
+      const char *status="Final check passed. You can mount the drive in File Manager.";
       if (needs_repair) status="Read-only check failed. Saved changes remain blocked; no repair was attempted.";
       if (!ok) status=error && *error ? (*error)->message : "The check failed. Saved changes remain blocked.";
       dprintf(log,"\n%s\n",status); close(log);
    }
-   for (guint i=0;i<devices->len;i++) close(g_array_index(devices,int,i));
-   for (guint i=0;i<locks->len;i++) close(g_array_index(locks,int,i));
    g_array_unref(devices); g_array_unref(locks); g_strfreev(paths); g_free(listing); g_free(uuid); g_free(relative);
    if (!ok) { json_object_unref(recovery); return NULL; }
    return recovery;

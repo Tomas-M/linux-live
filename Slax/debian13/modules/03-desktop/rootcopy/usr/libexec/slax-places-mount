@@ -3,13 +3,28 @@ set -e
 . /run/initramfs/lib/livekitlib
 MEMORY=/run/initramfs/memory
 
+# Publish only the result of the read-only check to the udev catalogue.
+if [ "$1" = --check ]; then
+   if perch_device_blocked "$2" manual || unmounted_filesystem_needs_check "$2" "$3"; then
+      echo 'SLAX_FS_NEEDS_CHECK=1'
+   else
+      echo 'SLAX_FS_NEEDS_CHECK=0'
+   fi
+   exit 0
+fi
+
 # The native helper has already revalidated the device and holds its disk lock.
-if perch_device_blocked "$1"; then
+if perch_device_blocked "$1" "${3:-}"; then
    echo 'This filesystem requires a check before it can be mounted.' >&2
    exit 1
 fi
 
 FS=$(device_bestfs "$1" "")
+if unmounted_filesystem_needs_check "$1" "$FS"; then
+   if [ "${3:-}" = manual ]; then udevadm trigger --action=change "$1" 2>/dev/null || true; fi
+   echo 'This filesystem requires a check before it can be mounted.' >&2
+   exit 1
+fi
 OPTIONS=nodev,nosuid
 if [ "$FS" = vfat -o "$FS" = exfat -o "$FS" = ntfs3 ]; then
    GROUP=$(getent group users | cut -d: -f3)

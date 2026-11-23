@@ -169,7 +169,21 @@
    else
      start_icon = g_themed_icon_new_with_default_fallbacks (clos->is_native ? ICON_NAME_FOLDER : ICON_NAME_FOLDER_NETWORK);
  
-@@ -1058,13 +1143,13 @@
+@@ -1042,9 +1127,11 @@
+ #endif
+   GtkStyleContext *context;
+
+-  /* save original selection */
++  /* Keep the displayed location authoritative across catalogue updates. */
+   selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
+-  if (selected)
++  if (sidebar->slax_process && sidebar->current_location)
++    original_uri = g_file_get_uri (sidebar->current_location);
++  else if (selected)
+     g_object_get (selected, "uri", &original_uri, NULL);
+   else
+     original_uri = NULL;
+@@ -1058,13 +1145,13 @@
     * ending a drag */
    stop_drop_feedback (sidebar);
    gtk_container_foreach (GTK_CONTAINER (sidebar->list_box),
@@ -186,7 +200,7 @@
      {
        mount_uri = "recent:///";
        start_icon = g_themed_icon_new_with_default_fallbacks ("document-open-recent-symbolic");
-@@ -1091,7 +1176,7 @@
+@@ -1091,7 +1178,7 @@
  
    /* home folder */
    home_uri = get_home_directory_uri ();
@@ -195,7 +209,7 @@
    add_place (sidebar, PLACES_BUILT_IN,
               SECTION_COMPUTER,
               _("Home"), start_icon, NULL, home_uri,
-@@ -1099,9 +1184,15 @@
+@@ -1099,9 +1186,15 @@
               _("Open your personal folder"));
    g_object_unref (start_icon);
    g_free (home_uri);
@@ -212,7 +226,7 @@
      {
        mount_uri = get_desktop_directory_uri ();
        if (mount_uri)
-@@ -1118,7 +1209,7 @@
+@@ -1118,7 +1211,7 @@
      }
  
    /* XDG directories */
@@ -221,7 +235,7 @@
  
    if (sidebar->show_enter_location)
      {
-@@ -1132,7 +1223,7 @@
+@@ -1132,7 +1225,7 @@
      }
  
    /* Trash */
@@ -230,7 +244,7 @@
      {
        start_icon = _gtk_trash_monitor_get_icon (sidebar->trash_monitor);
        sidebar->trash_row = add_place (sidebar, PLACES_BUILT_IN,
-@@ -1146,7 +1237,7 @@
+@@ -1146,7 +1239,7 @@
      }
  
    /* Application-side shortcuts */
@@ -239,7 +253,7 @@
  
    /* Cloud providers */
  #ifdef HAVE_CLOUDPROVIDERS
-@@ -1363,7 +1454,7 @@
+@@ -1363,7 +1456,7 @@
    g_list_free (volumes);
  
    /* file system root */
@@ -248,7 +262,7 @@
      {
        mount_uri = "file:///"; /* No need to strdup */
        start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_FILESYSTEM);
-@@ -1430,7 +1521,7 @@
+@@ -1430,7 +1523,7 @@
        root = sl->data;
        is_native = g_file_is_native (root);
  
@@ -257,7 +271,7 @@
          continue;
  
        if (sidebar->local_only && !is_native)
-@@ -1441,7 +1532,7 @@
+@@ -1441,7 +1534,7 @@
        clos->index = index;
        clos->is_native = is_native;
        g_file_query_info_async (root,
@@ -266,7 +280,7 @@
                                 G_FILE_QUERY_INFO_NONE,
                                 G_PRIORITY_DEFAULT,
                                 sidebar->cancellable,
-@@ -1528,7 +1619,7 @@
+@@ -1528,7 +1621,7 @@
    g_list_free_full (network_mounts, g_object_unref);
  
    /* Other locations */
@@ -275,7 +289,7 @@
      {
        start_icon = g_themed_icon_new_with_default_fallbacks (ICON_NAME_OTHER_LOCATIONS);
  
-@@ -1540,6 +1631,7 @@
+@@ -1540,6 +1633,7 @@
        g_object_unref (start_icon);
      }
  
@@ -283,7 +297,7 @@
    gtk_widget_show_all (GTK_WIDGET (sidebar));
    /* We want this hidden by default, but need to do it after the show_all call */
    gtk_sidebar_row_hide (GTK_SIDEBAR_ROW (sidebar->new_bookmark_row), TRUE);
-@@ -2531,6 +2623,8 @@
+@@ -2531,6 +2625,8 @@
  open_row (GtkSidebarRow      *row,
            GtkPlacesOpenFlags  open_flags)
  {
@@ -292,7 +306,7 @@
    gchar *uri;
    GDrive *drive;
    GVolume *volume;
-@@ -3277,6 +3371,8 @@
+@@ -3277,6 +3373,8 @@
  static gboolean
  eject_or_unmount_bookmark (GtkSidebarRow *row)
  {
@@ -301,7 +315,35 @@
    gboolean can_unmount, can_eject;
    GMount *mount;
    GVolume *volume;
-@@ -3896,6 +3992,19 @@
+@@ -3322,7 +3420,7 @@
+   gboolean ret;
+   GtkListBoxRow *row;
+
+-  row = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
++  row = slax_places_keyboard_row (sidebar);
+   ret = eject_or_unmount_bookmark (GTK_SIDEBAR_ROW (row));
+
+   return ret;
+@@ -3465,7 +3563,7 @@
+
+   if (event)
+     {
+-      row = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
++      row = slax_places_keyboard_row (sidebar);
+       if (row)
+         {
+           modifiers = gtk_accelerator_get_default_mod_mask ();
+@@ -3781,7 +3879,8 @@
+   if (GTK_PLACES_SIDEBAR (user_data)->dragging_over)
+     return;
+
+-  selected_row = GTK_SIDEBAR_ROW (gtk_list_box_get_selected_row (list_box));
++  selected_row = g_object_get_data (G_OBJECT (row), "slax-location") ? GTK_SIDEBAR_ROW (row)
++    : GTK_SIDEBAR_ROW (gtk_list_box_get_selected_row (list_box));
+   open_row (selected_row, 0);
+ }
+
+@@ -3896,6 +3995,19 @@
                  "order-index", &index_2,
                  NULL);
  
@@ -321,7 +363,7 @@
    /* Always last position for "connect to server" */
    if (place_type_1 == PLACES_CONNECT_TO_SERVER)
      {
-@@ -4109,7 +4218,7 @@
+@@ -4109,7 +4221,7 @@
    gtk_list_box_set_header_func (GTK_LIST_BOX (sidebar->list_box),
                                  list_box_header_func, sidebar, NULL);
    gtk_list_box_set_sort_func (GTK_LIST_BOX (sidebar->list_box),
@@ -330,7 +372,7 @@
    gtk_list_box_set_selection_mode (GTK_LIST_BOX (sidebar->list_box), GTK_SELECTION_SINGLE);
    gtk_list_box_set_activate_on_single_click (GTK_LIST_BOX (sidebar->list_box), TRUE);
  
-@@ -4331,6 +4440,10 @@
+@@ -4331,6 +4443,10 @@
  #endif
  
    sidebar = GTK_PLACES_SIDEBAR (object);
@@ -341,7 +383,7 @@
  
    if (sidebar->cancellable)
      {
-@@ -4980,7 +5093,7 @@
+@@ -4980,7 +5096,7 @@
  
    g_return_if_fail (GTK_IS_PLACES_SIDEBAR (sidebar));
  
@@ -350,7 +392,7 @@
  
    if (sidebar->current_location != NULL)
      g_object_unref (sidebar->current_location);
-@@ -5011,6 +5124,7 @@
+@@ -5011,6 +5127,7 @@
    g_list_free (children);
  
   out:
@@ -358,7 +400,7 @@
    g_object_notify_by_pspec (G_OBJECT (sidebar), properties[PROP_LOCATION]);
  }
  
-@@ -5091,6 +5205,7 @@
+@@ -5091,6 +5208,7 @@
  {
    g_return_if_fail (GTK_IS_PLACES_SIDEBAR (sidebar));
  

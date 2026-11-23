@@ -41,14 +41,13 @@ umount_all()
    done
 }
 
-# Failed storage must remain accessible instead of being powered off underneath recovery.
-# $1 = reason shutdown cannot safely continue
-shutdown_recovery()
+# Report incomplete unmounts and leave any mounted boot medium attached.
+# $1 = storage error
+shutdown_warning()
 {
+   DEVICE=""
    fbmenu --disable 2>/dev/null
-   echo "$1" >/dev/console
-   echo 'Storage has not been safely closed. Exit this shell to retry shutdown.' >/dev/console
-   setsid sh -c 'exec sh < /dev/tty1 >/dev/tty1 2>&1'
+   echo "$1 Continuing shutdown." >/dev/console
 }
 
 # These runtime facts belong to the initramfs; remove the live-root path prefix.
@@ -57,8 +56,6 @@ BACKING_MOUNT=""
 if [ "$(cat /memory/storage/kind 2>/dev/null)" = container ]; then
    CLOSING_STORAGE=$(cat /memory/storage/storage) || exit 1
    CLOSING_STORAGE=${CLOSING_STORAGE#/run/initramfs}
-   CLOSING_FUSE=$(cat /memory/storage/dynfilefs) || exit 1
-   CLOSING_FUSE=${CLOSING_FUSE#/run/initramfs}
    BACKING_MOUNT=$(mounted_dir "$CLOSING_STORAGE") || exit 1
 fi
 
@@ -108,28 +105,24 @@ for i in 1 2 3 4; do
    done
 done
 
-# FUSE detaches before its final checkpoint and close; never abandon a busy parent.
+# FUSE detaches before its final checkpoint and close.
 RETRIES=0
 while true; do
    umount_all /oldroot
    umount_all /move
    umount_all /memory
 
-   if [ "$CLOSING_STORAGE" != "" ] && ! mountpoint -q "$CLOSING_FUSE"; then
-      if persistence close "$CLOSING_STORAGE"; then
-         CLOSING_STORAGE=""
-         BACKING_MOUNT=""
-         continue
-      fi
-      shutdown_recovery 'Saved changes could not finish closing.'
-      continue
+   # Keep the marker until every other mount, including aliases of the backing filesystem, is gone.
+   if ! awk -v backing="$BACKING_MOUNT" '$2 ~ /^\/(oldroot|move|memory)(\/|$)/ && $2!=backing {found=1} END {exit !found}' /proc/mounts; then
+      if [ "$CLOSING_STORAGE" = "" ] || persistence close "$CLOSING_STORAGE" "$BACKING_MOUNT"; then break; fi
+      shutdown_warning 'The saved-changes filesystem could not be unmounted.'
+      break
    fi
 
-   if ! awk '$2 ~ /^\/(oldroot|move|memory)(\/|$)/ {found=1} END {exit !found}' /proc/mounts; then break; fi
    RETRIES=$((RETRIES + 1))
    if [ "$RETRIES" -ge 300 ]; then
-      shutdown_recovery 'A filesystem is still busy or could not be unmounted.'
-      RETRIES=0
+      shutdown_warning 'A filesystem is still busy or could not be unmounted.'
+      break
    fi
    sleep 0.1
 done
@@ -162,7 +155,5 @@ fi
 debug_log reboot -f
 reboot -f
 
-# well, shit happens
-echo We should never reach so far. Something is totally fucked up.
-echo Here you have a shell, to experiment with the universe.
-/bin/sh < /dev/console > /dev/console 2> /dev/console
+echo 'Could not complete shutdown.' >/dev/console
+exit 1

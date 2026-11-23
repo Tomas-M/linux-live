@@ -22,7 +22,7 @@
 typedef struct
 {
     char *id,*name,*group,*icon,*type,*source,*mount,*target,*reason,*parent;
-    gboolean automount,readonly;
+    gboolean automount,readonly,needs_check;
 } Place;
 static GMainLoop *loop;
 static guint refresh_source;
@@ -191,6 +191,7 @@ static void block_list(GPtrArray *places,struct udev *udev,struct libmnt_table *
         char *identity=block_identity(device,type,uuid);
         char *display=label?decode_label(label):g_strdup(name);
         Place *place=place_add(places,"block",identity,display,"Devices",icon,type,node);
+        place->needs_check=!g_strcmp0(udev_device_get_property_value(device,"SLAX_FS_NEEDS_CHECK"),"1");
         place->parent=g_strdup(udev_device_get_devnode(parent));
         place->target=g_build_filename("/media",name,NULL);
         g_free(display);
@@ -374,43 +375,6 @@ static void fstab_list(GPtrArray *places)
     mnt_free_iter(iterator); mnt_free_table(table);
 }
 
-/* Respect the recovery broker's device and Btrfs-family quarantine before manual mounts. */
-static void mark_quarantine(GPtrArray *places)
-{
-    char *blocked=NULL,*uuid=NULL,*type=NULL;
-    const char *directory="/run/initramfs/memory/storage/unclean";
-    char *path=g_build_filename(directory,"device",NULL);
-    if (!g_file_get_contents(path,&blocked,NULL,NULL))
-    {
-        g_free(path); path=g_build_filename(directory,"checked-device",NULL);
-        g_file_get_contents(path,&blocked,NULL,NULL);
-    }
-    g_free(path);
-    if (!blocked) return;
-    g_strchomp(blocked);
-    path=g_build_filename(directory,"uuid",NULL); g_file_get_contents(path,&uuid,NULL,NULL); g_free(path);
-    path=g_build_filename(directory,"filesystem",NULL); g_file_get_contents(path,&type,NULL,NULL); g_free(path);
-    if (uuid) g_strchomp(uuid);
-    if (type) g_strchomp(type);
-    struct udev *udev=udev_new();
-    for (guint i=0;i<places->len;i++)
-    {
-        Place *place=g_ptr_array_index(places,i);
-        if (!g_str_has_prefix(place->id,"block:")) continue;
-        struct stat status;
-        if (stat(place->source,&status)) continue;
-        struct udev_device *device=udev_device_new_from_devnum(udev,'b',status.st_rdev);
-        if (!device) continue;
-        gboolean family=!g_strcmp0(type,"btrfs") && uuid && !g_strcmp0(uuid,udev_device_get_property_value(device,"ID_FS_UUID"));
-        if (!strcmp(place->source,blocked) || family)
-        {
-            g_free(place->reason); place->reason=g_strdup("Requires filesystem check");
-        }
-        udev_device_unref(device);
-    }
-    udev_unref(udev); g_free(blocked); g_free(uuid); g_free(type);
-}
-
 /* Stable ordering moves only entries affected by a device or mount event. */
 static int compare_places(gconstpointer first,gconstpointer second)
 {
@@ -438,10 +402,13 @@ static GPtrArray *list_places(void)
     fstab_list(places);
     attach_mounts(places,mounts);
     mnt_free_table(mounts);
-    mark_quarantine(places);
     for (guint i=0;i<places->len;i++)
     {
         Place *place=g_ptr_array_index(places,i);
+        if (!place->mount && place->needs_check)
+        {
+            g_free(place->reason); place->reason=g_strdup("Needs filesystem check");
+        }
         if (!place->target && !place->mount)
         {
             char *name=g_uri_escape_string(place->source," ",TRUE);
@@ -570,7 +537,7 @@ static gboolean change_mount(const char *id,gboolean unmount,char **result,GErro
         char *argv[]={"/bin/mount","-t",place->type,"-o",options,"--",place->source,place->target,NULL};
         if (block)
         {
-            char *mount_argv[]={"/usr/libexec/slax-places-mount",place->source,place->target,NULL};
+            char *mount_argv[]={"/usr/libexec/slax-places-mount",place->source,place->target,"manual",NULL};
             success=run_command(mount_argv,error);
         }
         else if (g_str_has_prefix(id,"fstab:"))
@@ -651,7 +618,7 @@ static gboolean on_device(gint fd,GIOCondition condition,gpointer data)
     return G_SOURCE_CONTINUE;
 }
 
-/* File monitors cover fstab edits, recovery status and VMware's shared-folder directory. */
+/* File monitors cover fstab edits and VMware's shared-folder directory. */
 static void on_file(GFileMonitor *monitor,GFile *file,GFile *other,GFileMonitorEvent event,gpointer unused)
 {
     schedule_refresh(NULL);
@@ -667,11 +634,10 @@ static int watch_places(void)
     GUnixMountMonitor *mounts=g_unix_mount_monitor_get();
     g_signal_connect_swapped(mounts,"mounts-changed",G_CALLBACK(schedule_refresh),NULL);
     g_signal_connect_swapped(mounts,"mountpoints-changed",G_CALLBACK(schedule_refresh),NULL);
-    const char *paths[]={"/etc/fstab","/run/initramfs/memory/storage/unclean","/mnt/hgfs"};
+    const char *paths[]={"/etc/fstab","/mnt/hgfs"};
     for (guint i=0;i<G_N_ELEMENTS(paths);i++)
     {
         GFile *file=g_file_new_for_path(paths[i]);
-        /* Known types avoid probing inaccessible live-storage parents as desktop users. */
         gboolean directory=!strcmp(paths[i],"/mnt/hgfs");
         GFileMonitor *monitor=directory?g_file_monitor_directory(file,G_FILE_MONITOR_NONE,NULL,NULL):g_file_monitor_file(file,G_FILE_MONITOR_NONE,NULL,NULL);
         if (monitor) g_signal_connect(monitor,"changed",G_CALLBACK(on_file),NULL);
