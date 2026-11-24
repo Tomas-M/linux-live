@@ -65,6 +65,8 @@ Slax
   dialog, without overriding a newer selection. Cancel and failed checks keep
   the unavailable target empty. Open automount windows only for newly attached
   devices or real media changes, preserving ordinary hotplug behavior.
+- Use blue symlink and shortcut badges in the lower-left corner of File Manager
+  and desktop icons, with a 20 px canvas for large icons and unchanged small sizes.
 - Offer filesystem checking from blocked drive rows in File Manager and native
   GTK file dialogs, sharing Slax Status's confirmation, repair backend and live
   report. Check ordinary unmounted drives without interrupting saved changes.
