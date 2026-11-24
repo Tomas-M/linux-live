@@ -453,6 +453,8 @@ must follow the general Slax repair rules above.
   named `slax-YYYY.MM-64bit-n.iso`, with a four-digit year, two-digit month
   and sequential release number. Honor an explicitly requested number;
   otherwise use the next available number for that year and month.
+  Save the requested release and checksum as soon as the image passes content
+  and layout checks, then finish boot tests.
   Keep earlier releases. Create a release only when Tomas asks, and size it to
   exactly 512 MiB by enlarging the EFI FAT16 filesystem, preserving the size of
   USB-SPACE. Never append bytes outside the image's partition layout.
