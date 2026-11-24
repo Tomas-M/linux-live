@@ -1,7 +1,7 @@
 Slax
 ====
 
-I burn the ISO file to a CD/DVD disc, it will be already bootable.
+Burn the ISO file to a CD/DVD disc, it will be already bootable.
 
 To boot Slax from a USB drive:
 
