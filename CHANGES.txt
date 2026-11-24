@@ -68,6 +68,8 @@ Slax
 - Offer filesystem checking from blocked drive rows in File Manager and native
   GTK file dialogs, sharing Slax Status's confirmation, repair backend and live
   report. Check ordinary unmounted drives without interrupting saved changes.
+- Preserve the complete window frame during close animations instead of
+  clearing its title before the rest of the window fades.
 - Check NTFS hibernation during startup automount. Show drives that need checking
   in PCManFM and GTK file dialogs, and offer manual mounting after repair.
 - Select sidebar locations immediately in PCManFM and GTK file dialogs. Clear

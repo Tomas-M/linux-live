@@ -1,0 +1,13 @@
+--- a/src/Window.cc
++++ b/src/Window.cc
+@@ -696,6 +696,10 @@
+     if (client.fbwindow() != this || numClients() == 0)
+         return false;
+ 
++    // Freeze the complete frame before dismantling its final title tab.
++    if (numClients() == 1)
++        frame().hide();
++
+ 
+     fbdbg<<"("<<__FUNCTION__<<")["<<this<<"]"<<endl;
+ 
