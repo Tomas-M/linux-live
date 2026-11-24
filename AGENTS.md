@@ -1410,6 +1410,8 @@ must follow the general Slax repair rules above.
   Embed the supplied blue `symlink-badge.png` in libfm and draw link badges in
   the lower-left corner. Keep small badge sizes; icons of 48 px and above use
   the original pixels on a 20 px canvas without resampling the supplied artwork.
+  Install the canonical libfm and PCManFM configurations under `/etc/xdg` too,
+  so empty profiles inherit Slax's defaults without the legacy Applications row.
 - Slax's light MIME artwork lives in `03-desktop/rootcopy/usr/share/icons/Adwaita`:
   `application-x-ms-shortcut`, `application-x-executable`, `application-x-sharedlib`
   and `image-x-generic`. Keep application/library tiles upright and image colors

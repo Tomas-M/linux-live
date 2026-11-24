@@ -67,6 +67,8 @@ Slax
   devices or real media changes, preserving ordinary hotplug behavior.
 - Use blue symlink and shortcut badges in the lower-left corner of File Manager
   and desktop icons, with a 20 px canvas for large icons and unchanged small sizes.
+- Apply Slax's File Manager defaults to empty profiles too, keeping the approved
+  sidebar without the legacy Applications entry.
 - Offer filesystem checking from blocked drive rows in File Manager and native
   GTK file dialogs, sharing Slax Status's confirmation, repair backend and live
   report. Check ordinary unmounted drives without interrupting saved changes.
