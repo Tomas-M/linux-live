@@ -1,14 +1,14 @@
 #!/bin/sh
 
-# Try native autodetection first; generate a configuration only after startup fails.
+# Try native autodetection before the framebuffer fallback.
 if /usr/bin/startx "$@"; then
    exit 0
 fi
 
-# Keep the fallback local to this attempt, outside persistent changes.
-CONFIG=$(mktemp -d /run/slax-xorg.XXXXXX) || exit 1
-trap 'rm -r "$CONFIG"' 0
-trap 'exit 1' HUP INT TERM
-HOME="$CONFIG" /usr/bin/Xorg -configure
-if [ ! -s "$CONFIG/xorg.conf.new" ]; then exit 1; fi
-XORGCONFIG="$CONFIG/xorg.conf.new" /usr/bin/startx "$@"
+# Preserve explicitly selected configurations and retry only for this invocation.
+if [ -n "$XORGCONFIG" ] || [ -f /etc/X11/xorg.conf ]; then exit 1; fi
+for ARG in "$@"; do
+   if [ "$ARG" = -config ] || [ "$ARG" = -configdir ]; then exit 1; fi
+done
+if [ ! -c /dev/fb0 ]; then exit 1; fi
+XORGCONFIG=slax-framebuffer.conf exec /usr/bin/startx "$@"

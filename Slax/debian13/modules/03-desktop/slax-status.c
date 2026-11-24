@@ -1047,7 +1047,7 @@ static void make_manager(void)
     gtk_key_snooper_install(manager_key_mode,NULL);
     g_signal_add_emission_hook(g_signal_lookup("realize",GTK_TYPE_WIDGET),0,manager_focus_control,NULL,NULL);
     gtk_window_set_wmclass(GTK_WINDOW(manager),"slax-status","slax-status");gtk_window_set_icon_name(GTK_WINDOW(manager),"slax-status");
-    gtk_window_set_default_size(GTK_WINDOW(manager),1040,640);gtk_window_set_position(GTK_WINDOW(manager),GTK_WIN_POS_CENTER);
+    gtk_window_set_default_size(GTK_WINDOW(manager),910,640);gtk_window_set_position(GTK_WINDOW(manager),GTK_WIN_POS_CENTER);
     gtk_widget_set_size_request(manager,540,440);
     g_signal_connect(manager,"delete-event",G_CALLBACK(manager_close),NULL);g_signal_connect(manager,"key-press-event",G_CALLBACK(manager_key),NULL);
     manager_body=box(GTK_ORIENTATION_VERTICAL,0);gtk_container_add(GTK_CONTAINER(manager),manager_body);

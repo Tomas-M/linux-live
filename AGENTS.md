@@ -51,6 +51,8 @@ reporting progress.
 - Preserve graphics driver and cursor autodetection; do not force software
   cursors or a particular GPU driver. Slax uses Debian's standard signed kernel
   and its matching signed modules without private kernel patches.
+  Match `hyperv_drm` through Xorg's OutputClass and select its modesetting output
+  as PrimaryGPU; Gen1's legacy PCI VGA device is not the native DRM display.
 - Keep xterm's `allowSendEvents` disabled. Enabling it disables application
   mouse tracking, making clicks fail in Midnight Commander and other terminal
   applications. The setting belongs in `03-desktop/rootcopy/root/.Xresources`.
@@ -386,6 +388,12 @@ must follow the general Slax repair rules above.
 - Use VirtualBox for the current work VM. VM files and helpers belong in `VM`.
   Run OS windows visibly (`--type gui`). Only background collectors/helpers
   may be hidden.
+- Keep Hyper-V disabled on the Windows host for ordinary VirtualBox work. Enable
+  it only for explicitly requested compatibility tests and disable it afterward;
+  Tomas performs any required Windows restart. Hyper-V helpers and evidence live
+  in `VM/hyperv`. Use diskless Gen1 BIOS and Gen2 UEFI test guests; retain Secure
+  Boot with MicrosoftUEFICertificateAuthority for Gen2. Capture diagnostics before
+  any workaround, then shut down and remove the temporary guests after testing.
 - Run boot-test VMs directly in the host's VirtualBox, never as nested guests
   inside the work VM.
 - VirtualBox CLI: `C:/Program Files/Oracle/VirtualBox/VBoxManage.exe`.
@@ -1775,10 +1783,10 @@ must follow the general Slax repair rules above.
 - Keep tty1's getty ordered after `xorg.service`, whose `ExecStartPost` waits
   for X client connections. `Xdetect` must pass the service's display and VT
   arguments to `startx`. Try native hardware autodetection first; if startup
-  fails, run `Xorg -configure` and retry. Do not probe before the first start.
-  Generate fallback configuration in a private directory under `/run`, pass it
-  through `XORGCONFIG` for that retry only and remove it when the attempt ends.
-  Preserve the desktop user's HOME. Boot-time tmpfiles cleanup removes the old
+  fails and `/dev/fb0` is available, retry with the bundled slax-framebuffer.conf
+  through `XORGCONFIG` for that invocation only. Preserve explicit configurations
+  and the desktop user's HOME. Do not run `Xorg -configure` automatically.
+  Boot-time tmpfiles cleanup removes the old
   `/etc/X11/xorg.conf.d/01-xautodetected.conf` before graphical or text login.
 - When Xorg switches away from tty1, fbmenu must preserve its graphics and
   pixels instead of restoring text and a blinking cursor. Getty restores tty1

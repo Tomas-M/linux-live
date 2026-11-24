@@ -154,8 +154,9 @@ BOOT AND PERSISTENCE
 - Slax boots from CD/DVD, USB or an installed disk through BIOS or UEFI. Debian's
   signed UEFI chain supports Secure Boot. Esc during the five-second countdown
   reveals the full boot menu.
-- Slax detects graphics hardware at each startup. Automatically generated Xorg
-  fallback settings are temporary and do not carry over to another computer.
+- Slax detects graphics hardware at each startup. If automatic desktop startup
+  fails, it tries a basic framebuffer display when available; this may limit
+  screen resolution. This fallback is not remembered across boots.
 - Slax keeps saved changes and saved states together on the selected drive.
   Each drive has one history; there are no separate profiles or sessions to manage.
 - Normal startup continues saved changes from the most recently selected writable

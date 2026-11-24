@@ -59,8 +59,10 @@ Linux Live Kit
 Slax
 ----
 
-- Keep automatically generated Xorg fallback settings in RAM for one startup
-  attempt, and discard previously saved autodetection files before desktop startup.
+- Select Hyper-V's native DRM display as primary so Gen1 starts the desktop
+  with modesetting and retains normal resolution selection.
+- Retry failed native graphics startup with the bundled framebuffer configuration,
+  preserving explicit Xorg settings. Discard previously saved autodetection files.
 - Continue opening a repaired drive in the requesting File Manager window or GTK
   dialog, without overriding a newer selection. Cancel and failed checks keep
   the unavailable target empty. Open automount windows only for newly attached
