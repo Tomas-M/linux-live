@@ -59,6 +59,9 @@ Linux Live Kit
 Slax
 ----
 
+- Clear inherited accessibility bus addresses for root-launched guest applications
+  and include UPower for Chromium power monitoring.
+
 - Select Hyper-V's native DRM display as primary so Gen1 starts the desktop
   with modesetting and retains normal resolution selection.
 - Retry failed native graphics startup with the bundled framebuffer configuration,
