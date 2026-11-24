@@ -1,0 +1,87 @@
+--- a/src/tab-page.c
++++ b/src/tab-page.c
+@@ -558,7 +558,8 @@
+          * This fixes bug #3411298- Show "Permission denied" when switching to super user mode.
+          * https://sourceforge.net/tracker/?func=detail&aid=3411298&group_id=156956&atid=801864
+          * */
+-        fm_show_error(win, NULL, err->message);
++        char *message=g_strdup(err->message);
++        fm_tab_page_chdir(page,NULL);fm_show_error(win,NULL,message);g_free(message);
+     }
+     return FM_JOB_CONTINUE;
+ }
+@@ -1201,6 +1202,20 @@
+ {
+     FmPath* cwd = fm_tab_page_get_cwd(page);
+     int scroll_pos;
++    if(!cwd && !path) return;
++    if(!path)
++    {
++        /* An unavailable sidebar target is an empty page, never the previous folder. */
++        free_folder(page);page->own_config=FALSE;
++        fm_folder_view_set_model(page->folder_view,NULL);gtk_widget_hide(page->empty_message);
++        _tab_unset_busy_cursor(page);fm_tab_label_set_text(page->tab_label,_("File Manager"));
++        for(guint i=0;i<FM_STATUS_TEXT_NUM;i++)
++        {
++            g_clear_pointer(&page->status_text[i],g_free);
++            g_signal_emit(page,signals[STATUS],0,i,NULL);
++        }
++        g_signal_emit(page,signals[CHDIR],0,NULL);return;
++    }
+     if(cwd && path && fm_path_equal(cwd, path))
+         return;
+     scroll_pos = gtk_adjustment_get_value(gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(page->folder_view)));
+@@ -1275,6 +1290,13 @@
+ 
+ void fm_tab_page_back(FmTabPage* page)
+ {
++    /* The unavailable page is not a visit; Back returns to the last valid folder. */
++    if(!page->folder)
++    {
++        const FmNavHistoryItem *item=fm_nav_history_get_cur(page->nav_history);
++        if(item) fm_tab_page_chdir_without_history(page,item->path);
++        return;
++    }
+     if(fm_nav_history_can_back(page->nav_history))
+     {
+ #if !FM_CHECK_VERSION(1, 0, 2)
+--- a/src/main-win.c
++++ b/src/main-win.c
+@@ -317,7 +317,7 @@
+ {
+     GtkAction *act;
+     /* FmFolderView *fv = win->folder_view; */
+-    gboolean can_term = pcmanfm_can_open_path_in_terminal(path);
++    gboolean can_term = path && pcmanfm_can_open_path_in_terminal(path);
+ 
+     act = gtk_ui_manager_get_action(win->ui, "/menubar/ToolMenu/Term");
+     gtk_action_set_sensitive(act, path && can_term);
+@@ -327,6 +327,8 @@
+ #endif
+     act = gtk_ui_manager_get_action(win->ui, "/menubar/GoMenu/Up");
+     gtk_action_set_sensitive(act, path && fm_path_get_parent(path));
++    gtk_action_set_sensitive(gtk_ui_manager_get_action(win->ui,"/menubar/BookmarksMenu/AddBookmark"),path!=NULL);
++    gtk_action_set_sensitive(gtk_ui_manager_get_action(win->ui,"/menubar/ToolMenu/Search"),path!=NULL);
+ }
+ 
+ static void on_folder_view_sort_changed(FmFolderView* fv, FmMainWin* win)
+@@ -1519,7 +1521,7 @@
+     gtk_action_set_sensitive(act, fm_nav_history_can_forward(nh));
+ #endif
+     act = gtk_ui_manager_get_action(win->ui, "/menubar/GoMenu/Prev");
+-    gtk_action_set_sensitive(act, fm_nav_history_can_back(nh));
++    gtk_action_set_sensitive(act, fm_nav_history_can_back(nh) || !fm_tab_page_get_cwd(win->current_page));
+     update_file_menu(win, fm_tab_page_get_cwd(win->current_page));
+ }
+ 
+@@ -1537,7 +1539,9 @@
+ 
+ static void on_go_up(GtkAction* act, FmMainWin* win)
+ {
+-    FmPath* parent = fm_path_get_parent(fm_tab_page_get_cwd(win->current_page));
++    FmPath* path=fm_tab_page_get_cwd(win->current_page);
++    if(!path) return;
++    FmPath* parent = fm_path_get_parent(path);
+     if(parent)
+         fm_main_win_chdir( win, parent);
+ }

@@ -1023,7 +1023,11 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
 {
    const char *op=string(request,"op");
    if (!op) { fail(error,EINVAL,"Missing operation."); return NULL; }
-   if (!discover(boolean(request,"refresh"),error)) return NULL;
+   gboolean filesystem_check=!strcmp(op,"storage.check") || !strcmp(op,"storage.repair");
+   const char *place_id=string(request,"placeId");
+   if (filesystem_check && json_object_has_member(request,"placeId") && !place_id) { fail(error,EINVAL,"Invalid filesystem identity."); return NULL; }
+   gboolean check_place=filesystem_check && place_id;
+   if (!discover(boolean(request,"refresh") || check_place,error)) return NULL;
    if (!strcmp(op,"state")) return state(error);
    Store *store=find_store(string(request,"storeId"));
    if (!strcmp(op,"history")) return history(store,error);
@@ -1035,7 +1039,8 @@ static JsonObject *dispatch(JsonObject *request, uid_t uid, pid_t pid, GError **
       return json_object_new();
    }
    if (restart_request) { fail(error,EBUSY,"Slax is preparing to restart."); return NULL; }
-   if (!strcmp(op,"storage.repair")) return repair_filesystem(boolean(request,"repair"),error);
+   if (!strcmp(op,"storage.check")) return repair_place(string(request,"placeId"),error);
+   if (!strcmp(op,"storage.repair")) return repair_filesystem(string(request,"placeId"),boolean(request,"repair"),error);
    if (!strcmp(op,"storage.prepare")) return prepare_setup(request,error) ? json_object_new() : NULL;
    if (!strcmp(op,"restart.prepare"))
    {

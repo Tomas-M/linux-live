@@ -18,5 +18,6 @@ patch -p1 < "$CWD/patches/pcmanfm-browser.diff"
 patch -p1 < "$CWD/patches/pcmanfm-standalone.diff"
 # Explain successfully empty folders without covering native file-view input.
 patch -p1 < "$CWD/patches/pcmanfm-empty-folder.diff"
+patch -p1 < "$CWD/patches/pcmanfm-unavailable-location.diff"
 dpkg-buildpackage -b -us -uc
 cp ../pcmanfm_*.deb "$OUTPUT/"

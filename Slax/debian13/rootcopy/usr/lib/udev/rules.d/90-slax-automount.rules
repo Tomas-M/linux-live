@@ -5,4 +5,4 @@ SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="0xef", ENV{UDISKS_AUTO}="0"
 # Read the same filesystem flags as the mount helper, even without automount.
 ACTION=="add|change", SUBSYSTEM=="block", ENV{ID_FS_USAGE}=="filesystem", IMPORT{program}="/usr/libexec/slax-places-mount --check %E{DEVNAME} %E{ID_FS_TYPE}"
 # Mounting must run outside udev; mount units wait for the current device event to finish.
-KERNEL=="[!lr]*", SUBSYSTEM=="block", RUN+="/usr/bin/systemd-run --quiet --no-block --collect /usr/sbin/slax-automount %E{ACTION} %E{DEVNAME} %E{ID_FS_TYPE}"
+KERNEL=="[!lr]*", SUBSYSTEM=="block", RUN+="/usr/bin/systemd-run --quiet --no-block --collect /usr/sbin/slax-automount %E{ACTION} %E{DEVNAME} %E{DISK_MEDIA_CHANGE}"

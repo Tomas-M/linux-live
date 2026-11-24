@@ -6,7 +6,11 @@ static char *slax_places_detail(GVariant *location,const char *operation)
     if (!operation && !strcmp(reason,"Needs filesystem check")) return g_strdup("Check required");
     const char *state=*path?"Mounted":"Not mounted";
     if (*reason && strcmp(reason,"In use by Slax; cannot unmount")) state=reason;
-    if (operation) state=!strcmp(operation,"mount")?"Mounting…":"Unmounting…";
+    if (operation)
+    {
+        if (!strcmp(reason,"Needs filesystem check")) state="Checking…";
+        else state=!strcmp(operation,"mount")?"Mounting…":"Unmounting…";
+    }
     char *origin=g_strdup(source);
     if (g_str_has_prefix(id,"block:")) { g_free(origin); origin=g_path_get_basename(source); }
     if (!strcmp(type,"vboxsf")) { g_free(origin); origin=g_strdup("VirtualBox"); }

@@ -1,4 +1,5 @@
 /* Native GTK sidebar rows consume the same unprivileged catalogue as PCManFM. */
+#include "slax-places-check.h"
 typedef struct
 {
   GWeakRef sidebar,row;
@@ -131,6 +132,8 @@ static gboolean slax_places_finished(gpointer data)
   GError *error=NULL;
   gboolean success=g_subprocess_communicate_utf8_finish(job->process,job->result,&output,&message,&error);
   success=success && g_subprocess_get_successful(job->process);
+  gboolean selected=sidebar && row && gtk_list_box_get_selected_row(GTK_LIST_BOX(sidebar->list_box))==GTK_LIST_BOX_ROW(row);
+  gboolean opened=success && output && *output;
   if (sidebar && success)
     {
       if (job->unmount && sidebar->current_location)
@@ -145,7 +148,7 @@ static gboolean slax_places_finished(gpointer data)
               g_object_unref(home);
             }
         }
-      else if (job->open)
+      else if (job->open && selected && opened)
         {
           GVariant *path=g_variant_parse(G_VARIANT_TYPE_STRING,output,NULL,NULL,&error);
           if (path)
@@ -164,13 +167,7 @@ static gboolean slax_places_finished(gpointer data)
     }
   if (sidebar)
     {
-      if (sidebar->current_location)
-        {
-          GFile *current=g_object_ref(sidebar->current_location);
-          gtk_places_sidebar_set_location(sidebar,current);
-          g_object_unref(current);
-        }
-      if (!success) emit_show_error_message(sidebar,job->unmount?_("Unable to unmount the filesystem"):_("Unable to mount the filesystem"),error?error->message:message);
+      if (!success && (selected || !job->open)) emit_show_error_message(sidebar,job->unmount?_("Unable to unmount the filesystem"):_("Unable to mount the filesystem"),error?error->message:message);
     }
   g_free(output);g_free(message);g_clear_error(&error);
   g_clear_object(&row);g_clear_object(&sidebar);
@@ -199,14 +196,14 @@ static GtkListBoxRow *slax_places_keyboard_row(GtkPlacesSidebar *sidebar)
 static void slax_places_activate(GtkSidebarRow *row,GtkPlacesOpenFlags flags,gboolean action)
 {
   GVariant *location=g_object_get_data(G_OBJECT(row),"slax-location");
-  const char *id,*path,*reason;
-  if (g_object_get_data(G_OBJECT(row),"slax-operation")) return;
-  g_variant_get_child(location,0,"&s",&id);
+  const char *path,*reason;
   g_variant_get_child(location,6,"&s",&path);
   g_variant_get_child(location,8,"&s",&reason);
   if (action && *reason) return;
   GtkPlacesSidebar *sidebar;
   g_object_get(row,"sidebar",&sidebar,NULL);
+  if (!action && !*path) emit_open_location(sidebar,NULL,flags);
+  if (g_object_get_data(G_OBJECT(row),"slax-operation")) {g_object_unref(sidebar);return;}
   if (!action && *path)
     {
       GFile *file=g_file_new_for_path(path);
@@ -214,16 +211,9 @@ static void slax_places_activate(GtkSidebarRow *row,GtkPlacesOpenFlags flags,gbo
       g_object_unref(file);g_object_unref(sidebar);
       return;
     }
-  if (*reason)
-    {
-      emit_show_error_message(sidebar,_("Unable to access the filesystem"),reason);
-      g_object_unref(sidebar);
-      return;
-    }
   const char *operation=action && *path?"unmount":"mount";
-  const char *argv[]={"/usr/bin/pkexec","/usr/libexec/slax-places",operation,id,NULL};
   GError *error=NULL;
-  GSubprocess *process=g_subprocess_newv(argv+(geteuid()==0),G_SUBPROCESS_FLAGS_STDOUT_PIPE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error);
+  GSubprocess *process=slax_places_command(location,operation,&error);
   if (!process)
     {
       emit_show_error_message(sidebar,_("Unable to access the filesystem"),error->message);

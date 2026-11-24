@@ -1109,9 +1109,16 @@ must follow the general Slax repair rules above.
   locks. Share `slax-places-mount` with automount for quarantine, NTFS hibernation
   checks and ownership options. Protect boot/changes storage, retain unmounted
   device/share rows and surface busy failures without force or lazy unmounts.
-  In PCManFM and GTK file dialogs, activating an unmounted row keeps the open
-  folder selected until navigation succeeds. Keyboard actions use the focused
-  row even when the open folder stays selected.
+  In PCManFM and GTK file dialogs, activating a row selects it immediately.
+  An unavailable or still-unmounted target has an empty file pane and path;
+  failed mounting keeps that target selected. Catalogue updates retain the
+  existing selection without restoring the previous folder. Late mount results
+  must not replace a newer choice. Action buttons operate without navigating.
+  Offline repair stays inside that same asynchronous mount job. Slax Status
+  replies to the requesting client window; Cancel/failure supplies no location.
+  Successful checks continue mounting and opening in the original view only
+  while its chosen target still matches. Metadata-change automount events must
+  not open extra windows; retain opening for device additions and real media changes.
   `slax-shared-folders.service` respects noautomount and remembers manual share
   unmounts for this boot. Keep VBox shares under /media/sf_* and VMware shares
   under /mnt/hgfs, using vmhgfs-fuse directly. Do not generate media bookmarks.
@@ -1386,6 +1393,12 @@ must follow the general Slax repair rules above.
   windows in and out. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
+- For PCManFM changes and bug reports, also inspect and verify the corresponding
+  GTK file chooser wherever it shares the same interface or behavior.
+  Blocked drive rows in both browsers invoke `slax-status --check PLACE_ID`.
+  Keep one confirmation, repair backend and report viewer in Slax Status.
+  Resolve and revalidate catalogue identities in the broker; ordinary checks
+  require unmounted filesystems and must leave active saved changes alone.
 - PCManFM uses the opened folder's icon in the tasklist. Use Adwaita's blue
   `inode-directory` artwork for generic and special folders in `03-desktop`, including
   the Adwaita and gnome theme paths at 16, 22, 24, 32 and 48 px. Preserve the native

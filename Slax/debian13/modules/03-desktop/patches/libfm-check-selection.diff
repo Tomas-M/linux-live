@@ -1,0 +1,99 @@
+--- a/src/gtk/fm-places-view.c
++++ b/src/gtk/fm-places-view.c
+@@ -666,6 +666,8 @@
+         {
+         case FM_PLACES_ITEM_LOCATION:
+         {
++            /* An unavailable target has no current directory until mounting succeeds. */
++            if(button==1 && !fm_places_item_is_mounted(item)) g_signal_emit(view,signals[CHDIR],0,button,NULL);
+             if(fm_places_item_get_operation(item)) return;
+             if(!fm_places_item_is_mounted(item)) { native_mount(view,item,FALSE,button); return; }
+             path=fm_path_ref(fm_places_item_get_path(item));
+@@ -737,9 +739,7 @@
+  */
+ void fm_places_view_chdir(FmPlacesView* pv, FmPath* path)
+ {
+-    /* Retain a reference before replacing the same stored path during reconciliation. */
+-    if(path) fm_path_ref(path);
+-    g_object_set_data_full(G_OBJECT(pv),"slax-current-path",path,(GDestroyNotify)fm_path_unref);
++    if(!path) return;
+     GtkTreeIter it;
+     GtkTreeModel* model = gtk_tree_view_get_model(GTK_TREE_VIEW(pv));
+     GtkTreeSelection* ts = gtk_tree_view_get_selection(GTK_TREE_VIEW(pv));
+--- a/src/gtk/fm-side-pane.c
++++ b/src/gtk/fm-side-pane.c
+@@ -282,7 +282,7 @@
+     g_return_if_fail(sp->view != NULL);
+     if(sp->cwd)
+         fm_path_unref(sp->cwd);
+-    sp->cwd = fm_path_ref(path);
++    sp->cwd = path ? fm_path_ref(path) : NULL;
+ 
+     switch(sp->mode)
+     {
+@@ -301,7 +301,7 @@
+ {
+     if(sp->cwd)
+         fm_path_unref(sp->cwd);
+-    sp->cwd = fm_path_ref(path);
++    sp->cwd = path ? fm_path_ref(path) : NULL;
+     g_signal_emit(sp, signals[CHDIR], 0, button, path);
+ }
+ 
+@@ -309,7 +309,7 @@
+ {
+     if(sp->cwd)
+         fm_path_unref(sp->cwd);
+-    sp->cwd = fm_path_ref(path);
++    sp->cwd = path ? fm_path_ref(path) : NULL;
+     g_signal_emit(sp, signals[CHDIR], 0, button, path);
+ }
+ 
+--- a/src/gtk/fm-path-bar.c
++++ b/src/gtk/fm-path-bar.c
+@@ -161,7 +161,7 @@
+     {
+         FmPath* path = FM_PATH(g_object_get_qdata(G_OBJECT(btn), btn_data_id));
+         fm_path_unref(bar->cur_path);
+-        bar->cur_path = fm_path_ref(path);
++        bar->cur_path = path ? fm_path_ref(path) : NULL;
+         emit_chdir(bar, path);
+     }
+ }
+@@ -284,7 +284,7 @@
+             return;
+         fm_path_unref(bar->cur_path);
+     }
+-    bar->cur_path = fm_path_ref(path);
++    bar->cur_path = path ? fm_path_ref(path) : NULL;
+ 
+     /* check if we already have a button for this path */
+     if(bar->full_path)
+@@ -294,7 +294,7 @@
+         while(path_element)
+         {
+             /* we have a button for this path */
+-            if(fm_path_equal(path_element, path))
++            if(path && fm_path_equal(path_element, path))
+             {
+                 /* toggle the button */
+                 btns = gtk_container_get_children(GTK_CONTAINER(bar->btn_box));
+@@ -313,7 +313,7 @@
+         /* we don't have a button for it. */
+         fm_path_unref(bar->full_path);
+     }
+-    bar->full_path = fm_path_ref(path);
++    bar->full_path = path ? fm_path_ref(path) : NULL;
+ 
+     /* FIXME: if the new path is the subdir of our full_path, actually
+      *        we can append several new buttons rather than re-create
+--- a/src/gtk/fm-path-entry.c
++++ b/src/gtk/fm-path-entry.c
+@@ -851,6 +851,7 @@
+     else
+     {
+         priv->path = NULL;
++        priv->folder_loaded=FALSE;clear_completion(priv);
+         gtk_entry_set_text(GTK_ENTRY(entry), "");
+     }
+ }

@@ -52,7 +52,7 @@ static gboolean removed_visible;
 static gboolean reveal_current=TRUE;
 static Display *display;
 static Window command_window;
-static Atom tray_selection, manager_atom, command_atom;
+static Atom tray_selection, manager_atom, command_atom, check_atom, check_done_atom;
 
 static void refresh(void);
 static void update_ui(void);
@@ -69,7 +69,9 @@ static void restart_failed(const char *detail);
 static void start_restart(void);
 static void repair_completed(JsonObject *result);
 static void repair_failed(const char *detail);
+static gboolean repair_offer(JsonObject *device);
 static gboolean confirm(const char *title, const char *question, const char *text, const char *accept);
+#include "slax-status-check.h"
 
 /* Optional JSON values stay absent instead of acquiring guessed UI state. */
 static const char *str(JsonObject *object, const char *key)
@@ -200,6 +202,7 @@ static JsonObject *command(const char *op, gboolean with_store)
     if (with_store && selected) json_object_set_string_member(request,"storeId",selected);
     return request;
 }
+
 static void request_free(gpointer data)
 {
     Request *request=data;
@@ -218,6 +221,12 @@ static gboolean valid_reply(JsonObject *reply, const char *op, GError **error)
     JsonObject *value=object(reply,"result");
     if (!value) goto invalid;
     if (!g_strcmp0(op,"history")) return valid_history(value,error);
+    if (!g_strcmp0(op,"storage.check") || !g_strcmp0(op,"storage.repair"))
+    {
+        gboolean identified=status_text(value,"device") && status_text(value,"filesystem");
+        gboolean capability=status_text(value,"error") && status_value(value,"canRepair",G_TYPE_BOOLEAN);
+        if (!identified || !capability) goto invalid;
+    }
     if (!g_strcmp0(op,"state"))
     {
         JsonArray *stores=array(value,"stores"),*drives=array(value,"drives");
@@ -337,6 +346,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     {
         const char *detail=error ? error->message : str(object(reply,"error"),"message");
         if (!strcmp(request->op,"storage.repair")) repair_failed(detail);
+        else if (!strcmp(request->op,"storage.check")) {repair_reply(FALSE);message("Cannot check filesystem",detail);}
         else if (request->mutation) message("The action could not be completed",detail);
         else if (!strcmp(request->op,"state")) {g_free(connection_error);connection_error=g_strdup(detail);}
         else if (!strcmp(request->op,"history") && !g_strcmp0(selected,request->store))
@@ -375,6 +385,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
         }
         else if (request->mutation)
         {
+            if (!strcmp(request->op,"storage.check") && !repair_offer(value)) repair_reply(FALSE);
             if (!strcmp(request->op,"restart.prepare") || !strcmp(request->op,"storage.prepare"))
             {
                 start_restart();
@@ -1395,16 +1406,8 @@ static void action(GtkButton *button_widget, gpointer data)
     if (!state) return;
     if (!strcmp(op,"repair"))
     {
-        JsonObject *recovery=object(state,"recovery");if (!recovery) return;
-        if (!flag(recovery,"canRepair")) {message("Filesystem check",str(recovery,"error"));return;}
-        gtk_widget_hide(notice.window);
-        char *question=g_strdup_printf("Check and repair %s?",str(recovery,"device"));
-        gboolean btrfs=!strcmp(str(recovery,"filesystem"),"btrfs");
-        const char *text=btrfs
-            ? "Close files and terminals using this drive. Slax will unmount the filesystem and run a read-only Btrfs check. If it reports errors, you can review the log before deciding whether to attempt repair. Your current run stays in RAM."
-            : "Close files and terminals using this drive. Slax will unmount its filesystem, check it and repair errors it can fix safely. Repairs may recover or truncate damaged files. Saved changes will be re-enabled only after a successful final check. Your current run stays in RAM.";
-        gboolean accepted=confirm("Check and repair filesystem",question,text,"Check and repair");g_free(question);
-        if (accepted && !mutating && !restart_request) repair_start(FALSE);
+        if (repair_client) {if (repair_window) gtk_window_present(GTK_WINDOW(repair_window));return;}
+        repair_offer(object(state,"recovery"));
         return;
     }
     if (!strcmp(op,"storage.setup")) {setup_restart();return;}
@@ -1512,6 +1515,11 @@ static gboolean x_events(gint fd, GIOCondition condition, gpointer data)
         XEvent event;XNextEvent(display,&event);
         if (event.type==ClientMessage && event.xclient.message_type==manager_atom && (Atom)event.xclient.data.l[1]==tray_selection) dock_tray();
         else if (event.type==ClientMessage && event.xclient.message_type==command_atom) show_manager();
+        else if (event.type==ClientMessage && event.xclient.message_type==check_atom)
+        {
+            char *id=XGetAtomName(display,event.xclient.data.l[0]);
+            if (id) {if (!repair_select(id,event.xclient.data.l[1])) check_reply(event.xclient.data.l[1],FALSE);XFree(id);}
+        }
         else if (event.type==SelectionClear && event.xselectionclear.window==command_window) gtk_main_quit();
     }
     return G_SOURCE_CONTINUE;
@@ -1564,17 +1572,27 @@ int main(int argc, char **argv)
 {
     if (argc==4 && !strcmp(argv[1],"--open-files")) return browse_files(argv[2],argv[3]);
     gboolean manage=argc==2 && !strcmp(argv[1],"--manage");
-    if (argc>1 && !manage) {g_printerr("Usage: slax-status [--manage]\n");return 1;}
+    char *check=argc==3 && !strcmp(argv[1],"--check") ? g_strdup(argv[2]) : NULL;
+    if (argc>1 && !manage && !check) {g_printerr("Usage: slax-status [--manage | --check PLACE_ID]\n");return 1;}
     gtk_init(&argc,&argv);display=XOpenDisplay(NULL);if (!display) return 1;
+    previous_command_error=XSetErrorHandler(command_error);
     char *name=g_strdup_printf("_SLAX_STATUS_%lu_S%d",(unsigned long)getuid(),DefaultScreen(display));Atom selection=XInternAtom(display,name,False);g_free(name);
-    command_atom=XInternAtom(display,"_SLAX_STATUS_MANAGE",False);XGrabServer(display);Window owner=XGetSelectionOwner(display,selection);
+    name=g_strdup_printf("_SLAX_STATUS_CHECK_S%d",DefaultScreen(display));Atom checks=XInternAtom(display,name,False);g_free(name);
+    command_atom=XInternAtom(display,"_SLAX_STATUS_MANAGE",False);check_atom=XInternAtom(display,"_SLAX_STATUS_CHECK",False);
+    check_done_atom=XInternAtom(display,"_SLAX_STATUS_CHECK_DONE",False);
+    if (check) {int result=check_request(check,checks);g_free(check);return result;}
+    XGrabServer(display);Window owner=XGetSelectionOwner(display,selection);
     if (owner)
     {
         XUngrabServer(display);
-        if (manage) {XEvent event={0};event.xclient.type=ClientMessage;event.xclient.window=owner;event.xclient.message_type=command_atom;event.xclient.format=32;XSendEvent(display,owner,False,NoEventMask,&event);XSync(display,False);}
-        XCloseDisplay(display);return 0;
+        if (manage)
+        {
+            XEvent event={0};event.xclient.type=ClientMessage;event.xclient.window=owner;event.xclient.message_type=command_atom;event.xclient.format=32;
+            XSendEvent(display,owner,False,NoEventMask,&event);XSync(display,False);
+        }
+        g_free(check);XCloseDisplay(display);return 0;
     }
-    command_window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,1,1,0,0,0);XSetSelectionOwner(display,selection,command_window,CurrentTime);XUngrabServer(display);
+    command_window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,1,1,0,0,0);XSetSelectionOwner(display,selection,command_window,CurrentTime);XSetSelectionOwner(display,checks,command_window,CurrentTime);XUngrabServer(display);
     name=g_strdup_printf("_NET_SYSTEM_TRAY_S%d",DefaultScreen(display));tray_selection=XInternAtom(display,name,False);g_free(name);
     manager_atom=XInternAtom(display,"MANAGER",False);XSelectInput(display,DefaultRootWindow(display),StructureNotifyMask);XFlush(display);
     g_unix_fd_add(ConnectionNumber(display),G_IO_IN|G_IO_HUP,x_events,NULL);

@@ -1,5 +1,7 @@
 /* Native interaction and presentation for Slax's filesystem rows. */
 #include "slax-places-labels.h"
+#include "slax-places-check.h"
+#include "fm-side-pane.h"
 enum { PLACE_ICON_PADDING=17 };
 typedef struct
 {
@@ -64,7 +66,7 @@ static gboolean native_bookmark_at(FmPlacesModel *model,GtkTreeIter *iter)
     return item && fm_places_item_get_bookmark_item(item)!=NULL;
 }
 
-/* Unmounted rows can be activated while the open folder stays selected. */
+/* Selection follows the chosen row independently of its mount state. */
 static gboolean native_select(GtkTreeSelection *selection,GtkTreeModel *model,GtkTreePath *path,gboolean selected,gpointer unused)
 {
     GtkTreeIter iter;
@@ -72,8 +74,7 @@ static gboolean native_select(GtkTreeSelection *selection,GtkTreeModel *model,Gt
     if (!gtk_tree_model_get_iter(model,&iter,path)) return FALSE;
     gtk_tree_model_get(model,&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
     if (!item || fm_places_item_get_type(item)==FM_PLACES_ITEM_NONE) return FALSE;
-    if (selected || !fm_places_item_get_native(item)) return TRUE;
-    return fm_places_item_is_mounted(item) && g_strcmp0(fm_places_item_get_operation(item),"mount");
+    return TRUE;
 }
 
 /* Reuse the ordinary GTK label renderer and escape names before adding secondary text. */
@@ -123,11 +124,21 @@ static gboolean native_mount_finished(gpointer data)
     gboolean success=g_subprocess_communicate_utf8_finish(job->process,job->result,&output,&message,&error);
     if (model) fm_places_model_set_busy(model,job->id,NULL);
     if (job->redraw) g_source_remove(job->redraw);
+    if (view && job->button==1)
+    {
+        /* A late mount result must not replace a newer sidebar choice. */
+        GtkTreeIter iter;FmPlacesItem *item=NULL;
+        GtkTreeSelection *selection=gtk_tree_view_get_selection(GTK_TREE_VIEW(view));
+        if (gtk_tree_selection_get_selected(selection,NULL,&iter)) gtk_tree_model_get(GTK_TREE_MODEL(model),&iter,FM_PLACES_MODEL_COL_INFO,&item,-1);
+        GVariant *location=item?fm_places_item_get_native(item):NULL;
+        const char *id=NULL;if (location) g_variant_get_child(location,0,"&s",&id);
+        if (g_strcmp0(id,job->id)) g_clear_object(&view);
+    }
     if (view)
     {
         if (!success || !g_subprocess_get_successful(job->process))
             fm_show_error(GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view))),NULL,error?error->message:message);
-        else if (job->button)
+        else if (job->button && output && *output)
         {
             GVariant *path=g_variant_parse(G_VARIANT_TYPE_STRING,output,NULL,NULL,&error);
             if (path)
@@ -171,18 +182,11 @@ static void native_mount(FmPlacesView *view,FmPlacesItem *item,gboolean unmount,
 {
     if (fm_places_item_get_operation(item)) return;
     GVariant *location=fm_places_item_get_native(item);
-    const char *id,*reason;
+    const char *id;
     g_variant_get_child(location,0,"&s",&id);
-    g_variant_get_child(location,8,"&s",&reason);
-    if (*reason)
-    {
-        fm_show_error(GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view))),NULL,reason);
-        return;
-    }
     const char *action=unmount?"unmount":"mount";
-    const char *argv[]={"/usr/bin/pkexec","/usr/libexec/slax-places",action,id,NULL};
     GError *error=NULL;
-    GSubprocess *process=g_subprocess_newv(argv+(geteuid()==0?1:0),G_SUBPROCESS_FLAGS_STDOUT_PIPE|G_SUBPROCESS_FLAGS_STDERR_PIPE,&error);
+    GSubprocess *process=slax_places_command(location,action,&error);
     if (!process)
     {
         fm_show_error(GTK_WINDOW(gtk_widget_get_toplevel(GTK_WIDGET(view))),NULL,error->message);
@@ -241,9 +245,11 @@ static GtkWidget *native_menu(FmPlacesView *view,FmPlacesItem *item)
     return menu;
 }
 
-/* Restore the current-folder highlight after a location or bookmark reconciliation. */
+/* Resolve initial asynchronous discovery only when no row is already selected. */
 static void native_selection_changed(FmPlacesModel *model,FmPlacesView *view)
 {
-    FmPath *path=g_object_get_data(G_OBJECT(view),"slax-current-path");
+    if (gtk_tree_selection_count_selected_rows(gtk_tree_view_get_selection(GTK_TREE_VIEW(view)))) return;
+    GtkWidget *pane=gtk_widget_get_ancestor(GTK_WIDGET(view),fm_side_pane_get_type());
+    FmPath *path=pane?fm_side_pane_get_cwd(FM_SIDE_PANE(pane)):NULL;
     if (path) fm_places_view_chdir(view,path);
 }

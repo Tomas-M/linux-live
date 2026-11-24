@@ -61,10 +61,19 @@ Slax
 
 - Keep automatically generated Xorg fallback settings in RAM for one startup
   attempt, and discard previously saved autodetection files before desktop startup.
+- Continue opening a repaired drive in the requesting File Manager window or GTK
+  dialog, without overriding a newer selection. Cancel and failed checks keep
+  the unavailable target empty. Open automount windows only for newly attached
+  devices or real media changes, preserving ordinary hotplug behavior.
+- Offer filesystem checking from blocked drive rows in File Manager and native
+  GTK file dialogs, sharing Slax Status's confirmation, repair backend and live
+  report. Check ordinary unmounted drives without interrupting saved changes.
 - Check NTFS hibernation during startup automount. Show drives that need checking
   in PCManFM and GTK file dialogs, and offer manual mounting after repair.
-- Keep the open folder highlighted in PCManFM and GTK file dialogs during
-  mount attempts, and switch to the new drive only when its folder opens.
+- Select sidebar locations immediately in PCManFM and GTK file dialogs. Clear
+  the file pane and path for unavailable targets, retain their selection after
+  failed mounting, and avoid selection changes during catalogue refreshes.
+  Ignore late mount results after another location has been chosen.
 - Show why a filesystem needs checking in Slax Status, replay recoverable XFS
   logs and verify writes and unmount before offering a restart after repair.
 - Replace generated file-manager bookmarks with native Home, File System,

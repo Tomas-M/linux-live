@@ -49,8 +49,8 @@ void gtk_sidebar_row_set_slax(GtkSidebarRow *row,GVariant *location,const char *
   const char *path,*reason;
   g_variant_get_child(location,6,"&s",&path);
   g_variant_get_child(location,8,"&s",&reason);
-  /* Mounting can be activated without changing the open folder's selection. */
-  gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row),*path && g_strcmp0(operation,"mount"));
+  /* A selected unavailable location remains selected through mount notifications. */
+  gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row),TRUE);
   gtk_widget_set_opacity(row->start_icon_widget,*path?1.0:.58);
   char *detail=slax_places_detail(location,operation);
   char *label=g_markup_escape_text(row->label,-1);

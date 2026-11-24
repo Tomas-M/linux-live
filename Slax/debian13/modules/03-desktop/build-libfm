@@ -14,9 +14,11 @@ sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 patch -p1 < "$CWD/patches/libfm-rename.diff"
 # Use native, event-driven filesystem rows with asynchronous mount actions.
 patch -p1 < "$CWD/patches/libfm-places.diff"
+patch -p1 < "$CWD/patches/libfm-check-selection.diff"
 cp "$CWD/libfm-places-model.h" src/gtk/slax-places-model.h
 cp "$CWD/libfm-places-view.h" src/gtk/slax-places-view.h
 cp "$CWD/places-labels.h" src/gtk/slax-places-labels.h
+cp "$CWD/places-check.h" src/gtk/slax-places-check.h
 # Pad icon captions symmetrically and render their themed selection background.
 patch -p1 < "$CWD/patches/libfm-icon-label.diff"
 # Match drag previews to the displayed image, using a folder for multiple files.

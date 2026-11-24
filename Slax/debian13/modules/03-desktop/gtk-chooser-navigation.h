@@ -8,6 +8,28 @@ typedef struct
 } SlaxChooserNavigation;
 
 typedef struct { GWeakRef chooser;GCancellable *cancel; } SlaxChooserPath;
+static void set_busy_cursor(GtkFileChooserWidget *impl,gboolean busy);
+
+/* An unavailable selection has no folder, file model or actionable stale filename. */
+static void slax_chooser_clear_location(GtkFileChooserWidget *impl)
+{
+  GtkFileChooserWidgetPrivate *priv=impl->priv;
+  SlaxChooserNavigation *navigation=g_object_get_data(G_OBJECT(impl),"slax-navigation");
+  if (priv->update_current_folder_cancellable) g_cancellable_cancel(priv->update_current_folder_cancellable);
+  priv->update_current_folder_cancellable=NULL;
+  if (navigation->query) g_cancellable_cancel(navigation->query);
+  g_clear_object(&navigation->query);g_clear_object(&navigation->selection);navigation->pending=NULL;
+  g_clear_object(&priv->current_folder);priv->reload_state=RELOAD_EMPTY;
+  operation_mode_set(impl,OPERATION_MODE_BROWSE);stop_loading_and_clear_list_model(impl,TRUE);set_busy_cursor(impl,FALSE);
+  g_slist_free_full(priv->pending_select_files,g_object_unref);priv->pending_select_files=NULL;
+  gtk_entry_set_text(GTK_ENTRY(navigation->entry),"");
+  _gtk_file_chooser_entry_set_base_folder(GTK_FILE_CHOOSER_ENTRY(navigation->entry),NULL);
+  if (priv->location_entry) _gtk_file_chooser_entry_set_base_folder(GTK_FILE_CHOOSER_ENTRY(priv->location_entry),NULL);
+  gtk_widget_set_sensitive(navigation->back,navigation->current!=NULL);gtk_widget_set_sensitive(navigation->up,FALSE);
+  gtk_widget_set_sensitive(priv->browse_new_folder_button,FALSE);
+  gtk_places_sidebar_set_location(GTK_PLACES_SIDEBAR(priv->places_sidebar),NULL);
+  g_signal_emit_by_name(impl,"current-folder-changed");g_signal_emit_by_name(impl,"selection-changed");
+}
 
 /* Release only navigation state; GTK owns the toolbar's widgets. */
 static void slax_chooser_navigation_free(gpointer data)
@@ -33,6 +55,7 @@ static void slax_chooser_folder_changed(GtkFileChooserWidget *impl,gpointer unus
   SlaxChooserNavigation *navigation=g_object_get_data(G_OBJECT(impl),"slax-navigation");
   GFile *folder=impl->priv->current_folder;
   if (!folder) return;
+  gtk_widget_set_sensitive(impl->priv->browse_new_folder_button,TRUE);
   if (navigation->query) g_cancellable_cancel(navigation->query);
   g_clear_object(&navigation->query);
   if (navigation->selection)
@@ -77,7 +100,8 @@ static void slax_chooser_history_step(GtkButton *button,GtkFileChooserWidget *im
 {
   SlaxChooserNavigation *navigation=g_object_get_data(G_OBJECT(impl),"slax-navigation");
   if (!navigation->current) return;
-  GList *visit=GTK_WIDGET(button)==navigation->back?navigation->current->prev:navigation->current->next;
+  GList *visit=navigation->current->next;
+  if (GTK_WIDGET(button)==navigation->back) visit=impl->priv->current_folder?navigation->current->prev:navigation->current;
   if (!visit) return;
   navigation->pending=visit;
   change_folder_and_display_error(impl,visit->data,FALSE);

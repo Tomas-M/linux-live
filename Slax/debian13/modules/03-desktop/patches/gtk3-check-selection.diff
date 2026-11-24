@@ -1,0 +1,62 @@
+--- a/gtk/gtkplacessidebar.c
++++ b/gtk/gtkplacessidebar.c
+@@ -1129,8 +1129,8 @@
+ 
+   /* Keep the displayed location authoritative across catalogue updates. */
+   selected = gtk_list_box_get_selected_row (GTK_LIST_BOX (sidebar->list_box));
+-  if (sidebar->slax_process && sidebar->current_location)
+-    original_uri = g_file_get_uri (sidebar->current_location);
++  if (sidebar->slax_process)
++    original_uri = NULL;
+   else if (selected)
+     g_object_get (selected, "uri", &original_uri, NULL);
+   else
+@@ -5127,7 +5127,7 @@
+   g_list_free (children);
+ 
+  out:
+-  if (sidebar->slax_process && !found) gtk_list_box_unselect_all (GTK_LIST_BOX (sidebar->list_box));
++  if (sidebar->slax_process && location && !found) gtk_list_box_unselect_all (GTK_LIST_BOX (sidebar->list_box));
+   g_object_notify_by_pspec (G_OBJECT (sidebar), properties[PROP_LOCATION]);
+ }
+ 
+--- a/gtk/gtkfilechooserwidget.c
++++ b/gtk/gtkfilechooserwidget.c
+@@ -1286,6 +1286,8 @@
+   else
+     clear_entry = FALSE;
+ 
++  if (!location) {slax_chooser_clear_location(impl);return;}
++  if (!priv->current_folder || !g_file_equal(priv->current_folder,location)) slax_chooser_clear_location(impl);
+   location_mode_set (impl, LOCATION_MODE_PATH_BAR);
+ 
+   if (file_is_recent_uri (location))
+@@ -5298,7 +5300,7 @@
+ {
+   GtkFileChooserWidgetPrivate *priv = impl->priv;
+ 
+-  g_assert (priv->current_folder != NULL);
++  if (!priv->current_folder) return TRUE;
+ 
+   if (priv->browse_files_model &&
+       _gtk_file_system_model_get_directory (priv->browse_files_model) == priv->current_folder)
+@@ -6984,6 +6986,7 @@
+   GtkWidget *current_focus;
+   gboolean retval;
+ 
++  if (!priv->current_folder && priv->operation_mode==OPERATION_MODE_BROWSE) return FALSE;
+   toplevel = gtk_widget_get_toplevel (GTK_WIDGET (impl));
+   g_assert (GTK_IS_WINDOW (toplevel));
+ 
+--- a/gtk/gtkentrycompletion.c
++++ b/gtk/gtkentrycompletion.c
+@@ -1931,6 +1931,9 @@
+ {
+   gboolean done;
+   gchar *prefix;
++
++  /* A cleared model invalidates previously queued inline completion work. */
++  if (!gtk_entry_completion_get_model(completion)) return;
+ 
+   if (completion->priv->insert_text_id > 0)
+     g_signal_handler_block (completion->priv->entry,

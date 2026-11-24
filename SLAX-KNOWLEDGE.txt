@@ -51,8 +51,17 @@ FILES AND DRIVES
   from their sidebar, including when Slax starts with noautomount. Use the path
   field or Ctrl+L to enter a folder or file path; Back, Forward, History and Up
   navigate within the dialog. Alt+Left, Alt+Right and Alt+Up are the shortcuts.
-- A drive marked Check required needs a filesystem check before mounting. If
-  NTFS hibernation cannot be ruled out, Slax keeps that drive read-only.
+- Click a drive marked Check required in File Manager or a native GTK file
+  dialog to review and confirm a filesystem check. Both use Slax Status's
+  checker and live report. Ordinary drives stay unmounted during checking.
+  A successful check continues opening the drive in the original window or
+  dialog if it is still selected. NTFS repairs require Windows.
+  If NTFS hibernation cannot be ruled out, Slax keeps that drive read-only.
+  Automount can open a window for a newly attached drive or inserted medium;
+  checking or refreshing an existing drive does not open another window.
+- A sidebar click selects that location immediately. If it cannot be opened or
+  mounted, its selection stays and the file pane and path are empty. Choose
+  another location or use Back to return to the previous working folder.
 - Toolbar: Back, Forward, History, Up. Right-click files or empty space for actions
   such as Create New, Rename and Properties. Ctrl+C/Ctrl+V copies, Ctrl+X/Ctrl+V
   moves, Ctrl+H toggles hidden files, F2 renames the selection.

@@ -114,7 +114,10 @@ if [ "$ACTION" = "add" -o "$ACTION" = "change" ]; then
 
       # A file-manager process can outlive this event; it must not retain either lock.
       exec 8<&- 9>&-
-      XDG_RUNTIME_DIR="/run/user/$(id -u)" DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
+      # Metadata refreshes may mount a repaired drive, but only physical arrivals open a window.
+      if [ "$ACTION" = add ] || [ "${3:-}" = 1 ]; then
+         XDG_RUNTIME_DIR="/run/user/$(id -u)" DISPLAY=:0.0 pcmanfm -n "file://$MNT" >/dev/null 2>&1
+      fi
    fi
 fi
 

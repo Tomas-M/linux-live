@@ -1,8 +1,9 @@
 /* The broker publishes a new root-owned log inode for each serialized check. */
 static GtkWidget *repair_window,*repair_text,*repair_status,*repair_spinner,*repair_close,*repair_attempt,*repair_restart;
-static JsonObject *repair_result;
+static JsonObject *repair_result,*repair_device;
 static GString *repair_bytes;
 static guint repair_timer;
+static gboolean repair_confirming;
 static int repair_log=-1,repair_previous=-1;
 static void repair_start(gboolean attempt);
 
@@ -49,16 +50,19 @@ static gboolean repair_output(gpointer data)
 /* Closing the viewer cannot interrupt a filesystem tool halfway through its writes. */
 static gboolean repair_delete(GtkWidget *widget, GdkEvent *event, gpointer data)
 {
-    (void)event;(void)data;if (!repair_timer) gtk_widget_hide(widget);return TRUE;
+    (void)event;(void)data;if (!repair_timer) {repair_reply(FALSE);gtk_widget_hide(widget);}return TRUE;
 }
 /* Retain the finished report when its viewer is dismissed. */
-static void repair_dismiss(GtkButton *button, gpointer data) { (void)button;(void)data;gtk_widget_hide(repair_window); }
+static void repair_dismiss(GtkButton *button, gpointer data) { (void)button;(void)data;repair_reply(FALSE);gtk_widget_hide(repair_window); }
 
 /* Btrfs's general repair mode requires a separate decision after reviewing its check. */
 static void repair_confirm_attempt(GtkButton *button, gpointer data)
 {
     (void)button;(void)data;
-    if (confirm("Attempt Btrfs repair","Attempt Btrfs repair?","The read-only check did not finish cleanly. Review its report first: a tool or I/O failure does not necessarily mean filesystem corruption. Btrfs repair can cause further damage and unrecoverable data loss. Back up important data before continuing; expert guidance is recommended. Saved changes stay blocked unless the repair and final read-only check both succeed.","Attempt repair")) repair_start(TRUE);
+    repair_confirming=TRUE;
+    gboolean accepted=confirm("Attempt Btrfs repair","Attempt Btrfs repair?","The read-only check did not finish cleanly. Review its report first: a tool or I/O failure does not necessarily mean filesystem corruption. Btrfs repair can cause further damage and unrecoverable data loss. Back up important data before continuing; expert guidance is recommended. The filesystem stays blocked unless the repair and final read-only check both succeed.","Attempt repair");
+    repair_confirming=FALSE;
+    if (accepted) repair_start(TRUE);
 }
 
 /* Keep the completed report available while the user decides when to restart. */
@@ -100,11 +104,51 @@ static void repair_start(gboolean attempt)
     g_clear_pointer(&repair_result,json_object_unref);g_string_truncate(repair_bytes,0);
     repair_previous=open("/run/slax-status/fsck.log",O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
     gtk_text_buffer_set_text(gtk_text_view_get_buffer(GTK_TEXT_VIEW(repair_text)),"",0);
-    char *text=g_strdup_printf("%s %s…",attempt ? "Repairing" : "Checking",str(object(state,"recovery"),"device"));set_label(repair_status,text);g_free(text);
+    char *text=g_strdup_printf("%s %s…",attempt ? "Repairing" : "Checking",str(repair_device,"device"));set_label(repair_status,text);g_free(text);
     gtk_widget_hide(repair_attempt);gtk_widget_hide(repair_restart);gtk_widget_set_sensitive(repair_close,FALSE);gtk_spinner_start(GTK_SPINNER(repair_spinner));
     hide_popup();gtk_widget_hide(notice.window);gtk_window_present(GTK_WINDOW(repair_window));
     repair_timer=g_timeout_add(75,repair_output,NULL);
-    JsonObject *request=command("storage.repair",FALSE);json_object_set_boolean_member(request,"repair",attempt);send_request(request,TRUE);
+    JsonObject *request=command("storage.repair",FALSE);json_object_set_boolean_member(request,"repair",attempt);
+    if (*str(repair_device,"placeId")) json_object_set_string_member(request,"placeId",str(repair_device,"placeId"));
+    send_request(request,TRUE);
+}
+
+/* Every entry point uses this confirmation before the shared checker can write. */
+static gboolean repair_offer(JsonObject *device)
+{
+    if (repair_timer) {gtk_window_present(GTK_WINDOW(repair_window));return FALSE;}
+    if (!device) return FALSE;
+    if (mutating || restart_request || repair_confirming) return FALSE;
+    if (!flag(device,"canRepair")) {message("Filesystem check",str(device,"error"));return FALSE;}
+    JsonObject *target=json_object_ref(device);
+    gtk_widget_hide(notice.window);
+    char *question=g_strdup_printf("Check and repair %s?",str(device,"device"));
+    gboolean btrfs=!strcmp(str(device,"filesystem"),"btrfs"),interrupted=*str(device,"issue");
+    const char *check=btrfs
+        ? "Slax will run a read-only Btrfs check. If it reports errors, review the log before deciding whether to attempt repair."
+        : "Slax will check the filesystem and repair errors it can fix safely. Repairs may recover or truncate damaged files.";
+    char *text=g_strdup_printf("%s\n\n%s",check,interrupted
+        ? "Close files and terminals using this drive so Slax can unmount it. Saved changes will be re-enabled only after a successful final check. Your current run stays in RAM."
+        : "The drive must remain unmounted during the check.");
+    repair_confirming=TRUE;
+    gboolean accepted=confirm("Check and repair filesystem",question,text,"Check and repair");g_free(question);g_free(text);
+    repair_confirming=FALSE;
+    if (accepted && !mutating && !restart_request)
+    {
+        g_clear_pointer(&repair_device,json_object_unref);repair_device=target;repair_start(FALSE);return TRUE;
+    }
+    json_object_unref(target);return FALSE;
+}
+
+/* Interactive requests queue behind polling and use the broker's fresh catalogue. */
+static gboolean repair_select(const char *id,Window client)
+{
+    if (repair_timer) {gtk_window_present(GTK_WINDOW(repair_window));return FALSE;}
+    if (repair_client) return FALSE;
+    if (mutating || restart_request || repair_confirming) return FALSE;
+    repair_client=client;
+    JsonObject *request=command("storage.check",FALSE);json_object_set_string_member(request,"placeId",id);send_request(request,TRUE);
+    return TRUE;
 }
 
 /* Drain the final output before enabling Close or any follow-up action. */
@@ -123,7 +167,7 @@ static void repair_finished(void)
 /* A failed job keeps its report visible and never offers a successful restart. */
 static void repair_failed(const char *detail)
 {
-    repair_finished();set_label(repair_status,"Check or repair failed. Saved changes remain blocked.");repair_append("\n");repair_append(detail);repair_append("\n");
+    repair_finished();repair_reply(FALSE);set_label(repair_status,"Check or repair failed. The filesystem remains blocked.");repair_append("\n");repair_append(detail);repair_append("\n");
 }
 
 /* The broker distinguishes a failed read-only Btrfs check from completed recovery. */
@@ -131,7 +175,9 @@ static void repair_completed(JsonObject *result)
 {
     repair_finished();repair_result=json_object_ref(result);
     gboolean needs_repair=number(result,"checkExitCode")!=0;
-    set_label(repair_status,needs_repair ? "Read-only check did not finish cleanly. Review the report before attempting repair. Saved changes remain blocked." : "Final check passed. You can mount the drive in File Manager.");
-    gtk_widget_set_visible(repair_attempt,needs_repair);gtk_widget_set_visible(repair_restart,!needs_repair);
-    if (!needs_repair) {json_object_remove_member(state,"recovery");gtk_widget_hide(notice.window);update_ui();}
+    set_label(repair_status,needs_repair ? "Read-only check did not finish cleanly. Review the report before attempting repair. The filesystem remains blocked." : "Final check passed. You can open the drive in the file browser.");
+    gboolean interrupted=*str(result,"issue");
+    gtk_widget_set_visible(repair_attempt,needs_repair);gtk_widget_set_visible(repair_restart,!needs_repair && interrupted);
+    if (!needs_repair && interrupted) {json_object_remove_member(state,"recovery");gtk_widget_hide(notice.window);update_ui();}
+    if (!needs_repair) repair_reply(!interrupted);
 }
