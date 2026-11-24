@@ -59,6 +59,8 @@ Linux Live Kit
 Slax
 ----
 
+- Keep automatically generated Xorg fallback settings in RAM for one startup
+  attempt, and discard previously saved autodetection files before desktop startup.
 - Check NTFS hibernation during startup automount. Show drives that need checking
   in PCManFM and GTK file dialogs, and offer manual mounting after repair.
 - Keep the open folder highlighted in PCManFM and GTK file dialogs during

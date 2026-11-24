@@ -1758,6 +1758,10 @@ must follow the general Slax repair rules above.
   for X client connections. `Xdetect` must pass the service's display and VT
   arguments to `startx`. Try native hardware autodetection first; if startup
   fails, run `Xorg -configure` and retry. Do not probe before the first start.
+  Generate fallback configuration in a private directory under `/run`, pass it
+  through `XORGCONFIG` for that retry only and remove it when the attempt ends.
+  Preserve the desktop user's HOME. Boot-time tmpfiles cleanup removes the old
+  `/etc/X11/xorg.conf.d/01-xautodetected.conf` before graphical or text login.
 - When Xorg switches away from tty1, fbmenu must preserve its graphics and
   pixels instead of restoring text and a blinking cursor. Getty restores tty1
   after X is ready, or after the graphics startup has failed.

@@ -5,6 +5,10 @@ if /usr/bin/startx "$@"; then
    exit 0
 fi
 
-/usr/bin/Xorg -configure
-mv -f /root/xorg.conf.new /etc/X11/xorg.conf.d/01-xautodetected.conf
-exec /usr/bin/startx "$@"
+# Keep the fallback local to this attempt, outside persistent changes.
+CONFIG=$(mktemp -d /run/slax-xorg.XXXXXX) || exit 1
+trap 'rm -r "$CONFIG"' 0
+trap 'exit 1' HUP INT TERM
+HOME="$CONFIG" /usr/bin/Xorg -configure
+if [ ! -s "$CONFIG/xorg.conf.new" ]; then exit 1; fi
+XORGCONFIG="$CONFIG/xorg.conf.new" /usr/bin/startx "$@"
