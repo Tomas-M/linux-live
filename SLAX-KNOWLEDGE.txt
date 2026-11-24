@@ -167,7 +167,7 @@ BOOT AND PERSISTENCE
   On a drive without saved changes, Fresh start prepares storage there.
   F5 Refresh detects newly connected disks in the drive list. Esc from history
   returns to drives; Esc from drives continues in RAM without saving changes.
-  Last saved state respects the previous run's Save this run choice.
+  Last saved state respects the previous run's Keep changes after restart choice.
 - Run Slax from RAM (with no automount) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
   save files to a mounted drive to retain them after shutdown. This entry leaves
@@ -219,13 +219,14 @@ BOOT AND PERSISTENCE
   A drive or saved state selected at boot also selects that drive for future
   automatic resume. Resume continues its latest kept changes rather than
   repeatedly restoring the originally selected saved state.
-- Save current state saves a named state. Restore asks for confirmation
+- Save a named state saves the current apps, settings and saved files under a name
+  so you can return to them after making more changes. Restore asks for confirmation
   and restarts Slax into the selected saved state. Save open documents first.
-  The confirmation's Save this run switch chooses whether to keep installed
+  The confirmation's Keep changes after restart switch chooses whether to keep installed
   programs, settings and saved files as another saved state or discard this run's changes.
   Saved states do not remember open program windows or unsaved work.
   Close applications using saved-state files before restoring.
-  If restarting fails, the restore request is cancelled; Save this run keeps
+  If restarting fails, the restore request is cancelled; the switch retains
   the choice confirmed in the dialog.
   Rename gives a saved state a new name. Naming an automatic state keeps it until
   explicitly deleted. Initial state cannot be renamed.
@@ -239,7 +240,7 @@ BOOT AND PERSISTENCE
   as Before restoring <target name>. An identical existing state is reused;
   automatic states become permanent, and manually named states keep their names.
   This restore does not add an intermediate automatic state.
-  With Don't save selected, it does not retain that run
+  With Keep changes after restart turned off, it does not retain that run
   as an automatic state. Existing saved history stays available.
   Fresh start at boot and restoring Initial state return to the original Slax
   while keeping existing saved states.
@@ -248,11 +249,11 @@ BOOT AND PERSISTENCE
   after its last File Manager window closes. If another application is still
   using the files, disconnection waits until it releases them. A state needing
   filesystem recovery can be used at next start.
-- Save this run controls the active store. Don't save returns to this run's
-  starting state on the next activation; an explicit restore selection takes
-  precedence. A manually saved state remains available even with Don't save.
-  Don't save also prevents an automatically saved state for the discarded run.
-  RAM runs are fixed to Don't save.
+- Keep changes after restart controls the active store. Turning it off returns
+  to this run’s starting state on the next activation; an explicit restore selection takes
+  precedence. A manually saved state remains available even when this switch is off.
+  Turning it off also prevents an automatically saved state for the discarded run.
+  RAM runs cannot keep changes after restart.
 - Files saved directly to mounted drives remain independently of saved Slax changes.
   savechanges exports changes as a module; ordinary persistence saves automatically.
 

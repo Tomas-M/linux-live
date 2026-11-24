@@ -62,6 +62,16 @@ Slax
 - Clear inherited accessibility bus addresses for root-launched guest applications
   and include UPower for Chromium power monitoring.
 
+- Show continuous activity in Rename until the updated saved-state name is visible.
+
+- Clarify keeping changes after restart versus saving a named state, with
+  separate descriptions and consistent switch wording.
+
+- Show deletion activity in the saved state’s Delete button, keeping available
+  capacity visible and blocking overlapping saved-state actions until refreshed
+  history confirms the deletion. Keep its spinner animation continuous during
+  background status refreshes.
+
 - Select Hyper-V's native DRM display as primary so Gen1 starts the desktop
   with modesetting and retains normal resolution selection.
 - Retry failed native graphics startup with the bundled framebuffer configuration,

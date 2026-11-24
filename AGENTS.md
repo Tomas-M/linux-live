@@ -1979,8 +1979,9 @@ must follow the general Slax repair rules above.
   physical data-file shrinking and are not additive across points. Keep sizes visible
   while files are open; temporary file views are separate from engine protection.
   Update names, sizes and action availability in place; metadata changes must not
-  rebuild rows or inspector controls. Keep rename actions visually steady while
-  the serialized write finishes; reject overlapping actions in their handlers.
+  rebuild rows or inspector controls. Show Renaming… with a continuous spinner
+  until refreshed history shows the confirmed name; reject overlapping actions
+  and retain the selected row throughout the rename.
   Rename points by stable ID through DynFileFS, preserving contents, ancestry and
   pending restores. Open immutable images through snapshots/<ID>.dat so renaming
   also preserves active file views. Renamed automatic points become manually retained names.
@@ -1996,6 +1997,10 @@ must follow the general Slax repair rules above.
   Cancel changes neither policy nor selection. Keep the confirmation compact.
   Label the inspector actions Restore, Rename, Delete and Open files, in that order.
   Keep capacity at the right of the footer; do not add a separate Restart Slax action.
+  Label the shared saving switch Keep changes after restart, without a redundant
+  Save/Don’t save label. Separate it from Save a named state… with a short
+  description of returning to that state later. Hide the inspector’s You are
+  here eyebrow for Current state; retain the tree’s location marker.
   Restore first asks the broker to close all saved-state
   file views through their authenticated browser PID/start time and pidfds, using
   SIGTERM and ordinary unmounts. Busy views abort before policy changes; do not force

@@ -17,10 +17,10 @@
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
-typedef struct { GtkWidget *choice, *help; } RestoreChoice;
 typedef struct { GtkWidget *text, *icon; } Location;
 static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
+static JsonObject *history_refresh_request; /* Retain saved-state edits until refreshed history confirms them. */
 static char *selected, *selected_point, *history_store, *history_signature;
 static char *connection_error, *history_error, *last_warning;
 static gboolean requesting, mutating, updating, manager_dirty=TRUE, compact, stacked;
@@ -34,10 +34,10 @@ static GtkWidget *tray, *tray_icon, *manager, *manager_body;
 static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
 static Location manager_source, manager_storage, popup_source, popup_storage;
 static GtkWidget *manager_space, *manager_status;
-static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save, *popup_choice;
+static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save;
 static GtkWidget *popup_help, *popup_status, *notice_title, *notice_message, *show_removed;
 static GtkWidget *popup_recovery,*popup_recovery_message,*popup_repair,*notice_repair,*notice_review,*notice_snooze;
-static GtkWidget *inspector_save, *inspector_choice, *inspector_help, *manager_feedback;
+static GtkWidget *inspector_save, *inspector_help, *manager_feedback;
 static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
 static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
@@ -109,6 +109,7 @@ static JsonObject *run(void) { return object(state,"run"); }
 /* Identify a serialized operation, including an intent waiting behind a poll. */
 static gboolean changing(const char *op)
 {
+    if (history_refresh_request) return !strcmp(op,str(history_refresh_request,"op"));
     if (!mutating) return FALSE;
     if (active_request && active_request->mutation && strcmp(active_request->op,op)) return FALSE;
     return !pending_request || !strcmp(str(pending_request,"op"),op);
@@ -329,7 +330,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     Request *request=g_task_get_task_data(G_TASK(result));
     GError *error=NULL;
     JsonObject *reply=g_task_propagate_pointer(G_TASK(result),&error);
-    requesting=FALSE;active_request=NULL;mutating=pending_request!=NULL;
+    requesting=FALSE;active_request=NULL;mutating=pending_request || history_refresh_request;
     gboolean failed=error || !flag(reply,"ok");
     if (failed && (!strcmp(request->op,"restart.prepare") || !strcmp(request->op,"storage.prepare")))
     {
@@ -338,7 +339,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     }
     else if (restart_error && !strcmp(request->op,"restart.cancel"))
     {
-        char *text=g_strdup_printf("%s\n\n%s",restart_error,failed ? "The restart request could not be cancelled. Do not restart until the storage problem is resolved." : "Slax has not restarted. The requested restore was cancelled. Your Save this run choice is unchanged.");
+        char *text=g_strdup_printf("%s\n\n%s",restart_error,failed ? "The restart request could not be cancelled. Do not restart until the storage problem is resolved." : "Slax has not restarted. The requested restore was cancelled. Your Keep changes after restart setting is unchanged.");
         g_clear_pointer(&restart_error,g_free);g_clear_pointer(&restart_request,json_object_unref);
         message("Cannot restart Slax",text);g_free(text);
     }
@@ -365,6 +366,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             state=json_object_ref(value);g_clear_pointer(&connection_error,g_free);
             if (g_strcmp0(selected,str(run(),"storeId")))
             {
+                g_clear_pointer(&history_refresh_request,json_object_unref);mutating=pending_request!=NULL;
                 g_free(selected);selected=g_strdup(str(run(),"storeId"));
                 g_clear_pointer(&history_error,g_free);
                 g_clear_pointer(&selected_point,g_free);manager_dirty=TRUE;reveal_current=TRUE;
@@ -380,6 +382,20 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             history=json_object_ref(value);
             g_free(history_store);history_store=g_strdup(selected);
             g_free(history_signature);history_signature=current;
+            /* Keep controls busy through slow reports and transient refresh failures. */
+            if (history_refresh_request && !g_strcmp0(request->store,str(history_refresh_request,"storeId")))
+            {
+                JsonObject *saved=find(array(history,"snapshots"),"id",str(history_refresh_request,"pointId"));
+                gboolean deleting=!strcmp(str(history_refresh_request,"op"),"point.delete");
+                gboolean complete;
+                if (deleting) complete=!saved || flag(saved,"deleted");
+                else complete=saved && !strcmp(str(saved,"name"),str(history_refresh_request,"name"));
+                if (complete)
+                {
+                    if (deleting) {g_clear_pointer(&selected_point,g_free);manager_dirty=TRUE;}
+                    g_clear_pointer(&history_refresh_request,json_object_unref);mutating=pending_request!=NULL;
+                }
+            }
             if (changed || manager_dirty) {render_history();render_inspector();manager_dirty=FALSE;}
             else update_history_rows();
         }
@@ -392,7 +408,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
             }
             if (!strcmp(request->op,"storage.repair")) repair_completed(value);
             if (!strcmp(request->op,"point.create")) {g_free(selected_point);selected_point=g_strdup(str(value,"pointId"));}
-            if (!strcmp(request->op,"point.delete")) g_clear_pointer(&selected_point,g_free);
+            if (!strcmp(request->op,"point.delete") || !strcmp(request->op,"point.rename")) {history_refresh_request=json_object_ref(request->request);mutating=TRUE;}
             if (!strcmp(request->op,"run.save")) json_object_set_boolean_member(run(),"save",flag(request->request,"save"));
             if (!strcmp(request->op,"point.create") || !strcmp(request->op,"point.delete")) manager_dirty=TRUE;
         }
@@ -401,7 +417,7 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     update_ui();
     if (pending_request) {JsonObject *queued=pending_request;pending_request=NULL;send_request(queued,TRUE);}
     else if (request->mutation || scan_requested) refresh();
-    else if (!strcmp(request->op,"state") && gtk_widget_get_visible(manager) && store())
+    else if (!strcmp(request->op,"state") && (gtk_widget_get_visible(manager) || history_refresh_request) && store())
         send_request(command("history",TRUE),FALSE);
     else if (!strcmp(request->op,"history") && g_strcmp0(request->store,selected) && gtk_widget_get_visible(manager) && store())
         send_request(command("history",TRUE),FALSE);
@@ -420,7 +436,7 @@ static void send_request(JsonObject *value, gboolean mutation)
     }
     Request *request=g_new0(Request,1);
     request->request=value;request->op=g_strdup(str(value,"op"));request->store=g_strdup(str(value,"storeId"));request->mutation=mutation;
-    requesting=TRUE;active_request=request;mutating=mutation;update_ui();
+    requesting=TRUE;active_request=request;mutating=mutation || history_refresh_request;update_ui();
     GTask *task=g_task_new(NULL,NULL,request_done,NULL);
     g_task_set_task_data(task,request,request_free);g_task_run_in_thread(task,request_worker);g_object_unref(task);
 }
@@ -444,6 +460,21 @@ static GtkWidget *button(const char *text, const char *icon, const char *op)
     if (op) g_signal_connect(widget,"clicked",G_CALLBACK(action),(gpointer)op);
     return widget;
 }
+/* Change the child only at operation transitions so GTK never restarts a running animation. */
+static void button_activity(GtkWidget *widget, const char *text, gboolean working)
+{
+    if (!strcmp(gtk_button_get_label(GTK_BUTTON(widget)),text)) return;
+    gtk_button_set_label(GTK_BUTTON(widget),text);
+    GtkWidget *spinner=gtk_button_get_image(GTK_BUTTON(widget));
+    if (!spinner)
+    {
+        spinner=gtk_spinner_new();gtk_widget_set_no_show_all(spinner,TRUE);
+        gtk_button_set_image(GTK_BUTTON(widget),spinner);gtk_button_set_always_show_image(GTK_BUTTON(widget),TRUE);
+    }
+    if (working) gtk_spinner_start(GTK_SPINNER(spinner));else gtk_spinner_stop(GTK_SPINNER(spinner));
+    gtk_widget_set_visible(spinner,working);
+}
+
 /* Give link-style controls a pointer only inside their own input window. */
 static void link_realized(GtkWidget *widget, gpointer data)
 {
@@ -496,17 +527,17 @@ static gboolean save_changed(GtkSwitch *widget, gboolean save, gpointer data)
     return TRUE;
 }
 /* Share the switch layout while callers choose live or confirmation-only behavior. */
-static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **choice, GtkWidget **help)
+static GtkWidget *save_control(GtkWidget **toggle, GtkWidget **help)
 {
     GtkWidget *outer=box(GTK_ORIENTATION_VERTICAL,8),*row=box(GTK_ORIENTATION_HORIZONTAL,10);
-    GtkWidget *heading=label("Save this run",NULL);gtk_label_set_ellipsize(GTK_LABEL(heading),PANGO_ELLIPSIZE_NONE);
-    pack(row,heading,TRUE);*choice=label("Save","muted");pack(row,*choice,FALSE);
+    GtkWidget *heading=label("Keep changes after restart",NULL);gtk_label_set_ellipsize(GTK_LABEL(heading),PANGO_ELLIPSIZE_NONE);
+    pack(row,heading,TRUE);
     *toggle=gtk_switch_new();gtk_widget_set_valign(*toggle,GTK_ALIGN_CENTER);pack(row,*toggle,FALSE);
-    atk_object_set_name(gtk_widget_get_accessible(*toggle),"Save this run");
-    pack(outer,row,FALSE);*help=label("Keep changes after restart.","muted");pack(outer,*help,FALSE);
+    atk_object_set_name(gtk_widget_get_accessible(*toggle),"Keep changes after restart");
+    pack(outer,row,FALSE);*help=paragraph("");gtk_style_context_add_class(gtk_widget_get_style_context(*help),"muted");pack(outer,*help,FALSE);
     return outer;
 }
-static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
+static void update_save(GtkWidget *toggle, GtkWidget *help)
 {
     gboolean save=flag(run(),"save");
     /* Describe the latest intent while acknowledgements catch up with the native thumb. */
@@ -519,8 +550,7 @@ static void update_save(GtkWidget *toggle, GtkWidget *choice, GtkWidget *help)
         gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
     gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || changing("run.save")) && !restart_request);
-    set_label(choice,save ? "Save" : "Don’t save");
-    const char *text=save ? "Keep changes after restart." : "Discard changes after restart.";
+    const char *text=save ? "Keep installed apps, settings and saved files." : "Discard this session’s changes after restart.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
     else if (!flag(run(),"canSetSave")) text="This run cannot change its save setting.";
     set_label(help,text);
@@ -649,7 +679,7 @@ static void make_popups(void)
     GtkWidget *storage=box(GTK_ORIENTATION_VERTICAL,8);pack(storage,capacity,FALSE);
     popup_meter=gtk_progress_bar_new();gtk_widget_set_tooltip_text(popup_meter,"Space used");pack(storage,popup_meter,FALSE);pack(popup.body,storage,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    pack(popup.body,save_control(&popup_save,&popup_choice,&popup_help),FALSE);
+    pack(popup.body,save_control(&popup_save,&popup_help),FALSE);
     g_signal_connect(popup_save,"state-set",G_CALLBACK(save_changed),NULL);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
@@ -929,23 +959,29 @@ static void make_inspector(void)
     inspector_rename=button("Rename",NULL,"rename-point");pack(inspector_actions,inspector_rename,FALSE);
     inspector_delete=button("Delete",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
-    inspector_current=box(GTK_ORIENTATION_VERTICAL,12);pack(inspector,inspector_current,FALSE);
-    pack(inspector_current,save_control(&inspector_save,&inspector_choice,&inspector_help),FALSE);
+    inspector_current=box(GTK_ORIENTATION_VERTICAL,24);pack(inspector,inspector_current,FALSE);
+    pack(inspector_current,save_control(&inspector_save,&inspector_help),FALSE);
     g_signal_connect(inspector_save,"state-set",G_CALLBACK(save_changed),NULL);
-    inspector_create=primary_button("Save current state","create-point");pack(inspector_current,inspector_create,FALSE);
+    GtkWidget *named=box(GTK_ORIENTATION_VERTICAL,8);pack(inspector_current,named,FALSE);
+    inspector_create=primary_button("Save a named state…","create-point");pack(named,inspector_create,FALSE);
+    GtkWidget *help=paragraph("Return to this state later, even after making more changes.");
+    gtk_style_context_add_class(gtk_widget_get_style_context(help),"muted");pack(named,help,FALSE);
 }
 
 /* Refresh only changed properties; busy actions must not fade the inspector's text. */
 static void render_inspector(void)
 {
     JsonObject *item=store(),*saved=point();if (!item) return;
-    gboolean metadata_update=changing("run.save") || changing("point.rename");
+    gboolean deleting=changing("point.delete");
+    gboolean renaming=changing("point.rename");
+    gboolean metadata_update=changing("run.save");
     gboolean busy=(mutating && !metadata_update) || restart_request;
     gboolean writable=flag(item,"writable") && !busy;
     gboolean initial=flag(saved,"initial"),removed=flag(saved,"deleted");
     gboolean files_open=flag(saved,"filesOpen") || g_hash_table_contains(file_browsers,str(saved,"id"));
     const char *eyebrow="YOU ARE HERE";
     if (saved) eyebrow=removed ? "REMOVED STATE" : "SAVED STATE";
+    gtk_widget_set_visible(inspector_eyebrow,saved!=NULL);
     set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current state");
     gtk_widget_set_visible(inspector_saved,saved!=NULL);gtk_widget_set_visible(inspector_current,saved==NULL);
     char *date=date_text(number(saved,"created"));set_label(inspector_date,date);g_free(date);
@@ -959,7 +995,12 @@ static void render_inspector(void)
     gtk_widget_set_sensitive(inspector_use,writable && flag(run(),"canSetSave"));gtk_widget_set_sensitive(inspector_open,!busy && !files_open);
     gtk_widget_set_visible(inspector_rename,!initial);gtk_widget_set_sensitive(inspector_rename,writable);
     gtk_widget_set_visible(inspector_delete,!initial);gtk_widget_set_sensitive(inspector_delete,writable && !flag(saved,"protected") && !files_open);
-    update_save(inspector_save,inspector_choice,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
+    /* Keep the edited state selected until its refreshed result is visible. */
+    gtk_widget_set_sensitive(history_list,!deleting && !renaming);
+    gtk_widget_set_sensitive(history_latest,!deleting && !renaming);gtk_widget_set_sensitive(show_removed,!deleting && !renaming);
+    button_activity(inspector_delete,deleting ? "Deleting…" : "Delete",deleting);
+    button_activity(inspector_rename,renaming ? "Renaming…" : "Rename",renaming);
+    update_save(inspector_save,inspector_help);gtk_widget_set_sensitive(inspector_create,writable);
 }
 
 /* Keep content styling steady without changing native window or keyboard focus. */
@@ -1022,7 +1063,7 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
         GtkStyleContext *style=gtk_widget_get_style_context(inspector_scroll);
         if (stacked) gtk_style_context_add_class(style,"stacked");else gtk_style_context_remove_class(style,"stacked");
         gtk_box_set_spacing(GTK_BOX(history_layout),stacked ? 8 : 18);
-        gtk_widget_set_size_request(inspector_scroll,stacked ? -1 : 264,stacked ? 160 : -1);
+        gtk_widget_set_size_request(inspector_scroll,stacked ? -1 : 264,stacked ? 220 : -1);
     }
     return FALSE;
 }
@@ -1141,7 +1182,7 @@ static void update_ui(void)
     char *size=size_text(available);
     set_label(popup_space,state ? size : "Loading…");
     double total=number(run(),"totalBytes");gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(popup_meter),total>0 ? CLAMP(1-available/total,0,1) : 0);
-    update_save(popup_save,popup_choice,popup_help);
+    update_save(popup_save,popup_help);
     render_inspector();
     JsonObject *item=store();
     gtk_widget_set_visible(context_box,item!=NULL);gtk_widget_set_visible(context_separator,item!=NULL);
@@ -1162,7 +1203,7 @@ static void update_ui(void)
     const char *status=mutating ? "Working…" : connection_error ? "Storage service unavailable" : !strcmp(warning,"readonly") ? "Storage is read-only" : *warning ? "Storage needs attention" : snooze_until>g_get_monotonic_time() ? "Alerts snoozed · 15 min" : "";
     if (changing("storage.repair")) status="Checking filesystem…";
     const char *operation="";
-    if (mutating) operation=changing("storage.repair") ? "Checking filesystem…" : "Working…";
+    if (mutating && !changing("point.delete")) operation=changing("storage.repair") ? "Checking filesystem…" : "Working…";
     if (restart_request) operation=mutating ? "Preparing restart…" : "Restarting…";
     const char *feedback=connection_error;
     if (!feedback) feedback=*operation ? operation : history_error;
@@ -1222,9 +1263,8 @@ static gboolean confirm(const char *title, const char *question, const char *tex
 /* Explain the staged choice without writing policy while the confirmation is open. */
 static void restore_save_changed(GtkSwitch *toggle, GParamSpec *property, gpointer data)
 {
-    (void)property;RestoreChoice *labels=data;gboolean save=gtk_switch_get_active(toggle);
-    set_label(labels->choice,save ? "Save" : "Don’t save");
-    set_label(labels->help,save
+    (void)property;gboolean save=gtk_switch_get_active(toggle);
+    set_label(data,save
         ? "Save this run’s changes as another saved state before restarting. You can restore them later."
         : "Discard this run’s changes when restarting. Previously saved states will remain available.");
 }
@@ -1241,13 +1281,12 @@ static gboolean restore_dialog(const char *name, gboolean initial, gboolean *sav
     GtkWidget *area=gtk_message_dialog_get_message_area(GTK_MESSAGE_DIALOG(dialog)),*parent=gtk_widget_get_parent(area);
     gtk_widget_set_margin_start(parent,0);gtk_widget_set_margin_end(parent,0);gtk_box_set_spacing(GTK_BOX(area),12);
     pack(area,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
-    GtkWidget *toggle;RestoreChoice labels;
-    pack(area,save_control(&toggle,&labels.choice,&labels.help),FALSE);
-    gtk_label_set_single_line_mode(GTK_LABEL(labels.help),FALSE);gtk_label_set_ellipsize(GTK_LABEL(labels.help),PANGO_ELLIPSIZE_NONE);
-    gtk_label_set_line_wrap(GTK_LABEL(labels.help),TRUE);gtk_label_set_max_width_chars(GTK_LABEL(labels.help),58);
-    gtk_style_context_remove_class(gtk_widget_get_style_context(labels.help),"muted");
+    GtkWidget *toggle,*help;
+    pack(area,save_control(&toggle,&help),FALSE);
+    gtk_label_set_max_width_chars(GTK_LABEL(help),58);
+    gtk_style_context_remove_class(gtk_widget_get_style_context(help),"muted");
     gtk_switch_set_active(GTK_SWITCH(toggle),*save);
-    g_signal_connect(toggle,"notify::active",G_CALLBACK(restore_save_changed),&labels);restore_save_changed(GTK_SWITCH(toggle),NULL,&labels);
+    g_signal_connect(toggle,"notify::active",G_CALLBACK(restore_save_changed),help);restore_save_changed(GTK_SWITCH(toggle),NULL,help);
     gtk_dialog_add_buttons(GTK_DIALOG(dialog),initial ? "Start fresh and restart" : "Restore and restart",GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_CANCEL);gtk_widget_show_all(area);
     gboolean accepted=gtk_dialog_run(GTK_DIALOG(dialog))==GTK_RESPONSE_ACCEPT;
@@ -1314,13 +1353,13 @@ static void name_dialog(gboolean rename)
 {
     hide_popup();g_autofree char *target=g_strdup(selected);
     g_autofree char *id=rename ? g_strdup(selected_point) : NULL,*original=rename ? g_strdup(point_name(point())) : NULL;
-    const char *title=rename ? "Rename saved state" : "Save current state";
+    const char *title=rename ? "Rename saved state" : "Save a named state";
     GtkWidget *dialog=gtk_dialog_new_with_buttons(title,GTK_WINDOW(manager),GTK_DIALOG_MODAL|GTK_DIALOG_DESTROY_WITH_PARENT,
         title,GTK_RESPONSE_ACCEPT,"Cancel",GTK_RESPONSE_CANCEL,NULL);
     gtk_window_set_default_size(GTK_WINDOW(dialog),480,-1);gtk_dialog_set_default_response(GTK_DIALOG(dialog),GTK_RESPONSE_ACCEPT);
     GtkWidget *content=gtk_dialog_get_content_area(GTK_DIALOG(dialog));gtk_container_set_border_width(GTK_CONTAINER(content),18);gtk_box_set_spacing(GTK_BOX(content),12);
     const char *note="Save your installed programs, settings and saved files so you can restore them later. Open windows and unsaved work are not included.";
-    if (flag(store(),"active") && !flag(run(),"save")) note="Save your installed programs, settings and saved files. Open windows and unsaved work are not included. This state will be kept even though Don’t save is selected.";
+    if (flag(store(),"active") && !flag(run(),"save")) note="Save your installed programs, settings and saved files. Open windows and unsaved work are not included. This named state will be kept even though Keep changes after restart is off.";
     if (rename) note="Give this saved state a name you will recognize.";
     if (rename && flag(point(),"automatic")) note="Give this automatically saved state a name to keep it until you choose to delete it.";
     pack(content,paragraph(note),FALSE);pack(content,label("Name",NULL),FALSE);
