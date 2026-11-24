@@ -5,9 +5,23 @@ if [ "$(id -u)" = 0 ]; then
    xhost +SI:localuser:guest >/dev/null
    unset XAUTHORITY DBUS_SESSION_BUS_ADDRESS AT_SPI_BUS_ADDRESS XDG_RUNTIME_DIR
    # Separate root-launched app profiles and user directories from the guest desktop.
-   exec runuser -u guest -- env XDG_CONFIG_HOME=/home/guest/.config/slax-root \
+   exec runuser -u guest -- env -u DISPLAY XDG_CONFIG_HOME=/home/guest/.config/slax-root \
       XDG_CACHE_HOME=/home/guest/.cache/slax-root XDG_DATA_HOME=/home/guest/.local/share/slax-root \
-      dbus-run-session -- "$@"
+      sh -c '
+         XDG_RUNTIME_DIR=$(mktemp -d /tmp/slax-app.XXXXXX) || exit 1
+         export XDG_RUNTIME_DIR
+         trap "rm -rf -- \"\$XDG_RUNTIME_DIR\"" 0
+         dbus-run-session -- sh -c "$@"
+      ' sh '
+         # Resolve the private AT-SPI bus before giving it access to the shared X11 display.
+         if AT_SPI_BUS_ADDRESS=$(dbus-send --session --print-reply=literal --reply-timeout=3000 \
+            --dest=org.a11y.Bus /org/a11y/bus org.a11y.Bus.GetAddress); then
+            export AT_SPI_BUS_ADDRESS="${AT_SPI_BUS_ADDRESS#   }"
+         fi
+         export DISPLAY="$1"
+         shift
+         exec "$@"
+      ' sh "$DISPLAY" "$@"
 fi
 
 exec "$@"

@@ -59,7 +59,7 @@ Linux Live Kit
 Slax
 ----
 
-- Clear inherited accessibility bus addresses for root-launched guest applications
+- Use a private accessibility bus for root-launched guest applications
   and include UPower for Chromium power monitoring.
 
 - Show continuous activity in Rename until the updated saved-state name is visible.
