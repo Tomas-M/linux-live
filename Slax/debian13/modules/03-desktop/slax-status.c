@@ -136,6 +136,15 @@ static char *date_text(gint64 seconds)
     return text;
 }
 
+/* Reveal hidden text only when GTK actually truncates the label. */
+static gboolean label_tooltip(GtkWidget *widget, gint x, gint y, gboolean keyboard, GtkTooltip *tooltip, gpointer data)
+{
+    (void)x;(void)y;(void)keyboard;(void)data;
+    if (!pango_layout_is_ellipsized(gtk_label_get_layout(GTK_LABEL(widget)))) return FALSE;
+    const char *full=g_object_get_data(G_OBJECT(widget),"full-text");
+    gtk_tooltip_set_text(tooltip,full ? full : gtk_label_get_text(GTK_LABEL(widget)));return TRUE;
+}
+
 /* Use plain GTK text, never treat saved-state names or backend errors as markup. */
 static GtkWidget *label(const char *text, const char *css)
 {
@@ -143,6 +152,7 @@ static GtkWidget *label(const char *text, const char *css)
     gtk_label_set_xalign(GTK_LABEL(widget),0);
     gtk_label_set_ellipsize(GTK_LABEL(widget),PANGO_ELLIPSIZE_END);
     gtk_label_set_single_line_mode(GTK_LABEL(widget),TRUE);
+    gtk_widget_set_has_tooltip(widget,TRUE);g_signal_connect(widget,"query-tooltip",G_CALLBACK(label_tooltip),NULL);
     if (css) gtk_style_context_add_class(gtk_widget_get_style_context(widget),css);
     return widget;
 }
@@ -150,8 +160,6 @@ static void set_label(GtkWidget *widget, const char *text)
 {
     if (!g_strcmp0(gtk_label_get_text(GTK_LABEL(widget)),text ? text : "")) return;
     gtk_label_set_text(GTK_LABEL(widget),text ? text : "");
-    if (gtk_label_get_ellipsize(GTK_LABEL(widget))!=PANGO_ELLIPSIZE_NONE)
-        gtk_widget_set_tooltip_text(widget,text && *text ? text : NULL);
 }
 static void clear_box(GtkWidget *widget)
 {
@@ -458,7 +466,7 @@ static gboolean poll_state(gpointer data) { (void)data;refresh();return G_SOURCE
 static GtkWidget *button(const char *text, const char *icon, const char *op)
 {
     GtkWidget *widget=icon ? gtk_button_new_from_icon_name(icon,GTK_ICON_SIZE_BUTTON) : gtk_button_new_with_label(text);
-    if (icon) {gtk_widget_set_tooltip_text(widget,text);atk_object_set_name(gtk_widget_get_accessible(widget),text);gtk_style_context_add_class(gtk_widget_get_style_context(widget),"icon-button");}
+    if (icon) {atk_object_set_name(gtk_widget_get_accessible(widget),text);gtk_style_context_add_class(gtk_widget_get_style_context(widget),"icon-button");}
     if (op) g_signal_connect(widget,"clicked",G_CALLBACK(action),(gpointer)op);
     return widget;
 }
@@ -1053,14 +1061,27 @@ static gboolean manager_focus_control(GSignalInvocationHint *hint, guint count, 
     gtk_style_context_add_class(gtk_widget_get_style_context(widget),"focus-control");g_signal_connect_after(widget,"draw",G_CALLBACK(manager_focus_outline),NULL);return TRUE;
 }
 
+/* Stack locations only when their full contents no longer fit side by side. */
+static void layout_locations(int width)
+{
+    int required=2*gtk_container_get_border_width(GTK_CONTAINER(context_box))+gtk_box_get_spacing(GTK_BOX(context_box));
+    GList *children=gtk_container_get_children(GTK_CONTAINER(context_box));
+    for (GList *item=children;item;item=item->next)
+    {
+        int natural;gtk_widget_get_preferred_width(item->data,NULL,&natural);required+=natural;
+    }
+    g_list_free(children);
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(context_box),width<required ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+}
+
 /* Choose the layout before GTK allocates children; changing orientation during allocation is too late. */
 static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, gpointer data)
 {
     (void)widget;(void)data;gboolean narrow=event->width<900,vertical=event->width<650;
+    layout_locations(event->width);
     if (narrow!=compact)
     {
         compact=narrow;
-        gtk_orientable_set_orientation(GTK_ORIENTABLE(context_box),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
         gtk_orientable_set_orientation(GTK_ORIENTABLE(intro_columns),compact ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
         gtk_box_set_spacing(GTK_BOX(intro_columns),compact ? 18 : 32);
         gtk_widget_set_size_request(intro_example,compact ? -1 : 420,-1);
@@ -1200,6 +1221,7 @@ static void update_ui(void)
     render_inspector();
     JsonObject *item=store();
     gtk_widget_set_visible(context_box,item!=NULL);gtk_widget_set_visible(context_separator,item!=NULL);
+    if (item) layout_locations(gtk_widget_get_allocated_width(manager));
     gtk_widget_set_visible(manager_footer,item!=NULL);
     if (!item) render_setup_drives();
     gtk_stack_set_visible_child_name(GTK_STACK(manager_content),item ? "stores" : "intro");
@@ -1250,7 +1272,7 @@ static void update_ui(void)
         {
             gunichar character=g_utf8_get_char(cursor);g_string_append_unichar(preview,g_unichar_isspace(character) ? ' ' : character);
         }
-        set_label(notice_title,title);gtk_label_set_text(GTK_LABEL(notice_message),preview->str);gtk_widget_set_tooltip_text(notice_message,text);
+        set_label(notice_title,title);gtk_label_set_text(GTK_LABEL(notice_message),preview->str);g_object_set_data_full(G_OBJECT(notice_message),"full-text",g_strdup(text),g_free);
         gtk_widget_set_visible(notice_repair,!strcmp(warning,"unclean"));
         gtk_widget_set_visible(notice_review,strcmp(warning,"unclean")!=0);gtk_widget_set_visible(notice_snooze,strcmp(warning,"unclean")!=0);
         g_string_free(preview,TRUE);g_free(text);g_free(free);

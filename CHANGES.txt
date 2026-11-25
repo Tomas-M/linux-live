@@ -65,6 +65,8 @@ Slax
 - Separate current-session saving controls from the selected saved state.
 - Prefetch saved-state history at low priority when the tray starts and keep
   the cached tree ready for opening its window.
+- Show label tooltips only for truncated text and remove redundant close-button hints.
+- Stack source and changes locations only when their contents no longer fit side by side.
 
 - Show a white battery tray icon on systems with a battery, with charge levels
   and a plug when charging or fully charged on external power.
