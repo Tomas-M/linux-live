@@ -118,5 +118,6 @@ rm -f /etc/fonts/conf.d/65-wqy-microhei.conf
 fc-cache -f
 update-desktop-database /usr/local/share/applications
 gtk-update-icon-cache -f /usr/share/icons/Adwaita
+gtk-update-icon-cache -f /usr/share/icons/SlaxBattery
 gtk-update-icon-cache -f /usr/share/icons/hicolor
 gtk-update-icon-cache -f /usr/local/share/icons/hicolor

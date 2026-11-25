@@ -1,0 +1,12 @@
+[Icon Theme]
+Name=Slax Battery
+Comment=Battery and power icons for the Slax panel
+Inherits=Adwaita,hicolor
+Directories=scalable/status
+
+[scalable/status]
+Size=22
+MinSize=16
+MaxSize=64
+Type=Scalable
+Context=Status

@@ -147,6 +147,10 @@ G_MODULE_EXPORT void gtk_module_init(int *argc, char ***argv)
     }
     g_type_class_unref(widget_class);
 
+    /* Keep the panel battery artwork local to cbatticon's icon lookups. */
+    if (g_strcmp0(g_get_prgname(), "cbatticon")==0)
+        g_object_set(gtk_settings_get_default(), "gtk-icon-theme-name", "SlaxBattery", NULL);
+
     char *path=g_strdup_printf("/usr/share/slax/gtk-3.0/apps/%s.css", g_get_prgname());
     if (g_file_test(path, G_FILE_TEST_IS_REGULAR))
     {

@@ -131,10 +131,9 @@ make
 cp gtkdialog "$PACKAGE/usr/bin/"
 
 cd /tmp
-wget -O cbatticon.tar.gz https://github.com/valr/cbatticon/archive/1.6.10.tar.gz
+wget -O cbatticon.tar.gz https://github.com/valr/cbatticon/archive/1.6.13.tar.gz
 tar -xf cbatticon.tar.gz
-cd cbatticon-1.6.10
-sed -i 's/WITH_GTK3 = 1/WITH_GTK3 = 0/' Makefile
+cd cbatticon-1.6.13
 make
 cp cbatticon "$PACKAGE/usr/bin/"
 strip "$PACKAGE/usr/bin/xlunch" \

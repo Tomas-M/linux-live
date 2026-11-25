@@ -778,9 +778,14 @@ must follow the general Slax repair rules above.
   Editable SVGs in `03-desktop/network-tray-icons` use a separate pixel grid for
   each size. Run `sh render-network-tray-icons` there to export native-size PNGs
   with rsvg-convert. Do not downscale raster masters or add rendering to the build.
-  Keep the `slax-net-manager` application icon separate. Volume and battery status
-  icons come from Debian's AdwaitaLegacy theme; larger feh icons are rendered from
-  their original SVG assets.
+  Keep the `slax-net-manager` application icon separate. Volume status icons come
+  from Debian's AdwaitaLegacy theme; larger feh icons are rendered from their
+  original SVG assets.
+- Keep cbatticon's white battery artwork in the private `SlaxBattery` icon theme.
+  Select it only for cbatticon through the shared GTK module. Draw square corners
+  and one-pixel outlines on the native 22 px grid. Keep the fill levels, plug for
+  charging and full-on-power states, and red X for missing or unknown batteries.
+  The desktop starts cbatticon only for a present system battery.
 - Xarchiver requests a 24 px window icon. Store its selected 128 px artwork
   in the 24 px icon path too; GTK retains its resolution without rebuilding
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME

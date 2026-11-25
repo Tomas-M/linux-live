@@ -101,6 +101,15 @@ supervise_desktop xfce4-panel --disable-wm-check --sm-client-disable &
    slax-status &
    STATUSPID=$!
 
+   # Show one battery icon for a present system battery, excluding peripherals.
+   for SUPPLY in /sys/class/power_supply/*; do
+      if [ ! -r "$SUPPLY/type" ] || [ "$(cat "$SUPPLY/type")" != Battery ]; then continue; fi
+      if [ -r "$SUPPLY/scope" ] && [ "$(cat "$SUPPLY/scope")" = Device ]; then continue; fi
+      if [ -r "$SUPPLY/present" ] && [ "$(cat "$SUPPLY/present")" != 1 ]; then continue; fi
+      cbatticon -- "${SUPPLY##*/}" &
+      break
+   done
+
    # Wait up to ten monotonic seconds for visible icons, skipping failed applets.
    read UPTIME IDLE < /proc/uptime
    DEADLINE=$(( ${UPTIME%%.*} + 10 ))

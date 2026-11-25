@@ -59,6 +59,8 @@ Linux Live Kit
 Slax
 ----
 
+- Show a white battery tray icon on systems with a battery, with charge levels
+  and a plug when charging or fully charged on external power.
 - Use a private accessibility bus for root-launched guest applications.
 
 - Show continuous activity in Rename until the updated saved-state name is visible.
