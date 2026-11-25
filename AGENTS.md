@@ -1518,10 +1518,10 @@ must follow the general Slax repair rules above.
 - Absolute symlinks in unpacked modules can resolve into the build host.
   Do not copy a regular file onto one blindly. Use `update-alternatives --root`
   for module alternatives and replace links explicitly when needed.
-- For changes affecting boot, verify both BIOS and UEFI all the way to the
-  desktop without manually specifying kernel/initrd or starting X. Boot menu
-  success alone is not enough. For changes unrelated to boot, such as cursor
-  themes or desktop configuration, one VM startup is sufficient.
+- Test both BIOS and UEFI only when changing the kernel or bootloader. For
+  initramfs and other changes, boot once using UEFI with Secure Boot by default.
+  Verify arrival at the desktop without manually specifying kernel/initrd or
+  starting X; boot menu success alone is not enough.
   Every future VirtualBox UEFI test must have Secure Boot enabled. Use the
   standard trusted keys and Slax's stock signed shim, GRUB and kernel; never
   disable verification or enroll Slax-specific keys. Confirm that the guest's
