@@ -59,8 +59,7 @@ Linux Live Kit
 Slax
 ----
 
-- Use a private accessibility bus for root-launched guest applications
-  and include UPower for Chromium power monitoring.
+- Use a private accessibility bus for root-launched guest applications.
 
 - Show continuous activity in Rename until the updated saved-state name is visible.
 
