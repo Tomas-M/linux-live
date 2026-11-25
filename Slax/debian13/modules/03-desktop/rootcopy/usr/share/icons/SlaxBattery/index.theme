@@ -2,11 +2,9 @@
 Name=Slax Battery
 Comment=Battery and power icons for the Slax panel
 Inherits=Adwaita,hicolor
-Directories=scalable/status
+Directories=24x24/status
 
-[scalable/status]
-Size=22
-MinSize=16
-MaxSize=64
-Type=Scalable
+[24x24/status]
+Size=24
+Type=Fixed
 Context=Status

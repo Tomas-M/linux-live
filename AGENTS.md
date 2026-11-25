@@ -785,7 +785,10 @@ must follow the general Slax repair rules above.
   Select it only for cbatticon through the shared GTK module. Draw square corners
   and one-pixel outlines on the native 22 px grid. Keep the fill levels, plug for
   charging and full-on-power states, and red X for missing or unknown batteries.
-  The desktop starts cbatticon only for a present system battery.
+  Keep the finished SVGs under 24x24/status and offset the native artwork one
+  pixel up. GtkStatusIcon requests 24 px for the 22 px tray slot, so the artwork
+  retains its native size. The tray places cbatticon after Slax Status. The
+  desktop starts cbatticon only for a present system battery.
 - Xarchiver requests a 24 px window icon. Store its selected 128 px artwork
   in the 24 px icon path too; GTK retains its resolution without rebuilding
   Xarchiver. Keep feh's desktop entry available for icon lookup and MIME
