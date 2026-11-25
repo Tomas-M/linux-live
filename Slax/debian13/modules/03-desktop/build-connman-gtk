@@ -12,5 +12,7 @@ cd connman-gtk-*/
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 # Use GTK's session-local activation to reopen the existing tray application's window.
 patch -p1 < "$CWD/patches/connman-gtk-activation.diff"
+# Use the settings gear shipped by current Adwaita instead of a removed emblem.
+patch -p1 < "$CWD/patches/connman-gtk-icons.diff"
 dpkg-buildpackage -b -us -uc
 cp ../connman-gtk_*.deb "$OUTPUT/"

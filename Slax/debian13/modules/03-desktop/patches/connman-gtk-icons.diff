@@ -1,0 +1,10 @@
+--- a/src/service.c
++++ b/src/service.c
+@@ -291,6 +291,6 @@
+ 	serv->contents = gtk_grid_new();
+ 	serv->settings_button = gtk_button_new_from_icon_name(
+-	                                "emblem-system-symbolic",
++	                                "system-run-symbolic",
+ 	                                GTK_ICON_SIZE_MENU);
+ 	item_grid = GTK_GRID(gtk_grid_new());
+ 

@@ -13,3 +13,7 @@ ConnMan GTK uses network-offline for disconnected, preferences-system-network
 for association/configuration, and network-transmit-receive for ready/online.
 These states are shared by all connection technologies.
 
+
+The connection settings button uses Adwaita's system-run-symbolic gear.
+ConnMan GTK's old emblem-system-symbolic name no longer exists in Adwaita.
+The connman-gtk-icons patch selects the existing settings artwork directly.
