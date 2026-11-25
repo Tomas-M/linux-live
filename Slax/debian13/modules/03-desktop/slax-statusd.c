@@ -17,6 +17,9 @@
 #include <sys/pidfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <linux/ioprio.h>
 #include <sys/statvfs.h>
 #include <sys/sysmacros.h>
 #include <time.h>
@@ -1126,7 +1129,13 @@ static gboolean request_connection(GThreadedSocketService *service, GSocketConne
    g_string_free(line,TRUE);
    if (request)
    {
-      g_mutex_lock(&operation_lock); result=dispatch(request,peer.uid,peer.pid,&error); g_mutex_unlock(&operation_lock); json_object_unref(request);
+      /* Catalogue reads run below interactive work; pooled threads regain their original priority. */
+      gboolean background=!strcmp(string(request,"op"),"history");
+      int priority=getpriority(PRIO_PROCESS,0),io_priority=syscall(SYS_ioprio_get,IOPRIO_WHO_PROCESS,0);
+      if (background) {setpriority(PRIO_PROCESS,0,19);syscall(SYS_ioprio_set,IOPRIO_WHO_PROCESS,0,IOPRIO_PRIO_VALUE(IOPRIO_CLASS_IDLE,0));}
+      g_mutex_lock(&operation_lock); result=dispatch(request,peer.uid,peer.pid,&error); g_mutex_unlock(&operation_lock);
+      if (background) {setpriority(PRIO_PROCESS,0,priority);syscall(SYS_ioprio_set,IOPRIO_WHO_PROCESS,0,io_priority);}
+      json_object_unref(request);
    }
    json_object_set_boolean_member(response,"ok",result!=NULL);
    if (result) json_object_set_object_member(response,"result",result);

@@ -415,9 +415,11 @@ static void request_done(GObject *source, GAsyncResult *result, gpointer data)
     }
     g_clear_error(&error);if (reply) json_object_unref(reply);
     update_ui();
+    gboolean history_missing=!history || g_strcmp0(history_store,selected);
+    gboolean history_needed=gtk_widget_get_visible(manager) || history_refresh_request || history_missing;
     if (pending_request) {JsonObject *queued=pending_request;pending_request=NULL;send_request(queued,TRUE);}
     else if (request->mutation || scan_requested) refresh();
-    else if (!strcmp(request->op,"state") && (gtk_widget_get_visible(manager) || history_refresh_request) && store())
+    else if (!strcmp(request->op,"state") && store() && history_needed)
         send_request(command("history",TRUE),FALSE);
     else if (!strcmp(request->op,"history") && g_strcmp0(request->store,selected) && gtk_widget_get_visible(manager) && store())
         send_request(command("history",TRUE),FALSE);
@@ -449,7 +451,7 @@ static void refresh(void)
     send_request(request,FALSE);
 }
 
-/* Main-loop polling reads counters only; catalogue work is requested while the manager is visible. */
+/* Prefetch one authoritative tree while hidden; visible history refreshes retain its cached rows. */
 static gboolean poll_state(gpointer data) { (void)data;refresh();return G_SOURCE_CONTINUE; }
 
 /* Give controls the same native relief and separate accessible labels as the mockup. */
@@ -1148,9 +1150,10 @@ static void make_manager(void)
 /* A manual manager request may focus its normal window; passive alerts never call this. */
 static void show_manager(void)
 {
-    hide_popup();gtk_widget_hide(notice.window);manager_dirty=TRUE;
+    hide_popup();gtk_widget_hide(notice.window);
     /* Set the visible page and footer before GTK measures the first mapped window. */
-    render_history();render_inspector();update_ui();gtk_widget_show(manager);gtk_window_present(GTK_WINDOW(manager));refresh();
+    if (manager_dirty) {render_history();manager_dirty=FALSE;}
+    render_inspector();update_ui();gtk_widget_show(manager);gtk_window_present(GTK_WINDOW(manager));refresh();
     if (!store()) gtk_widget_grab_focus(setup_refresh);
 }
 

@@ -1913,6 +1913,10 @@ must follow the general Slax repair rules above.
   binary SHA256 is `42ea33edaea38b21f0e4c6fb66f8288a1a5382e52a00f4e81c89612fe02dbd5c`;
   its ELF32/static/UPX, snapshot and ext4/XFS pivot-root tests passed. Full Slax
   boot validation passed through the desktop in BIOS and UEFI with Secure Boot.
+  Saved-state history is prefetched after tray startup and retained while hidden.
+  Opening the manager keeps its prepared rows; visible refreshes and mutations
+  update the cache. Broker history requests use nice 19 and idle I/O priority,
+  restoring each pooled thread's priorities afterward.
   DynFileFS defaults to unlimited automatic history; `--auto-snapshot-limit N`
   selects a per-mount limit (0 means unlimited). Slax sets AUTOSNAPSHOT_LIMIT=4
   in its build configuration; named, open and protected states remain preserved.

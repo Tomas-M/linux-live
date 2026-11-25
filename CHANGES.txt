@@ -63,6 +63,8 @@ Slax
 
 - Keep four recent automatic saved states while preserving named and protected states.
 - Separate current-session saving controls from the selected saved state.
+- Prefetch saved-state history at low priority when the tray starts and keep
+  the cached tree ready for opening its window.
 
 - Show a white battery tray icon on systems with a battery, with charge levels
   and a plug when charging or fully charged on external power.
