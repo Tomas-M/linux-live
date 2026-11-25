@@ -234,7 +234,7 @@ BOOT AND PERSISTENCE
   explicitly deleted. Initial state cannot be renamed.
   DynFileFS also creates automatic states at storage startup and clean shutdown
   when the state changed. History labels them Saved on restart.
-  Slax keeps ten recent automatic states; states still
+  Slax keeps four recent automatic states; states still
   in use may be kept longer.
   Named states remain until explicitly deleted. Normal startup continues the
   saved current state unless a restore or discard was requested.

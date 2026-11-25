@@ -17,6 +17,9 @@ VMLINUZ=/vmlinuz
 # Union filesystem: auto prefers AUFS when available; overlay selects OverlayFS.
 UNIONFS=auto
 
+# Maximum automatic saved states per changes mount; 0 keeps all.
+AUTOSNAPSHOT_LIMIT=0
+
 # Kernel version. Change it to "3.2.28" for example, if you are building
 # Live Kit with a different kernel than the one you are actually running
 KERNEL=$(uname -r)

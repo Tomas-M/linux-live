@@ -4,6 +4,7 @@
 BASE=$(dirname "$(readlink -f "$0")")
 PATH="$BASE/bin:$BASE/usr/bin:$BASE/sbin:$PATH"
 . "$BASE/lib/livekitlib"
+. "$BASE/lib/config"
 if [ "$(id -u)" != 0 ]; then exit 1; fi
 
 # Validate identities without converting their full 64-bit value to floating point.
@@ -232,7 +233,7 @@ policy_create()
    INNER="$MOUNT.fs"
    mkdir "$INNER" || return 1
    OK=0
-   if @mount.dynfilefs -f "$STAGE/changes.dat" -s "$SIZE" -p 4000 -m "$MOUNT"; then
+   if @mount.dynfilefs -f "$STAGE/changes.dat" -s "$SIZE" -p 4000 -m "$MOUNT" --auto-snapshot-limit "$AUTOSNAPSHOT_LIMIT"; then
       if mkfs.xfs.custom "$MOUNT/virtual.dat" && mount -t xfs -o loop,nouuid "$MOUNT/virtual.dat" "$INNER"; then
          if xfs_growfs "$INNER" >/dev/null; then OK=1; fi
          if ! policy_detach "$INNER"; then return 1; fi

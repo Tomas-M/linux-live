@@ -1441,6 +1441,7 @@ persistent_changes()
       persistence closed "$CHANGES" || return 1
    fi
    set -- -f "$CHANGES/changes.dat" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000 --protect "$INITIAL"
+   if [ "$AUTOSNAPSHOT_LIMIT" != "" ]; then set -- "$@" --auto-snapshot-limit "$AUTOSNAPSHOT_LIMIT"; fi
    if [ "$RESTORE_ID" != "" ]; then
       # Preparation can promote the selected automatic point without changing its identity.
       T1=$(perch_restore_points "$CHANGES") || return 1

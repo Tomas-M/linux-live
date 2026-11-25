@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Make automatic saved-state retention configurable per mount; 0 keeps all states.
+
 - Keep saved changes marked active until their backing filesystem is ready to
   unmount, and restore the marker if the final unmount fails. Report failed
   unmounts and continue shutdown without prompting for input.
@@ -58,6 +60,8 @@ Linux Live Kit
 
 Slax
 ----
+
+- Keep four recent automatic saved states while preserving named and protected states.
 
 - Show a white battery tray icon on systems with a battery, with charge levels
   and a plug when charging or fully charged on external power.

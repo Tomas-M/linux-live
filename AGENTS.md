@@ -1909,6 +1909,13 @@ must follow the general Slax repair rules above.
   tmpfs and retain its static 32-bit/UPX checks. Verify the upstream pivot regression
   and full persistent Slax boots before replacing it; do not overwrite it with an
   older published binary that lacks this fix. The storage format is unchanged.
+  The bundled retention build comes from DynFileFS commit `1e27b2d`. The static
+  binary SHA256 is `42ea33edaea38b21f0e4c6fb66f8288a1a5382e52a00f4e81c89612fe02dbd5c`;
+  its ELF32/static/UPX, snapshot and ext4/XFS pivot-root tests passed. Full Slax
+  boot validation passed through the desktop in BIOS and UEFI with Secure Boot.
+  DynFileFS defaults to unlimited automatic history; `--auto-snapshot-limit N`
+  selects a per-mount limit (0 means unlimited). Slax sets AUTOSNAPSHOT_LIMIT=4
+  in its build configuration; named, open and protected states remain preserved.
   The boot picker uses DynFileFS's read-only `--snapshots --tsv` rows: stable ID,
   name, UTC date, compact lane and visible parent ID. `--hide ID:NAME` collapses
   exact owned guards and deleted ancestry without changing storage. Keep ordinary

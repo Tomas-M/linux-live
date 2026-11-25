@@ -146,7 +146,7 @@ done
 KERNEL=$(basename "$RUN"/boot/vmlinuz-*)
 KERNEL=${KERNEL#vmlinuz-}
 cp "$KIT/config" "$RUN/tmp/slax-build-config"
-printf '\nLIVEKITNAME=slax\nUNIONFS=overlay\nNETWORK=true\nKERNEL=%s\nLMK=lib/modules/$KERNEL\nBEXT=sb\n' "$KERNEL" >> "$RUN/tmp/slax-build-config"
+printf '\nLIVEKITNAME=slax\nAUTOSNAPSHOT_LIMIT=4\nUNIONFS=overlay\nNETWORK=true\nKERNEL=%s\nLMK=lib/modules/$KERNEL\nBEXT=sb\n' "$KERNEL" >> "$RUN/tmp/slax-build-config"
 INITRAMFS=$(chroot "$UNION" env LIVEKITCONFIG=/tmp/slax-build-config SPLASH=/kit/Slax/debian13/bootsplash sh -c 'cd /kit/initramfs; sh ./initramfs_create')
 mkdir -p "$MEDIA/slax/boot"
 mv "$RUN/$INITRAMFS" "$MEDIA/slax/boot/initrfs.img"
