@@ -208,9 +208,11 @@ BOOT AND PERSISTENCE
   Back up the complete changes directory while inactive, after a normal shutdown.
   Old numbered directories from earlier Slax versions are left alone and ignored.
 - Open Saved states from the Slax Status tray bubble to manage the history
-  on the currently used drive. Current state and You are here identify this run.
+  on the currently used drive. Current session and You are here identify this run.
   Show removed states in the bottom bar includes deleted states.
-  Go to now selects and reveals Current state.
+  Go to now selects and reveals Current session.
+  The separate Current session section at the bottom right controls whether this
+  run’s changes are kept after restart, regardless of the selected saved state.
   Sizes beside deletable states show space reusable for new changes after deletion.
   These sizes are not additive: deleting several states can free more space than
   their individual sizes suggest. The storage files reuse space rather than shrinking.

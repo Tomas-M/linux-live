@@ -31,7 +31,7 @@ static JsonObject *restart_request;
 static char *restart_error;
 static gint64 snooze_until;
 static GtkWidget *tray, *tray_icon, *manager, *manager_body;
-static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *history_layout, *main_layout, *context_box;
+static GtkWidget *history_box, *history_scroll, *history_list, *inspector, *inspector_scroll, *inspector_panel, *inspector_session, *history_layout, *main_layout, *context_box;
 static Location manager_source, manager_storage, popup_source, popup_storage;
 static GtkWidget *manager_space, *manager_status;
 static GtkWidget *popup_title, *popup_space, *popup_meter, *popup_save;
@@ -40,7 +40,7 @@ static GtkWidget *popup_recovery,*popup_recovery_message,*popup_repair,*notice_r
 static GtkWidget *inspector_save, *inspector_help, *manager_feedback;
 static GtkSizeGroup *inspector_width;
 static GtkWidget *inspector_eyebrow, *inspector_title, *inspector_saved, *inspector_current, *inspector_date, *inspector_origin, *inspector_removed;
-static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create;
+static GtkWidget *inspector_actions, *inspector_use, *inspector_open, *inspector_rename, *inspector_delete, *inspector_create, *inspector_start;
 static GtkWidget *manager_content, *intro, *intro_columns, *intro_example, *history_footer, *history_latest;
 static GtkWidget *context_separator, *manager_footer;
 static Bubble popup, notice;
@@ -917,7 +917,7 @@ static void render_history(void)
         gboolean live=!strcmp(id,"current");
         row->widget=gtk_list_box_row_new();gtk_widget_set_size_request(row->widget,-1,36);
         GtkWidget *line=box(GTK_ORIENTATION_HORIZONTAL,8);gtk_widget_set_margin_start(line,36+row->depth*22);gtk_widget_set_margin_end(line,8);
-        GtkWidget *name=label(live ? "Current state" : point_name(row->point),live ? "strong" : NULL);row->name=name;pack(line,name,TRUE);
+        GtkWidget *name=label(live ? "Current session" : point_name(row->point),live ? "strong" : NULL);row->name=name;pack(line,name,TRUE);
         const char *badge=flag(row->point,"deleted") ? "Removed" : !strcmp(id,str(history,"currentParent")) ? "Latest saved state" : "";
         if (live) badge="You are here";
         if (*badge)
@@ -960,12 +960,20 @@ static void make_inspector(void)
     inspector_delete=button("Delete",NULL,"delete-point");pack(inspector_actions,inspector_delete,FALSE);
     inspector_open=button("Open files",NULL,"open-files");pack(inspector_actions,inspector_open,FALSE);
     inspector_current=box(GTK_ORIENTATION_VERTICAL,24);pack(inspector,inspector_current,FALSE);
-    pack(inspector_current,save_control(&inspector_save,&inspector_help),FALSE);
-    g_signal_connect(inspector_save,"state-set",G_CALLBACK(save_changed),NULL);
     GtkWidget *named=box(GTK_ORIENTATION_VERTICAL,8);pack(inspector_current,named,FALSE);
     inspector_create=primary_button("Save a named state…","create-point");pack(named,inspector_create,FALSE);
     GtkWidget *help=paragraph("Return to this state later, even after making more changes.");
     gtk_style_context_add_class(gtk_widget_get_style_context(help),"muted");pack(named,help,FALSE);
+    /* Session policy stays separate from whichever saved state is selected above. */
+    inspector_start=paragraph("Started from a removed saved state.");pack(inspector_current,inspector_start,FALSE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(inspector_start),"muted");
+    GtkWidget *session=box(GTK_ORIENTATION_VERTICAL,12);inspector_session=session;
+    gtk_style_context_add_class(gtk_widget_get_style_context(session),"session-policy");
+    pack(session,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
+    pack(session,label("Current session","title"),FALSE);
+    pack(session,save_control(&inspector_save,&inspector_help),FALSE);
+    gtk_label_set_max_width_chars(GTK_LABEL(inspector_help),26);
+    g_signal_connect(inspector_save,"state-set",G_CALLBACK(save_changed),NULL);
 }
 
 /* Refresh only changed properties; busy actions must not fade the inspector's text. */
@@ -982,8 +990,9 @@ static void render_inspector(void)
     const char *eyebrow="YOU ARE HERE";
     if (saved) eyebrow=removed ? "REMOVED STATE" : "SAVED STATE";
     gtk_widget_set_visible(inspector_eyebrow,saved!=NULL);
-    set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current state");
+    set_label(inspector_eyebrow,eyebrow);set_label(inspector_title,saved ? point_name(saved) : "Current changes");
     gtk_widget_set_visible(inspector_saved,saved!=NULL);gtk_widget_set_visible(inspector_current,saved==NULL);
+    gtk_widget_set_visible(inspector_start,flag(find(array(history,"snapshots"),"id",str(history,"currentParent")),"deleted"));
     char *date=date_text(number(saved,"created"));set_label(inspector_date,date);g_free(date);
     const char *origin="Kept until you delete it";
     if (initial) origin="Start with Slax’s original apps, settings and files. Other saved states stay available.";
@@ -1060,7 +1069,7 @@ static gboolean manager_configure(GtkWidget *widget, GdkEventConfigure *event, g
     {
         stacked=vertical;gtk_orientable_set_orientation(GTK_ORIENTABLE(history_layout),stacked ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
         gtk_size_group_set_mode(inspector_width,stacked ? GTK_SIZE_GROUP_NONE : GTK_SIZE_GROUP_HORIZONTAL);
-        GtkStyleContext *style=gtk_widget_get_style_context(inspector_scroll);
+        GtkStyleContext *style=gtk_widget_get_style_context(inspector_panel);
         if (stacked) gtk_style_context_add_class(style,"stacked");else gtk_style_context_remove_class(style,"stacked");
         gtk_box_set_spacing(GTK_BOX(history_layout),stacked ? 8 : 18);
         gtk_widget_set_size_request(inspector_scroll,stacked ? -1 : 264,stacked ? 220 : -1);
@@ -1116,8 +1125,10 @@ static void make_manager(void)
     inspector=box(GTK_ORIENTATION_VERTICAL,12);gtk_style_context_add_class(gtk_widget_get_style_context(inspector),"inspector");
     make_inspector();
     inspector_scroll=gtk_scrolled_window_new(NULL,NULL);gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(inspector_scroll),GTK_POLICY_NEVER,GTK_POLICY_AUTOMATIC);
-    gtk_style_context_add_class(gtk_widget_get_style_context(inspector_scroll),"inspector-panel");
-    gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(history_layout,inspector_scroll,FALSE);
+    inspector_panel=box(GTK_ORIENTATION_VERTICAL,0);
+    gtk_style_context_add_class(gtk_widget_get_style_context(inspector_panel),"inspector-panel");
+    gtk_widget_set_size_request(inspector_scroll,264,-1);gtk_container_add(GTK_CONTAINER(inspector_scroll),inspector);pack(inspector_panel,inspector_scroll,TRUE);
+    pack(inspector_panel,inspector_session,FALSE);pack(history_layout,inspector_panel,FALSE);
     manager_footer=box(GTK_ORIENTATION_VERTICAL,0);pack(manager_footer,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,18);gtk_style_context_add_class(gtk_widget_get_style_context(footer),"storage-footer");
     pack(footer,history_footer,TRUE);
@@ -1127,7 +1138,7 @@ static void make_manager(void)
     gtk_label_set_xalign(GTK_LABEL(manager_space),1);gtk_label_set_xalign(GTK_LABEL(manager_status),1);
     /* Share the inspector column width so the footer link ends at the tree's right edge. */
     inspector_width=gtk_size_group_new(GTK_SIZE_GROUP_HORIZONTAL);
-    gtk_size_group_add_widget(inspector_width,inspector_scroll);gtk_size_group_add_widget(inspector_width,manager_feedback);
+    gtk_size_group_add_widget(inspector_width,inspector_panel);gtk_size_group_add_widget(inspector_width,manager_feedback);
     gtk_widget_set_halign(manager_feedback,GTK_ALIGN_END);gtk_box_pack_end(GTK_BOX(footer),manager_feedback,FALSE,FALSE,0);
     pack(manager_footer,footer,FALSE);pack(manager_body,manager_footer,FALSE);
     g_signal_connect(manager,"configure-event",G_CALLBACK(manager_configure),NULL);
@@ -1591,6 +1602,7 @@ static void load_style(void)
         ".history-list row:selected { background: #e7eee0; border-color: #c3d4b7; } .history-list row:hover { background: #eef2e9; }"
         ".history-list row.jump-target { background: #d7e8c8; border-color: #579044; }"
         ".badge { color: #507343; font-size: 13px; } .inspector-panel { border-left: 1px solid #d8ddd3; } .inspector { padding: 4px 0 18px 18px; }"
+        ".session-policy { padding: 12px 0 18px 18px; }"
         ".inspector-panel.stacked { border-left: 0; border-top: 1px solid #d8ddd3; } .inspector-panel.stacked .inspector { padding: 12px 0; }"
         "button.link { background: transparent; box-shadow: none; border: 0; color: #306c99; padding: 5px 0; }"
         "button.link.history-jump { padding: 5px 8px; }"
