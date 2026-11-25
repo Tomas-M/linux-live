@@ -622,17 +622,23 @@ static void position_bubble(Bubble *bubble)
     int width=MIN(480,area.width-20);
     if (bubble==&popup)
     {
-        gtk_widget_get_preferred_width(bubble->body,NULL,&width);
-        width=MIN(CLAMP(width,350,600),area.width-20);
+        int natural=0;GList *children=gtk_container_get_children(GTK_CONTAINER(bubble->body));
+        for (GList *item=children;item;item=item->next)
+        {
+            int child_width;if (!gtk_widget_get_visible(item->data)) continue;
+            gtk_widget_get_preferred_width(item->data,NULL,&child_width);natural=MAX(natural,child_width);
+        }
+        g_list_free(children);width=MIN(CLAMP(natural+40,350,600),area.width-20);
     }
-    else gtk_widget_set_size_request(bubble->body,MAX(260,width-40),-1);
-    gtk_widget_set_margin_top(bubble->body,16);gtk_widget_set_margin_bottom(bubble->body,16);
-    GtkRequisition size;gtk_widget_get_preferred_size(bubble->body,NULL,&size);
-    int height=size.height+12;
+    gtk_widget_set_size_request(bubble->body,MAX(1,width-40),-1);
+    /* Include content padding and the tail without temporarily changing live margins. */
+    int height;gtk_widget_get_preferred_height_for_width(bubble->body,width,NULL,&height);
+    height+=44-gtk_widget_get_margin_top(bubble->body)-gtk_widget_get_margin_bottom(bubble->body);
     bubble->bottom=y-area.y>=height;
     gtk_widget_set_margin_top(bubble->body,bubble->bottom ? 16 : 28);
     gtk_widget_set_margin_bottom(bubble->body,bubble->bottom ? 28 : 16);
-    gtk_window_resize(GTK_WINDOW(bubble->window),width,height);
+    int current_width,current_height;gtk_window_get_size(GTK_WINDOW(bubble->window),&current_width,&current_height);
+    if (current_width!=width || current_height!=height) gtk_window_resize(GTK_WINDOW(bubble->window),width,height);
     anchor_bubble(bubble,width,height);
 }
 /* Ordinary window focus dismisses the interactive bubble without intercepting outside input. */

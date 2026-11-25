@@ -67,6 +67,7 @@ Slax
   the cached tree ready for opening its window.
 - Show label tooltips only for truncated text and remove redundant close-button hints.
 - Stack source and changes locations only when their contents no longer fit side by side.
+- Size status bubbles to their actual text width and avoid redundant resize requests.
 
 - Show a white battery tray icon on systems with a battery, with charge levels
   and a plug when charging or fully charged on external power.
