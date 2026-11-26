@@ -1,0 +1,11 @@
+#!/bin/sh
+
+MEMORY=/run/initramfs/memory
+# Initramfs records the actual data directory, including custom boot paths.
+DATA=$(cat "$MEMORY/storage/source" 2>/dev/null)
+for SOURCE in "$DATA" "$MEMORY/toram" "$MEMORY/iso/slax" "$MEMORY/data/slax"; do
+   if [ -n "$SOURCE" ] && [ -f "$SOURCE/installer/slax-install-linux" ] && [ -x "$SOURCE/installer/slax-install-linux" ]; then
+      if [ "$#" -eq 0 ]; then set -- "$SOURCE"; fi
+      exec "$SOURCE/installer/slax-install-linux" "$@"
+   fi
+done

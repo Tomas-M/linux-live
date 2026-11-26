@@ -202,14 +202,14 @@ reporting progress.
   directory and launch them through native process APIs without extra windows or
   terminals. Capture helper output for installer errors; Windows console helpers
   must use `CREATE_NO_WINDOW`. Ship the UPX copy on the medium as
-  `/slax/installer/slax-install-linux`. `03-desktop/copy` installs the unpacked
-  ELF at `/usr/bin/slax-install-linux`, compressed by
-  SquashFS, with a Slax Installer entry in xlunch and no desktop shortcut.
+  `/slax/installer/slax-install-linux`. The desktop ships a launcher script at
+  `/usr/bin/slax-install-linux`, with a Slax Installer entry in xlunch and no
+  desktop shortcut.
   Use the selected generated icon with Slax's original clover behind a hard drive,
   a downward arrow and a large blue USB drive, matching the other application icons.
   Ship icon sizes only up to 64 px; do not generate or retain larger variants.
-  The installed launcher detects
-  the current Slax data in `/run/initramfs/memory/{toram,iso/slax,data/slax}`.
+  The launcher executes the first installer found in the recorded live data
+  directory or in `/run/initramfs/memory/{toram,iso/slax,data/slax}`.
   Copy-to-RAM contains the complete source and must work without the original CD.
   When incrementally changing application entries or icons, also refresh the final
   icon and xlunch caches in `04-chromium`, which override the desktop module's caches.

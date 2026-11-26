@@ -61,6 +61,7 @@ Linux Live Kit
 Slax
 ----
 
+- Launch Slax Installer from the live data, including when copied to RAM.
 - Show blue boot dots for changes in RAM, green for disk-backed changes and red
   when Slax falls back to RAM because saved-changes storage needs attention.
 - Prefer volume labels in Partition Manager and let Rename change the label on
@@ -269,5 +270,4 @@ Slax
 - Allow the active local guest session to restart or shut down through logind.
 - Replace shared-folder bind mounts with ACLs and XDG directories, keeping root
   and guest downloads separate, including their sandboxed application profiles.
-- Keep the Linux installer UPX-compressed on installation media and unpacked in
-  the running desktop.
+- Keep the Linux installer UPX-compressed on installation media.
