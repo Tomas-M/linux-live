@@ -1868,11 +1868,14 @@ must follow the general Slax repair rules above.
   Replay a dirty XFS log only through a normal mount and unmount. Verify a
   writable mount, writeback, normal unmount and native flags before offering a
   reboot. Clear active.txt only in the recorded saved-changes directory.
-  Keep merged stdout and stderr in `/run/slax-status/fsck.log` and show it live
-  in a scrolling, resizable GTK window, retained after completion. Publish a new
-  log inode per job so the viewer never shows an earlier job's report. Recovery
-  buttons in both bubbles use the ordinary theme, without the green action class.
-  Failures retain the block.
+  Keep the repair confirmation, indeterminate progress and outcome in one GTK
+  dialog. Show merged stdout and stderr under Show details, collapsed by default,
+  and retain the report in `/run/slax-status/fsck.log`. Publish a new log inode
+  per job so the viewer never shows an earlier job's report. After recovering
+  saved changes, explain their current RAM session's loss at shutdown or restart.
+  Offer Restart Slax on the left and Continue in RAM as the keyboard default.
+  Recovery buttons in both bubbles use the ordinary theme, without the green
+  action class. Failures retain the block.
   After success rename the runtime device record to checked-device so automount
   leaves the drive unmounted until reboot. Refresh the udev catalogue for all
   repaired members and allow explicit mounts in the current session.

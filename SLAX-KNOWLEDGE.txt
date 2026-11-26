@@ -189,12 +189,14 @@ BOOT AND PERSISTENCE
   or Slax cannot mount their drive, changes may start in RAM. Slax Status names
   the affected device and explains why it needs attention. Choose
   Check and repair, close files using that drive, then confirm. Slax unmounts
-  the filesystem, repairs it and verifies that it mounts and unmounts cleanly.
-  After a successful check, mount the drive in File Manager or choose Restart
-  to resume its saved changes.
-  Changes made in this RAM run stay in RAM.
-  Failed checks leave saved changes blocked. A window shows live checker output
-  and scrolls as it arrives; the full report is at /run/slax-status/fsck.log.
+  the filesystem, repairs problems it can fix and verifies that the drive can
+  be used again. When Slax reports success, choose Restart Slax to resume
+  the drive's saved changes or Continue in RAM to keep working in the current
+  session. Changes made in this RAM session are lost at shutdown or restart.
+  Copy important files to a drive first. You can also mount the checked drive
+  in File Manager.
+  Failed checks leave saved changes blocked. Choose Show details in the check
+  dialog to view live output. The full report is at /run/slax-status/fsck.log.
   Automatic repair supports FAT, exFAT, ext2/3/4 and XFS. Btrfs starts with a
   read-only check. Review errors before choosing Attempt Btrfs repair: repair
   requires a separate confirmation and can cause unrecoverable data loss.

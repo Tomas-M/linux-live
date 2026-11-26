@@ -1346,9 +1346,11 @@ static void restart_failed(const char *detail)
     }
     else
     {
-        const char *effect=!strcmp(str(restart_request,"op"),"storage.repair") ? "The filesystem check completed. Restart Slax from the desktop menu when ready." : "Any completed drive setup will take effect at the next start.";
-        char *text=g_strdup_printf("%s\n\nThis run is still in RAM. %s This run will not be transferred.",detail,effect);
-        g_clear_pointer(&restart_request,json_object_unref);update_ui();message("Cannot restart Slax",text);g_free(text);
+        gboolean repaired=!strcmp(str(restart_request,"op"),"storage.repair");
+        g_clear_pointer(&restart_request,json_object_unref);update_ui();
+        if (repaired) {repair_restart_choice(detail);return;}
+        char *text=g_strdup_printf("%s\n\nThis run is still in RAM and will not be transferred. Any completed drive setup will take effect at the next start.",detail);
+        message("Cannot restart Slax",text);g_free(text);
     }
 }
 

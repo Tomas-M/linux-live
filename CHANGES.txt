@@ -63,6 +63,8 @@ Slax
 
 - Show blue boot dots for changes in RAM, green for disk-backed changes and red
   when Slax falls back to RAM because saved-changes storage needs attention.
+- Keep filesystem repair in one dialog with progress, optional checker output
+  and an explicit choice to restart or continue working in RAM.
 - Render battery tray icons at their native size with one-pixel outlines,
   align them one pixel higher, and place the battery after Slax Status.
 - Keep four recent automatic saved states while preserving named and protected states.
@@ -147,7 +149,9 @@ Slax
   offline filesystem check and repair, followed by a restart. Use native FAT,
   exFAT, ext2/3/4 and XFS tools, verify the final result and retain the active
   marker on failure. Check Btrfs read-only first and offer repair after a separate
-  confirmation. Show live, scrolling checker output and ordinary recovery buttons.
+  confirmation. Keep confirmation, progress and results in one dialog with an
+  expandable report. Confirm when the disk check passes and explain which changes
+  a restart restores and which it discards.
   Direct NTFS users to Windows drive repair.
   Show CD, disk and RAM icons beside running-source and changes locations.
 - Label automatic saved states as Saved on restart in the manager and boot menu.

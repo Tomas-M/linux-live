@@ -286,6 +286,7 @@ static JsonObject *repair_filesystem(const char *id, gboolean btrfs_repair, GErr
          if (ok) ok=repair_check(tool,"--repair",fd,log,error)==0;
          for (guint i=0;ok && i<devices->len;i++) if (fsync(g_array_index(devices,int,i))) ok=fail(error,errno,g_strerror(errno));
          if (ok) ok=repair_check(tool,"--readonly",fd,log,error)==0;
+         if (ok) json_object_set_boolean_member(recovery,"repaired",TRUE);
       }
       else ok=code==0;
    }
@@ -316,7 +317,7 @@ static JsonObject *repair_filesystem(const char *id, gboolean btrfs_repair, GErr
       if (ok) ok=repair_check(tool,ext ? "-fn" : "-n",fd,log,error)==0;
       if (!ok && (!error || !*error)) fail(error,EIO,"The filesystem check did not finish cleanly. The filesystem remains blocked. See /run/slax-status/fsck.log for the checker report.");
    }
-   if (!ok && (!error || !*error)) fail(error,EIO,"The filesystem check did not finish cleanly. The filesystem remains blocked. Review the checker report below.");
+   if (!ok && (!error || !*error)) fail(error,EIO,"The filesystem check did not finish cleanly. The filesystem remains blocked. Open the details to review the checker report.");
    if (ok) ok=repair_members(devices,paths,uuid,filesystem,error);
    if (ok && !needs_repair)
    {
