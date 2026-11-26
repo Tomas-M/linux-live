@@ -50,7 +50,11 @@ splash_start
 while ! persistent_changes "$DATA" "$CHANGES"; do
    fatal 'Could not activate persistent changes'
 done
-splash_start
+STORAGE_KIND="$(cat "$MEMORY/storage/kind")"
+if [ "$STORAGE_KIND" = ram ] && [ -f "$MEMORY/storage/unclean/device" ]; then
+   STORAGE_KIND=recovery
+fi
+splash_start "$STORAGE_KIND"
                                                                                                                                                       debug_shell
 # copy to RAM if needed
 DATA="$(copy_to_ram "$DATA" "$CHANGES")"

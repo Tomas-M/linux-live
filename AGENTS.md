@@ -1765,6 +1765,10 @@ must follow the general Slax repair rules above.
 - Boot should remain visually quiet. The custom framebuffer program is
   `tools/fbmenu.c`, compiled statically with musl; its source contains build
   instructions. Avoid adding external graphics programs to the initramfs.
+  Slax boot dots stay neutral until storage activation finishes, then turn blue
+  for changes in RAM or green for activated disk storage. Show red when boot
+  falls back to RAM and records a saved-changes drive for desktop recovery.
+  Keep the color and animation frame through the framebuffer renderer's root handoff.
   Shutdown uses `fbmenu --shutdown` from the retained initramfs after Xorg, getty
   and the display manager stop. Its shutdown-only systemd unit must end during
   systemd's final process termination, before systemd acquires the console.

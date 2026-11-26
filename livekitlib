@@ -48,11 +48,13 @@ splash_disable()
 }
 
 # Start graphics without changing video modes; Esc remains disabled for this boot.
+# $1 = optional confirmed storage kind for the boot dots
 splash_start()
 {
    [ "$SPLASH_LOG" ] || return 0
    if [ -e /run/bootsplash.disabled ]; then splash_disable; return; fi
-   fbmenu --start || splash_disable
+   if [ "$1" ]; then set -- --storage "$1"; fi
+   fbmenu --start "$@" || splash_disable
 }
 
 debug_start()

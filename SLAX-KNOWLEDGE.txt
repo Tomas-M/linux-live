@@ -170,6 +170,10 @@ BOOT AND PERSISTENCE
   F5 Refresh detects newly connected disks in the drive list. Esc from history
   returns to drives; Esc from drives continues in RAM without saving changes.
   Last saved state respects the previous run's Keep changes after restart choice.
+- During graphical startup, blue dots under the Slax logo mean changes are in
+  RAM. Green dots mean Slax is using disk storage for changes. Red dots mean
+  Slax switched to RAM because the drive for saved changes needs attention.
+  The dots stay neutral while Slax is selecting and checking storage.
 - Run Slax from RAM (with no automount) copies the complete Slax source into memory,
   allowing removal of the original medium. This entry keeps system changes in RAM;
   save files to a mounted drive to retain them after shutdown. This entry leaves

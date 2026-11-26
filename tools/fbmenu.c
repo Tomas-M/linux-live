@@ -40,7 +40,8 @@
 
 static const char *socket_path="/run/fbmenu.sock";
 static const char *disabled_path="/run/bootsplash.disabled";
-struct request { char operation, cancel, refresh; char title[128]; char file[1024]; };
+enum storage { STORAGE_PENDING, STORAGE_RAM, STORAGE_DISK, STORAGE_RECOVERY };
+struct request { char operation, cancel, refresh, storage; char title[128]; char file[1024]; };
 struct item { char *value, *title, *detail, *parent; int depth, ancestor; };
 /* Keep navigation keys outside the Unicode range. */
 enum { KEY_UP=0x110000, KEY_DOWN, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN, KEY_F5 };
@@ -51,7 +52,7 @@ static struct fb_var_screeninfo screen;
 static struct fb_fix_screeninfo layout;
 static unsigned char *pixels, *logo;
 static int logo_width, logo_height, selected, count, menu_client=-1;
-static unsigned accent=0x80b8e0;
+static unsigned accent=0x80b8e0, pending_color, ram_color, recovery_color, dots_color;
 static struct item *items;
 static struct request menu;
 static struct timespec menu_time;
@@ -195,6 +196,9 @@ static void branding(const char *directory)
       if (!strncmp(line,"LOGO_WIDTH=",11)) logo_width=strtol(line+11,NULL,10);
       if (!strncmp(line,"LOGO_HEIGHT=",12)) logo_height=strtol(line+12,NULL,10);
       if (!strncmp(line,"MENU_COLOR=",11)) accent=strtoul(line+11,NULL,16);
+      if (!strncmp(line,"PENDING_COLOR=",14)) pending_color=strtoul(line+14,NULL,16);
+      if (!strncmp(line,"RAM_COLOR=",10)) ram_color=strtoul(line+10,NULL,16);
+      if (!strncmp(line,"RECOVERY_COLOR=",15)) recovery_color=strtoul(line+15,NULL,16);
    }
    fclose(file);
    if (logo_width<=0 || logo_height<=0 || logo_width>4096 || logo_height>4096) return;
@@ -358,17 +362,32 @@ static void draw_menu(void)
    } else text(((int)screen.xres-text_width(hint))/2,(int)screen.yres-24,hint,0x888888,0,0);
 }
 
-/* Hold every dots frame for 250 ms, independently of keyboard and boot requests. */
-static void draw_dots(unsigned frame, int clear)
+/* Use the menu accent if the branding has no separate storage color. */
+static unsigned boot_dots_color(enum storage storage)
+{
+   if (storage==STORAGE_PENDING && pending_color) return pending_color;
+   if (storage==STORAGE_RAM && ram_color) return ram_color;
+   if (storage==STORAGE_RECOVERY && recovery_color) return recovery_color;
+   return accent;
+}
+
+/* Repaint the current frame when the storage mode changes without moving the timer. */
+static void paint_dots(unsigned frame, int clear)
 {
    static const unsigned masks[]={1,3,7,6,4,0};
    unsigned mask=clear?0:masks[frame%(sizeof(masks)/sizeof(*masks))];
    int y=((int)screen.yres-logo_height)/2;
    for (int row=0;row<4;row++) for (int x=0;x<28;x++) {
       int dot=x/12;
-      unsigned color=(dot<3 && x%12<4 && (mask&(1<<dot)))?accent:0;
+      unsigned color=(dot<3 && x%12<4 && (mask&(1<<dot)))?dots_color:0;
       pixel(((int)screen.xres-28)/2+x,y+logo_height+25+row,color);
    }
+}
+
+/* Hold every dots frame for 250 ms, independently of keyboard and boot requests. */
+static void draw_dots(unsigned frame, int clear)
+{
+   paint_dots(frame,clear);
    if (clear) return;
    struct itimerspec delay={.it_value={.tv_nsec=250000000}};
    timerfd_settime(animation,0,&delay,NULL);
@@ -543,6 +562,7 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
    animation=ready_fd>=0?6:timerfd_create(CLOCK_MONOTONIC,TFD_CLOEXEC|TFD_NONBLOCK);
    if (animation<0) return 1;
    if (directory) branding(directory);
+   if (!dots_color) dots_color=shutting_down ? accent : boot_dots_color(STORAGE_PENDING);
    if (log) logfd=open(log,O_RDONLY);
    int listener=socket(AF_UNIX,SOCK_STREAM,0), keep=0, keyboard_mode=0, taken=0;
    unsigned pauses=0;
@@ -623,16 +643,21 @@ static int serve(const char *directory, const char *log, enum phase phase, int r
                /* The new owner acknowledges only after it has acquired the tty. */
                int null=open("/dev/null",O_RDWR);
                for (int i=0;i<3;i++) dup2(null,i);
-               /* Carry the live timer and dots phase through exec without resetting either. */
+               /* Carry the timer, dots phase and storage color through exec. */
                int ticking=fcntl(animation,F_DUPFD,6);
                dup2(client,5); dup2(ticking,6);
                for (int i=3;i<256;i++) if (i!=5 && i!=6) close(i);
-               char progress[16];
+               char progress[16], color[16];
                snprintf(progress,sizeof(progress),"%u",frame);
-               execl("/run/fbmenu","fbmenu","--resume","/run/bootsplash","/var/log/boot.log","--ready",progress,(char *)NULL);
+               snprintf(color,sizeof(color),"%x",dots_color);
+               execl("/run/fbmenu","fbmenu","--resume","/run/bootsplash","/var/log/boot.log","--ready",progress,color,(char *)NULL);
                int console=open("/dev/tty1",O_RDWR);
                ioctl(console,KDSETMODE,KD_TEXT);
                _exit(1);
+            }
+            if (request.operation=='s' && request.storage && !shutting_down) {
+               dots_color=boot_dots_color(request.storage);
+               if (graphics && menu_client<0) paint_dots(frame,0);
             }
             if (request.operation=='s' && !disabled && !pauses) {
                /* systemd restores KD_TEXT before handing shutdown to the initramfs. */
@@ -719,8 +744,10 @@ int main(int argc, char **argv)
    }
    if (argc==4 && (!strcmp(argv[1],"--serve") || !strcmp(argv[1],"--resume")))
       return serve(argv[2],argv[3],!strcmp(argv[1],"--resume")?HANDOFF:BOOT,-1,0);
-   if (argc==6 && !strcmp(argv[1],"--resume") && !strcmp(argv[4],"--ready"))
+   if (argc==7 && !strcmp(argv[1],"--resume") && !strcmp(argv[4],"--ready")) {
+      dots_color=strtoul(argv[6],NULL,16);
       return serve(argv[2],argv[3],HANDOFF,5,strtoul(argv[5],NULL,10));
+   }
    struct request request={0};
    while (argc>2 && argv[argc-1][0]=='-' && !strcmp(argv[1],"--menu")) {
       if (!strcmp(argv[argc-1],"--cancel")) request.cancel=1;
@@ -734,6 +761,11 @@ int main(int argc, char **argv)
       snprintf(request.file,sizeof(request.file),"%s",argv[3]);
    } else if (argc==3 && !strcmp(argv[1],"--handoff")) {
       request.operation='r'; snprintf(request.file,sizeof(request.file),"%s",argv[2]);
+   } else if (argc==4 && !strcmp(argv[1],"--start") && !strcmp(argv[2],"--storage")) {
+      if (!strcmp(argv[3],"ram")) request.storage=STORAGE_RAM;
+      if (!strcmp(argv[3],"container")) request.storage=STORAGE_DISK;
+      if (!strcmp(argv[3],"recovery")) request.storage=STORAGE_RECOVERY;
+      if (request.storage) request.operation='s';
    } else if (argc==3 && !strcmp(argv[1],"--start")) {
       request.operation='s'; socket_path=argv[2];
    } else if (argc==2) {
@@ -745,7 +777,7 @@ int main(int argc, char **argv)
       if (!strcmp(argv[1],"--keep")) request.operation='h';
    }
    if (!request.operation) {
-      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--refresh] | --handoff ROOT | --start [SOCKET] | --pause | --continue | --disable | --stop | --keep\n");
+      fprintf(stderr,"Usage: fbmenu --serve BRANDDIR LOG | --shutdown BRANDDIR | --menu TITLE FILE [--cancel] [--refresh] | --handoff ROOT | --start [SOCKET | --storage ram|container|recovery] | --pause | --continue | --disable | --stop | --keep\n");
       return 1;
    }
    int fd=connect_server(), child=0;

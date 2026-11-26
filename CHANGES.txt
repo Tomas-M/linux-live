@@ -61,6 +61,8 @@ Linux Live Kit
 Slax
 ----
 
+- Show blue boot dots for changes in RAM, green for disk-backed changes and red
+  when Slax falls back to RAM because saved-changes storage needs attention.
 - Render battery tray icons at their native size with one-pixel outlines,
   align them one pixel higher, and place the battery after Slax Status.
 - Keep four recent automatic saved states while preserving named and protected states.

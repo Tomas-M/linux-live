@@ -2,5 +2,8 @@
 LOGO_WIDTH=300
 LOGO_HEIGHT=150
 
-# Accent color for the menu and running dots (RGB).
+# Menu accent and boot dot colors (RGB).
 MENU_COLOR=61ca00
+PENDING_COLOR=9aa2a6
+RAM_COLOR=2784d8
+RECOVERY_COLOR=e0524d
