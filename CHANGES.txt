@@ -63,6 +63,8 @@ Slax
 
 - Show blue boot dots for changes in RAM, green for disk-backed changes and red
   when Slax falls back to RAM because saved-changes storage needs attention.
+- Prefer volume labels in Partition Manager and let Rename change the label on
+  supported filesystems. Allow setting a volume label when creating or formatting.
 - Keep filesystem repair in one dialog with progress, optional checker output
   and an explicit choice to restart or continue working in RAM.
 - Render battery tray icons at their native size with one-pixel outlines,

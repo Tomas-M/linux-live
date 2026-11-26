@@ -102,7 +102,9 @@ PARTITION_MANAGER_COMMIT=$(git ls-remote https://github.com/Tomas-M/partition-ma
 wget -O "$PARTITION_MANAGER_BUILD/source.tar.gz" "https://github.com/Tomas-M/partition-manager/archive/$PARTITION_MANAGER_COMMIT.tar.gz"
 mkdir "$PARTITION_MANAGER_BUILD/source"
 tar -mxf "$PARTITION_MANAGER_BUILD/source.tar.gz" -C "$PARTITION_MANAGER_BUILD/source" --strip-components=1
-patch -d "$PARTITION_MANAGER_BUILD/source" -p1 < "$CWD/patches/partition-manager-style.diff"
+if ! git -C "$PARTITION_MANAGER_BUILD/source" apply --reverse --check "$CWD/patches/partition-manager-style.diff" 2>/dev/null; then
+   git -C "$PARTITION_MANAGER_BUILD/source" apply "$CWD/patches/partition-manager-style.diff"
+fi
 make -C "$PARTITION_MANAGER_BUILD/source" CFLAGS='-Os -Wall -Wextra -Wno-deprecated-declarations' LDFLAGS=-s
 make -C "$PARTITION_MANAGER_BUILD/source" check
 make -C "$PARTITION_MANAGER_BUILD/source" DESTDIR="$PACKAGE" install

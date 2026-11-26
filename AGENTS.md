@@ -2044,7 +2044,7 @@ must follow the general Slax repair rules above.
   actions disabled from preparation through reboot; report cleanup and launch failures.
   Green action buttons retain a subtle gradient, bottom edge and shadow with
   pressed feedback in Slax Status and Partition Manager.
-  Apply `partition-manager-style.diff` after fetching Partition Manager so fresh
+  Apply `partition-manager-style.diff` when upstream lacks its changes so fresh
   builds retain the approved button relief and operation-percentage spacing.
   Keep the saved-state manager's foreground styling when inactive. Clear GTK's
   backdrop state after its window-state handler and disable content transitions;

@@ -283,6 +283,10 @@ INSTALLATION AND DISKS
   check the disk and sibling list in the confirmation. Eligible target partitions
   are larger than 1 GB. Boot options depend on the actual layout. After completion,
   reboot and select the target drive in the computer's boot menu.
+- In Partition Manager, select a filesystem and choose Rename to change its
+  volume label. Apply the plan with the filesystem unmounted. New and formatted
+  filesystems can receive a label in the same plan. On unformatted or unsupported
+  GPT partitions, Rename edits the GPT partition name.
 - Partition Manager edits partition layouts/filesystems: Add to plan > Review
   changes > Apply changes. Slax Installer copies Slax and prepares booting.
 - A USB made by directly writing the ISO has separate instructions on USB-SPACE.
