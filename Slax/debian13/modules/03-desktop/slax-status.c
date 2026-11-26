@@ -17,7 +17,7 @@
 typedef struct { GtkWidget *window, *body; int arrow; gboolean bottom; } Bubble;
 typedef struct { JsonObject *point; int depth; gboolean path; GtkWidget *widget, *name, *size; } HistoryRow;
 typedef struct { JsonObject *request; char *op, *store; gboolean mutation; } Request;
-typedef struct { GtkWidget *text, *icon; } Location;
+typedef struct { GtkWidget *heading, *text, *icon; } Location;
 static Request *active_request; /* Borrowed from the running GTask. */
 static JsonObject *state, *history, *pending_request;
 static JsonObject *history_refresh_request; /* Retain saved-state edits until refreshed history confirms them. */
@@ -508,8 +508,8 @@ static GtkWidget *primary_button(const char *text, const char *op)
 /* Hold a stable width and reserve a single line for changing descriptions. */
 static GtkWidget *location_row(const char *heading, Location *value)
 {
-    GtkWidget *row=box(GTK_ORIENTATION_HORIZONTAL,12),*name=label(heading,"muted");
-    gtk_widget_set_size_request(name,98,-1);pack(row,name,FALSE);
+    GtkWidget *row=box(GTK_ORIENTATION_HORIZONTAL,12);value->heading=label(heading,"muted");
+    gtk_widget_set_size_request(value->heading,98,-1);pack(row,value->heading,FALSE);
     GtkWidget *content=box(GTK_ORIENTATION_HORIZONTAL,6);
     value->icon=gtk_image_new_from_icon_name("slax-status-memory-symbolic",GTK_ICON_SIZE_MENU);gtk_image_set_pixel_size(GTK_IMAGE(value->icon),16);gtk_widget_set_no_show_all(value->icon,TRUE);
     pack(content,value->icon,FALSE);value->text=label("Loading…",NULL);pack(content,value->text,TRUE);pack(row,content,TRUE);return row;
@@ -560,7 +560,9 @@ static void update_save(GtkWidget *toggle, GtkWidget *help)
         gtk_switch_set_state(GTK_SWITCH(toggle),save);updating=FALSE;
     }
     gtk_widget_set_sensitive(toggle,flag(run(),"canSetSave") && (!mutating || changing("run.save")) && !restart_request);
-    const char *text=save ? "Keep installed apps, settings and saved files." : "Discard this session’s changes after restart.";
+    const char *text=save
+        ? "Next time Slax starts, it will pick up where you left off, with the changes made in Slax since this startup."
+        : "Next time Slax starts, it will return to the state it started from at the beginning of this session.";
     if (!strcmp(str(run(),"kind"),"ram")) text="Changes stay in RAM until shutdown.";
     else if (!flag(run(),"canSetSave")) text="This run cannot change its save setting.";
     set_label(help,text);
@@ -696,6 +698,8 @@ static void make_popups(void)
     popup_meter=gtk_progress_bar_new();gtk_widget_set_tooltip_text(popup_meter,"Space used");pack(storage,popup_meter,FALSE);pack(popup.body,storage,FALSE);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     pack(popup.body,save_control(&popup_save,&popup_help),FALSE);
+    gtk_label_set_max_width_chars(GTK_LABEL(popup_help),35);
+    gtk_widget_set_halign(popup_help,GTK_ALIGN_START);
     g_signal_connect(popup_save,"state-set",G_CALLBACK(save_changed),NULL);
     pack(popup.body,gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),FALSE);
     GtkWidget *footer=box(GTK_ORIENTATION_HORIZONTAL,10);popup_status=label("","muted");pack(footer,popup_status,TRUE);
@@ -1206,6 +1210,7 @@ static void update_ui(void)
     JsonObject *active=find(array(state,"stores"),"id",str(run(),"storeId"));
     const char *mode=state ? "Temporary run" : "Slax Status";
     if (active) mode=flag(run(),"save") ? "Saving changes" : "Changes will be discarded";
+    set_label(popup_storage.heading,!strcmp(str(run(),"kind"),"ram") ? "Changes in" : "Changes on");
     set_label(popup_title,"Slax Status");set_location(&popup_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&popup_storage,str(run(),"storage"),str(run(),"storageIcon"));
     set_location(&manager_source,str(run(),"source"),str(run(),"sourceIcon"));set_location(&manager_storage,str(run(),"storage"),str(run(),"storageIcon"));
     JsonObject *recovery=object(state,"recovery");

@@ -83,7 +83,8 @@ Slax
 - Show continuous activity in Rename until the updated saved-state name is visible.
 
 - Clarify keeping changes after restart versus saving a named state, with
-  separate descriptions and consistent switch wording.
+  separate descriptions and consistent switch wording. Explain which changes
+  carry over from this startup and which state Slax returns to when saving is off.
 
 - Show deletion activity in the saved state’s Delete button, keeping available
   capacity visible and blocking overlapping saved-state actions until refreshed
