@@ -1,0 +1,34 @@
+Description: Apply both EWMH maximization axes in one resize
+Author: Tomas-M
+Forwarded: not-needed
+
+--- a/src/Ewmh.cc
++++ b/src/Ewmh.cc
+@@ -1118,6 +1118,27 @@
+         // ce.data.l[0] = the action (remove, add or toggle)
+         // ce.data.l[1] = the first property to alter
+         // ce.data.l[2] = second property to alter (can be zero)
++        const Atom horizontal = m_net->wm_state_maximized_horz;
++        const Atom vertical = m_net->wm_state_maximized_vert;
++        const Atom first = ce.data.l[1], second = ce.data.l[2];
++        const bool both_axes = (first == horizontal && second == vertical) ||
++                               (first == vertical && second == horizontal);
++        // Apply a paired maximize request with one client resize and state notification.
++        if (both_axes) {
++            if (ce.data.l[0] == STATE_REMOVE)
++                win.setMaximizedState(WindowState::MAX_NONE);
++            else if (ce.data.l[0] == STATE_ADD)
++                win.setMaximizedState(WindowState::MAX_FULL);
++            else if (ce.data.l[0] == STATE_TOGGLE) {
++                int toggled = WindowState::MAX_NONE;
++                if (!win.isMaximizedHorz())
++                    toggled |= WindowState::MAX_HORZ;
++                if (!win.isMaximizedVert())
++                    toggled |= WindowState::MAX_VERT;
++                win.setMaximizedState(toggled);
++            }
++            return true;
++        }
+         if (ce.data.l[0] == STATE_REMOVE) {
+             setState(win, ce.data.l[1], false, *winclient);
+             setState(win, ce.data.l[2], false, *winclient);

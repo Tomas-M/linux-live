@@ -1,0 +1,146 @@
+Description: Animate iconification toward the taskbar button
+Author: Tomas-M
+Forwarded: not-needed
+
+--- a/src/atom.h
++++ b/src/atom.h
+@@ -47,6 +47,8 @@
+ 	_NET_WM_WINDOW_TYPE_DND, \
+ 	_NET_WM_STATE, \
+ 	_NET_WM_STATE_FULLSCREEN, \
++	_NET_WM_STATE_HIDDEN, \
++	_NET_WM_ICON_GEOMETRY, \
+ 	_NET_WM_BYPASS_COMPOSITOR, \
+ 	UTF8_STRING, \
+ 	C_STRING
+--- a/src/config.h
++++ b/src/config.h
+@@ -84,6 +84,9 @@
+ 	ANIMATION_TRIGGER_CLOSE,
+ 	/// When a window's geometry changes
+ 	ANIMATION_TRIGGER_GEOMETRY,
++	/// When a window moves to or from a taskbar button.
++	ANIMATION_TRIGGER_MINIMIZE,
++	ANIMATION_TRIGGER_RESTORE,
+ 
+ 	ANIMATION_TRIGGER_INVALID,
+ 	ANIMATION_TRIGGER_COUNT = ANIMATION_TRIGGER_INVALID,
+@@ -97,6 +100,8 @@
+     [ANIMATION_TRIGGER_OPEN] = "open",
+     [ANIMATION_TRIGGER_CLOSE] = "close",
+     [ANIMATION_TRIGGER_GEOMETRY] = "geometry",
++    [ANIMATION_TRIGGER_MINIMIZE] = "minimize",
++    [ANIMATION_TRIGGER_RESTORE] = "restore",
+ };
+ 
+ struct script;
+--- a/src/wm/win.c
++++ b/src/wm/win.c
+@@ -1786,6 +1786,57 @@
+ }
+ 
+ #define WSTATE_PAIR(a, b) ((int)(a) * NUM_OF_WSTATES + (int)(b))
++
++/// Read the taskbar's current button and fit the window inside it without stretching.
++static bool win_script_icon_target(struct session *ps, xcb_window_t client,
++                                   struct win_script_context *ctx) {
++	auto prop = x_get_prop(&ps->c, client, ps->atoms->a_NET_WM_ICON_GEOMETRY,
++	                      4, XCB_ATOM_CARDINAL, 32);
++	bool valid = prop.nitems == 4 && prop.r->bytes_after == 0;
++	if (valid) {
++		double x = prop.p32[0], y = prop.p32[1];
++		double width = prop.c32[2], height = prop.c32[3];
++		valid = x >= 0 && y >= 0 && width > 0 && height > 0 &&
++		        x + width <= ps->root_width && y + height <= ps->root_height;
++		if (valid) {
++			ctx->icon_x = x + width / 2;
++			ctx->icon_y = y + height / 2;
++			ctx->icon_scale = fmin(1, fmin(width / ctx->width, height / ctx->height));
++		}
++	}
++	free_winprop(&prop);
++	return valid;
++}
++
++/// Workspace changes also unmap windows. EWMH Hidden identifies minimization in Fluxbox.
++static enum animation_trigger
++win_script_icon_trigger(struct session *ps, struct win *w, const struct window_options *opts,
++                        enum animation_trigger trigger, struct win_script_context *ctx) {
++	auto client = win_client_id(w, /*fallback_to_self=*/true);
++	if (trigger == ANIMATION_TRIGGER_HIDE &&
++	    (opts->animations[ANIMATION_TRIGGER_MINIMIZE].script ||
++	     opts->animations[ANIMATION_TRIGGER_RESTORE].script)) {
++		auto state = x_get_prop(&ps->c, client, ps->atoms->a_NET_WM_STATE, 32,
++		                        XCB_ATOM_ATOM, 32);
++		w->was_iconified = false;
++		for (unsigned i = 0; i < state.nitems; i++) {
++			if (state.atom[i] == ps->atoms->a_NET_WM_STATE_HIDDEN) {
++				w->was_iconified = true;
++				break;
++			}
++		}
++		free_winprop(&state);
++	}
++	if (!w->was_iconified) {
++		return trigger;
++	}
++	auto icon_trigger = trigger == ANIMATION_TRIGGER_HIDE ? ANIMATION_TRIGGER_MINIMIZE
++	                                                     : ANIMATION_TRIGGER_RESTORE;
++	w->was_iconified = trigger == ANIMATION_TRIGGER_HIDE;
++	return opts->animations[icon_trigger].script && win_script_icon_target(ps, client, ctx)
++	           ? icon_trigger
++	           : trigger;
++}
+ /// Advance the animation of a window.
+ ///
+ /// Returns true if animation was running before this function is called, and is no
+@@ -1911,7 +1962,12 @@
+ 	if (trigger == ANIMATION_TRIGGER_INVALID) {
+ 		// No state changes, if there's a animation running, we just continue it.
+ 		return win_advance_animation(w, delta_t, &win_ctx);
+-	} else if (w->running_animation_instance &&
++	}
++	auto wopts = win_options(w);
++	if (trigger == ANIMATION_TRIGGER_HIDE || trigger == ANIMATION_TRIGGER_SHOW) {
++		trigger = win_script_icon_trigger(ps, w, &wopts, trigger, &win_ctx);
++	}
++	if (w->running_animation_instance &&
+ 	           (w->running_animation.suppressions & (1 << trigger)) != 0) {
+ 		log_debug("Not starting animation %s for window %#010x (%s) because it "
+ 		          "is being suppressed.",
+@@ -1924,7 +1980,6 @@
+ 		return win_advance_animation(w, delta_t, &win_ctx);
+ 	}
+ 
+-	auto wopts = win_options(w);
+ 	if (wopts.animations[trigger].script == NULL) {
+ 		return true;
+ 	}
+--- a/src/wm/win.h
++++ b/src/wm/win.h
+@@ -262,6 +262,7 @@
+ 	/// by `win_process_animation_and_state_change` to trigger appropriate
+ 	/// animations.
+ 	struct win_state_change previous;
++	bool was_iconified;
+ 	struct script_instance *running_animation_instance;
+ 	struct win_script running_animation;
+ 
+@@ -275,6 +276,7 @@
+ 	double opacity_before, opacity;
+ 	double monitor_x, monitor_y;
+ 	double monitor_width, monitor_height;
++	double icon_x, icon_y, icon_scale;
+ };
+ static_assert(SCRIPT_CTX_PLACEHOLDER_BASE > sizeof(struct win_script_context),
+               "win_script_context too large");
+@@ -294,6 +296,9 @@
+     {"window-monitor-y", offsetof(struct win_script_context, monitor_y)},
+     {"window-monitor-width", offsetof(struct win_script_context, monitor_width)},
+     {"window-monitor-height", offsetof(struct win_script_context, monitor_height)},
++    {"window-icon-x", offsetof(struct win_script_context, icon_x)},
++    {"window-icon-y", offsetof(struct win_script_context, icon_y)},
++    {"window-icon-scale", offsetof(struct win_script_context, icon_scale)},
+     {NULL, 0}        //
+ };
+ 

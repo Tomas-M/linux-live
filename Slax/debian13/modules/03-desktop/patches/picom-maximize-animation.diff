@@ -1,0 +1,134 @@
+Description: Trigger separate animations for maximizing and unmaximizing windows
+Author: Tomas-M
+Forwarded: not-needed
+
+--- a/src/atom.h
++++ b/src/atom.h
+@@ -47,6 +47,8 @@
+ 	_NET_WM_WINDOW_TYPE_DND, \
+ 	_NET_WM_STATE, \
+ 	_NET_WM_STATE_FULLSCREEN, \
++	_NET_WM_STATE_MAXIMIZED_HORZ, \
++	_NET_WM_STATE_MAXIMIZED_VERT, \
+ 	_NET_WM_STATE_HIDDEN, \
+ 	_NET_WM_ICON_GEOMETRY, \
+ 	_NET_WM_BYPASS_COMPOSITOR, \
+--- a/src/config.h
++++ b/src/config.h
+@@ -87,6 +87,8 @@
+ 	/// When a window moves to or from a taskbar button.
+ 	ANIMATION_TRIGGER_MINIMIZE,
+ 	ANIMATION_TRIGGER_RESTORE,
++	ANIMATION_TRIGGER_MAXIMIZE,
++	ANIMATION_TRIGGER_UNMAXIMIZE,
+ 
+ 	ANIMATION_TRIGGER_INVALID,
+ 	ANIMATION_TRIGGER_COUNT = ANIMATION_TRIGGER_INVALID,
+@@ -102,6 +104,8 @@
+     [ANIMATION_TRIGGER_GEOMETRY] = "geometry",
+     [ANIMATION_TRIGGER_MINIMIZE] = "minimize",
+     [ANIMATION_TRIGGER_RESTORE] = "restore",
++    [ANIMATION_TRIGGER_MAXIMIZE] = "maximize",
++    [ANIMATION_TRIGGER_UNMAXIMIZE] = "unmaximize",
+ };
+ 
+ struct script;
+--- a/src/wm/win.h
++++ b/src/wm/win.h
+@@ -95,6 +95,7 @@
+ /// updated to reflect the latest state.
+ struct win_state_change {
+ 	winstate_t state;
++	uint8_t maximized_axes;
+ 	double opacity;
+ 	struct win_geometry g;
+ };
+@@ -190,6 +191,7 @@
+ 	char *role;
+ 	/// Whether the window sets the EWMH fullscreen property.
+ 	bool is_ewmh_fullscreen;
++	uint8_t ewmh_maximized_axes;
+ 	/// Whether the window should be considered fullscreen. Based on
+ 	/// `is_ewmh_fullscreen`, or the windows spatial relation with the
+ 	/// root window. Which one is used is determined by user configuration.
+@@ -574,7 +576,7 @@
+                             int shadow_radius);
+ void win_update_bounding_shape(struct x_connection *c, struct win *w, bool shape_exists,
+                                bool detect_rounded_corners);
+-bool win_update_prop_fullscreen(struct x_connection *c, const struct atom *atoms,
++bool win_update_prop_ewmh_state(struct x_connection *c, const struct atom *atoms,
+                                 struct win *w);
+ 
+ static inline attr_unused void win_set_property_stale(struct win *w, xcb_atom_t prop) {
+--- a/src/wm/win.c
++++ b/src/wm/win.c
+@@ -344,7 +344,7 @@
+ 	}
+ 
+ 	if (win_fetch_and_unset_property_stale(w, ps->atoms->a_NET_WM_STATE)) {
+-		if (win_update_prop_fullscreen(&ps->c, ps->atoms, w)) {
++		if (win_update_prop_ewmh_state(&ps->c, ps->atoms, w)) {
+ 			win_set_flags(w, WIN_FLAGS_FACTOR_CHANGED);
+ 		}
+ 	}
+@@ -884,19 +884,24 @@
+ }
+ 
+ /**
+- * Update window EWMH fullscreen state.
+- */
+-bool win_update_prop_fullscreen(struct x_connection *c, const struct atom *atoms,
++ * Cache EWMH maximization axes and report fullscreen changes.
++ */
++bool win_update_prop_ewmh_state(struct x_connection *c, const struct atom *atoms,
+                                 struct win *w) {
+ 	auto prop = x_get_prop(c, win_client_id(w, /*fallback_to_self=*/true),
+ 	                       atoms->a_NET_WM_STATE, 12, XCB_ATOM_ATOM, 0);
+ 	bool is_fullscreen = false;
++	uint8_t maximized_axes = 0;
+ 	for (uint32_t i = 0; i < prop.nitems; i++) {
+ 		if (prop.atom[i] == atoms->a_NET_WM_STATE_FULLSCREEN) {
+ 			is_fullscreen = true;
+-			break;
+-		}
+-	}
++		} else if (prop.atom[i] == atoms->a_NET_WM_STATE_MAXIMIZED_HORZ) {
++			maximized_axes |= 1;
++		} else if (prop.atom[i] == atoms->a_NET_WM_STATE_MAXIMIZED_VERT) {
++			maximized_axes |= 2;
++		}
++	}
++	w->ewmh_maximized_axes = maximized_axes;
+ 	free_winprop(&prop);
+ 
+ 	bool changed = w->is_ewmh_fullscreen != is_fullscreen;
+@@ -1880,8 +1885,10 @@
+ 	auto win_ctx = win_script_context_prepare(ps, w);
+ 	bool geometry_changed = !win_geometry_eq(w->previous.g, w->g);
+ 	auto old_state = w->previous.state;
++	auto old_maximized_axes = w->previous.maximized_axes;
+ 
+ 	w->previous.state = w->state;
++	w->previous.maximized_axes = w->ewmh_maximized_axes;
+ 	w->previous.opacity = w->opacity;
+ 	w->previous.g = w->g;
+ 
+@@ -1959,6 +1966,18 @@
+ 		              : ANIMATION_TRIGGER_DECREASE_OPACITY;
+ 	}
+ 
++	// Fluxbox publishes the new state after configuring the window. The two
++	// notifications may arrive in different render batches.
++	if (old_state == WSTATE_MAPPED && w->state == WSTATE_MAPPED &&
++	    !w->is_ewmh_fullscreen && old_maximized_axes != w->ewmh_maximized_axes) {
++		// Treat a newly maximized axis as a grow and a removed axis as a shrink.
++		bool maximizing = (w->ewmh_maximized_axes & ~old_maximized_axes) != 0;
++		auto maximize_trigger = maximizing ? ANIMATION_TRIGGER_MAXIMIZE
++		                                   : ANIMATION_TRIGGER_UNMAXIMIZE;
++		if (win_options(w).animations[maximize_trigger].script) {
++			trigger = maximize_trigger;
++		}
++	}
+ 	if (trigger == ANIMATION_TRIGGER_INVALID) {
+ 		// No state changes, if there's a animation running, we just continue it.
+ 		return win_advance_animation(w, delta_t, &win_ctx);

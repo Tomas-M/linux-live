@@ -9,8 +9,9 @@ DESKTOP
 - Open the launcher: click the bottom-left Slax button, tap Super (Windows key),
   or press Alt+F2 / Ctrl+Esc. Type to search apps or run a command; browse categories
   with the sidebar. Esc dismisses it.
-- Click a taskbar icon to select its application; hover for window previews and
-  click a preview to activate it. Alt+Tab switches windows; Alt+Shift+Tab reverses.
+- Click a taskbar icon to select its application or restore a single minimized
+  window. Hover for window previews and click a preview to restore or activate
+  that window. Alt+Tab switches windows; Alt+Shift+Tab reverses.
   Alt+F3 opens the window overview. The taskbar normally shows the current workspace.
 - Click the workspace pager near the clock to switch workspace.
 - Click the speaker icon in the taskbar to open the volume slider and mute toggle.

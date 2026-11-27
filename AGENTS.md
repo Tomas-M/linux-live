@@ -1417,6 +1417,19 @@ must follow the general Slax repair rules above.
   windows in and out. Fully maximized and
   fullscreen windows have neither corner masks nor shadows. Preserve panel
   transparency and remove Picom's desktop/autostart launchers during cleanup.
+  Docklike publishes each visible group's button geometry for all its windows
+  via the X11 `_NET_WM_ICON_GEOMETRY` property. Picom uses it for the
+  `minimize` and `restore` animations when the window manager iconifies a
+  window. Keep ordinary fades for other map/unmap events and windows without
+  a visible button. Scale uniformly over 300 ms and reach zero opacity halfway
+  to the panel. Start Picom without VSync when a connected DRM output uses
+  `vmwgfx`, where synchronous XRender Present stalls animation frames.
+  Fluxbox applies the full target size immediately on maximize and unmaximize,
+  including when both axes arrive in one EWMH state request.
+  Picom observes the EWMH maximization state published after resize and animates
+  the new window image at its target layout over 150 ms. Scale around its
+  center from 95% when maximizing and 105% when unmaximizing. Do not blend in
+  saved images from the old layout.
 - For PCManFM changes and bug reports, also inspect and verify the corresponding
   GTK file chooser wherever it shares the same interface or behavior.
   Blocked drive rows in both browsers invoke `slax-status --check PLACE_ID`.

@@ -1,0 +1,142 @@
+Description: Publish X11 icon geometry for docklike groups
+Author: Tomas-M
+Forwarded: not-needed
+
+--- a/src/Group.cpp
++++ b/src/Group.cpp
+@@ -6,6 +6,9 @@
+  */
+ 
+ #include "Group.hpp"
++#ifdef ENABLE_X11
++#include <gdk/gdkx.h>
++#endif
+ 
+ static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", 0, 0}};
+ 
+@@ -53,6 +56,16 @@
+ 	//--------------------------------------------------
+ 
+ 	mButton = GTK_WIDGET(g_object_ref(gtk_button_new()));
++#ifdef ENABLE_X11
++	if (GDK_IS_X11_DISPLAY(gtk_widget_get_display(mButton)))
++	{
++		g_signal_connect_after(mButton, "size-allocate",
++			G_CALLBACK(+[](GtkWidget*, GtkAllocation*, Group* group) { group->updateIconGeometry(); }), this);
++		for (const char* signal : {"map", "unmap"})
++			g_signal_connect_after(mButton, signal,
++				G_CALLBACK(+[](GtkWidget*, Group* group) { group->updateIconGeometry(); }), this);
++	}
++#endif
+ 	mImage = gtk_image_new();
+ 	mLabel = gtk_label_new("");
+ 	GtkWidget* overlay = gtk_overlay_new();
+@@ -245,9 +258,39 @@
+ 		g_object_unref(mIconPixbuf);
+ }
+ 
++#ifdef ENABLE_X11
++// Xfw's X11 backend expects physical root coordinates.
++void Group::updateIconGeometry()
++{
++	if (!mWindows.size())
++		return;
++
++	GdkWindow* surface = gtk_widget_get_window(mButton);
++	if (!surface || !GDK_IS_X11_DISPLAY(gdk_window_get_display(surface)))
++		return;
++
++	GdkRectangle rect{};
++	int x, y;
++	if (gtk_widget_get_mapped(mButton) && gdk_window_get_origin(surface, &x, &y))
++	{
++		gtk_widget_get_allocation(mButton, &rect);
++		if (gtk_widget_get_has_window(mButton))
++			rect.x = rect.y = 0;
++		int scale = gdk_window_get_scale_factor(surface);
++		rect = {(x + rect.x) * scale, (y + rect.y) * scale, rect.width * scale, rect.height * scale};
++	}
++	mWindows.forEach([&](GroupWindow* window) {
++		xfw_window_set_button_geometry(window->mXfwWindow, surface, &rect, nullptr);
++	});
++}
++#endif
++
+ void Group::add(GroupWindow* window)
+ {
+ 	mWindows.push(window);
++#ifdef ENABLE_X11
++	updateIconGeometry();
++#endif
+ 	mWindowsCount.updateState();
+ 	mGroupMenu.add(window->mGroupMenuItem);
+ 	Help::Gtk::cssClassAdd(mButton, "open_group");
+@@ -263,6 +306,14 @@
+ 
+ void Group::remove(GroupWindow* window)
+ {
++#ifdef ENABLE_X11
++	GdkWindow* surface = gtk_widget_get_window(mButton);
++	if (surface && GDK_IS_X11_DISPLAY(gdk_window_get_display(surface)))
++	{
++		const GdkRectangle empty{};
++		xfw_window_set_button_geometry(window->mXfwWindow, surface, &empty, nullptr);
++	}
++#endif
+ 	// Preserve the selected window as earlier entries shift, or select the first survivor.
+ 	uint removedIndex = mWindows.getIndex(window);
+ 	mWindows.pop(window);
+--- a/src/Group.hpp
++++ b/src/Group.hpp
+@@ -65,6 +65,9 @@
+ 
+ 	void resize();
+ 	void updateStyle();
++#ifdef ENABLE_X11
++	void updateIconGeometry();
++#endif
+ 	void updateActiveStyle();
+ 	bool isHighlighted() const;
+ 
+--- a/src/Plugin.cpp
++++ b/src/Plugin.cpp
+@@ -16,6 +16,21 @@
+ 	XfcePanelPlugin* mXfPlugin;
+ 	GdkDevice* mPointer;
+ 	GdkDisplay* mDisplay;
++
++#ifdef ENABLE_X11
++	// External plugins keep their local allocations when the parent panel moves.
++	static void watchPanelGeometry(XfwWindow* window, GtkWidget* box)
++	{
++		if (xfw_window_get_window_type(window) != XFW_WINDOW_TYPE_DOCK)
++			return;
++		g_signal_connect_object(window, "geometry-changed",
++			G_CALLBACK(+[](XfwWindow*, GtkWidget* box) {
++				gtk_container_foreach(GTK_CONTAINER(box), +[](GtkWidget* button, gpointer) {
++					static_cast<Group*>(g_object_get_data(G_OBJECT(button), "group"))->updateIconGeometry();
++				}, nullptr);
++			}), box, G_CONNECT_DEFAULT);
++	}
++#endif
+ 
+ 	static void init(XfcePanelPlugin* xfPlugin)
+ 	{
+@@ -36,6 +51,17 @@
+ #endif
+ 
+ 		gtk_container_add(GTK_CONTAINER(mXfPlugin), Dock::mBox);
++#ifdef ENABLE_X11
++		if (GDK_IS_X11_DISPLAY(mDisplay))
++		{
++			for (GList* item = xfw_screen_get_windows(Xfw::mXfwScreen); item; item = item->next)
++				watchPanelGeometry(XFW_WINDOW(item->data), Dock::mBox);
++			g_signal_connect_object(Xfw::mXfwScreen, "window-opened",
++				G_CALLBACK(+[](XfwScreen*, XfwWindow* window, GtkWidget* box) {
++					watchPanelGeometry(window, box);
++				}), Dock::mBox, G_CONNECT_DEFAULT);
++		}
++#endif
+ 		xfce_panel_plugin_menu_show_configure(mXfPlugin);
+ 		xfce_panel_plugin_menu_show_about(mXfPlugin);
+ 

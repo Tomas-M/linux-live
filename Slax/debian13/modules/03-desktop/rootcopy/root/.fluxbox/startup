@@ -86,7 +86,17 @@ supervise_desktop xfce4-panel --disable-wm-check --sm-client-disable &
    while [ "$(wmctrl -l | grep xfce4-panel)" = "" ]; do
       sleep 0.1
    done
-   supervise_desktop picom --config /etc/picom.conf &
+   set -- picom --config /etc/picom.conf
+   # Synchronous XRender Present can stall animations on VMware SVGA outputs.
+   for CONNECTOR in /sys/class/drm/card[0-9]*-*/status; do
+      if [ ! -r "$CONNECTOR" ] || [ "$(cat "$CONNECTOR")" != connected ]; then continue; fi
+      DRIVER=$(readlink "${CONNECTOR%%-*}/device/driver" 2>/dev/null)
+      if [ "${DRIVER##*/}" = vmwgfx ]; then
+         set -- "$@" --no-vsync
+         break
+      fi
+   done
+   supervise_desktop "$@" &
    # Retain window snapshots for Alt+Tab, including minimized applications.
    # Fluxbox commands include the default screen in DISPLAY; match its IPC path.
    SKIPPYDISPLAY=$DISPLAY

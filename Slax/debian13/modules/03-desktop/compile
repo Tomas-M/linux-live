@@ -30,7 +30,8 @@ cp "$CWD/patches/fluxbox-desktop-dialogs.diff" debian/patches/
 cp "$CWD/patches/fluxbox-struts.diff" debian/patches/
 cp "$CWD/patches/fluxbox-head-menu.diff" debian/patches/
 cp "$CWD/patches/fluxbox-close-frame.diff" debian/patches/
-printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\nfluxbox-assistant-title.diff\nfluxbox-desktop-dialogs.diff\nfluxbox-struts.diff\nfluxbox-head-menu.diff\nfluxbox-close-frame.diff\n' >> debian/patches/series
+cp "$CWD/patches/fluxbox-maximize-pair.diff" debian/patches/
+printf 'fluxbox-slax.diff\nfluxbox-preview.diff\nfluxbox-panel-focus.diff\nfluxbox-assistant-title.diff\nfluxbox-desktop-dialogs.diff\nfluxbox-struts.diff\nfluxbox-head-menu.diff\nfluxbox-close-frame.diff\nfluxbox-maximize-pair.diff\n' >> debian/patches/series
 quilt push -a
 cp "$CWD/patches/imlib2-config" /usr/bin/imlib2-config
 chmod 755 /usr/bin/imlib2-config
@@ -64,7 +65,9 @@ sed -i 's/^Depends: python3, /Depends: /' debian/control
 mkdir -p debian/patches
 cp "$CWD/patches/picom-top-corners.diff" debian/patches/
 cp "$CWD/patches/picom-window-outline.diff" debian/patches/
-printf 'picom-top-corners.diff\npicom-window-outline.diff\n' >> debian/patches/series
+cp "$CWD/patches/picom-taskbar-animation.diff" debian/patches/
+cp "$CWD/patches/picom-maximize-animation.diff" debian/patches/
+printf 'picom-top-corners.diff\npicom-window-outline.diff\npicom-taskbar-animation.diff\npicom-maximize-animation.diff\n' >> debian/patches/series
 dpkg-buildpackage -b -us -uc
 cp ../picom_*.deb "$OUTPUT/"
 
@@ -77,7 +80,7 @@ VERSION=$(apt-cache show --no-all-versions xfce4-docklike-plugin | sed -n 's/^Ve
 sed -i "1s/([^)]*)/($VERSION)/" debian/changelog
 mkdir -p debian/patches
 cp "$CWD"/patches/docklike-*.diff debian/patches/
-printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\ndocklike-window-removal.diff\ndocklike-multi-window-indicator.diff\ndocklike-drag-reorder.diff\n' >> debian/patches/series
+printf 'docklike-preview-sizing.diff\ndocklike-preview-peek.diff\ndocklike-preview-animation.diff\ndocklike-taskbar-click.diff\ndocklike-popup-motion.diff\ndocklike-preview-header.diff\ndocklike-preview-raise.diff\ndocklike-preview-delay.diff\ndocklike-panel-focus.diff\ndocklike-preview-capture.diff\ndocklike-window-activation.diff\ndocklike-window-removal.diff\ndocklike-multi-window-indicator.diff\ndocklike-drag-reorder.diff\ndocklike-icon-geometry.diff\n' >> debian/patches/series
 quilt push -a
 dpkg-buildpackage -b -us -uc
 # Reject incomplete plugin packages before they enter the runtime branch.
