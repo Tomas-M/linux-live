@@ -60,6 +60,9 @@ sed "s:/boot/:/$LIVEKITNAME/boot/:g" bootfiles/grub.cfg > "$BOOT/grub.cfg"
 cp "$VMLINUZ" "$BOOT/vmlinuz" || exit
 sh tools/grub.create "$LIVEKITDATA" "$LIVEKITNAME" || exit
 
+# Keep the data partition README outside the ISO and ZIP input tree.
+cp tools/isohybrid-readme.txt "$LIVEKITDATA-isohybrid-readme.txt" || exit
+
 # create compressed 01-core.sb
 COREFS=""
 for i in $MKMOD; do
@@ -75,8 +78,8 @@ cd "$LIVEKITDATA"
 ARCH=$(uname -m)
 TARGET=/tmp
 
-printf '#!/bin/sh\nexec sh "%s/%s/boot/grub/makeiso.sh" "%s/%s-%s.iso"\n' \
-   "$LIVEKITDATA" "$LIVEKITNAME" "$TARGET" "$LIVEKITNAME" "$ARCH" > "$TARGET/gen_${LIVEKITNAME}_iso.sh"
+printf '#!/bin/sh\nISOHYBRID_README="%s-isohybrid-readme.txt" exec sh "%s/%s/boot/grub/makeiso.sh" "%s/%s-%s.iso"\n' \
+   "$LIVEKITDATA" "$LIVEKITDATA" "$LIVEKITNAME" "$TARGET" "$LIVEKITNAME" "$ARCH" > "$TARGET/gen_${LIVEKITNAME}_iso.sh"
 chmod o+x $TARGET/gen_"$LIVEKITNAME"_iso.sh
 
 echo cd $LIVEKITDATA '&&' zip -0 -r "$TARGET/$LIVEKITNAME-$ARCH.zip" '*' \

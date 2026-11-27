@@ -41,7 +41,7 @@ mkdir -p "$BOOT/grub/bios"
 install -m 644 "$THIS/installers/grub-bios.tar.xz" "$BOOT/grub/bios/tools.tar.xz"
 cp "$THIS/README.txt" "$MEDIA/"
 sh "$THIS/build-boot" "$MEDIA" "$BUILD"
-sh "$BOOT/grub/makeiso.sh" "$BUILD/slax-amd64.iso"
+ISOHYBRID_README="$THIS/isohybrid-readme.txt" sh "$BOOT/grub/makeiso.sh" "$BUILD/slax-amd64.iso"
 # Publish the completed ISO atomically; keep small package manifests alongside it.
 printf '%s\n' "$BUILD" > "$WORK/build-directory.txt"
 cp "$BUILD/kernel-release.txt" "$WORK/kernel-release.txt"

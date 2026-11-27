@@ -58,7 +58,7 @@ while IFS= read -r ENCODED; do
    FILE=$(printf '%b.' "$ENCODED")
    FILE=${FILE%.}
    FILE=${FILE#./}
-   case "$FILE" in changes/*|boot/grub/boot.cat|boot/grub/efi.img) continue ;; esac
+   case "$FILE" in changes/*|boot/grub/boot.cat|boot/grub/efi.img|isohybrid-readme.txt) continue ;; esac
    if [ "$REGEX" != '^$' ]; then
       FILTER_PATH=$FILE FILTER_REGEX=$REGEX awk 'BEGIN {exit !(ENVIRON["FILTER_PATH"] ~ ENVIRON["FILTER_REGEX"])}' && continue
    fi
@@ -84,9 +84,8 @@ done
 mkdir -p "$TEMP/media/slax/boot/grub" "$TEMP/media/slax/modules" "$TEMP/media/slax/changes"
 cp "$SLAX/boot/grub/makeiso.sh" "$TEMP/media/slax/boot/grub/"
 cp -r "$SLAX/boot/EFI" "$TEMP/media/slax/boot/"
-cp "$SLAX/isohybrid-readme.txt" "$TEMP/media/slax/"
 cp /usr/share/slax-media/README.txt "$TEMP/media/"
 if [ -f "$SLAX/boot/grub/cdboot.img" ]; then
    cp "$SLAX/boot/grub/cdboot.img" "$SLAX/boot/grub/boot_hybrid.img" "$TEMP/media/slax/boot/grub/"
 fi
-sh "$TEMP/media/slax/boot/grub/makeiso.sh" "$TARGET"
+ISOHYBRID_README=/usr/share/slax-media/isohybrid-readme.txt sh "$TEMP/media/slax/boot/grub/makeiso.sh" "$TARGET"

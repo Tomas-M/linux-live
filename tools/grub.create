@@ -5,8 +5,6 @@ set -e
 DATA=$(cd "$1" && pwd -P)
 NAME="$2"
 BOOT="$DATA/$NAME/boot"
-# Keep the raw-write instructions beside the live data for ISO recreation.
-mv "$BOOT/isohybrid-readme.txt" "$DATA/$NAME/isohybrid-readme.txt"
 mkdir -p "$BOOT/grub/net" "$BOOT/EFI/BOOT"
 cp /usr/share/grub/unicode.pf2 "$BOOT/grub/"
 cat > "$BOOT/grub/grub.cfg" <<EOF

@@ -5,6 +5,8 @@ set -e
 TARGET=${1:?Usage: makeiso.sh output.iso}
 TARGET="$(cd "$(dirname "$TARGET")" && pwd -P)/$(basename "$TARGET")"
 shift
+DATA_README=${ISOHYBRID_README:?Set ISOHYBRID_README to the data partition README}
+DATA_README="$(cd "$(dirname "$DATA_README")" && pwd -P)/$(basename "$DATA_README")"
 BOOT=$(cd "$(dirname "$0")/.." && pwd -P)
 NAME=$(basename "$(dirname "$BOOT")")
 cd "$BOOT/../../"
@@ -50,7 +52,7 @@ LABEL="$(printf '%s' "$NAME" | LC_ALL=C tr -cd '[:alnum:]' | LC_ALL=C tr '[:lowe
 dd if=/dev/zero of="$TEMP/setup.img" bs=1024 count=2222 2>/dev/null
 mkfs.fat -F 16 -s 1 -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
 mount -o loop "$TEMP/setup.img" "$TEMP/mnt"
-cp "$BOOT/../isohybrid-readme.txt" "$TEMP/mnt/README.txt"
+cp "$DATA_README" "$TEMP/mnt/README.txt"
 umount "$TEMP/mnt"
 dd if=/dev/zero bs=1024 count=300 >> "$TEMP/setup.img" 2>/dev/null
 

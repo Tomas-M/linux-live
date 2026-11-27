@@ -287,11 +287,14 @@ INSTALLATION AND DISKS
   are larger than 1 GB. Boot options depend on the actual layout. After completion,
   reboot and select the target drive in the computer's boot menu.
 - In Partition Manager, select a filesystem and choose Rename to change its
-  volume label. Apply the plan with the filesystem unmounted. New and formatted
-  filesystems can receive a label in the same plan. On unformatted or unsupported
-  GPT partitions, Rename edits the GPT partition name.
-- Partition Manager edits partition layouts/filesystems: Add to plan > Review
-  changes > Apply changes. Slax Installer copies Slax and prepares booting.
+  volume label. Mounted writable ext4, XFS and single-device Btrfs support this
+  directly. Unmount FAT32, exFAT and NTFS first. New and formatted filesystems
+  can receive a label in the same plan. On unformatted or unsupported GPT
+  partitions, Rename edits the GPT partition name.
+- In Partition Manager, use Add to plan > Review changes > Apply changes.
+  Other partitions on the same disk can stay mounted. Use Unmount affected
+  partitions when a planned change requires it. Slax Installer copies Slax and
+  prepares booting.
 - A USB made by directly writing the ISO has separate instructions on SLAX-DATA.
   In Partition Manager, apply Repair layout if offered. Unmount and delete
   SLAX-DATA, then create a FAT32 partition in the entire unallocated space

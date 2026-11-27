@@ -601,11 +601,13 @@ must follow the general Slax repair rules above.
   lines and provide automatic scrollbars on both axes.
   Use sfdisk for table operations and the installed filesystem tools for
   formatting/growth, with runtime type catalogues and tool discovery.
-  In-use disks remain editable after an explicit review acknowledgement; do
-  not automatically unmount them. Update individual kernel entries with partx,
-  report deferred changes as requiring restart, and verify kernel geometry
-  before filesystem operations. Keep tests on owned sparse files and Linux
-  loop devices; never use host disks or Windows VHDs for development tests.
+  Review checks the partitions affected by the plan. Require acknowledgement
+  before changing a device in use and limit explicit unmounts to affected
+  partitions. Keep mounted siblings active during individual kernel updates
+  with partx. Report deferred updates as requiring restart and verify kernel
+  geometry before filesystem operations. Change mounted writable ext4, XFS
+  and single-device Btrfs labels through the kernel. Keep tests on owned sparse
+  files and Linux loop devices; never use host disks or Windows VHDs for development tests.
   Two spare owned 4 GiB persistence fixtures are available for `Slax boot test`:
   `VM/virtualbox/slax-sessions-native-20261106.vdi` (ext4,
   `SLAX_NATIVE`) and `slax-sessions-fat-20261106.vdi` (FAT32, `SLAX_FAT`).
@@ -1490,7 +1492,8 @@ must follow the general Slax repair rules above.
 
 - For incremental module edits, extract the finished ISO into `/tmp`, unpack
   only the affected `.sb`, apply the matching source change, repack and run
-  the extracted `slax/boot/grub/makeiso.sh`.
+  the extracted `slax/boot/grub/makeiso.sh` with `ISOHYBRID_README` pointing to
+  `Slax/debian13/isohybrid-readme.txt` outside the staged tree.
   After copying guest defaults, restore `/home/guest` ownership to `guest:users`
   before repacking, matching `03-desktop/copy`; root-owned configuration
   directories prevent sandboxed Chromium from creating application profiles.
@@ -1662,11 +1665,12 @@ must follow the general Slax repair rules above.
   but hide it from Joliet. Keep `/slax/boot/EFI` visible for file-copy USB setup.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
-  Stage the plain `isohybrid-readme.txt` from the live data when recreating an ISO.
+  Pass `isohybrid-readme.txt` to `makeiso.sh` through `ISOHYBRID_README` from outside
+  the ISO file tree. `genslaxiso` uses the Slax copy in `/usr/share/slax-media`.
   The data partition contains it as README.txt. Hybrid images append a FAT16
   partition after the ESP, with a 2222 KiB FAT payload. Derive the GPT name
-  and FAT label from the image name (SLAX-DATA for Slax). Slax overrides the
-  generic README through the shared-then-Slax bootfiles copy order. Document
+  and FAT label from the image name (SLAX-DATA for Slax). Slax uses its own
+  README source in `Slax/debian13`. Document
   replacing only SLAX-DATA with a full-size data partition in Partition Manager.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
   and 63 (no default drive letter), preserving xorriso's existing attributes.

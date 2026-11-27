@@ -8,6 +8,7 @@ rm -f /etc/localtime
 cp -a /build/rootcopy/. /
 # Keep the media instructions available when recreating an ISO after copy-to-RAM boot.
 install -D -m 644 /build/README.txt /usr/share/slax-media/README.txt
+install -m 644 /build/isohybrid-readme.txt /usr/share/slax-media/isohybrid-readme.txt
 install -m 755 /artifacts/01-core/linux-assistant /usr/bin/linux-assistant
 # Repair Debian's duplicate restore label and avoid restoring absent first-boot state.
 sed -i '0,/LABEL="alsa_restore_go"/! s/LABEL="alsa_restore_go"/LABEL="alsa_restore_std"/' /usr/lib/udev/rules.d/90-alsa-restore.rules
