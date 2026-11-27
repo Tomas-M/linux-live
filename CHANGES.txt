@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Import the selected numbered DynFileFS session into the current saved-changes store.
+- Keep the OverlayFS writable layer at /run/initramfs/memory/overlay/changes.
 - Make automatic saved-state retention configurable per mount; 0 keeps all states.
 
 - Keep saved changes marked active until their backing filesystem is ready to
@@ -44,7 +46,7 @@ Linux Live Kit
 - Restore a saved state at storage startup using its stable ID; keep the
   request on failure and stop for recovery instead of silently continuing in RAM.
 - Keep one DynFileFS changes.dat directly in changes on every filesystem,
-  including native Linux storage; ignore older numbered profile directories.
+  including native Linux storage.
 - Choose a drive and then a saved state during boot. Fresh start restores
   Initial state while retaining history; F5 refreshes the drive list.
 - Preserve the starting state before persistent writes and apply save/discard

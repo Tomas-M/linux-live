@@ -1620,9 +1620,14 @@ must follow the general Slax repair rules above.
   /slax/changes/changes.dat. Use DynFileFS with XFS on every backing filesystem,
   including native Linux filesystems, so saved states are always available.
   There is no profile/session layer in boot, the broker or the desktop UI.
-  Ignore old numbered directories, session.txt and last_session.txt; leave them
-  untouched. Do not migrate, reuse or remove their data. Preserve unrelated X11,
-  login, D-Bus and browser uses of session/profile terminology.
+  Import only the numbered DynFileFS session selected by a valid
+  last_session.txt, when there is no current store. Move its changes.dat*
+  files to the parent changes directory, publishing changes.dat last.
+  Clear last_session.txt after the moved container mounts and the new run
+  policy is durable.
+  Leave the remaining numbered directories and old session descriptions alone.
+  Imported history has no guaranteed clean Initial state. Preserve unrelated
+  X11, login, D-Bus and browser uses of session/profile terminology.
 
 - GRUB checks the BIOS El Torito boot alias `(cd)` or its firmware-reported
   boot device before searching other disks; an existing root alone must not
@@ -1839,9 +1844,11 @@ must follow the general Slax repair rules above.
   Remove numeric profile selection and perchdir=new; there is no compatibility path.
 - resume.txt is an empty selection marker directly in the changes directory.
   Automatic resume selects the newest valid marker across writable drives,
-  falling back to creating storage on a writable boot medium. Never read or
-  update legacy last_session.txt. Explicit disk/point selections and successful
-  setup update the marker atomically. Assume all persistence media are available
+  falling back to creating storage on a writable boot medium. On a drive without
+  a current marker, a valid numbered DynFileFS session's last_session.txt
+  participates in automatic selection until it is imported.
+  Explicit disk/point selections and successful setup update resume.txt
+  atomically. Assume all persistence media are available
   early at boot; users of special storage setups arrange that access themselves.
   Manual disk/state selection is persistent intent, not a one-time override:
   subsequent automatic resume continues the resulting saved changes on that disk.
@@ -2096,7 +2103,7 @@ must follow the general Slax repair rules above.
   do not restore Initial state, copy the current RAM run or create redirects.
   Explain that automatic resume uses the selected drive and existing changes.
   Reject stale/replaced media, read-only targets and linked setup paths.
-  Ignore numeric legacy directories.
+  Defer any import of an old selected session to boot.
   Show removed states controls deleted rows while full ancestry determines tree lanes.
   Center its indicator and text. Put Show removed states at the left of the shared
   bottom bar, with Go to now right-aligned to the tree column and an upward arrow,
@@ -2133,14 +2140,14 @@ must follow the general Slax repair rules above.
   to whole GiB, with a 16000 MiB minimum for `mkfs.xfs.custom`'s initial XFS.
   Do not read a `perchsize` boot parameter. Inspect existing containers with
   `-i`, retain a larger saved virtual size, and grow smaller containers at mount.
-  Mount XFS once at the final changes directory and run `xfs_growfs` there:
+  Mount XFS at the writable filesystem mountpoint and run `xfs_growfs` there:
   it also completes growth interrupted after the virtual disk was enlarged.
-- Keep dynfilefs's FUSE mount separate from the loopback XFS mount. In
-  `persistent_changes`, FUSE mounts at `$2.dfs` and XFS at `$2`. For the
-  usual live root these are `/memory/changes.dfs` and `/memory/changes`.
-  This prevents shutdown from remounting XFS with the hidden FUSE mount's
-  `user_id` and `group_id` options. The DynFileFS storage format stays
-  unchanged; filesystem creation and growth use the separate `virtual.dat`.
+- Keep the DynFileFS FUSE mount at `/memory/changes.dfs`, separate from its
+  loopback XFS mount. OverlayFS uses `/memory/overlay/{changes,workdir}`
+  under the same mount. For AUFS, XFS mounts directly at `/memory/changes`.
+  Keep the saved-state contents in their original XFS paths. Record the
+  XFS mountpoint in `storage/changes` for the storage daemon and the writable
+  layer in `storage/upper` for `savechanges`.
 - Keep HTTP FUSE storage at `$DATAMNT.httpfs` and its loop-mounted data at
   `$DATAMNT`. Local `from=ISO` uses the separate `/memory/iso` mount; failed
   searches must unmount the ISO before its source filesystem. Stop after a

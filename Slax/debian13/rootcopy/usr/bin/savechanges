@@ -2,7 +2,6 @@
 
 TMP=/tmp/changes$$
 EXCLUDE="^\$|/\$|[.]wh[.][.]wh[.]orph/|^[.]wh[.][.]pwd[.]lock|^[.]wh[.][.]wh[.]plnk/|^[.]wh[.][.]wh[.]aufs|^var/cache/|^var/backups/|^var/tmp/|^var/log/|^var/lib/apt/|^var/lib/dhcp/|^var/lib/systemd/|^sbin/fsck[.]aufs|^etc/resolv[.]conf|^root/[.]Xauthority|^root/[.]xsession-errors|^root/[.]fehbg|^root/[.]fluxbox/lastwallpaper|^etc/mtab|^etc/fstab|^boot/|^dev/|^mnt/|^proc/|^run/|^sys/|^tmp/"
-CHANGES=/run/initramfs/memory/changes
 
 if [ "$1" = "-h" -o "$1" = "--help" ]; then
    echo ""
@@ -13,7 +12,7 @@ if [ "$1" = "-h" -o "$1" = "--help" ]; then
    echo "Usage:"
    echo "        $0 [ target_file.sb ] [ changes_directory ]"
    echo ""
-   echo "If changes_directory is not specified, /run/initramfs/memory/changes is used."
+   echo "If changes_directory is not specified, the running writable layer is used."
    echo "If target_file.sb is not specified, /run/initramfs/memory/data/slax/modules/99-changes-??.sb is used."
    echo ""
    exit 1
@@ -32,16 +31,13 @@ if [ "$TARGET" = "" ]; then
    TARGET=$TARGETDIR/99-changes-$ix.sb
 fi
 
+# Read the writable layer recorded by initramfs unless the caller chose one.
+CHANGES="$2"
+if [ "$CHANGES" = "" ]; then
+   CHANGES=$(cat /run/initramfs/memory/storage/upper) || exit 1
+fi
+
 touch $TARGET || exit 1
-
-if [ ! "$2" = "" ]; then
-   CHANGES="$2"
-fi
-
-# OverlayFS keeps its writable files below the persistent-session metadata.
-if [ "$(findmnt -n -o FSTYPE /)" = overlay ] && [ -d "$CHANGES/changes" ]; then
-   CHANGES="$CHANGES/changes"
-fi
 
 # exclude control files for automounted disk drives
 EXCLUDEDISKS=$(grep "Slax skip savechanges" /etc/systemd/system/{*,*/*} 2>/dev/null | cut -d : -f 1 | cut -b 2- | tr '\n' '|')
@@ -54,7 +50,7 @@ EXCLUDE="$EXCLUDE|^""$(readlink -f "$TARGET" | cut -b 2- | sed -r "s/[.]/[.]/")"
 
 CWD=$(pwd)
 
-cd $CHANGES || exit
+cd "$CHANGES" || exit
 
 mkdir -p $TMP
 mount -t tmpfs tmpfs $TMP

@@ -47,7 +47,13 @@ check_data_found "$DATA"
 splash_start
                                                                                                                                                       debug_shell
 # setup persistent changes, if possible
-while ! persistent_changes "$DATA" "$CHANGES"; do
+CHANGES_MOUNT=$CHANGES
+UPPER=$CHANGES
+if ! aufs_is_supported >/dev/null; then
+   CHANGES_MOUNT=$MEMORY/overlay
+   UPPER=$CHANGES_MOUNT/changes
+fi
+while ! persistent_changes "$DATA" "$CHANGES" "$CHANGES_MOUNT"; do
    fatal 'Could not activate persistent changes'
 done
 STORAGE_KIND="$(cat "$MEMORY/storage/kind")"
@@ -64,7 +70,10 @@ printf '%s\n' "/run/initramfs$DATA" > "$MEMORY/storage/source"
 mount_bundles "$DATA" "$BUNDLES"
                                                                                                                                                       debug_shell
 # init aufs union, or setup overlayfs union
-init_union "$CHANGES" "$UNION" "$BUNDLES"
+while ! init_union "$CHANGES_MOUNT" "$UNION" "$BUNDLES" "$UPPER"; do
+   fatal 'Could not mount the union filesystem'
+done
+printf '%s\n' "/run/initramfs$UPPER" > "$MEMORY/storage/upper"
 
 # add data to aufs union
 union_append_bundles "$BUNDLES" "$UNION"

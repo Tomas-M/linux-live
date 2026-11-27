@@ -305,28 +305,27 @@ init_aufs()
 
 
 # Setup empty aufs union, or create overlayfs union
-# $1 = changes directory (ramfs or persistent changes)
+# $1 = writable filesystem directory, also the AUFS branch
 # $2 = union directory where to mount the union
 # $3 = bundles directory
+# $4 = writable layer directory
 #
 init_union()
 {
    debug_log "init_union" "$*"
-   mkdir -p "$1"
-   mkdir -p "$2"
+   mkdir -p "$1" "$2" || return 1
 
    if aufs_is_supported >/dev/null; then
       echo_green_star
       echo "Setting up empty union using aufs"
-      mount -t aufs -o xino="/.xino",trunc_xino,br="$1" aufs "$2"
+      mount -t aufs -o xino="/.xino",trunc_xino,br="$4" aufs "$2"
    else
       echo_green_star
       echo "Setting up union using overlayfs"
-      mkdir -p "$1/changes"
-      mkdir -p "$1/workdir"
+      mkdir -p "$4" "$1/workdir" || return 1
       local LOWER
       LOWER=$(find "$3" -mindepth 1 -maxdepth 1 -type d | sortmod | tac | tr '\n' ':' | sed -r 's/:$//')
-      mount -t overlay overlay -o "lowerdir=$LOWER,upperdir=$1/changes,workdir=$1/workdir,index=off,metacopy=off,redirect_dir=off,xino=off" "$2"
+      mount -t overlay overlay -o "lowerdir=$LOWER,upperdir=$4,workdir=$1/workdir,index=off,metacopy=off,redirect_dir=off,xino=off" "$2"
    fi
 }
 
@@ -1082,6 +1081,21 @@ perch_restore_menu()
 }
 
 
+# Discover the numbered container selected by the old session marker.
+perch_legacy_session()
+{
+   local MARKER NUMBER SOURCE
+   if [ -e "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then return 1; fi
+   MARKER="$1/last_session.txt"
+   if [ ! -f "$MARKER" ] || [ -L "$MARKER" ]; then return 1; fi
+   NUMBER=$(LC_ALL=C awk 'NR != 1 || $0 !~ /^[0-9]+$/ || length($0)>20 {exit 1} {print} END {if (NR == 0) exit 1}' "$MARKER") || return 1
+   SOURCE="$1/$NUMBER"
+   if [ ! -d "$SOURCE" ] || [ -L "$SOURCE" ]; then return 1; fi
+   if [ ! -f "$SOURCE/changes.dat" ] || [ -L "$SOURCE/changes.dat" ]; then return 1; fi
+   printf '%s\n' "$NUMBER"
+}
+
+
 # Inspect one drive's history; Esc returns without changing its queued request.
 # $1 = changes directory whose history is shown and restore request is updated
 perch_choose_restore()
@@ -1092,7 +1106,9 @@ perch_choose_restore()
    POINTS=""
    INITIAL=""
    TITLE='Start Slax from'
-   if [ -e "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then
+   if perch_legacy_session "$1" >/dev/null; then
+      printf 'legacy\tResume previous session\tImport saved changes\n' > "$ROWS"
+   elif [ -e "$1/changes.dat" ] || [ -L "$1/changes.dat" ]; then
       if POINTS=$(perch_restore_menu "$1") && INITIAL=$(persistence initial "$1"); then
          if [ -f "$1/run.txt" ]; then printf 'current\tLast saved state\tContinue saved changes\n' > "$ROWS"; fi
          printf '%s\n' "$POINTS" | while IFS="$(printf '\t')" read -r ID NAME DETAIL DEPTH PARENT; do
@@ -1111,6 +1127,7 @@ perch_choose_restore()
    CHOICE=$(fbmenu --menu "$TITLE" "$ROWS" --cancel) || CHOICE=""
    rm -f "$ROWS"
    if [ "$CHOICE" = "" ]; then return 2; fi
+   if [ "$CHOICE" = legacy ]; then return 0; fi
    if [ "$CHOICE" = fresh ]; then
       if [ "$INITIAL" = "" ]; then return 0; fi
       CHOICE="$INITIAL"
@@ -1209,6 +1226,8 @@ select_perch_storage()
          if [ -L "$DIR/$LIVEKITNAME" ] || [ -L "$CHANDIR" ]; then continue; fi
          if [ -f "$CHANDIR/resume.txt" ] && [ ! -L "$CHANDIR/resume.txt" ]; then
             printf '%s\t%s\n' "$(date -r "$CHANDIR/resume.txt" +%s)" "$CHANDIR" >> "$SCAN/resume.txt"
+         elif perch_legacy_session "$CHANDIR" >/dev/null; then
+            printf '%s\t%s\n' "$(date -r "$CHANDIR/last_session.txt" +%s)" "$CHANDIR" >> "$SCAN/resume.txt"
          fi
          if [ "$STATUS" = 3 ]; then
             printf '%s\t%s\tNeeds filesystem check\n' "$CHANDIR" "$DEVICE" >> "$SCAN/disks.txt"
@@ -1344,18 +1363,21 @@ perch_device_storage()
 
 # Activate one DynFileFS store on every backing filesystem, including native Linux filesystems.
 # $1 = live data directory
-# $2 = writable union changes directory
+# $2 = changes path used to name the backing directory and FUSE mount
+# $3 = writable filesystem mountpoint
 persistent_changes()
 {
    debug_log "persistent_changes" "$*"
 
    local CHANGES MODE T1 PERCHSIZE DYNMNT RESTORE TARGET RESTORE_ID START_ID INITIAL RUN ERROR
    CHANGES="$1/$(basename "$2")"
-   if mountpoint -q "$2" || mountpoint -q "$2.dfs"; then
+   TARGET="$3"
+   DYNMNT="$2.dfs"
+   if mountpoint -q "$TARGET" || mountpoint -q "$DYNMNT"; then
       echo '* Persistent storage is still mounted; unmount it before retrying.' >&2
       return 1
    fi
-   mkdir -p "$2" "$MEMORY/storage"
+   mkdir -p "$TARGET" "$MEMORY/storage"
    chmod 700 "$MEMORY/storage"
    printf 'ram\n' > "$MEMORY/storage/kind"
    for T1 in storage changes dynfilefs start; do printf '\n' > "$MEMORY/storage/$T1"; done
@@ -1403,6 +1425,7 @@ persistent_changes()
       perch_clean "$CHANGES" || ERROR=$?
       if [ "$ERROR" = 3 ]; then return 0; fi
       if [ "$ERROR" != 0 ]; then return 1; fi
+      PERSISTENT_IMPORT=$(persistence import "$CHANGES") || return 1
       persistence open "$CHANGES" || return 1
       PERSISTENT_STORAGE="$CHANGES"
    fi
@@ -1419,14 +1442,15 @@ persistent_changes()
       persistence create "$CHANGES" "$PERCHSIZE" || return 1
    fi
    if [ ! -f "$CHANGES/changes.dat" ] || [ -L "$CHANGES/changes.dat" ]; then return 1; fi
-   INITIAL=$(persistence initial "$CHANGES") || return 1
    RESTORE_ID=$(persistence target "$CHANGES") || return 1
    T1=$(@mount.dynfilefs -i -f "$CHANGES/changes.dat") || return 1
+   INITIAL=""
+   if ! printf '%s\n' "$T1" | grep -qx 'version:500'; then
+      INITIAL=$(persistence initial "$CHANGES") || return 1
+   fi
    T1=$(printf '%s\n' "$T1" | sed -n 's/^sizeMiB://p')
    if [ "$RESTORE_ID" = "" -a "$T1" -gt "$PERCHSIZE" ]; then PERCHSIZE=$T1; fi
 
-   TARGET="$2"
-   DYNMNT="$2.dfs"
    mkdir -p "$DYNMNT"
    if mountpoint -q "$TARGET" || mountpoint -q "$DYNMNT"; then
       echo '* Persistent storage is still mounted; unmount it before retrying.' >&2
@@ -1435,14 +1459,17 @@ persistent_changes()
    RUN=$(persistence run "$CHANGES") || return 1
    if [ -f "$CHANGES/restore.txt" ] && [ "$RUN" != "" ] && [ "${RUN#* }" != discard ]; then
       # Recover the previous XFS before preserving saved work, without any union writers.
-      @mount.dynfilefs -f "$CHANGES/changes.dat" -m "$DYNMNT" --no-auto-snapshots --protect "$INITIAL" --protect "$RESTORE_ID" || return 1
+      set -- -f "$CHANGES/changes.dat" -m "$DYNMNT" --no-auto-snapshots --protect "$RESTORE_ID"
+      if [ "$INITIAL" != "" ]; then set -- "$@" --protect "$INITIAL"; fi
+      @mount.dynfilefs "$@" || return 1
       if ! mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then umount "$DYNMNT"; return 1; fi
       if ! persistence detach "$TARGET"; then return 1; fi
       if ! persistence prepare "$CHANGES" "$DYNMNT"; then umount "$DYNMNT"; return 1; fi
       umount "$DYNMNT" || return 1
       persistence closed "$CHANGES" || return 1
    fi
-   set -- -f "$CHANGES/changes.dat" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000 --protect "$INITIAL"
+   set -- -f "$CHANGES/changes.dat" -s "$PERCHSIZE" -m "$DYNMNT" -p 4000
+   if [ "$INITIAL" != "" ]; then set -- "$@" --protect "$INITIAL"; fi
    if [ "$AUTOSNAPSHOT_LIMIT" != "" ]; then set -- "$@" --auto-snapshot-limit "$AUTOSNAPSHOT_LIMIT"; fi
    if [ "$RESTORE_ID" != "" ]; then
       # Preparation can promote the selected automatic point without changing its identity.
@@ -1454,7 +1481,7 @@ persistent_changes()
    @mount.dynfilefs "$@" || return 1
    if mount -t xfs -o loop,nouuid "$DYNMNT/virtual.dat" "$TARGET"; then
       # Finish any interrupted growth before establishing this run's durable starting guard.
-      if xfs_growfs "$TARGET" >/dev/null && START_ID=$(persistence start "$CHANGES" "$DYNMNT") && persistence mark "$CHANGES"; then
+      if xfs_growfs "$TARGET" >/dev/null && START_ID=$(persistence start "$CHANGES" "$DYNMNT" "${PERSISTENT_IMPORT:-}") && persistence mark "$CHANGES"; then
          printf 'container\n' > "$MEMORY/storage/kind"
          printf '%s\n' "/run/initramfs$CHANGES" > "$MEMORY/storage/storage"
          printf '%s\n' "/run/initramfs$TARGET" > "$MEMORY/storage/changes"

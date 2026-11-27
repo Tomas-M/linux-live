@@ -212,7 +212,9 @@ BOOT AND PERSISTENCE
   including on Linux filesystems. DynFileFS grows its data parts as needed;
   all files beside changes.dat and its snapshots directory belong together.
   Back up the complete changes directory while inactive, after a normal shutdown.
-  Old numbered directories from earlier Slax versions are left alone and ignored.
+  Slax imports the previously selected old DynFileFS session on first use of
+  that drive. Other numbered sessions stay on disk. An imported history may
+  have no clean Initial state.
 - Open Saved states from the Slax Status tray bubble to manage the history
   on the currently used drive. Current session and You are here identify this run.
   Show removed states in the bottom bar includes deleted states.
@@ -312,6 +314,7 @@ Filesystem/module commands run as root; quote paths containing spaces.
     Show loaded modules and source files.
   savechanges /path/99-custom.sb [changes_directory]
     Export changed files to a module, filtering caches/logs/runtime files.
+    The default changes directory is /run/initramfs/memory/overlay/changes.
     Choose a new file on a writable drive. Without arguments, writes
     99-changes-N.sb into the boot data's modules folder; saves in the same boot
     reuse that filename.
