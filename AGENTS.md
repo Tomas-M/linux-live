@@ -330,7 +330,7 @@ reporting progress.
   so `genslaxiso` retains it after copy-to-RAM boot.
   This README describes the native installer, preservation and whole-disk erasure.
   Keep raw ISO writing instructions and boot parameter
-  documentation out of it. USB-SPACE has its own separate instructions.
+  documentation out of it. SLAX-DATA has its own separate instructions.
 - Preserve unrelated uncommitted changes. Do not stage or commit unless asked.
 - Keep `CHANGES.txt` current with concise English entries for completed changes,
   separating generic Live Kit changes from Slax-specific changes. It tracks
@@ -457,7 +457,7 @@ must follow the general Slax repair rules above.
   and layout checks, then finish boot tests.
   Keep earlier releases. Create a release only when Tomas asks, and size it to
   exactly 512 MiB by enlarging the EFI FAT16 filesystem, preserving the size of
-  USB-SPACE. Never append bytes outside the image's partition layout.
+  SLAX-DATA. Never append bytes outside the image's partition layout.
   References to `release` or `releases` mean this local directory. Remote publishing
   is a separate explicit request; never infer a release server from this wording.
 
@@ -1662,14 +1662,12 @@ must follow the general Slax repair rules above.
   but hide it from Joliet. Keep `/slax/boot/EFI` visible for file-copy USB setup.
   `genslaxiso` stages the bundled EFI loaders, so recreation works from a plain
   file-copy USB installation without an existing EFI image or partition.
-  Stage `boot/grub/usb-space.tar.xz` in recreated images too. Hybrid images append a small
-  FAT16 setup partition after the ESP, with Windows preparation tools from shared
-  `bootfiles/grub/usb-space`; makeiso sets the universal `USB-SPACE` label directly.
-  Small setup payloads use a 2222 KiB FAT16 image.
-  Slax's `bootfiles/grub/usb-space/README.txt` overrides the generic README through
-  the existing shared-then-Slax bootfiles copy order. `tools/grub.create` packs
-  this payload and removes its loose directory before ISO creation. Keep Slax
-  branding there; the EXE is exposed only on the appended USB-SPACE partition.
+  Stage the plain `isohybrid-readme.txt` from the live data when recreating an ISO.
+  The data partition contains it as README.txt. Hybrid images append a FAT16
+  partition after the ESP, with a 2222 KiB FAT payload. Derive the GPT name
+  and FAT label from the image name (SLAX-DATA for Slax). Slax overrides the
+  generic README through the shared-then-Slax bootfiles copy order. Document
+  replacing only SLAX-DATA with a full-size data partition in Partition Manager.
   Mark the ISO partition as Microsoft Basic Data and set GPT bits 62 (hidden)
   and 63 (no default drive letter), preserving xorriso's existing attributes.
   Windows ignores these bits on the generic Linux filesystem GUID, even after
@@ -1684,40 +1682,6 @@ must follow the general Slax repair rules above.
   Append the 300 KiB CD read-ahead padding inside the setup partition,
   beyond its FAT filesystem, and disable xorriso's separate trailing padding to
   avoid a Windows-visible `Gap1` partition with xorriso 1.5.6.
-  `usb-space.exe`, titled "Use USB Space", is a separate, manually launched Windows 10/11 tool. It must
-  resolve its own USB disk, reject system disks and unexpected layouts, validate
-  both GPT copies, and confirm before formatting only the unused tail as FAT32.
-  Validate the ISO's Basic Data type, hidden attributes and ISO9660 signature.
-  Preserve the ISO and EFI partitions and BIOS/UEFI loaders, relocate the backup
-  GPT to the physical disk end, and leave an existing data partition unchanged.
-  In the temporary copy, lock USB-SPACE before any disk writes and abort without
-  partition changes if it is in use or cannot be locked. Retain that lock while
-  formatting, mounting and verifying file writes/reads on USB-DATA, then remove
-  only USB-SPACE. Keep USB-SPACE if data preparation or verification fails.
-  Before removing USB-SPACE, create the live-data changes directory, an empty
-  resume.txt marker inside it, and a short readme.txt beside changes. Preserve
-  existing files and markers. Derive the live-data directory from makeiso.sh's
-  ISO volume ID, retaining generic Live Kit names. First persistent boot creates
-  changes.dat through DynFileFS; never create an empty backing-file placeholder.
-  Verify newly written files before success.
-  After confirmation, relaunch a plain EXE copy in a separate local temporary
-  folder. Transfer the original open disk handle, volume identity, mutex and
-  complete approved GPT snapshot through inherited handles; revalidate them
-  before writing. Never choose a target from the temporary EXE's location or
-  a command-line disk number. Schedule temporary files for deletion at restart.
-  Support FAT32 above 32 GiB without depending on Windows' native formatter.
-  Ship only the native Win32 executable and README on USB-SPACE. Keep its source,
-  manifest, PNG icon master and ICO with multiple resolutions under `tools`;
-  rebuild the bundled 32-bit executable manually with
-  `sh tools/usb-space.build` and MinGW-w64 after source changes, never during ISO builds.
-  Work exclusively on the physical USB disk of the original launch; never
-  select a different disk. Reject unexpected layouts and concurrent instances.
-  Use exact-sized Win32 sector reads, including the final sector. Derive the data start from the ISO volume size,
-  not the backup GPT address, because Windows may already have relocated GPT.
-  Run USB Space write tests only inside an isolated VM, never on this Windows
-  host. Use disposable media, not large raw files on a Windows system disk.
-  Extending a sparse file alone does not avoid NTFS valid-data
-  zero filling when later writes target its end; a 64 GiB test caused heavy host I/O.
   `tools/grub.create` supplies the matching MBR image; `genslaxiso` must copy
   it when recreating an ISO. Raw writes to a whole disk must boot on BIOS and
   UEFI without running an installer, while the existing file-copy USB setup remains valid.

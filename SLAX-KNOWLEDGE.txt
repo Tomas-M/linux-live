@@ -292,10 +292,10 @@ INSTALLATION AND DISKS
   GPT partitions, Rename edits the GPT partition name.
 - Partition Manager edits partition layouts/filesystems: Add to plan > Review
   changes > Apply changes. Slax Installer copies Slax and prepares booting.
-- A USB made by directly writing the ISO has separate instructions on USB-SPACE.
-  On Windows, usb-space.exe (Use USB Space) makes unused capacity into USB-DATA.
-  In Slax: Partition Manager > Repair layout if offered > create FAT32 in
-  Unallocated space > review/apply. The Slax installation is retained.
+- A USB made by directly writing the ISO has separate instructions on SLAX-DATA.
+  In Partition Manager, apply Repair layout if offered. Unmount and delete
+  SLAX-DATA, then create a FAT32 partition in the entire unallocated space
+  after EFI. Review and apply the plan, keeping the ISO and EFI partitions.
 
 MODULES AND CUSTOMIZATION
 - .sb files are compressed SquashFS filesystem modules. The shipped layers are

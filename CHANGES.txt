@@ -4,6 +4,8 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Ship a README-only FAT data partition in hybrid ISO images.
+
 - Import the selected numbered DynFileFS session into the current saved-changes store.
 - Keep the OverlayFS writable layer at /run/initramfs/memory/overlay/changes.
 - Make automatic saved-state retention configurable per mount; 0 keeps all states.
@@ -27,7 +29,8 @@ Linux Live Kit
 - Include common vendor HID keyboard drivers and Apple SPI keyboards with their
   controllers in initramfs so they are available for early boot menus.
 - Skip EFI System Partitions during live-data discovery, storage selection and automount.
-- Update the static initramfs blkid and eject to util-linux 2.42.4 and Mini Commander to 2.0.
+- Update the static initramfs blkid and eject to util-linux 2.42.4.
+- Update the static initramfs Mini Commander to 2.0 with editor block saving and file insertion.
 - Show device search results, mount errors and storage messages when live data
   cannot be found, with a complete diagnostic report retained in RAM.
 - Automatically size persistence containers from their backing filesystem and grow

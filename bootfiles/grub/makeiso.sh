@@ -45,23 +45,12 @@ mount -o loop "$TEMP/efi.img" "$TEMP/mnt"
 cp -r "$BOOT/EFI" "$TEMP/mnt/"
 umount "$TEMP/mnt"
 
-# Keep the CD read-ahead padding inside the setup partition, not in a GPT Gap entry.
-mkdir "$TEMP/usb-space"
-tar -xJf "$BOOT/grub/usb-space.tar.xz" -C "$TEMP/usb-space"
-SIZE=$(du -sk "$TEMP/usb-space" | cut -f1)
-SIZE=$(( (SIZE + SIZE / 128 + 128 + 63) / 64 * 64 ))
-if [ "$SIZE" -lt 2222 ]; then
-   SIZE=2222
-fi
-SECTORS=1
-while [ "$(( SIZE * 2 / SECTORS ))" -ge 65525 ]; do
-   SECTORS=$(( SECTORS * 2 ))
-done
-LABEL=USB-SPACE
-dd if=/dev/zero of="$TEMP/setup.img" bs=1024 count="$SIZE" 2>/dev/null
-mkfs.fat -F 16 -s "$SECTORS" -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
+# Keep the CD read-ahead padding inside the FAT16 setup partition.
+LABEL="$(printf '%s' "$NAME" | LC_ALL=C tr -cd '[:alnum:]' | LC_ALL=C tr '[:lower:]' '[:upper:]' | cut -c1-6)-DATA"
+dd if=/dev/zero of="$TEMP/setup.img" bs=1024 count=2222 2>/dev/null
+mkfs.fat -F 16 -s 1 -S 512 -n "$LABEL" "$TEMP/setup.img" >/dev/null
 mount -o loop "$TEMP/setup.img" "$TEMP/mnt"
-cp -r "$TEMP/usb-space/"* "$TEMP/mnt/"
+cp "$BOOT/../isohybrid-readme.txt" "$TEMP/mnt/README.txt"
 umount "$TEMP/mnt"
 dd if=/dev/zero bs=1024 count=300 >> "$TEMP/setup.img" 2>/dev/null
 
@@ -88,4 +77,5 @@ xorriso "$@"
 dd if="$TARGET" of="$TEMP/mbr" bs=512 count=1 2>/dev/null
 ATTRS=$(sfdisk --part-attrs "$TARGET" 1)
 sfdisk --part-attrs "$TARGET" 1 "$ATTRS,GUID:62,GUID:63" >/dev/null
+sfdisk --part-label "$TARGET" 3 "$LABEL" >/dev/null
 dd if="$TEMP/mbr" of="$TARGET" bs=512 count=1 conv=notrunc 2>/dev/null

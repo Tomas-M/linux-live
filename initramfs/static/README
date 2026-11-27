@@ -8,9 +8,9 @@ static i686 ELF files with no shared-library or interpreter dependencies.
 The build verifies the pinned upstream archive and the resulting ELF properties.
 
 mc: Mini Commander 2.0, https://github.com/Tomas-M/mini-commander
-Published static/mc at commit f5024ed4bdee4645a906e2526115defd2f2415f9 (GPL-3.0).
-Git blob: 3074708112575a4418145902aa3459092bd85e2c
-Binary SHA256: f213870b9708c024063ad019dcd3d5f58d78d8d929d5ea14a45bb6e6ac3aee2a
+Published static/mc at commit 2e628ee4471cce7fa0f3fbebdc91f6c666b0f478 (GPL-3.0).
+Git blob: 8db29cda7f2c9db57353e295c794e2087388188c
+Binary SHA256: 2cbe124638392fd55261a70fff9f4fd193228bbe84005362a3ecc39fda20df08
 This is the upstream UPX-packed static i686 binary, including its terminal data.
 
 mount.dynfilefs: DynFileFS 6.05, https://github.com/Tomas-M/dynfilefs (GNU GPL).
