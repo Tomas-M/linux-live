@@ -1,0 +1,24 @@
+fragment-sort
+
+Generate a priority list for mksquashfs by grouping files and file tails
+with similar contents. The prebuilt x86-64 executable uses the build host's
+Zstandard and C++ runtime libraries (libzstd1 and libstdc++6 on Debian).
+Slax includes both in 01-core.sb.
+
+From this directory, with the original filesystem mounted at /mnt/source:
+
+    chmod +x fragment-sort
+    ./fragment-sort /mnt/source -b 1M -tailends --zstd-score --candidates 16 -o core.sort
+
+Pass -sort core.sort -b 1M -tailends -action 'fragment(mixed)@true' to
+mksquashfs. Keep the sort list and output image outside the source tree.
+
+To rebuild the dynamically linked executable on Slax or Debian,
+install the build dependencies as root.
+
+    apt install g++ libzstd-dev
+
+From this directory, compile and strip the executable in one command.
+
+    g++ -std=c++17 -O2 -s -D_FILE_OFFSET_BITS=64 -DZSTD_SUPPORT \
+        fragment-sort.cpp fragment-order.cpp fragment-score.cpp -o fragment-sort -lzstd

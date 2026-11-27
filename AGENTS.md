@@ -489,6 +489,10 @@ must follow the general Slax repair rules above.
   Use a disposable compiler upper layer and discard it before runtime cleanup.
   Disable index, metacopy, redirects and xino in build overlays; the resulting
   layers are repacked as SquashFS, with whiteouts and opaque xattrs preserved.
+  Before packing each Slax module, use the bundled amd64 `fragment-sort` on the
+  build host to group similar files and tails. Keep the priority list outside
+  the module tree. Both tools use 1 MiB blocks; Zstandard scores the grouping
+  candidates and XZ with the x86 BCJ filter compresses the finished module.
   Cleanup preserves English man pages and removes info, documentation and most
   translations. Service startup inside the chroot is blocked with `policy-rc.d`.
 - Slax boots with OverlayFS. Generic Live Kit still supports AUFS when available,

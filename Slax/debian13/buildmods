@@ -11,6 +11,7 @@ BRANCH=$RUN/branches/01-core
 LOWER=$RUN/empty
 ARTIFACTS=$RUN/artifacts
 mkdir -p "$UNION" "$BRANCH" "$LOWER" "$RUN/work" "$MEDIA/slax/modules" "$ARTIFACTS" "$WORK/manifests"
+install -m 755 "$KIT/tools/fragment-sort/fragment-sort" "$RUN/fragment-sort"
 printf '%s\n' "$RUN" > "$WORK/rootfs-directory.txt"
 
 # Unmount this build's root and every bind mount before changing its layer stack.
@@ -163,10 +164,18 @@ printf '%s\n' "$KERNEL" > "$WORK/kernel-release.txt"
 close_root
 
 # Preserve OverlayFS whiteout devices and opaque-directory xattrs in each lower layer.
+BLOCK_SIZE=1M
+SORT_LIST=$RUN/fragment-sort.list
 for BRANCH in "$RUN"/branches/*; do
+   NAME=${BRANCH##*/}
    chmod 755 "$BRANCH"
-   mksquashfs "$BRANCH" "$MEDIA/slax/modules/$(basename "$BRANCH").sb" \
-      -noappend -comp xz -Xbcj x86 -b 1024k -always-use-fragments \
+   # Put similar small files and file tails in the same fragment blocks.
+   printf 'Sorting fragments for %s\n' "$NAME"
+   "$RUN/fragment-sort" "$BRANCH" -b "$BLOCK_SIZE" -tailends --zstd-score --candidates 16 -o "$SORT_LIST"
+   mksquashfs "$BRANCH" "$MEDIA/slax/modules/$NAME.sb" \
+      -noappend -comp xz -Xbcj x86 -b "$BLOCK_SIZE" -tailends \
+      -sort "$SORT_LIST" -action 'fragment(mixed)@true' \
       -e boot dev proc sys run tmp build kit artifacts var/cache/apt var/lib/apt/lists usr/sbin/policy-rc.d
 done
+rm -f "$SORT_LIST" "$RUN/fragment-sort"
 printf 'Filesystem layers: %s/branches\n' "$RUN"

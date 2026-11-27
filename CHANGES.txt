@@ -4,10 +4,12 @@ Unreleased changes
 Linux Live Kit
 --------------
 
+- Add a standalone tool for grouping similar file fragments when building SquashFS images.
 - Put the hybrid ISO data partition instructions only on the FAT partition.
 
 Slax
 ----
 
+- Group similar file fragments when packing the shipped SquashFS modules.
 - Apply partition changes alongside mounted siblings. Limit Review unmounts
   to affected partitions and allow online labels on ext4, XFS and Btrfs.
