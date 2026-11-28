@@ -51,7 +51,24 @@ Forwarded: not-needed
  	/// Whether the window should be considered fullscreen. Based on
  	/// `is_ewmh_fullscreen`, or the windows spatial relation with the
  	/// root window. Which one is used is determined by user configuration.
-@@ -574,7 +576,7 @@
+@@ -277,6 +279,7 @@
+ 	double monitor_x, monitor_y;
+ 	double monitor_width, monitor_height;
+ 	double icon_x, icon_y, icon_scale;
++	double resize_scale_x, resize_scale_y;
+ };
+ static_assert(SCRIPT_CTX_PLACEHOLDER_BASE > sizeof(struct win_script_context),
+               "win_script_context too large");
+@@ -299,6 +302,8 @@
+     {"window-icon-x", offsetof(struct win_script_context, icon_x)},
+     {"window-icon-y", offsetof(struct win_script_context, icon_y)},
+     {"window-icon-scale", offsetof(struct win_script_context, icon_scale)},
++    {"window-resize-start-scale-x", offsetof(struct win_script_context, resize_scale_x)},
++    {"window-resize-start-scale-y", offsetof(struct win_script_context, resize_scale_y)},
+     {NULL, 0}        //
+ };
+ 
+@@ -574,7 +579,7 @@
                              int shadow_radius);
  void win_update_bounding_shape(struct x_connection *c, struct win *w, bool shape_exists,
                                 bool detect_rounded_corners);
@@ -113,19 +130,27 @@ Forwarded: not-needed
  	w->previous.opacity = w->opacity;
  	w->previous.g = w->g;
  
-@@ -1959,6 +1966,18 @@
+@@ -1959,6 +1966,26 @@
  		              : ANIMATION_TRIGGER_DECREASE_OPACITY;
  	}
  
-+	// Fluxbox publishes the new state after configuring the window. The two
-+	// notifications may arrive in different render batches.
-+	if (old_state == WSTATE_MAPPED && w->state == WSTATE_MAPPED &&
-+	    !w->is_ewmh_fullscreen && old_maximized_axes != w->ewmh_maximized_axes) {
++	// Animate only when both changes reach the same render pass. A late state
++	// notification would rescale a layout that was already shown at target size.
++	bool resized = win_ctx.width_before != win_ctx.width ||
++	               win_ctx.height_before != win_ctx.height;
++	bool maximize_changed =
++	    !w->is_ewmh_fullscreen && old_maximized_axes != w->ewmh_maximized_axes;
++	if (trigger == ANIMATION_TRIGGER_GEOMETRY && resized && maximize_changed) {
 +		// Treat a newly maximized axis as a grow and a removed axis as a shrink.
 +		bool maximizing = (w->ewmh_maximized_axes & ~old_maximized_axes) != 0;
 +		auto maximize_trigger = maximizing ? ANIMATION_TRIGGER_MAXIMIZE
 +		                                   : ANIMATION_TRIGGER_UNMAXIMIZE;
 +		if (win_options(w).animations[maximize_trigger].script) {
++			// Limit each axis to a 5% settle without passing its previous size.
++			win_ctx.resize_scale_x =
++			    clamp(win_ctx.width_before / win_ctx.width, 0.95, 1.05);
++			win_ctx.resize_scale_y =
++			    clamp(win_ctx.height_before / win_ctx.height, 0.95, 1.05);
 +			trigger = maximize_trigger;
 +		}
 +	}

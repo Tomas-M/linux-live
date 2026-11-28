@@ -13,6 +13,8 @@ Slax
 - Group similar file fragments when packing the shipped SquashFS modules.
 - Animate windows toward their taskbar buttons on minimize and back on restore.
   Add a short settle animation after maximizing or restoring a window.
+  Use the actual size when a window is already within 5% of its new size in either axis.
+  Keep the window steady if the resize is already visible when its state changes.
   Avoid stalled animation frames on VMware SVGA graphics.
 - Apply partition changes alongside mounted siblings. Limit Review unmounts
   to affected partitions and allow online labels on ext4, XFS and Btrfs.

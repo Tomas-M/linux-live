@@ -1426,10 +1426,11 @@ must follow the general Slax repair rules above.
   `vmwgfx`, where synchronous XRender Present stalls animation frames.
   Fluxbox applies the full target size immediately on maximize and unmaximize,
   including when both axes arrive in one EWMH state request.
-  Picom observes the EWMH maximization state published after resize and animates
-  the new window image at its target layout over 150 ms. Scale around its
-  center from 95% when maximizing and 105% when unmaximizing. Do not blend in
-  saved images from the old layout.
+  Picom animates the target layout over 150 ms when the resize and the EWMH
+  maximization change arrive in the same render pass. Keep the target size
+  steady when the notifications arrive in separate passes. Scale around the
+  center from the previous size, clamped to 95–105% of the target in each
+  axis. Do not blend saved images from the old layout.
 - For PCManFM changes and bug reports, also inspect and verify the corresponding
   GTK file chooser wherever it shares the same interface or behavior.
   Blocked drive rows in both browsers invoke `slax-status --check PLACE_ID`.
